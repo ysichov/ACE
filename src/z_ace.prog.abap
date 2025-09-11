@@ -1130,12 +1130,12 @@ CLASS lcl_ace IMPLEMENTATION.
     mo_window = NEW lcl_window( me ).
 
 
-    mo_tree_local = NEW lcl_rtti_tree( i_header   = 'Variables'
-                                       i_type     = 'L'
-                                       i_cont     = mo_window->mo_locals_container
-                                       i_debugger = me ).
-
-    mo_tree_local->m_locals = mo_tree_local->m_locals BIT-XOR c_mask.
+*    mo_tree_local = NEW lcl_rtti_tree( i_header   = 'Variables'
+*                                       i_type     = 'L'
+*                                       i_cont     = mo_window->mo_locals_container
+*                                       i_debugger = me ).
+*
+*    mo_tree_local->m_locals = mo_tree_local->m_locals BIT-XOR c_mask.
 
     show_step( ).
 
@@ -1320,16 +1320,21 @@ ENDCLASS.
 CLASS lcl_window IMPLEMENTATION.
 
   METHOD constructor.
+
+    data: lv_text type char100.
+    lv_text = gv_prog.
+
     super->constructor( ).
     mo_debugger = i_debugger.
     m_history = m_varhist =  m_zcode  = '01'.
     m_hist_depth = 9.
 
-    mo_box = create( i_name = 'ACE - ABAP Code Explorer alpha v. 0.1' i_width = 1400 i_hight = 400 ).
+
+    mo_box = create( i_name = lv_text i_width = 700 i_hight = 300 ).
     CREATE OBJECT mo_splitter
       EXPORTING
         parent  = mo_box
-        rows    = 3
+        rows    = 2
         columns = 1
       EXCEPTIONS
         OTHERS  = 1.
@@ -1339,7 +1344,7 @@ CLASS lcl_window IMPLEMENTATION.
         row       = 2
         column    = 1
       RECEIVING
-        container = mo_code_container ).
+        container = mo_editor_container ).
 
     mo_splitter->get_container(
       EXPORTING
@@ -1355,43 +1360,43 @@ CLASS lcl_window IMPLEMENTATION.
                                type  = 0
                                value = 0 ).
 
-    mo_splitter->get_container(
-      EXPORTING
-        row       = 3
-        column    = 1
-      RECEIVING
-        container = mo_tables_container ).
+*    mo_splitter->get_container(
+*      EXPORTING
+*        row       = 3
+*        column    = 1
+*      RECEIVING
+*        container = mo_tables_container ).
 
-    mo_splitter->get_container(
-      EXPORTING
-        row       = 3
-        column    = 1
-      RECEIVING
-        container = mo_tables_container ).
+*    mo_splitter->get_container(
+*      EXPORTING
+*        row       = 3
+*        column    = 1
+*      RECEIVING
+*        container = mo_tables_container ).
 
-    CREATE OBJECT mo_splitter_code
-      EXPORTING
-        parent  = mo_code_container
-        rows    = 1
-        columns = 2
-      EXCEPTIONS
-        OTHERS  = 1.
+*    CREATE OBJECT mo_splitter_code
+*      EXPORTING
+*        parent  = mo_code_container
+*        rows    = 1
+*        columns = 2
+*      EXCEPTIONS
+*        OTHERS  = 1.
+*
+*    mo_splitter_code->get_container(
+*      EXPORTING
+*        row       = 1
+*        column    = 1
+*      RECEIVING
+*        container = mo_editor_container ).
 
-    mo_splitter_code->get_container(
-      EXPORTING
-        row       = 1
-        column    = 1
-      RECEIVING
-        container = mo_editor_container ).
+*    mo_splitter_code->get_container(
+*      EXPORTING
+*        row       = 1
+*        column    = 2
+*      RECEIVING
+*        container = mo_locals_container ).
 
-    mo_splitter_code->get_container(
-      EXPORTING
-        row       = 1
-        column    = 2
-      RECEIVING
-        container = mo_locals_container ).
-
-    mo_splitter_code->set_column_width( EXPORTING id = 1 width = '70' ).
+   " mo_splitter_code->set_column_width( EXPORTING id = 1 width = '70' ).
 
     SET HANDLER on_box_close FOR mo_box.
 
@@ -1501,6 +1506,7 @@ CLASS lcl_window IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD show_stack.
+    return.
     IF mo_salv_stack IS INITIAL.
 
       cl_salv_table=>factory(
@@ -4276,10 +4282,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
         ENDTRY.
 
         lt_kw = lo_procedure->get_keyword( ).
-
-        IF lt_kw IS INITIAL.
-          BREAK-POINT.
-        ENDIF.
 
         ls_token-name = lt_kw.
         ls_token-index = lo_procedure->statement_index.
