@@ -356,7 +356,10 @@ CLASS lcl_ace DEFINITION DEFERRED.
 CLASS lcl_source_parser DEFINITION.
 
   PUBLIC SECTION.
-    CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace.
+
+  class-data: mv_step type i.
+    CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace,
+      parse_call IMPORTING iv_program type program iv_index TYPE i iv_stack TYPE i iv_event type string io_debugger TYPE REF TO lcl_ace.
 
 ENDCLASS.
 
@@ -986,13 +989,23 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
            END OF ts_calls,
            tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY event,
 
+           BEGIN OF ts_calls_line,
+             eventtype TYPE string,
+             eventname TYPE string,
+             index     TYPE i,
+           END OF ts_calls_line,
+           tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
+
            BEGIN OF ts_kword,
-             index    TYPE i,
-             line     TYPE i,
-             name     TYPE string,
-             from     TYPE i,
-             to       TYPE i,
-             tt_calls TYPE tt_calls,
+             index     TYPE i,
+             line      TYPE i,
+             name      TYPE string,
+             from      TYPE i,
+             to        TYPE i,
+             tt_calls  TYPE tt_calls,
+             to_evtype TYPE string,
+             to_evname TYPE string,
+             "to_prog   type string,
            END OF ts_kword,
 
            BEGIN OF ts_calculated,
@@ -1028,14 +1041,15 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
            tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY,
 
            BEGIN OF ts_progs,
-             include      TYPE program,
-             source       TYPE REF TO cl_ci_source_include,
-             scan         TYPE REF TO cl_ci_scan,
-             t_keywords   TYPE tt_kword,
-             t_calculated TYPE tt_calculated,
-             t_composed   TYPE tt_composed,
-             t_params     TYPE tt_params,
-             tt_tabs      TYPE tt_tabs,
+             include       TYPE program,
+             source        TYPE REF TO cl_ci_source_include,
+             scan          TYPE REF TO cl_ci_scan,
+             t_keywords    TYPE tt_kword,
+             t_calculated  TYPE tt_calculated,
+             t_composed    TYPE tt_composed,
+             t_params      TYPE tt_params,
+             tt_tabs       TYPE tt_tabs,
+             tt_calls_line TYPE tt_calls_line,
            END OF ts_progs,
 
            BEGIN OF ts_locals,
@@ -1321,7 +1335,7 @@ CLASS lcl_window IMPLEMENTATION.
 
   METHOD constructor.
 
-    data: lv_text type char100.
+    DATA: lv_text TYPE char100.
     lv_text = gv_prog.
 
     super->constructor( ).
@@ -1396,7 +1410,7 @@ CLASS lcl_window IMPLEMENTATION.
 *      RECEIVING
 *        container = mo_locals_container ).
 
-   " mo_splitter_code->set_column_width( EXPORTING id = 1 width = '70' ).
+    " mo_splitter_code->set_column_width( EXPORTING id = 1 width = '70' ).
 
     SET HANDLER on_box_close FOR mo_box.
 
@@ -1506,7 +1520,7 @@ CLASS lcl_window IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD show_stack.
-    return.
+    RETURN.
     IF mo_salv_stack IS INITIAL.
 
       cl_salv_table=>factory(
@@ -1604,10 +1618,6 @@ CLASS lcl_window IMPLEMENTATION.
       WHEN 'COVERAGE'.
         show_coverage( ).
         mo_debugger->show_step( ).
-
-
-      WHEN 'DEBUG'."activate break_points
-        mo_debugger->m_debug = mo_debugger->m_debug BIT-XOR c_mask.
 
       WHEN 'INFO'.
         DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
@@ -3582,7 +3592,6 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    IF mo_debugger->m_debug IS NOT INITIAL. BREAK-POINT. ENDIF.
 
     IF l_node IS NOT INITIAL.
       READ TABLE mt_vars WITH KEY name = is_var-name INTO DATA(l_var).
@@ -3667,7 +3676,7 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
           l_rel   TYPE salv_de_node_relation.
 
     READ TABLE mt_vars WITH KEY name = is_var-name INTO DATA(l_var).
-    IF mo_debugger->m_debug IS NOT INITIAL.BREAK-POINT.ENDIF.
+
     IF sy-subrc = 0.
       DATA(lo_nodes) = tree->get_nodes( ).
       DATA(l_node) =  lo_nodes->get_node( l_var-key ).
@@ -3770,7 +3779,6 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
 
     l_rel = iv_rel.
     ASSIGN ir_up->* TO FIELD-SYMBOL(<new_value>).
-    IF mo_debugger->m_debug IS NOT INITIAL. BREAK-POINT. ENDIF.
 
     READ TABLE mt_vars WITH KEY name = is_var-name INTO DATA(l_var).
     DATA(lt_nodes) = tree->get_nodes( )->get_all_nodes( ).
@@ -4029,7 +4037,6 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
 
   METHOD del_variable.
 
-    IF mo_debugger->m_debug IS NOT INITIAL. BREAK-POINT. ENDIF.
     DATA(lt_hist) = mo_debugger->mt_vars_hist.
     SORT lt_hist BY step DESCENDING.
     LOOP AT lt_hist INTO DATA(ls_hist) WHERE name = iv_full_name.
@@ -4239,6 +4246,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lt_calculated TYPE lcl_window=>tt_calculated,
           lt_composed   TYPE lcl_window=>tt_composed,
           ls_call       TYPE lcl_window=>ts_calls,
+          ls_call_line  TYPE lcl_window=>ts_calls_line,
           ls_tabs       TYPE lcl_window=>ts_int_tabs,
           lt_tabs       TYPE lcl_window=>tt_tabs,
           lv_eventtype  TYPE string,
@@ -4318,7 +4326,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
         IF lt_kw = 'ASSIGN' OR lt_kw = 'ADD' OR lt_kw = 'SUBTRACT' .
           DATA(lv_count) = 0.
         ENDIF.
-        CLEAR lv_new.
+        CLEAR: lv_new, ls_token-to_evname, ls_token-to_evtype .
         WHILE 1 = 1.
           CLEAR lv_change.
           token = lo_procedure->get_token( offset = sy-index ).
@@ -4348,16 +4356,14 @@ CLASS lcl_source_parser IMPLEMENTATION.
             CONTINUE.
           ENDIF.
 
-
-
           IF sy-index = 2 AND ( lt_kw = 'DATA' OR lt_kw = 'PARAMETERS' ).
             WRITE: 'var =', token.
             ls_tabs-name = token.
           ENDIF.
 
           IF sy-index = 2 AND lt_kw = 'PERFORM'.
-            ls_call-name = token.
-            ls_call-event = 'FORM'.
+            ls_token-to_evname = ls_call-name = token.
+            ls_token-to_evtype = ls_call-event = 'FORM'.
           ENDIF.
 
           IF sy-index = 2 AND lv_class = abap_true AND ls_param-class IS INITIAL.
@@ -4366,6 +4372,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
           IF sy-index = 2 AND lv_eventtype IS NOT INITIAL AND lv_eventname IS INITIAL.
             ls_tabs-eventname = lv_eventname = ls_param-name =  token.
+
+            MOVE-CORRESPONDING ls_tabs TO ls_call_line.
+            ls_call_line-index = lo_procedure->statement_index + 1.
+            APPEND ls_call_line TO ls_source-tt_calls_line.
           ENDIF.
 
           IF token = ''.
@@ -4738,12 +4748,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
 
       "code execution scanner
-      DATA(lt_str) = lo_scan->structures.
-      DELETE lt_str WHERE key_start IS INITIAL.
+      DATA(lt_str) = lo_scan->structures.BREAK-POINT.
+      DELETE lt_str WHERE type <> 'E'.
       SORT lt_str BY stmnt_type ASCENDING.
 
-      DATA: lv_step      TYPE i,
-            lv_event     TYPE string,
+      DATA: lv_event     TYPE string,
             lv_stack     TYPE i VALUE 1,
             lv_statement TYPE i.
 
@@ -4756,22 +4765,29 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
         WHILE lv_statement <= ls_str-stmnt_to.
           READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO ls_key.
-          ADD 1 TO lv_step.
+          ADD 1 TO mv_step.
           APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
 
-          <step>-step = lv_step.
+          <step>-step = mv_step.
           <step>-line = ls_key-line.
           <step>-eventname = lv_event.
+          <step>-eventtype = 'EVENT'.
           <step>-stacklevel = lv_stack.
           <step>-program = iv_program.
           <step>-include = iv_program.
 
           IF ls_key-name = 'PERFORM'.
-            add 1 to lv_stack.
+            READ TABLE ls_source-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO ls_call_line.
+
+                lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
+                                                 iv_event = ls_call_line-eventname
+                                                 iv_program = iv_program
+                                                 iv_stack   = lv_stack
+                                                 io_debugger = io_debugger ).
           ENDIF.
 
-           IF ls_key-name = 'ENDFORM'.
-            SUBTRACT 1 from lv_stack.
+          IF ls_key-name = 'ENDFORM'.
+            SUBTRACT 1 FROM lv_stack.
           ENDIF.
 
           ADD 1 TO lv_statement.
@@ -4781,6 +4797,45 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
     ENDIF.
 
+  ENDMETHOD.
+
+  METHOD parse_call.
+    data: lv_statement type i,
+          lv_Stack type i.
+
+    lv_stack = iv_stack + 1.
+    lv_statement = iv_index.
+    READ TABLE io_debugger->mo_window->mt_source WITH KEY include = iv_program INTO DATA(ls_source).
+    Do.
+      READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO data(ls_key).
+      ADD 1 TO mv_step.
+      APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+
+      <step>-step = mv_step.
+      <step>-line = ls_key-line.
+      <step>-eventname = iv_event.
+      <step>-eventtype = 'FORM'.
+      <step>-stacklevel = lv_stack.
+      <step>-program = iv_program.
+      <step>-include = iv_program.
+
+      IF ls_key-name = 'PERFORM'.
+        READ TABLE ls_source-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO data(ls_call_line).
+
+        lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
+                                                 iv_event = ls_call_line-eventname
+                                                 iv_program = iv_program
+                                                 iv_stack   = lv_stack
+                                                 io_debugger = io_debugger ).
+
+      ENDIF.
+
+      IF ls_key-name = 'ENDFORM'.
+        RETURN.
+      ENDIF.
+
+      ADD 1 TO lv_statement.
+    ENDDO.
   ENDMETHOD.
 
 ENDCLASS.
