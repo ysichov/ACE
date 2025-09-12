@@ -4354,7 +4354,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
               SPLIT ls_call-name  AT '=>' INTO TABLE lt_split.
               ls_call-name = lt_split[ 2 ].
             ENDIF.
-            ls_token-to_evname = ls_call-name.BREAK-POINT.
+            ls_token-to_evname = ls_call-name.
             ls_token-to_evtype = ls_call-event = 'METHOD'.
           ENDIF.
 
@@ -4807,7 +4807,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       ENDLOOP.
 
     ENDIF.
-    BREAK-POINT.
+  
   ENDMETHOD.
 
   METHOD parse_call.
