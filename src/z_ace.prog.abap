@@ -1,5 +1,4 @@
-REPORT z_ace.
-*  & ACE - Abap code explorer
+REPORT z_ace. "ACE - Abap code explorer
 *  & Multi-windows program for ABAP code analysis
 *  &---------------------------------------------------------------------*
 *  & version: beta 0.1.00
@@ -990,6 +989,7 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
            tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY event,
 
            BEGIN OF ts_calls_line,
+             class     TYPE string,
              eventtype TYPE string,
              eventname TYPE string,
              index     TYPE i,
@@ -4255,6 +4255,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_par        TYPE char1,
           lv_type       TYPE char1,
           lv_class      TYPE xfeld,
+          lv_cl_name    TYPE string,
           lv_preferred  TYPE xfeld.
 
     CLEAR mv_step.
@@ -4341,7 +4342,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
           IF ( token CS '(' AND ( NOT token CS ')' ) ) OR token CS '->' OR token CS '=>'."can be method call
             ls_call-name = token.
             ls_call-event = 'METHOD'.
-
             REPLACE ALL OCCURRENCES OF '(' IN ls_call-name WITH ''.
             FIND FIRST OCCURRENCE OF '->' IN  ls_call-name.
             IF sy-subrc = 0.
@@ -4356,6 +4356,9 @@ CLASS lcl_source_parser IMPLEMENTATION.
             ENDIF.
             ls_token-to_evname = ls_call-name.
             ls_token-to_evtype = ls_call-event = 'METHOD'.
+            IF lv_new = abap_true.
+             ls_call-name =  ls_token-to_evname = 'CONSTRUCTOR'.
+            ENDIF.
           ENDIF.
 
           IF sy-index = 1 AND ls_token-name = token.
@@ -4373,7 +4376,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           ENDIF.
 
           IF sy-index = 2 AND lv_class = abap_true AND ls_param-class IS INITIAL.
-            ls_param-class = token.
+            ls_call_line-class = ls_param-class = token.
           ENDIF.
 
           IF sy-index = 2 AND lv_eventtype IS NOT INITIAL AND lv_eventname IS INITIAL.
@@ -4381,7 +4384,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
             MOVE-CORRESPONDING ls_tabs TO ls_call_line.
             ls_call_line-index = lo_procedure->statement_index + 1.
-
             "methods in definition should be overwrited by Implementation section
             READ TABLE ls_source-tt_calls_line WITH KEY eventname = ls_call_line-eventname eventtype = ls_call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
             IF sy-subrc = 0.
@@ -4756,7 +4758,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
       ls_source-tt_tabs = lt_tabs.
       APPEND ls_source TO io_debugger->mo_window->mt_source.
 
-
       "code execution scanner
       DATA(lt_str) = lo_scan->structures.
       DELETE lt_str WHERE type <> 'E'.
@@ -4807,7 +4808,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       ENDLOOP.
 
     ENDIF.
-  
+
   ENDMETHOD.
 
   METHOD parse_call.
@@ -5039,7 +5040,10 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       LOOP AT ls_source-t_calculated INTO DATA(ls_calculated) WHERE line = ls_step-line.
         READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+              <selected>-name = ls_calculated-calculated.
+        ENDIF.
           LOOP AT ls_source-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line.
             READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
@@ -5055,7 +5059,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
               <selected>-name = lv_param-param.
             ENDIF.
           ENDLOOP.
-        ENDIF.
+        "ENDIF.
       ENDLOOP.
 
       READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO ls_keyword.
