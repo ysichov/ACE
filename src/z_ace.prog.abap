@@ -364,7 +364,7 @@ ENDCLASS.
 
 CLASS lcl_event_handler DEFINITION.
   PUBLIC SECTION.
-    DATA: mo_debugger TYPE REF TO lcl_ace.
+    DATA: mo_viewer TYPE REF TO lcl_ace.
     METHODS: constructor IMPORTING io_debugger TYPE REF TO lcl_ace,
       on_double_click
         FOR EVENT double_click OF cl_salv_events_table
@@ -429,7 +429,7 @@ CLASS lcl_ace DEFINITION.
 
       hndl_script_buttons IMPORTING iv_stack_changed TYPE xfeld
                           RETURNING VALUE(rv_stop)   TYPE xfeld,
-      show_step.
+      show.
 
   PRIVATE SECTION.
 
@@ -454,7 +454,7 @@ ENDCLASS.
 CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
 
   PUBLIC SECTION.
-    DATA: mo_debugger     TYPE REF TO lcl_ace,
+    DATA: mo_viewer     TYPE REF TO lcl_ace,
           mo_mm_container TYPE REF TO cl_gui_container,
           mo_mm_toolbar   TYPE REF TO cl_gui_container,
           mo_toolbar      TYPE REF TO cl_gui_toolbar,
@@ -513,7 +513,7 @@ CLASS lcl_rtti_tree DEFINITION FINAL. " INHERITING FROM lcl_popup.
           mt_vars         TYPE STANDARD TABLE OF lcl_appl=>var_table,
           mt_classes_leaf TYPE TABLE OF t_classes_leaf,
           m_prg_info      TYPE tpda_scr_prg_info,
-          mo_debugger     TYPE REF TO lcl_ace,
+          mo_viewer     TYPE REF TO lcl_ace,
           tree            TYPE REF TO cl_salv_tree.
 
     METHODS constructor IMPORTING i_header   TYPE clike DEFAULT 'View'
@@ -1088,7 +1088,7 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
           m_prg                  TYPE tpda_scr_prg_info,
           m_debug_button         LIKE sy-ucomm,
           m_show_step            TYPE xfeld,
-          mo_debugger            TYPE REF TO lcl_ace,
+          mo_viewer            TYPE REF TO lcl_ace,
           mo_splitter_code       TYPE REF TO cl_gui_splitter_container,
           mo_splitter_var        TYPE REF TO cl_gui_splitter_container,
           mo_splitter_steps      TYPE REF TO cl_gui_splitter_container,
@@ -1153,7 +1153,7 @@ CLASS lcl_ace IMPLEMENTATION.
 
 *    mo_tree_local->m_locals = mo_tree_local->m_locals BIT-XOR c_mask.
 
-    show_step( ).
+    show( ).
 
   ENDMETHOD.
 
@@ -1240,7 +1240,7 @@ CLASS lcl_ace IMPLEMENTATION.
 
   ENDMETHOD.
 
-  METHOD show_step.
+  METHOD show.
 
     mo_window->m_prg-include = gv_prog.
     mo_window->set_program( CONV #( mo_window->m_prg-include ) ).
@@ -1265,25 +1265,25 @@ ENDCLASS.                    "lcl_ace IMPLEMENTATION
 CLASS lcl_event_handler IMPLEMENTATION.
 
   METHOD constructor.
-    mo_debugger = io_debugger.
+    mo_viewer = io_debugger.
   ENDMETHOD.
 
   METHOD on_double_click.
 
-    READ TABLE mo_debugger->mo_window->mt_stack INDEX row INTO DATA(ls_stack).
+    READ TABLE mo_viewer->mo_window->mt_stack INDEX row INTO DATA(ls_stack).
     "only for coverage stack selection should work.
 
-    CHECK mo_debugger->mo_window->mt_coverage IS NOT INITIAL.
+    CHECK mo_viewer->mo_window->mt_coverage IS NOT INITIAL.
 
     "check if we have recorded steps for choosen stack level
-    READ TABLE  mo_debugger->mt_steps WITH KEY program = ls_stack-program include = ls_stack-include TRANSPORTING NO FIELDS.
+    READ TABLE  mo_viewer->mt_steps WITH KEY program = ls_stack-program include = ls_stack-include TRANSPORTING NO FIELDS.
     CHECK sy-subrc = 0.
 
-    MOVE-CORRESPONDING ls_stack TO mo_debugger->mo_window->m_prg.
-    MOVE-CORRESPONDING ls_stack TO mo_debugger->ms_stack.
+    MOVE-CORRESPONDING ls_stack TO mo_viewer->mo_window->m_prg.
+    MOVE-CORRESPONDING ls_stack TO mo_viewer->ms_stack.
 
-    mo_debugger->mo_window->show_coverage( ).
-    mo_debugger->show_step( ).
+    mo_viewer->mo_window->show_coverage( ).
+    mo_viewer->show( ).
 
   ENDMETHOD.
 ENDCLASS.
@@ -1338,7 +1338,7 @@ CLASS lcl_window IMPLEMENTATION.
     lv_text = gv_prog.
 
     super->constructor( ).
-    mo_debugger = i_debugger.
+    mo_viewer = i_debugger.
     m_history = m_varhist =  m_zcode  = '01'.
     m_hist_depth = 9.
 
@@ -1451,7 +1451,7 @@ CLASS lcl_window IMPLEMENTATION.
 
   METHOD set_program.
 
-    lcl_source_parser=>parse_tokens( iv_program = iv_program io_debugger = mo_debugger ).
+    lcl_source_parser=>parse_tokens( iv_program = iv_program io_debugger = mo_viewer ).
     READ TABLE mt_source WITH KEY include = iv_program INTO DATA(ls_source).
     IF sy-subrc = 0.
       mo_code_viewer->set_text( table = ls_source-source->lines ).
@@ -1556,7 +1556,7 @@ CLASS lcl_window IMPLEMENTATION.
 
       DATA(lo_event) =  mo_salv_stack->get_event( ).
 
-      DATA(lo_handler) = NEW lcl_event_handler( mo_debugger ).
+      DATA(lo_handler) = NEW lcl_event_handler( mo_viewer ).
 
       " Event double click
       SET HANDLER lo_handler->on_double_click FOR lo_event.
@@ -1571,7 +1571,7 @@ CLASS lcl_window IMPLEMENTATION.
   METHOD show_coverage.
 
     CLEAR: mt_watch, mt_coverage,mt_stack.
-    LOOP AT mo_debugger->mt_steps INTO DATA(ls_step).
+    LOOP AT mo_viewer->mt_steps INTO DATA(ls_step).
 
       READ TABLE mt_stack WITH KEY include = ls_step-include TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
@@ -1579,7 +1579,7 @@ CLASS lcl_window IMPLEMENTATION.
         MOVE-CORRESPONDING ls_step TO <stack>.
       ENDIF.
 
-      IF ls_step-include <> mo_debugger->mo_window->m_prg-include.
+      IF ls_step-include <> mo_viewer->mo_window->m_prg-include.
         CONTINUE.
       ENDIF.
 
@@ -1602,21 +1602,21 @@ CLASS lcl_window IMPLEMENTATION.
 
       WHEN 'AI'.
 
-        READ TABLE mo_debugger->mo_window->mt_source INDEX 1 INTO DATA(ls_source).
+        READ TABLE mo_viewer->mo_window->mt_source INDEX 1 INTO DATA(ls_source).
         NEW lcl_ai( ls_source-source ).
 
 
 
       WHEN 'DIAGRAM'.
-        DATA(lo_mermaid) = NEW lcl_mermaid( io_debugger = mo_debugger iv_type =  'DIAG' ).
+        DATA(lo_mermaid) = NEW lcl_mermaid( io_debugger = mo_viewer iv_type =  'DIAG' ).
 
       WHEN 'SMART'.
-        lo_mermaid = NEW lcl_mermaid( io_debugger = mo_debugger iv_type =  'SMART' ).
-        mo_debugger->show_step( ).
+        lo_mermaid = NEW lcl_mermaid( io_debugger = mo_viewer iv_type =  'SMART' ).
+        mo_viewer->show( ).
 
       WHEN 'COVERAGE'.
         show_coverage( ).
-        mo_debugger->show_step( ).
+        mo_viewer->show( ).
 
       WHEN 'INFO'.
         DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
@@ -1628,7 +1628,7 @@ CLASS lcl_window IMPLEMENTATION.
 
       WHEN 'STEPS'.
 
-        lcl_appl=>open_int_table( iv_name = 'Steps' it_tab = mo_debugger->mt_steps io_window = mo_debugger->mo_window ).
+        lcl_appl=>open_int_table( iv_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
 
     ENDCASE.
@@ -2420,10 +2420,10 @@ CLASS lcl_table_viewer IMPLEMENTATION.
         ENDIF.
       WHEN 'STEP'.
         MOVE-CORRESPONDING <tab> TO mo_window->m_prg.
-        MOVE-CORRESPONDING <tab> TO mo_window->mo_debugger->ms_stack.
+        MOVE-CORRESPONDING <tab> TO mo_window->mo_viewer->ms_stack.
 
         mo_window->show_coverage( ).
-        mo_window->mo_debugger->show_step( ).
+        mo_window->mo_viewer->show( ).
       WHEN OTHERS. "check if it is an embedded table.
         TRY.
             lo_table_descr ?= cl_tpda_script_data_descr=>factory( |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| ).
@@ -3267,7 +3267,7 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
   METHOD constructor.
 
     super->constructor( ).
-    mo_debugger = i_debugger.
+    mo_viewer = i_debugger.
 
     cl_salv_tree=>factory(
       EXPORTING
@@ -3311,7 +3311,7 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
     lo_functions->set_group_aggregation( abap_false ).
     lo_functions->set_group_print( abap_false ).
 
-    CHECK mo_debugger IS NOT INITIAL AND iv_type = 'L'.
+    CHECK mo_viewer IS NOT INITIAL AND iv_type = 'L'.
 
     lo_functions->add_function(
       name     = 'REFRESH'
@@ -3485,11 +3485,11 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
 
       APPEND INITIAL LINE TO mt_vars ASSIGNING FIELD-SYMBOL(<vars>).
       <vars>-key = e_root_key.
-      <vars>-stack = mo_debugger->mo_window->mt_stack[ 1 ]-stacklevel.
-      <vars>-step  = mo_debugger->m_step - mo_debugger->m_step_delta.
-      <vars>-program   = mo_debugger->mo_window->m_prg-program.
-      <vars>-eventtype = mo_debugger->mo_window->m_prg-eventtype.
-      <vars>-eventname = mo_debugger->mo_window->m_prg-eventname.
+      <vars>-stack = mo_viewer->mo_window->mt_stack[ 1 ]-stacklevel.
+      <vars>-step  = mo_viewer->m_step - mo_viewer->m_step_delta.
+      <vars>-program   = mo_viewer->mo_window->m_prg-program.
+      <vars>-eventtype = mo_viewer->mo_window->m_prg-eventtype.
+      <vars>-eventname = mo_viewer->mo_window->m_prg-eventname.
       <vars>-leaf  = m_leaf.
       <vars>-name  = is_var-name.
       <vars>-short = is_var-short.
@@ -3641,11 +3641,11 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
           e_root_key = lo_node->get_key( ).
 
           APPEND INITIAL LINE TO mt_vars ASSIGNING FIELD-SYMBOL(<vars>).
-          <vars>-stack = mo_debugger->mo_window->mt_stack[ 1 ]-stacklevel.
-          <vars>-step = mo_debugger->m_step - mo_debugger->m_step_delta.
-          <vars>-program = mo_debugger->mo_window->m_prg-program.
-          <vars>-eventtype = mo_debugger->mo_window->m_prg-eventtype.
-          <vars>-eventname = mo_debugger->mo_window->m_prg-eventname.
+          <vars>-stack = mo_viewer->mo_window->mt_stack[ 1 ]-stacklevel.
+          <vars>-step = mo_viewer->m_step - mo_viewer->m_step_delta.
+          <vars>-program = mo_viewer->mo_window->m_prg-program.
+          <vars>-eventtype = mo_viewer->mo_window->m_prg-eventtype.
+          <vars>-eventname = mo_viewer->mo_window->m_prg-eventname.
           <vars>-leaf = m_leaf.
           <vars>-name = is_var-name.
           <vars>-short = is_var-short.
@@ -3720,11 +3720,11 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
      folder         = abap_false )->get_key( ).
 
     APPEND INITIAL LINE TO mt_vars ASSIGNING FIELD-SYMBOL(<vars>).
-    <vars>-stack = mo_debugger->mo_window->mt_stack[ 1 ]-stacklevel.
-    <vars>-step = mo_debugger->m_step - mo_debugger->m_step_delta.
-    <vars>-program = mo_debugger->mo_window->m_prg-program.
-    <vars>-eventtype = mo_debugger->mo_window->m_prg-eventtype.
-    <vars>-eventname = mo_debugger->mo_window->m_prg-eventname.
+    <vars>-stack = mo_viewer->mo_window->mt_stack[ 1 ]-stacklevel.
+    <vars>-step = mo_viewer->m_step - mo_viewer->m_step_delta.
+    <vars>-program = mo_viewer->mo_window->m_prg-program.
+    <vars>-eventtype = mo_viewer->mo_window->m_prg-eventtype.
+    <vars>-eventname = mo_viewer->mo_window->m_prg-eventname.
     <vars>-leaf = m_leaf.
     <vars>-name = is_var-name.
     <vars>-short = is_var-short.
@@ -3760,7 +3760,7 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
     ls_tree-kind = lo_table_descr->type_kind.
     IF is_var-instance NE '{A:initial}'.
 
-      READ TABLE mo_debugger->mo_window->mt_source WITH KEY include = mo_debugger->ms_stack-include INTO DATA(ls_source).
+      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = mo_viewer->ms_stack-include INTO DATA(ls_source).
       READ TABLE ls_source-tt_tabs WITH KEY name = is_var-short INTO DATA(ls_tab).
       IF sy-subrc <> 0.
         ls_tree-typename = replace( val = lo_table_descr->absolute_name sub = '\TYPE=' with = '' ).
@@ -3849,16 +3849,16 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
         )->get_key( ).
 
       APPEND INITIAL LINE TO mt_vars ASSIGNING FIELD-SYMBOL(<vars>).
-      <vars>-stack = mo_debugger->mo_window->mt_stack[ 1 ]-stacklevel.
+      <vars>-stack = mo_viewer->mo_window->mt_stack[ 1 ]-stacklevel.
       <vars>-leaf = m_leaf.
       <vars>-name = is_var-name.
-      <vars>-program = mo_debugger->mo_window->m_prg-program.
-      <vars>-eventtype = mo_debugger->mo_window->m_prg-eventtype.
-      <vars>-eventname = mo_debugger->mo_window->m_prg-eventname.
+      <vars>-program = mo_viewer->mo_window->m_prg-program.
+      <vars>-eventtype = mo_viewer->mo_window->m_prg-eventtype.
+      <vars>-eventname = mo_viewer->mo_window->m_prg-eventname.
       <vars>-short = is_var-short.
       <vars>-key = e_root_key.
       <vars>-ref = ir_up.
-      <vars>-step = mo_debugger->m_step - mo_debugger->m_step_delta.
+      <vars>-step = mo_viewer->m_step - mo_viewer->m_step_delta.
       <vars>-cl_leaf = is_var-cl_leaf.
       <vars>-path = is_var-path.
 
@@ -3975,8 +3975,8 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
 
       WHEN 'REFRESH'."
         m_refresh = abap_true.
-        "mo_debugger->run_script_hist( mo_debugger->m_hist_step ).
-        mo_debugger->mo_tree_local->display( ).
+        "mo_viewer->run_script_hist( mo_viewer->m_hist_step ).
+        mo_viewer->mo_tree_local->display( ).
         RETURN.
 
     ENDCASE.
@@ -3998,20 +3998,20 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
     ASSIGN COMPONENT 'PATH' OF STRUCTURE <row> TO FIELD-SYMBOL(<path>).
 
     IF <fullname> IS NOT INITIAL.
-      READ TABLE mo_debugger->mt_selected_var WITH KEY name =  <fullname> TRANSPORTING NO FIELDS.
+      READ TABLE mo_viewer->mt_selected_var WITH KEY name =  <fullname> TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
-        DELETE mo_debugger->mt_selected_var WHERE name = <fullname>.
+        DELETE mo_viewer->mt_selected_var WHERE name = <fullname>.
         l_node->set_row_style( if_salv_c_tree_style=>default ).
       ELSE.
         l_node->set_row_style( if_salv_c_tree_style=>emphasized_b ).
-        APPEND INITIAL LINE TO mo_debugger->mt_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
+        APPEND INITIAL LINE TO mo_viewer->mt_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
         <sel>-name = <fullname>.
         <sel>-is_sel = abap_true.
       ENDIF.
 
       CASE <kind>.
         WHEN cl_abap_datadescr=>typekind_table.
-          lcl_appl=>open_int_table( iv_name = <fullname> it_ref = <ref> io_window = mo_debugger->mo_window ).
+          lcl_appl=>open_int_table( iv_name = <fullname> it_ref = <ref> io_window = mo_viewer->mo_window ).
         WHEN cl_abap_datadescr=>typekind_string.
           NEW lcl_text_viewer( <ref> ).
       ENDCASE.
@@ -4021,19 +4021,19 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
 
   METHOD del_variable.
 
-    DATA(lt_hist) = mo_debugger->mt_vars_hist.
+    DATA(lt_hist) = mo_viewer->mt_vars_hist.
     SORT lt_hist BY step DESCENDING.
     LOOP AT lt_hist INTO DATA(ls_hist) WHERE name = iv_full_name.
       IF ls_hist-del IS INITIAL.
         CLEAR: ls_hist-ref, ls_hist-first.
         ls_hist-del = abap_true.
-        ls_hist-step = mo_debugger->m_hist_step - 1.
-        INSERT ls_hist INTO mo_debugger->mt_vars_hist INDEX 1.
+        ls_hist-step = mo_viewer->m_hist_step - 1.
+        INSERT ls_hist INTO mo_viewer->mt_vars_hist INDEX 1.
       ENDIF.
     ENDLOOP.
 
     DATA(lo_nodes) = tree->get_nodes( ).
-    READ TABLE mo_debugger->mt_state WITH KEY name = iv_full_name ASSIGNING FIELD-SYMBOL(<var>).
+    READ TABLE mo_viewer->mt_state WITH KEY name = iv_full_name ASSIGNING FIELD-SYMBOL(<var>).
     IF sy-subrc = 0.
 
       TRY.
@@ -4044,14 +4044,14 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
       DELETE mt_vars WHERE name = iv_full_name.
       DELETE mt_classes_leaf WHERE name = iv_full_name.
       IF i_state = abap_true.
-        DELETE mo_debugger->mt_state WHERE name = iv_full_name.
+        DELETE mo_viewer->mt_state WHERE name = iv_full_name.
       ENDIF.
 
       DATA(l_nam) = iv_full_name && '-'.
       DELETE mt_vars WHERE name CS l_nam.
       DELETE mt_classes_leaf WHERE name  CS l_nam.
       IF i_state = abap_true.
-        DELETE mo_debugger->mt_state WHERE name CS l_nam.
+        DELETE mo_viewer->mt_state WHERE name CS l_nam.
       ENDIF.
       TRY.
           IF l_node IS NOT INITIAL.
@@ -4799,7 +4799,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       ENDLOOP.
 
     ENDIF.
-    BREAK-POINT.
+  
   ENDMETHOD.
 
   METHOD parse_call.
@@ -4855,7 +4855,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
     super->constructor( ).
 
-    mo_debugger = io_debugger.
+    mo_viewer = io_debugger.
     mv_type = iv_type.
 
     CHECK lcl_appl=>is_mermaid_active = abap_true.
@@ -4926,9 +4926,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
           lv_ind1      TYPE i,
           lv_ind2      TYPE i,
           lt_parts     TYPE TABLE OF string,
-          ls_step      LIKE LINE OF mo_debugger->mt_steps.
+          ls_step      LIKE LINE OF mo_viewer->mt_steps.
 
-    DATA(lt_copy) = mo_debugger->mt_steps.
+    DATA(lt_copy) = mo_viewer->mt_steps.
     LOOP AT lt_copy ASSIGNING FIELD-SYMBOL(<copy>).
       CLEAR <copy>-time.
     ENDLOOP.
@@ -5002,51 +5002,51 @@ CLASS lcl_mermaid IMPLEMENTATION.
           ls_prev_stack TYPE ts_line,
           lv_opened     TYPE i.
 
-    LOOP AT mo_debugger->mt_steps INTO DATA(ls_step).
-      READ TABLE mo_debugger->mo_window->mt_source WITH KEY include = ls_step-include INTO DATA(ls_source).
+    LOOP AT mo_viewer->mt_steps INTO DATA(ls_step).
+      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = ls_step-include INTO DATA(ls_source).
       READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO DATA(ls_keyword).
       LOOP AT ls_keyword-tt_calls INTO DATA(ls_call).
 
-        READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_call-outer TRANSPORTING NO FIELDS.
+        READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_call-outer TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
+          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
           <selected>-name = ls_call-outer.
         ENDIF.
 
-        READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_call-inner TRANSPORTING NO FIELDS.
+        READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_call-inner TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
           <selected>-name = ls_call-inner.
         ENDIF.
       ENDLOOP.
     ENDLOOP.
 
-    DATA(lt_steps) = mo_debugger->mt_steps.
+    DATA(lt_steps) = mo_viewer->mt_steps.
     SORT lt_steps BY step DESCENDING.
 
     "collecting dependents variables
     LOOP AT lt_steps INTO ls_step.
 
-      READ TABLE mo_debugger->mo_window->mt_source WITH KEY include = ls_step-include INTO ls_source.
+      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = ls_step-include INTO ls_source.
 
       LOOP AT ls_source-t_calculated INTO DATA(ls_calculated) WHERE line = ls_step-line.
-        READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
+        READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
           <selected>-name = ls_calculated-calculated.
         ENDIF.
         LOOP AT ls_source-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line.
-          READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
+          READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+            APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
             <selected>-name = ls_composed-composing.
           ENDIF.
         ENDLOOP.
         "adding returning values
         LOOP AT ls_source-t_params INTO DATA(lv_param).
-          READ TABLE mo_debugger->mt_selected_var WITH KEY name = lv_param-param TRANSPORTING NO FIELDS.
+          READ TABLE mo_viewer->mt_selected_var WITH KEY name = lv_param-param TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+            APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
             <selected>-name = lv_param-param.
           ENDIF.
         ENDLOOP.
@@ -5056,38 +5056,38 @@ CLASS lcl_mermaid IMPLEMENTATION.
       READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO ls_keyword.
       LOOP AT ls_keyword-tt_calls INTO ls_call.
 
-        READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_call-outer TRANSPORTING NO FIELDS.
+        READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_call-outer TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
-          APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
           <selected>-name = ls_call-inner.
         ENDIF.
       ENDLOOP.
 
     ENDLOOP.
-    SORT mo_debugger->mt_selected_var.
-    DELETE ADJACENT DUPLICATES FROM mo_debugger->mt_selected_var.
+    SORT mo_viewer->mt_selected_var.
+    DELETE ADJACENT DUPLICATES FROM mo_viewer->mt_selected_var.
 
     "collecting watchpoints
-    CLEAR mo_debugger->mo_window->mt_coverage.
+    CLEAR mo_viewer->mo_window->mt_coverage.
 
     LOOP AT  lt_steps INTO ls_step.
 
-      READ TABLE mo_debugger->mo_window->mt_source WITH KEY include = ls_step-include INTO ls_source.
+      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = ls_step-include INTO ls_source.
 
       LOOP AT  ls_source-t_calculated INTO ls_calculated WHERE line = ls_step-line.
 
         LOOP AT ls_source-t_composed INTO ls_composed WHERE line = ls_step-line.
-          READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
+          READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+            APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
             <selected>-name = ls_composed-composing.
           ENDIF.
         ENDLOOP.
 
-        READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
+        READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
 
-          APPEND INITIAL LINE TO mo_debugger->mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
+          APPEND INITIAL LINE TO mo_viewer->mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
           <watch>-program = ls_step-program.
           <watch>-line = ls_line-line = ls_step-line.
 
@@ -5112,7 +5112,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
     LOOP AT lt_lines ASSIGNING <line>.
       DATA(lv_ind) = sy-tabix.
 
-      READ TABLE mo_debugger->mo_window->mt_source WITH KEY include = <line>-include INTO ls_source.
+      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = <line>-include INTO ls_source.
       READ TABLE ls_source-t_keywords WITH KEY line = <line>-line INTO ls_keyword.
       LOOP AT ls_source-scan->tokens FROM ls_keyword-from TO ls_keyword-to INTO DATA(ls_token).
         <line>-code = |{  <line>-code } { ls_token-str }|.
