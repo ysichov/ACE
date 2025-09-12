@@ -357,9 +357,9 @@ CLASS lcl_source_parser DEFINITION.
 
   PUBLIC SECTION.
 
-  class-data: mv_step type i.
+    CLASS-DATA: mv_step TYPE i.
     CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace,
-      parse_call IMPORTING iv_program type program iv_index TYPE i iv_stack TYPE i iv_event type string io_debugger TYPE REF TO lcl_ace.
+      parse_call IMPORTING iv_program TYPE program iv_index TYPE i iv_stack TYPE i iv_event TYPE string io_debugger TYPE REF TO lcl_ace.
 
 ENDCLASS.
 
@@ -4257,6 +4257,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_class      TYPE xfeld,
           lv_preferred  TYPE xfeld.
 
+    CLEAR mv_step.
+
     READ TABLE io_debugger->mo_window->mt_source WITH KEY include = iv_program INTO DATA(ls_source).
     IF sy-subrc <> 0.
 
@@ -4765,6 +4767,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
         WHILE lv_statement <= ls_str-stmnt_to.
           READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO ls_key.
+
+          IF ls_key-name = 'DATA'.
+            ADD 1 TO lv_statement.
+            CONTINUE.
+          ENDIF.
           ADD 1 TO mv_step.
           APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
 
@@ -4779,11 +4786,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
           IF ls_key-name = 'PERFORM'.
             READ TABLE ls_source-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO ls_call_line.
 
-                lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
-                                                 iv_event = ls_call_line-eventname
-                                                 iv_program = iv_program
-                                                 iv_stack   = lv_stack
-                                                 io_debugger = io_debugger ).
+            lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
+                                             iv_event = ls_call_line-eventname
+                                             iv_program = iv_program
+                                             iv_stack   = lv_stack
+                                             io_debugger = io_debugger ).
           ENDIF.
 
           IF ls_key-name = 'ENDFORM'.
@@ -4800,14 +4807,18 @@ CLASS lcl_source_parser IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD parse_call.
-    data: lv_statement type i,
-          lv_Stack type i.
+    DATA: lv_statement TYPE i,
+          lv_stack     TYPE i.
 
     lv_stack = iv_stack + 1.
     lv_statement = iv_index.
     READ TABLE io_debugger->mo_window->mt_source WITH KEY include = iv_program INTO DATA(ls_source).
-    Do.
-      READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO data(ls_key).
+    DO.
+      READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
+      IF ls_key-name = 'DATA'.
+        ADD 1 TO lv_statement.
+        CONTINUE.
+      ENDIF.
       ADD 1 TO mv_step.
       APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
 
@@ -4820,7 +4831,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       <step>-include = iv_program.
 
       IF ls_key-name = 'PERFORM'.
-        READ TABLE ls_source-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO data(ls_call_line).
+        READ TABLE ls_source-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO DATA(ls_call_line).
 
         lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
                                                  iv_event = ls_call_line-eventname
@@ -4976,7 +4987,8 @@ CLASS lcl_mermaid IMPLEMENTATION.
     DATA: lv_add       TYPE xfeld,
           lv_mm_string TYPE string,
           lv_sub       TYPE string,
-          lv_form      TYPE string.
+          lv_form      TYPE string,
+          lv_direction TYPE string.
 
     TYPES: BEGIN OF ts_line,
              include TYPE string,
@@ -4999,11 +5011,17 @@ CLASS lcl_mermaid IMPLEMENTATION.
       READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO DATA(ls_keyword).
       LOOP AT ls_keyword-tt_calls INTO DATA(ls_call).
 
-        "READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_call-outer TRANSPORTING NO FIELDS.
-        "IF sy-subrc = 0.
-        APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
-        <selected>-name = ls_call-inner.
-        "ENDIF.
+        READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_call-outer TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
+          <selected>-name = ls_call-outer.
+        ENDIF.
+
+        READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_call-inner TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+          <selected>-name = ls_call-inner.
+        ENDIF.
       ENDLOOP.
     ENDLOOP.
 
@@ -5016,24 +5034,24 @@ CLASS lcl_mermaid IMPLEMENTATION.
       READ TABLE mo_debugger->mo_window->mt_source WITH KEY include = ls_step-include INTO ls_source.
 
       LOOP AT ls_source-t_calculated INTO DATA(ls_calculated) WHERE line = ls_step-line.
-        "READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
-        "IF sy-subrc = 0.
-        LOOP AT ls_source-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line.
-          "READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
-          "IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
-          <selected>-name = ls_composed-composing.
-          "ENDIF.
-        ENDLOOP.
-        "adding returning values
-        LOOP AT ls_source-t_params INTO DATA(lv_param).
-          "READ TABLE mo_debugger->mt_selected_var WITH KEY name = lv_param-param TRANSPORTING NO FIELDS.
-          "IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
-          <selected>-name = lv_param-param.
-          "ENDIF.
-        ENDLOOP.
-        "ENDIF.
+        READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          LOOP AT ls_source-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line.
+            READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+              <selected>-name = ls_composed-composing.
+            ENDIF.
+          ENDLOOP.
+          "adding returning values
+          LOOP AT ls_source-t_params INTO DATA(lv_param).
+            READ TABLE mo_debugger->mt_selected_var WITH KEY name = lv_param-param TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+              <selected>-name = lv_param-param.
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
       ENDLOOP.
 
       READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO ls_keyword.
@@ -5047,6 +5065,8 @@ CLASS lcl_mermaid IMPLEMENTATION.
       ENDLOOP.
 
     ENDLOOP.
+    SORT mo_debugger->mt_selected_var.
+    DELETE ADJACENT DUPLICATES FROM mo_debugger->mt_selected_var.
 
     "collecting watchpoints
     CLEAR mo_debugger->mo_window->mt_coverage.
@@ -5108,6 +5128,15 @@ CLASS lcl_mermaid IMPLEMENTATION.
         REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
       ENDLOOP.
     ENDLOOP.
+
+    "check subform execution steps existance
+    LOOP AT lt_lines ASSIGNING <line>.
+      READ TABLE lt_lines WITH KEY event = <line>-subname TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        CLEAR <line>-arrow.
+      ENDIF.
+    ENDLOOP.
+
     IF lines( lt_lines ) > 0.
       IF lt_lines[ lines( lt_lines ) ]-arrow IS NOT INITIAL.
         CLEAR lt_lines[ lines( lt_lines ) ]-arrow .
@@ -5116,11 +5145,18 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
     "creating mermaid code
     CHECK lt_lines IS NOT INITIAL.
+
     IF iv_direction IS INITIAL.
-      lv_mm_string = |graph TD\n |.
+      IF lines( lt_lines ) < 25.
+        lv_direction = 'LR'.
+      ELSE.
+        lv_direction = 'TD'.
+      ENDIF.
     ELSE.
-      lv_mm_string = |graph { iv_direction }\n |.
+      lv_direction = iv_direction.
     ENDIF.
+
+    lv_mm_string = |graph { lv_direction }\n |.
 
     LOOP AT lt_lines INTO ls_line.
       lv_ind = sy-tabix.
@@ -5160,7 +5196,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ADD 1 TO lv_opened.
         lv_mm_string = |{ lv_mm_string }")|.
         lv_sub = '|"' && ls_line-arrow && '"|'.
-        lv_mm_string = |{ lv_mm_string }-->{ lv_sub }{ lv_ind + 1 }\n subgraph S{ lv_ind }[{ ls_line-subname }]\n  direction TB\n|.
+        lv_mm_string = |{ lv_mm_string }-->{ lv_sub }{ lv_ind + 1 }\n subgraph S{ lv_ind }["{ ls_line-subname }"]\n  direction TB\n|.
       ELSE.
         lv_mm_string = |{ lv_mm_string }")\n|.
       ENDIF.
