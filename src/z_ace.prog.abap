@@ -1251,8 +1251,19 @@ CLASS lcl_ace IMPLEMENTATION.
     mo_tree_local->add_node( iv_name = 'Local Classes' iv_icon = CONV #( icon_folder ) iv_rel = mo_tree_local->main_node_key ).
     mo_tree_local->add_node( iv_name = 'Global Fields' iv_icon = CONV #( icon_header ) iv_rel = mo_tree_local->main_node_key ).
     mo_tree_local->add_node( iv_name = 'Events' iv_icon = CONV #( icon_oo_event ) iv_rel = mo_tree_local->main_node_key ).
-    mo_tree_local->add_node( iv_name = 'Subroutines' iv_icon = CONV #( icon_biw_info_source_ina ) iv_rel = mo_tree_local->main_node_key ).
+    data(lv_forms_rel) = mo_tree_local->add_node( iv_name = 'Subroutines' iv_icon = CONV #( icon_folder ) iv_rel = mo_tree_local->main_node_key ).
     mo_tree_local->add_node( iv_name = 'Code Flow' iv_icon = CONV #( icon_enhanced_bo ) iv_rel = mo_tree_local->main_node_key ).
+
+    read table mo_window->mt_source with key include = gv_prog into data(ls_source).
+    LOOP AT ls_source-t_params into data(ls_subs) where event = 'FORM' .
+      data(lv_form_name) = ls_subs-name.
+     AT new name.
+    mo_tree_local->add_node( iv_name = lv_form_name iv_icon = CONV #( icon_biw_info_source_ina ) iv_rel = lv_forms_rel ).
+
+     ENDAT.
+    ENDLOOP.
+
+
 
     mo_tree_local->display( ).
 
@@ -4799,7 +4810,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       ENDLOOP.
 
     ENDIF.
-  
+
   ENDMETHOD.
 
   METHOD parse_call.
@@ -5108,7 +5119,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
     DELETE lt_lines WHERE del = abap_true.
 
-    "getting code texts and calls params
+    "getting code texts and calls paramsf
     LOOP AT lt_lines ASSIGNING <line>.
       DATA(lv_ind) = sy-tabix.
 
