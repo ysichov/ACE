@@ -13,7 +13,7 @@ REPORT z_ace. "ACE - Abap code explorer
 *  & External resources
 *  & https://github.com/WegnerDan/abapMermaid
 
-PARAMETERS: gv_prog TYPE progname  MATCHCODE OBJECT progname MODIF ID prg.
+PARAMETERS: gv_prog TYPE progname  MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY.
 
 CLASS lcl_ai DEFINITION DEFERRED.
 CLASS lcl_data_receiver DEFINITION DEFERRED.
@@ -528,8 +528,10 @@ CLASS lcl_rtti_tree DEFINITION FINAL. " INHERITING FROM lcl_popup.
     METHODS add_buttons IMPORTING iv_type TYPE xfeld.
     METHODS add_node
       IMPORTING
-        iv_name TYPE string
-        iv_icon TYPE salv_de_tree_image OPTIONAL.
+                iv_name        TYPE string
+                iv_rel         TYPE salv_de_node_key OPTIONAL
+                iv_icon        TYPE salv_de_tree_image OPTIONAL
+      RETURNING VALUE(rv_node) TYPE salv_de_node_key.
 
     METHODS add_obj_nodes
       IMPORTING
@@ -1144,11 +1146,11 @@ CLASS lcl_ace IMPLEMENTATION.
     mo_window = NEW lcl_window( me ).
 
 
-*    mo_tree_local = NEW lcl_rtti_tree( i_header   = 'Variables'
-*                                       i_type     = 'L'
-*                                       i_cont     = mo_window->mo_locals_container
-*                                       i_debugger = me ).
-*
+    mo_tree_local = NEW lcl_rtti_tree( i_header   = 'Objects & Code Flow'
+                                       i_type     = 'L'
+                                       i_cont     = mo_window->mo_locals_container
+                                       i_debugger = me ).
+
 *    mo_tree_local->m_locals = mo_tree_local->m_locals BIT-XOR c_mask.
 
     show_step( ).
@@ -1238,24 +1240,21 @@ CLASS lcl_ace IMPLEMENTATION.
 
   ENDMETHOD.
 
-
-
-
-
   METHOD show_step.
 
-    "show_variables( CHANGING it_var = mt_state ).
-    "set_selected_vars( ).
     mo_window->m_prg-include = gv_prog.
     mo_window->set_program( CONV #( mo_window->m_prg-include ) ).
-    mo_window->set_program_line( mo_window->m_prg-line ).
-    "mo_window->show_stack( ).
-*    mo_tree_imp->display( ).
-*    mo_tree_local->display( ).
-*    mo_tree_exp->display( ).
-    IF mo_window->m_debug_button NE 'F5'.
-      mo_window->m_show_step = abap_true.
-    ENDIF.
+    "mo_window->set_program_line( mo_window->m_prg-line ).
+
+    mo_tree_local->main_node_key = mo_tree_local->add_node( iv_name = CONV #( gv_prog ) iv_icon = CONV #( icon_folder ) ).
+
+    mo_tree_local->add_node( iv_name = 'Local Classes' iv_icon = CONV #( icon_folder ) iv_rel = mo_tree_local->main_node_key ).
+    mo_tree_local->add_node( iv_name = 'Global Fields' iv_icon = CONV #( icon_header ) iv_rel = mo_tree_local->main_node_key ).
+    mo_tree_local->add_node( iv_name = 'Events' iv_icon = CONV #( icon_oo_event ) iv_rel = mo_tree_local->main_node_key ).
+    mo_tree_local->add_node( iv_name = 'Subroutines' iv_icon = CONV #( icon_biw_info_source_ina ) iv_rel = mo_tree_local->main_node_key ).
+    mo_tree_local->add_node( iv_name = 'Code Flow' iv_icon = CONV #( icon_enhanced_bo ) iv_rel = mo_tree_local->main_node_key ).
+
+    mo_tree_local->display( ).
 
   ENDMETHOD.
 
@@ -1344,7 +1343,7 @@ CLASS lcl_window IMPLEMENTATION.
     m_hist_depth = 9.
 
 
-    mo_box = create( i_name = lv_text i_width = 700 i_hight = 300 ).
+    mo_box = create( i_name = lv_text i_width = 1100 i_hight = 300 ).
     CREATE OBJECT mo_splitter
       EXPORTING
         parent  = mo_box
@@ -1358,7 +1357,7 @@ CLASS lcl_window IMPLEMENTATION.
         row       = 2
         column    = 1
       RECEIVING
-        container = mo_editor_container ).
+        container = mo_code_container ).
 
     mo_splitter->get_container(
       EXPORTING
@@ -1376,7 +1375,7 @@ CLASS lcl_window IMPLEMENTATION.
 
 *    mo_splitter->get_container(
 *      EXPORTING
-*        row       = 3
+*        row       = 2
 *        column    = 1
 *      RECEIVING
 *        container = mo_tables_container ).
@@ -1388,29 +1387,29 @@ CLASS lcl_window IMPLEMENTATION.
 *      RECEIVING
 *        container = mo_tables_container ).
 
-*    CREATE OBJECT mo_splitter_code
-*      EXPORTING
-*        parent  = mo_code_container
-*        rows    = 1
-*        columns = 2
-*      EXCEPTIONS
-*        OTHERS  = 1.
-*
-*    mo_splitter_code->get_container(
-*      EXPORTING
-*        row       = 1
-*        column    = 1
-*      RECEIVING
-*        container = mo_editor_container ).
+    CREATE OBJECT mo_splitter_code
+      EXPORTING
+        parent  = mo_code_container
+        rows    = 1
+        columns = 2
+      EXCEPTIONS
+        OTHERS  = 1.
 
-*    mo_splitter_code->get_container(
-*      EXPORTING
-*        row       = 1
-*        column    = 2
-*      RECEIVING
-*        container = mo_locals_container ).
+    mo_splitter_code->get_container(
+      EXPORTING
+        row       = 1
+        column    = 2
+      RECEIVING
+        container = mo_editor_container ).
 
-    " mo_splitter_code->set_column_width( EXPORTING id = 1 width = '70' ).
+    mo_splitter_code->get_container(
+      EXPORTING
+        row       = 1
+        column    = 1
+      RECEIVING
+        container = mo_locals_container ).
+
+    mo_splitter_code->set_column_width( EXPORTING id = 1 width = '25' ).
 
     SET HANDLER on_box_close FOR mo_box.
 
@@ -3874,9 +3873,9 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
 
   METHOD add_node.
 
-    main_node_key =
+    rv_node =
           tree->get_nodes( )->add_node(
-            related_node   = ''
+            related_node   = iv_rel
             collapsed_icon = iv_icon
             expanded_icon = iv_icon
             relationship   = if_salv_c_node_relation=>last_child
@@ -3884,21 +3883,6 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
             text           = CONV #( iv_name )
             folder         = abap_true
           )->get_key( ).
-
-    CASE iv_name.
-      WHEN 'Locals'.
-        m_locals_key = main_node_key.
-      WHEN 'Globals'.
-        m_globals_key = main_node_key.
-      WHEN 'LDB'.
-        m_ldb_key = main_node_key.
-
-      WHEN 'Class-data global variables'.
-        m_class_key = main_node_key.
-
-      WHEN 'System variables'.
-        m_syst_key = main_node_key.
-    ENDCASE.
 
   ENDMETHOD.
 
@@ -4323,6 +4307,13 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
         IF lt_kw = 'ENDFORM' OR lt_kw = 'ENDMETHOD'.
           CLEAR: lv_eventtype, lv_eventname, ls_tabs.
+          IF ls_param-param IS INITIAL. "No params - save empty row if no params
+            READ TABLE ls_source-t_params WITH KEY event = ls_param-event name = ls_param-name TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              CLEAR ls_param-type.
+              APPEND ls_param TO ls_source-t_params.
+            ENDIF.
+          ENDIF.
         ENDIF.
 
         CLEAR lv_prev.
@@ -4357,7 +4348,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
             ls_token-to_evname = ls_call-name.
             ls_token-to_evtype = ls_call-event = 'METHOD'.
             IF lv_new = abap_true.
-             ls_call-name =  ls_token-to_evname = 'CONSTRUCTOR'.
+              ls_call-name =  ls_token-to_evname = 'CONSTRUCTOR'.
             ENDIF.
           ENDIF.
 
@@ -4444,7 +4435,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
                 CLEAR: lv_par, ls_param-param.
               ENDIF.
 
-              IF lv_par IS INITIAL.
+              IF lv_par IS INITIAL AND sy-index > 3.
                 ls_param-param = token.
                 lv_par = abap_true.
                 CONTINUE.
@@ -4808,7 +4799,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       ENDLOOP.
 
     ENDIF.
-
+    BREAK-POINT.
   ENDMETHOD.
 
   METHOD parse_call.
@@ -5042,23 +5033,23 @@ CLASS lcl_mermaid IMPLEMENTATION.
         READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
-              <selected>-name = ls_calculated-calculated.
+          <selected>-name = ls_calculated-calculated.
         ENDIF.
-          LOOP AT ls_source-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line.
-            READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
-            IF sy-subrc <> 0.
-              APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
-              <selected>-name = ls_composed-composing.
-            ENDIF.
-          ENDLOOP.
-          "adding returning values
-          LOOP AT ls_source-t_params INTO DATA(lv_param).
-            READ TABLE mo_debugger->mt_selected_var WITH KEY name = lv_param-param TRANSPORTING NO FIELDS.
-            IF sy-subrc <> 0.
-              APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
-              <selected>-name = lv_param-param.
-            ENDIF.
-          ENDLOOP.
+        LOOP AT ls_source-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line.
+          READ TABLE mo_debugger->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+            <selected>-name = ls_composed-composing.
+          ENDIF.
+        ENDLOOP.
+        "adding returning values
+        LOOP AT ls_source-t_params INTO DATA(lv_param).
+          READ TABLE mo_debugger->mt_selected_var WITH KEY name = lv_param-param TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO  mo_debugger->mt_selected_var ASSIGNING <selected>.
+            <selected>-name = lv_param-param.
+          ENDIF.
+        ENDLOOP.
         "ENDIF.
       ENDLOOP.
 
