@@ -4748,7 +4748,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
 
       "code execution scanner
-      DATA(lt_str) = lo_scan->structures.BREAK-POINT.
+      DATA(lt_str) = lo_scan->structures.
       DELETE lt_str WHERE type <> 'E'.
       SORT lt_str BY stmnt_type ASCENDING.
 
