@@ -454,7 +454,7 @@ ENDCLASS.
 CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
 
   PUBLIC SECTION.
-    DATA: mo_viewer     TYPE REF TO lcl_ace,
+    DATA: mo_viewer       TYPE REF TO lcl_ace,
           mo_mm_container TYPE REF TO cl_gui_container,
           mo_mm_toolbar   TYPE REF TO cl_gui_container,
           mo_toolbar      TYPE REF TO cl_gui_toolbar,
@@ -513,7 +513,7 @@ CLASS lcl_rtti_tree DEFINITION FINAL. " INHERITING FROM lcl_popup.
           mt_vars         TYPE STANDARD TABLE OF lcl_appl=>var_table,
           mt_classes_leaf TYPE TABLE OF t_classes_leaf,
           m_prg_info      TYPE tpda_scr_prg_info,
-          mo_viewer     TYPE REF TO lcl_ace,
+          mo_viewer       TYPE REF TO lcl_ace,
           tree            TYPE REF TO cl_salv_tree.
 
     METHODS constructor IMPORTING i_header   TYPE clike DEFAULT 'View'
@@ -1088,7 +1088,7 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
           m_prg                  TYPE tpda_scr_prg_info,
           m_debug_button         LIKE sy-ucomm,
           m_show_step            TYPE xfeld,
-          mo_viewer            TYPE REF TO lcl_ace,
+          mo_viewer              TYPE REF TO lcl_ace,
           mo_splitter_code       TYPE REF TO cl_gui_splitter_container,
           mo_splitter_var        TYPE REF TO cl_gui_splitter_container,
           mo_splitter_steps      TYPE REF TO cl_gui_splitter_container,
@@ -1251,16 +1251,16 @@ CLASS lcl_ace IMPLEMENTATION.
     mo_tree_local->add_node( iv_name = 'Local Classes' iv_icon = CONV #( icon_folder ) iv_rel = mo_tree_local->main_node_key ).
     mo_tree_local->add_node( iv_name = 'Global Fields' iv_icon = CONV #( icon_header ) iv_rel = mo_tree_local->main_node_key ).
     mo_tree_local->add_node( iv_name = 'Events' iv_icon = CONV #( icon_oo_event ) iv_rel = mo_tree_local->main_node_key ).
-    data(lv_forms_rel) = mo_tree_local->add_node( iv_name = 'Subroutines' iv_icon = CONV #( icon_folder ) iv_rel = mo_tree_local->main_node_key ).
+    DATA(lv_forms_rel) = mo_tree_local->add_node( iv_name = 'Subroutines' iv_icon = CONV #( icon_folder ) iv_rel = mo_tree_local->main_node_key ).
     mo_tree_local->add_node( iv_name = 'Code Flow' iv_icon = CONV #( icon_enhanced_bo ) iv_rel = mo_tree_local->main_node_key ).
 
-    read table mo_window->mt_source with key include = gv_prog into data(ls_source).
-    LOOP AT ls_source-t_params into data(ls_subs) where event = 'FORM' .
-      data(lv_form_name) = ls_subs-name.
-     AT new name.
-    mo_tree_local->add_node( iv_name = lv_form_name iv_icon = CONV #( icon_biw_info_source_ina ) iv_rel = lv_forms_rel ).
+    READ TABLE mo_window->mt_source WITH KEY include = gv_prog INTO DATA(ls_source).
+    LOOP AT ls_source-t_params INTO DATA(ls_subs) WHERE event = 'FORM' .
+      DATA(lv_form_name) = ls_subs-name.
+      AT NEW name.
+        mo_tree_local->add_node( iv_name = lv_form_name iv_icon = CONV #( icon_biw_info_source_ina ) iv_rel = lv_forms_rel ).
 
-     ENDAT.
+      ENDAT.
     ENDLOOP.
 
 
@@ -1623,7 +1623,6 @@ CLASS lcl_window IMPLEMENTATION.
 
       WHEN 'SMART'.
         lo_mermaid = NEW lcl_mermaid( io_debugger = mo_viewer iv_type =  'SMART' ).
-        mo_viewer->show( ).
 
       WHEN 'COVERAGE'.
         show_coverage( ).
@@ -4762,7 +4761,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
       "code execution scanner
       DATA(lt_str) = lo_scan->structures.
-      DELETE lt_str WHERE type <> 'E'.
+      DELETE lt_str WHERE type = 'P' OR type = 'C'.
       SORT lt_str BY stmnt_type ASCENDING.
 
       DATA: lv_event     TYPE string,
@@ -4771,15 +4770,19 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
       LOOP AT lt_str INTO DATA(ls_str).
 
-        READ TABLE ls_source-t_keywords WITH KEY index =  ls_str-stmnt_from INTO DATA(ls_key).
-        lv_event = ls_key-name.
+        READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
 
-        lv_statement = ls_str-stmnt_from + 1.
+        IF ls_str-type = 'E'.
+          lv_statement = ls_str-stmnt_from + 1.
+          lv_event = ls_key-name.
+        ELSE.
+          lv_statement = ls_str-stmnt_from.
+        ENDIF.
 
         WHILE lv_statement <= ls_str-stmnt_to.
           READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO ls_key.
 
-          IF ls_key-name = 'DATA' OR ls_key-name = 'CONSTANTS'.
+          IF ls_key-name = 'DATA' OR ls_key-name = 'CONSTANTS' OR sy-subrc <> 0.
             ADD 1 TO lv_statement.
             CONTINUE.
           ENDIF.
@@ -4995,9 +4998,17 @@ CLASS lcl_mermaid IMPLEMENTATION.
           lv_mm_string TYPE string,
           lv_sub       TYPE string,
           lv_form      TYPE string,
-          lv_direction TYPE string.
+          lv_direction TYPE string,
+          lv_box_s     TYPE string,
+          lv_box_e     TYPE string,
+          lv_if_ind    TYPE i,
+          lv_ind2      TYPE i,
+          lv_if        TYPE xfeld,
+          lv_else      TYPE xfeld,
+          before_else  TYPE i.
 
     TYPES: BEGIN OF ts_line,
+             cond    TYPE string,
              include TYPE string,
              line    TYPE i,
              event   TYPE string,
@@ -5084,6 +5095,21 @@ CLASS lcl_mermaid IMPLEMENTATION.
     LOOP AT  lt_steps INTO ls_step.
 
       READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = ls_step-include INTO ls_source.
+      READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO DATA(ls_key).
+
+      CLEAR ls_line-cond.
+      IF ls_key-name = 'IF' OR ls_key-name = 'ELSE' OR ls_key-name = 'ENDIF'.
+        APPEND INITIAL LINE TO mo_viewer->mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
+        <watch>-program = ls_step-program.
+        <watch>-line = ls_line-line = ls_step-line.
+
+        ls_line-cond = ls_key-name.
+        ls_line-event = ls_step-eventname.
+        ls_line-stack = ls_step-stacklevel.
+        ls_line-include = ls_step-include.
+        INSERT ls_line INTO lt_lines INDEX 1.
+
+      ENDIF.
 
       LOOP AT  ls_source-t_calculated INTO ls_calculated WHERE line = ls_step-line.
 
@@ -5098,7 +5124,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
 
-          APPEND INITIAL LINE TO mo_viewer->mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
+          APPEND INITIAL LINE TO mo_viewer->mo_window->mt_watch ASSIGNING <watch>.
           <watch>-program = ls_step-program.
           <watch>-line = ls_line-line = ls_step-line.
 
@@ -5119,7 +5145,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
     DELETE lt_lines WHERE del = abap_true.
 
-    "getting code texts and calls paramsf
+    "getting code texts and calls params
     LOOP AT lt_lines ASSIGNING <line>.
       DATA(lv_ind) = sy-tabix.
 
@@ -5171,6 +5197,14 @@ CLASS lcl_mermaid IMPLEMENTATION.
     LOOP AT lt_lines INTO ls_line.
       lv_ind = sy-tabix.
 
+      IF ls_line-cond IS INITIAL.
+        lv_box_s = '('.
+        lv_box_e = ')'.
+      ELSE.
+        lv_box_s = '{'.
+        lv_box_e = '}'.
+      ENDIF.
+
       IF ls_prev_stack IS INITIAL.
         ls_prev_stack = ls_line.
       ENDIF.
@@ -5193,22 +5227,42 @@ CLASS lcl_mermaid IMPLEMENTATION.
       ENDIF.
 
       IF lv_ind <> 1.
+
+
         IF lv_sub IS INITIAL.
-          lv_mm_string = |{ lv_mm_string }{ lv_ind - 1 }-->|.
+          IF ls_line-cond = 'ELSE'.
+            lv_ind2 = lv_if_ind.
+            before_else = lv_ind - 1.
+          ELSE.
+            lv_ind2 = lv_ind - 1.
+          ENDIF.
+
+          lv_mm_string = |{ lv_mm_string }{ lv_ind2  }-->|.
         ELSE.
           CLEAR lv_sub.
         ENDIF.
       ENDIF.
 
-      lv_mm_string = |{ lv_mm_string }{ sy-tabix }(" { ls_line-code }|.
+*      IF ls_line-cond = 'ENDIF'.
+*        lv_mm_string = |{ lv_mm_string }{ before_else }-->{ lv_ind }\n|.
+*      ENDIF.
+
+      lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
+
+      IF ls_line-cond = 'IF'.
+        lv_if_ind = lv_ind.
+      ELSEIF ls_line-cond = 'ENDIF'.
+        CLEAR lv_if_ind.
+      ENDIF.
+
 
       IF ls_line-arrow IS NOT INITIAL.
         ADD 1 TO lv_opened.
-        lv_mm_string = |{ lv_mm_string }")|.
+        lv_mm_string = |{ lv_mm_string }"{ lv_box_e }|.
         lv_sub = '|"' && ls_line-arrow && '"|'.
         lv_mm_string = |{ lv_mm_string }-->{ lv_sub }{ lv_ind + 1 }\n subgraph S{ lv_ind }["{ ls_line-subname }"]\n  direction TB\n|.
       ELSE.
-        lv_mm_string = |{ lv_mm_string }")\n|.
+        lv_mm_string = |{ lv_mm_string }"{ lv_box_e }\n|.
       ENDIF.
 
       ls_prev_stack = ls_line.
