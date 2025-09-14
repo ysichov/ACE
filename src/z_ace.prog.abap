@@ -193,7 +193,7 @@ CLASS lcl_popup IMPLEMENTATION.
           l_left TYPE i.
 
     ADD 1 TO m_counter.
-    l_top  = l_left = 50 + 2 * ( m_counter DIV 5 ) +  ( m_counter MOD 5 ) * 10.
+    l_top  = l_left = 75 + 2 * ( m_counter DIV 5 ) +  ( m_counter MOD 5 ) * 10.
 
     CREATE OBJECT ro_box
       EXPORTING
@@ -4332,11 +4332,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
         ENDIF.
         CLEAR: lv_new, ls_token-to_evname, ls_token-to_evtype .
 
-        IF lt_kw IS INITIAL.
-          CONTINUE.
-        ENDIF.
 
         WHILE 1 = 1.
+          IF lt_kw IS INITIAL.
+            EXIT.
+          ENDIF.
           CLEAR lv_change.
           token = lo_procedure->get_token( offset = sy-index ).
 
@@ -4762,7 +4762,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
       "code execution scanner
       DATA(lt_str) = lo_scan->structures.
       DELETE lt_str WHERE type = 'P' OR type = 'C'.
-      SORT lt_str BY stmnt_type ASCENDING.
+      SORT lt_str BY stmnt_from ASCENDING.
+      "SORT lt_str BY stmnt_type ASCENDING.
 
       DATA: lv_event     TYPE string,
             lv_stack     TYPE i VALUE 1,
@@ -5005,7 +5006,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
           lv_ind2      TYPE i,
           lv_if        TYPE xfeld,
           lv_else      TYPE xfeld,
-          before_else  TYPE i.
+          before_else  TYPE i,
+          lv_start     TYPE i,
+          lv_end       TYPE i.
 
     TYPES: BEGIN OF ts_line,
              cond    TYPE string,
@@ -5098,11 +5101,11 @@ CLASS lcl_mermaid IMPLEMENTATION.
       READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO DATA(ls_key).
 
       CLEAR ls_line-cond.
-      IF ls_key-name = 'IF' OR ls_key-name = 'ELSE' OR ls_key-name = 'ENDIF'.
+      IF ls_key-name = 'IF' OR ls_key-name = 'ELSE' OR ls_key-name = 'ENDIF' OR
+          ls_key-name = 'DO' OR ls_key-name = 'ENDDO'  OR ls_key-name = 'LOOP'  OR ls_key-name = 'ENDLOOP' OR ls_key-name = 'WHILE' OR ls_key-name = 'ENDWHILE'.
         APPEND INITIAL LINE TO mo_viewer->mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
         <watch>-program = ls_step-program.
         <watch>-line = ls_line-line = ls_step-line.
-
         ls_line-cond = ls_key-name.
         ls_line-event = ls_step-eventname.
         ls_line-stack = ls_step-stacklevel.
@@ -5186,7 +5189,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
       IF lines( lt_lines ) < 25.
         lv_direction = 'LR'.
       ELSE.
-        lv_direction = 'TD'.
+        lv_direction = 'TB'.
       ENDIF.
     ELSE.
       lv_direction = iv_direction.
@@ -5226,18 +5229,46 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       ENDIF.
 
+      IF ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE'.
+
+        lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ ls_line-code }"]\n  direction { lv_direction }\n|.
+
+        ADD 1 TO lv_opened.
+        lv_start = lv_ind.
+        CONTINUE.
+      ENDIF.
+
       IF lv_ind <> 1.
 
+        IF ls_line-cond = 'ENDLOOP' OR ls_line-cond = 'ENDDO' OR ls_line-cond = 'ENDWHILE'.
+          SUBTRACT 1 FROM lv_opened.
+          lv_mm_string = |{ lv_mm_string } end\n|.
+          lv_end = lv_ind - 1.
+          CONTINUE.
+        ENDIF.
 
         IF lv_sub IS INITIAL.
           IF ls_line-cond = 'ELSE'.
-            lv_ind2 = lv_if_ind.
             before_else = lv_ind - 1.
+            lv_else = abap_true.
+            CONTINUE.
           ELSE.
             lv_ind2 = lv_ind - 1.
           ENDIF.
+          IF lv_else IS NOT INITIAL.
+            lv_ind2 = lv_if_ind.
+          ENDIF.
 
-          lv_mm_string = |{ lv_mm_string }{ lv_ind2  }-->|.
+          IF lv_end IS NOT INITIAL.
+            lv_mm_string = |{ lv_mm_string }{ lv_end  }-->|.
+            CLEAR lv_end.
+          ELSE.
+            IF lv_start IS NOT INITIAL.
+              CLEAR lv_start.
+            ELSE.
+              lv_mm_string = |{ lv_mm_string }{ lv_ind2  }-->|.
+            ENDIF.
+          ENDIF.
         ELSE.
           CLEAR lv_sub.
         ENDIF.
@@ -5255,14 +5286,17 @@ CLASS lcl_mermaid IMPLEMENTATION.
         CLEAR lv_if_ind.
       ENDIF.
 
-
       IF ls_line-arrow IS NOT INITIAL.
         ADD 1 TO lv_opened.
         lv_mm_string = |{ lv_mm_string }"{ lv_box_e }|.
         lv_sub = '|"' && ls_line-arrow && '"|'.
-        lv_mm_string = |{ lv_mm_string }-->{ lv_sub }{ lv_ind + 1 }\n subgraph S{ lv_ind }["{ ls_line-subname }"]\n  direction TB\n|.
+        lv_mm_string = |{ lv_mm_string }-->{ lv_sub }{ lv_ind + 1 }\n subgraph S{ lv_ind }["{ ls_line-subname }"]\n  direction { lv_direction }\n|.
       ELSE.
         lv_mm_string = |{ lv_mm_string }"{ lv_box_e }\n|.
+      ENDIF.
+      IF ls_line-cond = 'ENDIF'.
+        lv_mm_string = |{ lv_mm_string } { before_else }-->{ lv_ind }\n|.
+         lv_mm_string = |{ lv_mm_string } { lv_ind - 1 }-->{ lv_ind }\n|.
       ENDIF.
 
       ls_prev_stack = ls_line.
@@ -5284,7 +5318,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
           ls_events LIKE LINE OF lt_events.
 
     lt_button  = VALUE #(
-     ( function = 'TD' icon = CONV #( icon_view_expand_vertical ) quickinfo = 'Vertical' text = '' )
+     ( function = 'TB' icon = CONV #( icon_view_expand_vertical ) quickinfo = 'Vertical' text = '' )
      ( function = 'LR' icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
      ( butn_type = 3  )
      ( function = 'TEXT' icon = CONV #( icon_wd_caption ) quickinfo = 'Mermaid Diagram text' text = '' )
