@@ -4250,7 +4250,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_type       TYPE char1,
           lv_class      TYPE xfeld,
           lv_cl_name    TYPE string,
-          lv_preferred  TYPE xfeld.
+          lv_preferred  TYPE xfeld,
+          lv_max_to     TYPE i.
 
     CLEAR mv_step.
 
@@ -4761,7 +4762,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
       "code execution scanner
       DATA(lt_str) = lo_scan->structures.
-      DELETE lt_str WHERE type = 'P' OR type = 'C'.
+      DELETE lt_str WHERE type = 'P' OR type = 'C' OR type = 'I' OR stmnt_type = '?'.
       SORT lt_str BY stmnt_from ASCENDING.
 
       READ TABLE lt_str WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
@@ -4775,6 +4776,9 @@ CLASS lcl_source_parser IMPLEMENTATION.
             lv_statement TYPE i.
 
       LOOP AT lt_str INTO DATA(ls_str).
+        IF lv_max_to > ls_str-stmnt_to.
+          CONTINUE.
+        ENDIF.
 
         READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
 
@@ -4815,7 +4819,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
           ADD 1 TO lv_statement.
         ENDWHILE.
-
+        lv_max_to = ls_str-stmnt_to.
       ENDLOOP.
 
     ENDIF.
