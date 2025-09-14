@@ -4763,7 +4763,12 @@ CLASS lcl_source_parser IMPLEMENTATION.
       DATA(lt_str) = lo_scan->structures.
       DELETE lt_str WHERE type = 'P' OR type = 'C'.
       SORT lt_str BY stmnt_from ASCENDING.
-      "SORT lt_str BY stmnt_type ASCENDING.
+
+      READ TABLE lt_str WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
+      IF sy-subrc = 0.
+        DELETE lt_str WHERE type <> 'E'.
+        SORT lt_str BY stmnt_type ASCENDING.
+      ENDIF.
 
       DATA: lv_event     TYPE string,
             lv_stack     TYPE i VALUE 1,
@@ -5257,6 +5262,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
           ENDIF.
           IF lv_else IS NOT INITIAL.
             lv_ind2 = lv_if_ind.
+            CLEAR lv_else.
           ENDIF.
 
           IF lv_end IS NOT INITIAL.
@@ -5273,10 +5279,6 @@ CLASS lcl_mermaid IMPLEMENTATION.
           CLEAR lv_sub.
         ENDIF.
       ENDIF.
-
-*      IF ls_line-cond = 'ENDIF'.
-*        lv_mm_string = |{ lv_mm_string }{ before_else }-->{ lv_ind }\n|.
-*      ENDIF.
 
       lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
 
@@ -5296,7 +5298,6 @@ CLASS lcl_mermaid IMPLEMENTATION.
       ENDIF.
       IF ls_line-cond = 'ENDIF'.
         lv_mm_string = |{ lv_mm_string } { before_else }-->{ lv_ind }\n|.
-         lv_mm_string = |{ lv_mm_string } { lv_ind - 1 }-->{ lv_ind }\n|.
       ENDIF.
 
       ls_prev_stack = ls_line.
