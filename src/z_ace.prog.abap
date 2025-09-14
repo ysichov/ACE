@@ -1,4 +1,4 @@
-REPORT z_ace. "ACE - Abap code explorer
+REPORT z_ace. "ACE - Abap Code Explorer
 *  & Multi-windows program for ABAP code analysis
 *  &---------------------------------------------------------------------*
 *  & version: beta 0.1.00
@@ -193,8 +193,8 @@ CLASS lcl_popup IMPLEMENTATION.
           l_left TYPE i.
 
     ADD 1 TO m_counter.
-    l_top  = l_left = 75 + 2 * ( m_counter DIV 5 ) +  ( m_counter MOD 5 ) * 10.
-
+    "l_top  = l_left =  10 + 10 * ( m_counter DIV 5 ) +  ( m_counter MOD 5 ) * 50.
+    l_top  = l_left =  100 -  30 * ( m_counter DIV 5 ) - ( m_counter MOD 5 ) * 20.
     CREATE OBJECT ro_box
       EXPORTING
         width                       = i_width
@@ -454,12 +454,25 @@ ENDCLASS.
 CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
 
   PUBLIC SECTION.
+    TYPES: BEGIN OF ts_if,
+             lv_if_ind   TYPE i,
+             lv_if       TYPE xfeld,
+             lv_else     TYPE xfeld,
+             before_else TYPE i,
+             true        TYPE xfeld,
+             false       TYPE xfeld,
+           END OF ts_if,
+           tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY.
+
+
     DATA: mo_viewer       TYPE REF TO lcl_ace,
           mo_mm_container TYPE REF TO cl_gui_container,
           mo_mm_toolbar   TYPE REF TO cl_gui_container,
           mo_toolbar      TYPE REF TO cl_gui_toolbar,
           mo_diagram      TYPE REF TO zcl_wd_gui_mermaid_js_diagram,
-          mv_type         TYPE string.
+          mv_type         TYPE string,
+          ms_if           TYPE ts_if,
+          mt_if           TYPE tt_if.
 
     METHODS: constructor IMPORTING io_debugger TYPE REF TO lcl_ace
                                    iv_type     TYPE string,
@@ -5011,13 +5024,11 @@ CLASS lcl_mermaid IMPLEMENTATION.
           lv_direction TYPE string,
           lv_box_s     TYPE string,
           lv_box_e     TYPE string,
-          lv_if_ind    TYPE i,
+          lv_subg      TYPE xfeld,
           lv_ind2      TYPE i,
-          lv_if        TYPE xfeld,
-          lv_else      TYPE xfeld,
-          before_else  TYPE i,
           lv_start     TYPE i,
-          lv_end       TYPE i.
+          lv_end       TYPE i,
+          lv_bool      TYPE string.
 
     TYPES: BEGIN OF ts_line,
              cond    TYPE string,
@@ -5238,35 +5249,44 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       ENDIF.
 
-      IF ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE'.
+*      IF lv_subg = abap_true.
+*
+*        lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ ls_line-code }"]\n  direction { lv_direction }\n|.
+*
+*        ADD 1 TO lv_opened.
+*        lv_start = lv_ind.
+*        clear lv_subg.
+*        "CONTINUE.
+*      ENDIF.
 
-        lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ ls_line-code }"]\n  direction { lv_direction }\n|.
 
-        ADD 1 TO lv_opened.
-        lv_start = lv_ind.
-        CONTINUE.
-      ENDIF.
+*      IF lv_subg IS INITIAL AND (  ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' ).
+*        lv_subg = abap_true.
+*        CONTINUE.
+*      ENDIF.
+
+
 
       IF lv_ind <> 1.
 
-        IF ls_line-cond = 'ENDLOOP' OR ls_line-cond = 'ENDDO' OR ls_line-cond = 'ENDWHILE'.
-          SUBTRACT 1 FROM lv_opened.
-          lv_mm_string = |{ lv_mm_string } end\n|.
-          lv_end = lv_ind - 1.
-          CONTINUE.
-        ENDIF.
+*        IF ls_line-cond = 'ENDLOOP' OR ls_line-cond = 'ENDDO' OR ls_line-cond = 'ENDWHILE'.
+*          SUBTRACT 1 FROM lv_opened.
+*          lv_mm_string = |{ lv_mm_string } end\n|.
+*          lv_end = lv_ind - 1.
+*          CONTINUE.
+*        ENDIF.
 
         IF lv_sub IS INITIAL.
           IF ls_line-cond = 'ELSE'.
-            before_else = lv_ind - 1.
-            lv_else = abap_true.
+            ms_if-before_else = lv_ind - 1.
+            ms_if-lv_else = abap_true.
             CONTINUE.
           ELSE.
             lv_ind2 = lv_ind - 1.
           ENDIF.
-          IF lv_else IS NOT INITIAL.
-            lv_ind2 = lv_if_ind.
-            CLEAR lv_else.
+          IF ms_if-lv_else IS NOT INITIAL.
+            lv_ind2 = ms_if-lv_if_ind.
+            CLEAR ms_if-lv_else.
           ENDIF.
 
           IF lv_end IS NOT INITIAL.
@@ -5284,12 +5304,24 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
+      IF ms_if-lv_if_ind IS NOT INITIAL AND ms_if-true IS INITIAL.
+        lv_bool = '|true|'.
+        ms_if-true = abap_true.
+      ENDIF.
+      IF ms_if-before_else IS NOT INITIAL AND ms_if-false IS INITIAL.
+        lv_bool = '|false|'.
+        ms_if-false = abap_true.
+      ENDIF.
+
+      lv_mm_string = |{ lv_mm_string }{ lv_bool }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
+      CLEAR lv_bool.
 
       IF ls_line-cond = 'IF'.
-        lv_if_ind = lv_ind.
-      ELSEIF ls_line-cond = 'ENDIF'.
-        CLEAR lv_if_ind.
+        IF ms_if-lv_if_ind IS NOT INITIAL.
+          INSERT ms_if INTO mt_if INDEX 1.
+        ENDIF.
+        CLEAR ms_if.
+        ms_if-lv_if_ind = lv_ind.
       ENDIF.
 
       IF ls_line-arrow IS NOT INITIAL.
@@ -5300,11 +5332,21 @@ CLASS lcl_mermaid IMPLEMENTATION.
       ELSE.
         lv_mm_string = |{ lv_mm_string }"{ lv_box_e }\n|.
       ENDIF.
+
       IF ls_line-cond = 'ENDIF'.
-        lv_mm_string = |{ lv_mm_string } { before_else }-->{ lv_ind }\n|.
+        IF ms_if-before_else IS NOT INITIAL AND ms_if-before_else <> ms_if-lv_if_ind.
+          lv_mm_string = |{ lv_mm_string } { ms_if-before_else }-->{ lv_ind }\n|.
+        ENDIF.
+        IF lines( mt_if ) <> 0.
+          READ TABLE mt_if INTO ms_if INDEX 1.
+        ELSE.
+          CLEAR ms_if-lv_if_ind.
+        ENDIF.
+
       ENDIF.
 
       ls_prev_stack = ls_line.
+
     ENDLOOP.
 
     DO lv_opened TIMES.
