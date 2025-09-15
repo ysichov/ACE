@@ -5287,7 +5287,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
           SUBTRACT 1 FROM lv_opened.
           lv_mm_string = |{ lv_mm_string } end\n|.
           lv_end = lv_ind - 1.
-          CONTINUE.
+          "CONTINUE.
         ENDIF.
 
         IF lv_sub IS INITIAL.
