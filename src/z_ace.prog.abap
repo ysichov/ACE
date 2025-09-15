@@ -5251,11 +5251,20 @@ CLASS lcl_mermaid IMPLEMENTATION.
       ENDIF.
 
 *      IF lv_subg = abap_true.
+
+      IF ms_if-lv_if_ind IS NOT INITIAL AND ms_if-true IS INITIAL.
+        lv_bool = '|true|'.
+        ms_if-true = abap_true.
+      ENDIF.
+      IF ms_if-before_else IS NOT INITIAL AND ms_if-false IS INITIAL.
+        lv_bool = '|false|'.
+        ms_if-false = abap_true.
+      ENDIF.
+
+
       IF  (  ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' ).
 
-
-
-        lv_mm_string = |{ lv_mm_string } { lv_ind - 1 }-->{ lv_ind + 1 }\n|.
+        lv_mm_string = |{ lv_mm_string } { lv_ind - 1 }-->{ lv_bool }{ lv_ind + 1 }\n|.
         lv_block_first = lv_ind + 1.
         lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ ls_line-code }"]\n  direction { lv_direction }\n|.
 
@@ -5265,6 +5274,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
         CONTINUE.
       ENDIF.
+
 
 *      IF lv_subg IS INITIAL AND (  ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' ).
 *        lv_subg = abap_true.
@@ -5308,22 +5318,24 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      IF ms_if-lv_if_ind IS NOT INITIAL AND ms_if-true IS INITIAL.
-        lv_bool = '|true|'.
-        ms_if-true = abap_true.
-      ENDIF.
-      IF ms_if-before_else IS NOT INITIAL AND ms_if-false IS INITIAL.
-        lv_bool = '|false|'.
-        ms_if-false = abap_true.
-      ENDIF.
+*      IF ms_if-lv_if_ind IS NOT INITIAL AND ms_if-true IS INITIAL.
+*        lv_bool = '|true|'.
+*        ms_if-true = abap_true.
+*      ENDIF.
+*      IF ms_if-before_else IS NOT INITIAL AND ms_if-false IS INITIAL.
+*        lv_bool = '|false|'.
+*        ms_if-false = abap_true.
+*      ENDIF.
+
 
       IF lv_block_first IS NOT INITIAL.
         lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
-        clear lv_block_first.
+        CLEAR lv_block_first.
       ELSE.
         lv_mm_string = |{ lv_mm_string }{ lv_bool }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
       ENDIF.
       CLEAR lv_bool.
+
 
       IF ls_line-cond = 'IF'.
         IF ms_if-lv_if_ind IS NOT INITIAL.
@@ -5348,6 +5360,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ENDIF.
         IF lines( mt_if ) <> 0.
           READ TABLE mt_if INTO ms_if INDEX 1.
+          DELETE mt_if index 1.
         ELSE.
           CLEAR ms_if-lv_if_ind.
         ENDIF.
