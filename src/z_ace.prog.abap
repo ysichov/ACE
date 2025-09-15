@@ -5017,18 +5017,19 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
   METHOD magic_search.
 
-    DATA: lv_add       TYPE xfeld,
-          lv_mm_string TYPE string,
-          lv_sub       TYPE string,
-          lv_form      TYPE string,
-          lv_direction TYPE string,
-          lv_box_s     TYPE string,
-          lv_box_e     TYPE string,
-          lv_subg      TYPE xfeld,
-          lv_ind2      TYPE i,
-          lv_start     TYPE i,
-          lv_end       TYPE i,
-          lv_bool      TYPE string.
+    DATA: lv_add         TYPE xfeld,
+          lv_mm_string   TYPE string,
+          lv_sub         TYPE string,
+          lv_form        TYPE string,
+          lv_direction   TYPE string,
+          lv_box_s       TYPE string,
+          lv_box_e       TYPE string,
+          "lv_subg        TYPE xfeld,
+          lv_ind2        TYPE i,
+          lv_start       TYPE i,
+          lv_end         TYPE i,
+          lv_bool        TYPE string,
+          lv_block_first TYPE i.
 
     TYPES: BEGIN OF ts_line,
              cond    TYPE string,
@@ -5250,31 +5251,34 @@ CLASS lcl_mermaid IMPLEMENTATION.
       ENDIF.
 
 *      IF lv_subg = abap_true.
-*
-*        lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ ls_line-code }"]\n  direction { lv_direction }\n|.
-*
-*        ADD 1 TO lv_opened.
-*        lv_start = lv_ind.
-*        clear lv_subg.
-*        "CONTINUE.
-*      ENDIF.
+      IF  (  ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' ).
 
+
+
+        lv_mm_string = |{ lv_mm_string } { lv_ind - 1 }-->{ lv_ind + 1 }\n|.
+        lv_block_first = lv_ind + 1.
+        lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ ls_line-code }"]\n  direction { lv_direction }\n|.
+
+        ADD 1 TO lv_opened.
+        lv_start = lv_ind.
+        "CLEAR lv_subg.
+
+        CONTINUE.
+      ENDIF.
 
 *      IF lv_subg IS INITIAL AND (  ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' ).
 *        lv_subg = abap_true.
 *        CONTINUE.
 *      ENDIF.
 
-
-
       IF lv_ind <> 1.
 
-*        IF ls_line-cond = 'ENDLOOP' OR ls_line-cond = 'ENDDO' OR ls_line-cond = 'ENDWHILE'.
-*          SUBTRACT 1 FROM lv_opened.
-*          lv_mm_string = |{ lv_mm_string } end\n|.
-*          lv_end = lv_ind - 1.
-*          CONTINUE.
-*        ENDIF.
+        IF ls_line-cond = 'ENDLOOP' OR ls_line-cond = 'ENDDO' OR ls_line-cond = 'ENDWHILE'.
+          SUBTRACT 1 FROM lv_opened.
+          lv_mm_string = |{ lv_mm_string } end\n|.
+          lv_end = lv_ind - 1.
+          CONTINUE.
+        ENDIF.
 
         IF lv_sub IS INITIAL.
           IF ls_line-cond = 'ELSE'.
@@ -5313,7 +5317,12 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ms_if-false = abap_true.
       ENDIF.
 
-      lv_mm_string = |{ lv_mm_string }{ lv_bool }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
+      IF lv_block_first IS NOT INITIAL.
+        lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
+        clear lv_block_first.
+      ELSE.
+        lv_mm_string = |{ lv_mm_string }{ lv_bool }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
+      ENDIF.
       CLEAR lv_bool.
 
       IF ls_line-cond = 'IF'.
