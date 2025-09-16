@@ -455,12 +455,14 @@ CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
 
   PUBLIC SECTION.
     TYPES: BEGIN OF ts_if,
-             lv_if_ind   TYPE i,
-             lv_if       TYPE xfeld,
-             lv_else     TYPE xfeld,
+             if_ind      TYPE i,
+             else_ind    TYPE i,
+             end_ind     TYPE i,
+             "lv_if       TYPE xfeld,
+             "lv_else     TYPE xfeld,
              before_else TYPE i,
-             true        TYPE xfeld,
-             false       TYPE xfeld,
+             "true        TYPE xfeld,
+             "false       TYPE xfeld,
            END OF ts_if,
            tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY.
 
@@ -4263,8 +4265,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_type       TYPE char1,
           lv_class      TYPE xfeld,
           lv_cl_name    TYPE string,
-          lv_preferred  TYPE xfeld,
-          lv_max_to     TYPE i.
+          lv_preferred  TYPE xfeld.
 
     CLEAR mv_step.
 
@@ -4774,24 +4775,29 @@ CLASS lcl_source_parser IMPLEMENTATION.
       APPEND ls_source TO io_debugger->mo_window->mt_source.
 
       "code execution scanner
-      DATA(lt_str) = lo_scan->structures.
-      DELETE lt_str WHERE type = 'P' OR type = 'C' OR type = 'I' OR stmnt_type = '?'.
-      SORT lt_str BY stmnt_from ASCENDING.
+      DATA: lt_str LIKE  lo_scan->structures.
 
-      READ TABLE lt_str WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
+      READ TABLE lo_scan->structures WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
       IF sy-subrc = 0.
+        lt_str = lo_scan->structures.
         DELETE lt_str WHERE type <> 'E'.
         SORT lt_str BY stmnt_type ASCENDING.
+      ELSE.
+        CLEAR lv_max.
+        LOOP AT lo_scan->structures INTO DATA(ls_str) WHERE type <> 'P' AND type <> 'C' .
+          IF lv_max < ls_str-stmnt_to.
+            lv_max = ls_str-stmnt_to.
+            APPEND ls_str TO lt_str.
+          ENDIF.
+        ENDLOOP.
       ENDIF.
+
 
       DATA: lv_event     TYPE string,
             lv_stack     TYPE i VALUE 1,
             lv_statement TYPE i.
 
-      LOOP AT lt_str INTO DATA(ls_str).
-        IF lv_max_to > ls_str-stmnt_to.
-          CONTINUE.
-        ENDIF.
+      LOOP AT lt_str INTO ls_str.
 
         READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
 
@@ -4832,7 +4838,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
           ADD 1 TO lv_statement.
         ENDWHILE.
-        lv_max_to = ls_str-stmnt_to.
+
       ENDLOOP.
 
     ENDIF.
@@ -5035,6 +5041,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
              cond    TYPE string,
              include TYPE string,
              line    TYPE i,
+             ind     TYPE i,
              event   TYPE string,
              stack   TYPE i,
              code    TYPE string,
@@ -5190,12 +5197,40 @@ CLASS lcl_mermaid IMPLEMENTATION.
     ENDLOOP.
 
     "check subform execution steps existance
+
+    DATA: if_depth TYPE i.
     LOOP AT lt_lines ASSIGNING <line>.
+      <line>-ind = sy-tabix.
+
+      FIELD-SYMBOLS: <if> TYPE ts_if.
+      IF <line>-cond = 'IF'.
+        ADD 1 TO if_depth.
+        "        IF <if> IS NOT ASSIGNED.
+        "clear ms_if.
+        APPEND INITIAL LINE TO mt_if  ASSIGNING <if>.
+        <if>-if_ind = <line>-ind.
+        "       ENDIF.
+      ENDIF.
+
+      IF <line>-cond = 'ENDIF'.
+        <if>-end_ind = <line>-ind.
+        "UNASSIGN <if>.
+        SUBTRACT 1 FROM if_depth.
+        READ TABLE mt_if INDEX if_depth ASSIGNING <if>.
+      ENDIF.
+
+      IF <line>-cond = 'ELSE'.
+        <if>-else_ind = <line>-ind - 1.
+      ENDIF.
+
       READ TABLE lt_lines WITH KEY event = <line>-subname TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
         CLEAR <line>-arrow.
       ENDIF.
     ENDLOOP.
+    IF mt_if IS INITIAL AND ms_if-if_ind IS NOT INITIAL.
+      INSERT ms_if INTO mt_if INDEX 1.
+    ENDIF.
 
     IF lines( lt_lines ) > 0.
       IF lt_lines[ lines( lt_lines ) ]-arrow IS NOT INITIAL.
@@ -5218,7 +5253,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
     lv_mm_string = |graph { lv_direction }\n |.
 
-    LOOP AT lt_lines INTO ls_line.
+    LOOP AT lt_lines INTO ls_line WHERE cond <> 'ELSE'.
       lv_ind = sy-tabix.
 
       IF ls_line-cond IS INITIAL.
@@ -5250,123 +5285,20 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       ENDIF.
 
-*      IF lv_subg = abap_true.
-
-      IF ms_if-lv_if_ind IS NOT INITIAL AND ms_if-true IS INITIAL.
-        lv_bool = '|true|'.
-        ms_if-true = abap_true.
-      ENDIF.
-      IF ms_if-before_else IS NOT INITIAL AND ms_if-false IS INITIAL.
-        lv_bool = '|false|'.
-        ms_if-false = abap_true.
-      ENDIF.
-
-
-      IF  (  ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' ).
-
-        lv_mm_string = |{ lv_mm_string } { lv_ind - 1 }-->{ lv_bool }{ lv_ind + 1 }\n|.
-        lv_block_first = lv_ind + 1.
+      IF    ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' .
         lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ ls_line-code }"]\n  direction { lv_direction }\n|.
-
         ADD 1 TO lv_opened.
         lv_start = lv_ind.
-        "CLEAR lv_subg.
-
         CONTINUE.
       ENDIF.
 
-
-*      IF lv_subg IS INITIAL AND (  ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' ).
-*        lv_subg = abap_true.
-*        CONTINUE.
-*      ENDIF.
-
-      IF lv_ind <> 1.
-
-        IF ls_line-cond = 'ENDLOOP' OR ls_line-cond = 'ENDDO' OR ls_line-cond = 'ENDWHILE'.
-          SUBTRACT 1 FROM lv_opened.
-          lv_mm_string = |{ lv_mm_string } end\n|.
-          lv_end = lv_ind - 1.
-          "CONTINUE.
-        ENDIF.
-
-        IF lv_sub IS INITIAL.
-          IF ls_line-cond = 'ELSE'.
-            ms_if-before_else = lv_ind - 1.
-            ms_if-lv_else = abap_true.
-            CONTINUE.
-          ELSE.
-            lv_ind2 = lv_ind - 1.
-          ENDIF.
-          IF ms_if-lv_else IS NOT INITIAL.
-            lv_ind2 = ms_if-lv_if_ind.
-            CLEAR ms_if-lv_else.
-          ENDIF.
-
-          IF lv_end IS NOT INITIAL.
-            lv_mm_string = |{ lv_mm_string }{ lv_end  }-->|.
-            CLEAR lv_end.
-          ELSE.
-            IF lv_start IS NOT INITIAL.
-              CLEAR lv_start.
-            ELSE.
-              lv_mm_string = |{ lv_mm_string }{ lv_ind2  }-->|.
-            ENDIF.
-          ENDIF.
-        ELSE.
-          CLEAR lv_sub.
-        ENDIF.
+      IF ls_line-cond = 'ENDLOOP' OR ls_line-cond = 'ENDDO' OR ls_line-cond = 'ENDWHILE'.
+        SUBTRACT 1 FROM lv_opened.
+        lv_mm_string = |{ lv_mm_string } end\n|.
+        CONTINUE.
       ENDIF.
 
-*      IF ms_if-lv_if_ind IS NOT INITIAL AND ms_if-true IS INITIAL.
-*        lv_bool = '|true|'.
-*        ms_if-true = abap_true.
-*      ENDIF.
-*      IF ms_if-before_else IS NOT INITIAL AND ms_if-false IS INITIAL.
-*        lv_bool = '|false|'.
-*        ms_if-false = abap_true.
-*      ENDIF.
-
-
-      IF lv_block_first IS NOT INITIAL.
-        lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
-        CLEAR lv_block_first.
-      ELSE.
-        lv_mm_string = |{ lv_mm_string }{ lv_bool }{ lv_ind }{ lv_box_s }" { ls_line-code }|.
-      ENDIF.
-      CLEAR lv_bool.
-
-
-      IF ls_line-cond = 'IF'.
-        IF ms_if-lv_if_ind IS NOT INITIAL.
-          INSERT ms_if INTO mt_if INDEX 1.
-        ENDIF.
-        CLEAR ms_if.
-        ms_if-lv_if_ind = lv_ind.
-      ENDIF.
-
-      IF ls_line-arrow IS NOT INITIAL.
-        ADD 1 TO lv_opened.
-        lv_mm_string = |{ lv_mm_string }"{ lv_box_e }|.
-        lv_sub = '|"' && ls_line-arrow && '"|'.
-        lv_mm_string = |{ lv_mm_string }-->{ lv_sub }{ lv_ind + 1 }\n subgraph S{ lv_ind }["{ ls_line-subname }"]\n  direction { lv_direction }\n|.
-      ELSE.
-        lv_mm_string = |{ lv_mm_string }"{ lv_box_e }\n|.
-      ENDIF.
-
-      IF ls_line-cond = 'ENDIF'.
-        IF ms_if-before_else IS NOT INITIAL AND ms_if-before_else <> ms_if-lv_if_ind.
-          lv_mm_string = |{ lv_mm_string } { ms_if-before_else }-->{ lv_ind }\n|.
-        ENDIF.
-        IF lines( mt_if ) <> 0.
-          READ TABLE mt_if INTO ms_if INDEX 1.
-          DELETE mt_if index 1.
-        ELSE.
-          CLEAR ms_if-lv_if_ind.
-        ENDIF.
-
-      ENDIF.
-
+      lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }"{ ls_line-code }"{ lv_box_e }\n|.
       ls_prev_stack = ls_line.
 
     ENDLOOP.
@@ -5375,6 +5307,49 @@ CLASS lcl_mermaid IMPLEMENTATION.
       lv_mm_string = |{ lv_mm_string } end\n|.
       SUBTRACT 1 FROM lv_opened.
     ENDDO.
+
+
+    DATA: if_ind      TYPE i.
+    CLEAR ls_prev_stack.
+    LOOP AT lt_lines INTO ls_line WHERE cond <> 'LOOP' AND cond <> 'DO' AND cond <> 'WHILE' AND cond <> 'ENDLOOP' AND cond <> 'ENDDO' AND cond <> 'ENDWHILE'.
+      IF ls_line-cond = 'IF'.
+        ADD 1 TO if_ind.
+        READ TABLE mt_if INDEX if_ind INTO ms_if.
+      ENDIF.
+
+
+      IF ls_prev_stack-ind IS INITIAL.
+        ls_prev_stack = ls_line.
+        CONTINUE.
+      ENDIF.
+
+      IF ls_line-cond = 'ELSE'.
+        lv_bool = '|else|'.
+        lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ls_line-ind + 1 }\n|.
+        CLEAR ls_prev_stack.
+        "ls_prev_stack = ls_line.
+        CONTINUE.
+      ENDIF.
+
+      IF   ls_prev_stack-cond NE 'ELSE'.
+
+        lv_mm_string = |{ lv_mm_string }{ ls_prev_stack-ind }-->{ ls_line-ind }\n|.
+      ELSE.
+        lv_mm_string = |{ lv_mm_string }{ ls_prev_stack-ind }-->{ ms_if-end_ind }\n|.
+      ENDIF.
+
+      IF  ls_line-cond = 'ENDIF' AND ms_if-else_ind IS NOT INITIAL.
+        lv_mm_string = |{ lv_mm_string }{ ms_if-else_ind }-->{ ms_if-end_ind }\n|.
+      ENDIF.
+
+      ls_prev_stack = ls_line.
+
+      IF ls_line-cond = 'ENDIF'.
+        SUBTRACT 1 FROM if_ind.
+        READ TABLE mt_if INDEX if_ind INTO ms_if.
+      ENDIF.
+
+    ENDLOOP.
 
     open_mermaid( lv_mm_string ).
 
