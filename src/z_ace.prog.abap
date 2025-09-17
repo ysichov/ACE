@@ -193,8 +193,7 @@ CLASS lcl_popup IMPLEMENTATION.
           l_left TYPE i.
 
     ADD 1 TO m_counter.
-    "l_top  = l_left =  10 + 10 * ( m_counter DIV 5 ) +  ( m_counter MOD 5 ) * 50.
-    l_top  = l_left =  100 -  30 * ( m_counter DIV 5 ) - ( m_counter MOD 5 ) * 20.
+    l_top  = l_left =  100 -  20 * ( m_counter DIV 5 ) - ( m_counter MOD 5 ) * 20.
     CREATE OBJECT ro_box
       EXPORTING
         width                       = i_width
@@ -456,7 +455,7 @@ CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
   PUBLIC SECTION.
     TYPES: BEGIN OF ts_if,
              if_ind      TYPE i,
-             else_ind    TYPE i,
+             "else_ind    TYPE i,
              end_ind     TYPE i,
              "lv_if       TYPE xfeld,
              "lv_else     TYPE xfeld,
@@ -5030,24 +5029,26 @@ CLASS lcl_mermaid IMPLEMENTATION.
           lv_direction   TYPE string,
           lv_box_s       TYPE string,
           lv_box_e       TYPE string,
-          "lv_subg        TYPE xfeld,
           lv_ind2        TYPE i,
           lv_start       TYPE i,
           lv_end         TYPE i,
           lv_bool        TYPE string,
-          lv_block_first TYPE i.
+          lv_block_first TYPE i,
+          lv_els_before  TYPE i.
 
     TYPES: BEGIN OF ts_line,
-             cond    TYPE string,
-             include TYPE string,
-             line    TYPE i,
-             ind     TYPE i,
-             event   TYPE string,
-             stack   TYPE i,
-             code    TYPE string,
-             arrow   TYPE string,
-             subname TYPE string,
-             del     TYPE flag,
+             cond       TYPE string,
+             include    TYPE string,
+             line       TYPE i,
+             ind        TYPE i,
+             event      TYPE string,
+             stack      TYPE i,
+             code       TYPE string,
+             arrow      TYPE string,
+             subname    TYPE string,
+             del        TYPE flag,
+             els_before TYPE i,
+             els_after  TYPE i,
            END OF ts_line.
 
     DATA: ls_line       TYPE ts_line,
@@ -5129,7 +5130,8 @@ CLASS lcl_mermaid IMPLEMENTATION.
       READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO DATA(ls_key).
 
       CLEAR ls_line-cond.
-      IF ls_key-name = 'IF' OR ls_key-name = 'ELSE' OR ls_key-name = 'ENDIF' OR
+      IF ls_key-name = 'IF' OR ls_key-name = 'ELSE' OR ls_key-name = 'ENDIF' OR ls_key-name = 'ELSEIF' OR
+         ls_key-name = 'CASE' OR ls_key-name = 'WHEN' OR ls_key-name = 'ENDCASE' OR
           ls_key-name = 'DO' OR ls_key-name = 'ENDDO'  OR ls_key-name = 'LOOP'  OR ls_key-name = 'ENDLOOP' OR ls_key-name = 'WHILE' OR ls_key-name = 'ENDWHILE'.
         APPEND INITIAL LINE TO mo_viewer->mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
         <watch>-program = ls_step-program.
@@ -5196,38 +5198,58 @@ CLASS lcl_mermaid IMPLEMENTATION.
       ENDLOOP.
     ENDLOOP.
 
-    "check subform execution steps existance
+    "check subform execution steps existance and if/case structures build
 
-    DATA: if_depth TYPE i.
+    DATA: if_depth   TYPE i,
+          when_count TYPE i.
     LOOP AT lt_lines ASSIGNING <line>.
       <line>-ind = sy-tabix.
 
       FIELD-SYMBOLS: <if> TYPE ts_if.
-      IF <line>-cond = 'IF'.
+      IF <line>-cond = 'IF' OR  <line>-cond = 'CASE'.
         ADD 1 TO if_depth.
-        "        IF <if> IS NOT ASSIGNED.
-        "clear ms_if.
+        CLEAR when_count.
         APPEND INITIAL LINE TO mt_if  ASSIGNING <if>.
         <if>-if_ind = <line>-ind.
-        "       ENDIF.
+
       ENDIF.
 
-      IF <line>-cond = 'ENDIF'.
+      IF <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE'.
         <if>-end_ind = <line>-ind.
-        "UNASSIGN <if>.
         SUBTRACT 1 FROM if_depth.
         READ TABLE mt_if INDEX if_depth ASSIGNING <if>.
       ENDIF.
 
-      IF <line>-cond = 'ELSE'.
-        <if>-else_ind = <line>-ind - 1.
+      IF <line>-cond = 'WHEN'.
+        ADD 1 TO when_count.
       ENDIF.
+
+      IF <line>-cond = 'ELSE' OR <line>-cond = 'ELSEIF' OR <line>-cond = 'WHEN'.
+
+        <line>-els_before = lv_els_before.
+        <line>-els_after = <line>-ind.
+        DATA(lv_counter) = <line>-ind + 1.
+
+        READ TABLE lt_lines INDEX lv_counter INTO ls_line.
+        IF ls_line-cond <> 'ELSE' AND ls_line-cond <> 'ELSEIF' AND ls_line-cond <> 'ENDIF' AND ls_line-cond <> 'WHEN' AND ls_line-cond <> 'ENDCASE'.
+          <line>-els_after = lv_counter.
+        ELSE.
+          CLEAR <line>-els_after.
+        ENDIF.
+        IF when_count = 1.
+          <if>-if_ind = lv_els_before.
+          CLEAR <line>-els_before.
+        ENDIF.
+      ENDIF.
+
+      lv_els_before = <line>-ind.
 
       READ TABLE lt_lines WITH KEY event = <line>-subname TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
         CLEAR <line>-arrow.
       ENDIF.
     ENDLOOP.
+
     IF mt_if IS INITIAL AND ms_if-if_ind IS NOT INITIAL.
       INSERT ms_if INTO mt_if INDEX 1.
     ENDIF.
@@ -5253,7 +5275,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
     lv_mm_string = |graph { lv_direction }\n |.
 
-    LOOP AT lt_lines INTO ls_line WHERE cond <> 'ELSE'.
+    LOOP AT lt_lines INTO ls_line WHERE cond <> 'ELSE' AND cond <> 'ELSEIF' AND  cond <> 'WHEN'.
       lv_ind = sy-tabix.
 
       IF ls_line-cond IS INITIAL.
@@ -5312,39 +5334,43 @@ CLASS lcl_mermaid IMPLEMENTATION.
     DATA: if_ind      TYPE i.
     CLEAR ls_prev_stack.
     LOOP AT lt_lines INTO ls_line WHERE cond <> 'LOOP' AND cond <> 'DO' AND cond <> 'WHILE' AND cond <> 'ENDLOOP' AND cond <> 'ENDDO' AND cond <> 'ENDWHILE'.
-      IF ls_line-cond = 'IF'.
+      IF ls_line-cond = 'IF' OR ls_line-cond = 'CASE' .
         ADD 1 TO if_ind.
         READ TABLE mt_if INDEX if_ind INTO ms_if.
       ENDIF.
 
 
-      IF ls_prev_stack-ind IS INITIAL.
+      IF ls_prev_stack IS INITIAL.
         ls_prev_stack = ls_line.
         CONTINUE.
       ENDIF.
 
-      IF ls_line-cond = 'ELSE'.
-        lv_bool = '|else|'.
-        lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ls_line-ind + 1 }\n|.
-        CLEAR ls_prev_stack.
-        "ls_prev_stack = ls_line.
+      IF ls_line-cond = 'ELSE' OR ls_line-cond = 'ELSEIF' OR ls_line-cond = 'WHEN'.
+        lv_bool = '|' && ls_line-code && '|'.
+        IF ls_line-els_after IS NOT INITIAL.
+          lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ls_line-els_after }\n|.
+        ELSE.
+          lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ms_if-end_ind }\n|.
+        ENDIF.
+        IF ls_line-els_before IS NOT INITIAL.
+          lv_mm_string = |{ lv_mm_string }{ ls_line-els_before }-->{ ms_if-end_ind }\n|.
+        ENDIF.
+
+        IF lt_lines[ ls_line-ind + 1 ]-cond <> 'ENDIF' AND lt_lines[ ls_line-ind + 1 ]-cond <> 'ENDCASE'.
+          CLEAR ls_prev_stack.
+        ENDIF.
         CONTINUE.
       ENDIF.
 
-      IF   ls_prev_stack-cond NE 'ELSE'.
+      IF   ls_prev_stack-cond NE 'ELSE' AND ls_prev_stack-cond NE 'ELSEIF' AND ls_prev_stack-cond NE 'WHEN'.
 
         lv_mm_string = |{ lv_mm_string }{ ls_prev_stack-ind }-->{ ls_line-ind }\n|.
-      ELSE.
-        lv_mm_string = |{ lv_mm_string }{ ls_prev_stack-ind }-->{ ms_if-end_ind }\n|.
-      ENDIF.
-
-      IF  ls_line-cond = 'ENDIF' AND ms_if-else_ind IS NOT INITIAL.
-        lv_mm_string = |{ lv_mm_string }{ ms_if-else_ind }-->{ ms_if-end_ind }\n|.
       ENDIF.
 
       ls_prev_stack = ls_line.
 
-      IF ls_line-cond = 'ENDIF'.
+      IF ls_line-cond = 'ENDIF' OR ls_line-cond = 'ENDCASE'.
+        DELETE mt_if INDEX if_ind.
         SUBTRACT 1 FROM if_ind.
         READ TABLE mt_if INDEX if_ind INTO ms_if.
       ENDIF.
