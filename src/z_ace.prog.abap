@@ -5104,7 +5104,6 @@ CLASS lcl_mermaid IMPLEMENTATION.
             <selected>-name = lv_param-param.
           ENDIF.
         ENDLOOP.
-        "ENDIF.
       ENDLOOP.
 
       READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO ls_keyword.
@@ -5185,7 +5184,11 @@ CLASS lcl_mermaid IMPLEMENTATION.
       READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = <line>-include INTO ls_source.
       READ TABLE ls_source-t_keywords WITH KEY line = <line>-line INTO ls_keyword.
       LOOP AT ls_source-scan->tokens FROM ls_keyword-from TO ls_keyword-to INTO DATA(ls_token).
-        <line>-code = |{  <line>-code } { ls_token-str }|.
+        IF <line>-code IS INITIAL.
+          <line>-code = ls_token-str.
+        ELSE.
+          <line>-code = |{  <line>-code } { ls_token-str }|.
+        ENDIF.
       ENDLOOP.
 
       LOOP AT ls_keyword-tt_calls INTO ls_call.
@@ -5202,7 +5205,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
     DATA: if_depth   TYPE i,
           when_count TYPE i.
-    LOOP AT lt_lines ASSIGNING <line>.
+    LOOP AT lt_lines ASSIGNING <line> WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE' AND code <> 'LOOP' AND code <> 'ENDLOOP' .
       <line>-ind = sy-tabix.
 
       FIELD-SYMBOLS: <if> TYPE ts_if.
@@ -5224,25 +5227,69 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ADD 1 TO when_count.
       ENDIF.
 
-      IF <line>-cond = 'ELSE' OR <line>-cond = 'ELSEIF' OR <line>-cond = 'WHEN'.
+      IF <line>-cond = 'ELSE' OR <line>-cond = 'ELSEIF'.
 
         <line>-els_before = lv_els_before.
         <line>-els_after = <line>-ind.
         DATA(lv_counter) = <line>-ind + 1.
+        DO.
+          READ TABLE lt_lines INDEX lv_counter INTO ls_line.
+          IF sy-subrc <> 0.
+            CLEAR <line>-els_after.
+            EXIT.
+          ENDIF.
 
-        READ TABLE lt_lines INDEX lv_counter INTO ls_line.
-        IF ls_line-cond <> 'ELSE' AND ls_line-cond <> 'ELSEIF' AND ls_line-cond <> 'ENDIF' AND ls_line-cond <> 'WHEN' AND ls_line-cond <> 'ENDCASE'.
-          <line>-els_after = lv_counter.
-        ELSE.
-          CLEAR <line>-els_after.
-        ENDIF.
+          IF ls_line-cond = 'ELSE' OR ls_line-cond = 'ELSEIF'. "OR  .
+            CLEAR <line>-els_after.
+            EXIT.
+          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO'.
+            <line>-els_after = lv_counter.
+            EXIT.
+          ELSE.
+            ADD 1 TO lv_counter.
+
+          ENDIF.
+        ENDDO.
         IF when_count = 1.
           <if>-if_ind = lv_els_before.
           CLEAR <line>-els_before.
         ENDIF.
       ENDIF.
 
-      lv_els_before = <line>-ind.
+      IF <line>-cond = 'WHEN'.
+
+        <line>-els_before = lv_els_before.
+        <line>-els_after = <line>-ind.
+        lv_counter = <line>-ind + 1.
+        DO.
+          READ TABLE lt_lines INDEX lv_counter INTO ls_line.
+          IF sy-subrc <> 0.
+            CLEAR <line>-els_after.
+            EXIT.
+          ENDIF.
+
+          IF ls_line-cond = 'WHEN'. "OR .
+            CLEAR <line>-els_after.
+            EXIT.
+          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO'.
+            <line>-els_after = lv_counter.
+            EXIT.
+          ELSE.
+            ADD 1 TO lv_counter.
+
+          ENDIF.
+        ENDDO.
+        IF when_count = 1.
+          <if>-if_ind = lv_els_before.
+          CLEAR <line>-els_before.
+        ENDIF.
+      ENDIF.
+
+      IF <line>-cond <> 'ELSE' AND <line>-cond <> 'ELSEIF' AND <line>-cond <> 'WHEN'.
+        lv_els_before = <line>-ind.
+      ELSE.
+        CLEAR   lv_els_before.
+      ENDIF.
 
       READ TABLE lt_lines WITH KEY event = <line>-subname TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
@@ -5264,7 +5311,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
     CHECK lt_lines IS NOT INITIAL.
 
     IF iv_direction IS INITIAL.
-      IF lines( lt_lines ) < 25.
+      IF lines( lt_lines ) < 100.
         lv_direction = 'LR'.
       ELSE.
         lv_direction = 'TB'.
@@ -5341,8 +5388,13 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
 
       IF ls_prev_stack IS INITIAL.
-        ls_prev_stack = ls_line.
-        CONTINUE.
+        IF ls_line-cond = 'WHEN' OR ls_line-cond = 'ELSE' OR ls_line-cond = 'ELSEIF'.
+          ls_prev_stack = lt_lines[ <if>-if_ind ].
+        ELSE.
+          ls_prev_stack = ls_line.
+          CONTINUE.
+        ENDIF.
+
       ENDIF.
 
       IF ls_line-cond = 'ELSE' OR ls_line-cond = 'ELSEIF' OR ls_line-cond = 'WHEN'.
@@ -5352,7 +5404,8 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ELSE.
           lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ms_if-end_ind }\n|.
         ENDIF.
-        IF ls_line-els_before IS NOT INITIAL.
+
+        IF ls_line-els_before IS NOT INITIAL AND ls_line-els_before <> ms_if-if_ind.
           lv_mm_string = |{ lv_mm_string }{ ls_line-els_before }-->{ ms_if-end_ind }\n|.
         ENDIF.
 
@@ -5362,7 +5415,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      IF   ls_prev_stack-cond NE 'ELSE' AND ls_prev_stack-cond NE 'ELSEIF' AND ls_prev_stack-cond NE 'WHEN'.
+      IF   ls_prev_stack-cond NE 'ELSE' AND ls_prev_stack-cond NE 'ELSEIF' AND ls_prev_stack-cond NE 'WHEN' and ls_line-ind <> ms_if-end_ind.
 
         lv_mm_string = |{ lv_mm_string }{ ls_prev_stack-ind }-->{ ls_line-ind }\n|.
       ENDIF.
