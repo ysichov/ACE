@@ -5184,6 +5184,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
       READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = <line>-include INTO ls_source.
       READ TABLE ls_source-t_keywords WITH KEY line = <line>-line INTO ls_keyword.
       LOOP AT ls_source-scan->tokens FROM ls_keyword-from TO ls_keyword-to INTO DATA(ls_token).
+        IF ls_token-str = 'USING' OR ls_token-str = 'EXPORTING' OR ls_token-str = 'IMPORTING' OR ls_token-str = 'CHANGING'.
+          EXIT.
+        ENDIF.
         IF <line>-code IS INITIAL.
           <line>-code = ls_token-str.
         ELSE.
@@ -5353,9 +5356,26 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ENDDO.
 
       ENDIF.
+      DATA: lv_name TYPE string.
+      IF    ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' OR ls_line-arrow IS NOT INITIAL .
 
-      IF    ls_line-cond = 'LOOP' OR ls_line-cond = 'DO' OR ls_line-cond = 'WHILE' .
-        lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ ls_line-code }"]\n  direction { lv_direction }\n|.
+        IF ls_line-arrow IS NOT INITIAL.
+          lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }"{ ls_line-code }"{ lv_box_e }\n|.
+          ls_prev_stack = ls_line.
+        ENDIF.
+
+        IF strlen( ls_line-code ) > 50.
+          lv_name = ls_line-code+0(50).
+        ELSE.
+          lv_name = ls_line-code.
+        ENDIF.
+        REPLACE ALL OCCURRENCES OF `PERFORM` IN lv_name WITH `FORM` IN CHARACTER MODE.
+        REPLACE ALL OCCURRENCES OF `CALL FUNCTION` IN lv_name WITH `FUNCTION` IN CHARACTER MODE.
+        REPLACE ALL OCCURRENCES OF `CALL METHOD` IN lv_name WITH `METHOD` IN CHARACTER MODE.
+        REPLACE ALL OCCURRENCES OF `-` IN lv_name WITH `>` IN CHARACTER MODE.
+        REPLACE ALL OCCURRENCES OF ` ` IN lv_name WITH `&nbsp;` IN CHARACTER MODE.
+
+        lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ lv_name }"]\n  direction { lv_direction }\n|.
         ADD 1 TO lv_opened.
         lv_start = lv_ind.
         CONTINUE.
@@ -5381,6 +5401,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
     DATA: if_ind      TYPE i.
     CLEAR ls_prev_stack.
     LOOP AT lt_lines INTO ls_line WHERE cond <> 'LOOP' AND cond <> 'DO' AND cond <> 'WHILE' AND cond <> 'ENDLOOP' AND cond <> 'ENDDO' AND cond <> 'ENDWHILE'.
+
       IF ls_line-cond = 'IF' OR ls_line-cond = 'CASE' .
         ADD 1 TO if_ind.
         READ TABLE mt_if INDEX if_ind INTO ms_if.
@@ -5415,9 +5436,17 @@ CLASS lcl_mermaid IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      IF   ls_prev_stack-cond NE 'ELSE' AND ls_prev_stack-cond NE 'ELSEIF' AND ls_prev_stack-cond NE 'WHEN' and ls_line-ind <> ms_if-end_ind.
+      IF   ls_prev_stack-cond NE 'ELSE' AND ls_prev_stack-cond NE 'ELSEIF' AND ls_prev_stack-cond NE 'WHEN'. "and ls_line-ind <> ms_if-end_ind.
 
-        lv_mm_string = |{ lv_mm_string }{ ls_prev_stack-ind }-->{ ls_line-ind }\n|.
+
+        lv_mm_string = |{ lv_mm_string }{ ls_prev_stack-ind }-->{ lv_sub }{ ls_line-ind }\n|.
+
+        IF ls_line-arrow IS NOT INITIAL.
+          lv_sub = '|"' && ls_line-arrow && '"|'.
+        ELSE.
+          CLEAR lv_sub.
+        ENDIF.
+
       ENDIF.
 
       ls_prev_stack = ls_line.
