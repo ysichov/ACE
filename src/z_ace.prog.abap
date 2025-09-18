@@ -998,6 +998,7 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
 
            BEGIN OF ts_calls,
              event TYPE string,
+             type  TYPE string,
              name  TYPE string,
              outer TYPE string,
              inner TYPE string,
@@ -4418,6 +4419,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
                   APPEND  ls_composed TO lt_composed.
                 ENDIF.
               WHEN 'CLEAR' OR 'SORT' OR 'CONDENSE'."no logic
+              WHEN 'FORM'.
+                IF ls_param-name IS NOT INITIAL.
+                  APPEND ls_param TO ls_source-t_params.
+                  CLEAR ls_param.
+                ENDIF.
             ENDCASE.
             EXIT.
           ENDIF.
@@ -4522,7 +4528,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
                     APPEND  ls_composed TO lt_composed.
                     IF ls_call IS NOT INITIAL.
                       ls_call-outer = lv_temp.
-                      APPEND ls_call TO ls_token-tt_calls.
+                      READ TABLE ls_token-tt_calls WITH KEY event = ls_call-event name = ls_call-name outer = ls_call-outer TRANSPORTING  NO FIELDS.
+                      IF sy-subrc <> 0.
+                        APPEND ls_call TO ls_token-tt_calls.
+                      ENDIF.
                     ENDIF.
                   ENDIF.
                 ENDIF.
@@ -4539,7 +4548,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
                 IF NOT lv_temp  CA '()' .
                   IF NOT lv_temp  CO '0123456789. '.
                     ls_call-outer = lv_temp.
-                    APPEND ls_call TO ls_token-tt_calls.
+                    READ TABLE ls_token-tt_calls WITH KEY event = ls_call-event name = ls_call-name outer = ls_call-outer TRANSPORTING  NO FIELDS.
+                    IF sy-subrc <> 0.
+                      APPEND ls_call TO ls_token-tt_calls.
+                    ENDIF.
                     lv_change = lv_temp.
                   ENDIF.
                 ENDIF.
@@ -4577,12 +4589,18 @@ CLASS lcl_source_parser IMPLEMENTATION.
                   IF NOT lv_temp  CO '0123456789. '.
                     IF lv_import = abap_true.
                       ls_call-outer = lv_temp.
-                      APPEND ls_call TO ls_token-tt_calls.
+                      READ TABLE ls_token-tt_calls WITH KEY event = ls_call-event name = ls_call-name outer = ls_call-outer TRANSPORTING  NO FIELDS.
+                      IF sy-subrc <> 0.
+                        APPEND ls_call TO ls_token-tt_calls.
+                      ENDIF.
                       ls_calculated-calculated = lv_temp.
                       APPEND  ls_calculated TO lt_calculated.
                     ELSEIF lv_export = abap_true.
                       ls_call-outer = lv_temp.
-                      APPEND ls_call TO ls_token-tt_calls.
+                      READ TABLE ls_token-tt_calls WITH KEY event = ls_call-event name = ls_call-name outer = ls_call-outer TRANSPORTING  NO FIELDS.
+                      IF sy-subrc <> 0.
+                        APPEND ls_call TO ls_token-tt_calls.
+                      ENDIF.
                       ls_composed-composing = lv_temp.
                       APPEND  ls_composed TO lt_composed.
                     ENDIF.
@@ -4651,7 +4669,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
               IF NOT lv_temp  CA '()' .
                 IF NOT lv_temp  CO '0123456789. '.
                   ls_call-outer = lv_temp.
-                  APPEND ls_call TO ls_token-tt_calls.
+                  READ TABLE ls_token-tt_calls WITH KEY event = ls_call-event name = ls_call-name outer = ls_call-outer TRANSPORTING  NO FIELDS.
+                  IF sy-subrc <> 0.
+                    APPEND ls_call TO ls_token-tt_calls.
+                  ENDIF.
                   lv_change = lv_temp.
                 ENDIF.
               ENDIF.
@@ -4662,12 +4683,19 @@ CLASS lcl_source_parser IMPLEMENTATION.
                 IF NOT lv_temp  CO '0123456789. '.
                   IF lv_import = abap_true.
                     ls_call-outer = lv_temp.
-                    APPEND ls_call TO ls_token-tt_calls.
+                    READ TABLE ls_token-tt_calls WITH KEY event = ls_call-event name = ls_call-name outer = ls_call-outer TRANSPORTING  NO FIELDS.
+                    IF sy-subrc <> 0.
+                      APPEND ls_call TO ls_token-tt_calls.
+                    ENDIF.
+
                     ls_calculated-calculated = lv_temp.
                     APPEND  ls_calculated TO lt_calculated.
                   ELSEIF lv_export = abap_true.
                     ls_call-outer = lv_temp.
-                    APPEND ls_call TO ls_token-tt_calls.
+                    READ TABLE ls_token-tt_calls WITH KEY event = ls_call-event name = ls_call-name outer = ls_call-outer TRANSPORTING  NO FIELDS.
+                    IF sy-subrc <> 0.
+                      APPEND ls_call TO ls_token-tt_calls.
+                    ENDIF.
                     ls_composed-composing = lv_temp.
                     APPEND  ls_composed TO lt_composed.
                   ENDIF.
@@ -4755,6 +4783,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
           READ TABLE <s_token>-tt_calls INDEX lv_index ASSIGNING FIELD-SYMBOL(<call>).
           IF sy-subrc = 0.
             <call>-inner = ls_param-param.
+            IF ls_param-type = 'I'.
+              <call>-type = '>'.
+            ELSE.
+              <call>-type = '<'.
+            ENDIF.
           ENDIF.
         ENDLOOP.
 
@@ -5198,7 +5231,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         IF sy-tabix <> 1.
           <line>-arrow = |{ <line>-arrow }, |.
         ENDIF.
-        <line>-arrow  = |{ <line>-arrow  } { ls_call-outer } = { ls_call-inner }|.
+        <line>-arrow  = |{ <line>-arrow  } { ls_call-outer } { ls_call-type } { ls_call-inner }|.
         <line>-subname = ls_call-name.
         REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
       ENDLOOP.
@@ -5242,10 +5275,10 @@ CLASS lcl_mermaid IMPLEMENTATION.
             EXIT.
           ENDIF.
 
-          IF ls_line-cond = 'ELSE' OR ls_line-cond = 'ELSEIF'. "OR  .
+          IF ls_line-cond = 'ELSE' OR ls_line-cond = 'ELSEIF'.
             CLEAR <line>-els_after.
             EXIT.
-          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO'.
+          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO' and ls_line-cond <> 'WHILE' AND ls_line-cond <> 'ENDWHILE' AND ls_line-cond <> 'LOOP' AND ls_line-cond <> 'ENDLOOP'.
             <line>-els_after = lv_counter.
             EXIT.
           ELSE.
@@ -5271,10 +5304,10 @@ CLASS lcl_mermaid IMPLEMENTATION.
             EXIT.
           ENDIF.
 
-          IF ls_line-cond = 'WHEN'. "OR .
+          IF ls_line-cond = 'WHEN'.
             CLEAR <line>-els_after.
             EXIT.
-          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO'.
+          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO' and ls_line-cond <> 'WHILE' AND ls_line-cond <> 'ENDWHILE' AND ls_line-cond <> 'LOOP' AND ls_line-cond <> 'ENDLOOP'.
             <line>-els_after = lv_counter.
             EXIT.
           ELSE.
@@ -5362,6 +5395,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         IF ls_line-arrow IS NOT INITIAL.
           lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }"{ ls_line-code }"{ lv_box_e }\n|.
           ls_prev_stack = ls_line.
+          "CONTINUE.
         ENDIF.
 
         IF strlen( ls_line-code ) > 50.
@@ -5372,7 +5406,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         REPLACE ALL OCCURRENCES OF `PERFORM` IN lv_name WITH `FORM` IN CHARACTER MODE.
         REPLACE ALL OCCURRENCES OF `CALL FUNCTION` IN lv_name WITH `FUNCTION` IN CHARACTER MODE.
         REPLACE ALL OCCURRENCES OF `CALL METHOD` IN lv_name WITH `METHOD` IN CHARACTER MODE.
-        REPLACE ALL OCCURRENCES OF `-` IN lv_name WITH `>` IN CHARACTER MODE.
+        REPLACE ALL OCCURRENCES OF `-` IN lv_name WITH `~` IN CHARACTER MODE.
         REPLACE ALL OCCURRENCES OF ` ` IN lv_name WITH `&nbsp;` IN CHARACTER MODE.
 
         lv_mm_string = |{ lv_mm_string } subgraph S{ lv_ind }["{ lv_name }"]\n  direction { lv_direction }\n|.
@@ -5422,6 +5456,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
         lv_bool = '|' && ls_line-code && '|'.
         IF ls_line-els_after IS NOT INITIAL.
           lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ls_line-els_after }\n|.
+          IF ls_line-cond <> 'WHEN' AND ls_line-cond <> 'ELSEIF' and  ls_line-els_after <> ms_if-end_ind.
+          lv_mm_string = |{ lv_mm_string }{  ls_line-els_after }-->{ ms_if-end_ind }\n|.
+          ENDIF.
         ELSE.
           lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ms_if-end_ind }\n|.
         ENDIF.
@@ -5436,7 +5473,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      IF   ls_prev_stack-cond NE 'ELSE' AND ls_prev_stack-cond NE 'ELSEIF' AND ls_prev_stack-cond NE 'WHEN'. "and ls_line-ind <> ms_if-end_ind.
+      IF   ls_prev_stack-cond NE 'ELSE' AND ls_prev_stack-cond NE 'ELSEIF' AND ls_prev_stack-cond NE 'WHEN'." and ls_line-ind <> ms_if-end_ind.
 
 
         lv_mm_string = |{ lv_mm_string }{ ls_prev_stack-ind }-->{ lv_sub }{ ls_line-ind }\n|.
@@ -5448,6 +5485,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ENDIF.
 
       ENDIF.
+
 
       ls_prev_stack = ls_line.
 
