@@ -5278,7 +5278,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
           IF ls_line-cond = 'ELSE' OR ls_line-cond = 'ELSEIF'.
             CLEAR <line>-els_after.
             EXIT.
-          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO' and ls_line-cond <> 'WHILE' AND ls_line-cond <> 'ENDWHILE' AND ls_line-cond <> 'LOOP' AND ls_line-cond <> 'ENDLOOP'.
+          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO' AND ls_line-cond <> 'WHILE' AND ls_line-cond <> 'ENDWHILE' AND ls_line-cond <> 'LOOP' AND ls_line-cond <> 'ENDLOOP'.
             <line>-els_after = lv_counter.
             EXIT.
           ELSE.
@@ -5307,7 +5307,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
           IF ls_line-cond = 'WHEN'.
             CLEAR <line>-els_after.
             EXIT.
-          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO' and ls_line-cond <> 'WHILE' AND ls_line-cond <> 'ENDWHILE' AND ls_line-cond <> 'LOOP' AND ls_line-cond <> 'ENDLOOP'.
+          ELSEIF  ls_line-cond <> 'DO' AND ls_line-cond <> 'ENDDO' AND ls_line-cond <> 'WHILE' AND ls_line-cond <> 'ENDWHILE' AND ls_line-cond <> 'LOOP' AND ls_line-cond <> 'ENDLOOP'.
             <line>-els_after = lv_counter.
             EXIT.
           ELSE.
@@ -5456,8 +5456,10 @@ CLASS lcl_mermaid IMPLEMENTATION.
         lv_bool = '|' && ls_line-code && '|'.
         IF ls_line-els_after IS NOT INITIAL.
           lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ls_line-els_after }\n|.
-          IF ls_line-cond <> 'WHEN' AND ls_line-cond <> 'ELSEIF' and  ls_line-els_after <> ms_if-end_ind.
-          lv_mm_string = |{ lv_mm_string }{  ls_line-els_after }-->{ ms_if-end_ind }\n|.
+          data(lv_diff) = ms_if-end_ind - ls_line-els_after.
+          data(lv_last_els) = ls_line-els_after.
+          IF ls_line-cond <> 'WHEN' AND ls_line-cond <> 'ELSEIF'  AND  lv_diff > 1 and ls_line-els_after <> ms_if-end_ind.
+            lv_mm_string = |{ lv_mm_string }{  ls_line-els_after }-->{ ms_if-end_ind }\n|.
           ENDIF.
         ELSE.
           lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ms_if-end_ind }\n|.
@@ -5473,8 +5475,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      IF   ls_prev_stack-cond NE 'ELSE' AND ls_prev_stack-cond NE 'ELSEIF' AND ls_prev_stack-cond NE 'WHEN'." and ls_line-ind <> ms_if-end_ind.
-
+      IF   ls_prev_stack-cond NE 'ELSE' AND ls_prev_stack-cond NE 'ELSEIF' AND ls_prev_stack-cond NE 'WHEN' AND NOT ( lv_last_els = ls_line-ind ).
 
         lv_mm_string = |{ lv_mm_string }{ ls_prev_stack-ind }-->{ lv_sub }{ ls_line-ind }\n|.
 
@@ -5485,7 +5486,6 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ENDIF.
 
       ENDIF.
-
 
       ls_prev_stack = ls_line.
 
