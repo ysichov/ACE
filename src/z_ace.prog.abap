@@ -13,7 +13,9 @@ REPORT z_ace. "ACE - Abap Code Explorer
 *  & External resources
 *  & https://github.com/WegnerDan/abapMermaid
 
-PARAMETERS: gv_prog TYPE progname  MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY.
+PARAMETERS: gv_prog  TYPE progname  MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY,
+            p_dest   TYPE text255 MEMORY ID dest,
+            p_apikey TYPE text255  MEMORY ID api.
 
 CLASS lcl_ai DEFINITION DEFERRED.
 CLASS lcl_data_receiver DEFINITION DEFERRED.
@@ -455,16 +457,10 @@ CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
   PUBLIC SECTION.
     TYPES: BEGIN OF ts_if,
              if_ind      TYPE i,
-             "else_ind    TYPE i,
              end_ind     TYPE i,
-             "lv_if       TYPE xfeld,
-             "lv_else     TYPE xfeld,
              before_else TYPE i,
-             "true        TYPE xfeld,
-             "false       TYPE xfeld,
            END OF ts_if,
            tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY.
-
 
     DATA: mo_viewer       TYPE REF TO lcl_ace,
           mo_mm_container TYPE REF TO cl_gui_container,
@@ -638,11 +634,13 @@ CLASS lcl_ai_api DEFINITION.
         iv_prompt  TYPE string
       EXPORTING
         ev_payload TYPE string ,
+
       send_request
         IMPORTING
           iv_payload  TYPE string
         EXPORTING
-          ev_response TYPE string,
+          ev_response TYPE string
+          ev_error    TYPE xfeld,
       output
         IMPORTING
                   iv_prompt        TYPE string
@@ -669,13 +667,17 @@ CLASS lcl_ai_api IMPLEMENTATION.
       EXPORTING
         iv_payload  = lv_payload
       IMPORTING
-        ev_response = lv_response.
+        ev_response = lv_response
+        ev_error    = DATA(lv_error).
 
-    rv_answer = output(
-      EXPORTING
-        iv_prompt  = iv_prompt
-        iv_content = lv_response ).
-
+    IF lv_error IS NOT INITIAL.
+      rv_answer = lv_response.
+    ELSE.
+      rv_answer = output(
+        EXPORTING
+          iv_prompt  = iv_prompt
+          iv_content = lv_response ).
+    ENDIF.
   ENDMETHOD.
 
   METHOD build_request.
@@ -695,7 +697,7 @@ CLASS lcl_ai_api IMPLEMENTATION.
 
     CALL METHOD cl_http_client=>create_by_destination
       EXPORTING
-        destination                = 'Z_LM' "SM59 local config
+        destination                = p_dest
       IMPORTING
         client                     = lo_http_client
       EXCEPTIONS
@@ -712,11 +714,18 @@ CLASS lcl_ai_api IMPLEMENTATION.
         oa2c_invalid_grant         = 11
         oa2c_secstore_adm          = 12
         OTHERS                     = 13.
-    IF sy-subrc <> 0.
-*     Implement suitable error handling here
+    IF sy-subrc = 2.
+      ev_response = 'Destination not found. Please check it in SM59 transaction'.
+      ev_error = abap_true.
+      RETURN.
+    ELSEIF sy-subrc <> 0.
+      ev_response = |cl_http_client=>create_by_destination error №' { sy-subrc }|.
+      ev_error = abap_true.
+      RETURN.
     ENDIF.
 
-    mv_api_key = 'lmstudio'. "any name for local LLMs or secret key for external
+    "mv_api_key = 'lmstudio'. "any name for local LLMs or secret key for external
+    mv_api_key = p_apikey.
     "set request header
     lo_http_client->request->set_header_field( name = 'Content-Type' value = 'application/json' ).
     lo_http_client->request->set_header_field( name = 'Authorization' value = |Bearer { mv_api_key }| ).
@@ -834,7 +843,7 @@ CLASS lcl_ai IMPLEMENTATION.
   METHOD constructor.
     super->constructor( ).
 
-    mo_ai_box = create( i_name = 'SDDE Simple Debugger Data Explorer beta v. 0.9' i_width = 1400 i_hight = 400 ).
+    mo_ai_box = create( i_name = 'ACE: Abap Code Explorer - AI chat' i_width = 1400 i_hight = 400 ).
     CREATE OBJECT mo_ai_splitter
       EXPORTING
         parent  = mo_ai_box
@@ -912,7 +921,7 @@ CLASS lcl_ai IMPLEMENTATION.
     DATA lt_string TYPE TABLE OF char255.
 
     APPEND INITIAL LINE TO lt_string ASSIGNING FIELD-SYMBOL(<str>).
-    <str> = 'Explain please the meaning of this ABAP code'.
+    <str> = 'Explain please the meaning of this ABAP code and provide a code review'.
     mv_prompt = <str>.
     APPEND INITIAL LINE TO lt_string ASSIGNING <str>.
 
@@ -973,6 +982,7 @@ CLASS lcl_ai IMPLEMENTATION.
 
         REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN mv_prompt WITH ''.
         REPLACE ALL OCCURRENCES OF '#' IN mv_prompt WITH ''.
+        REPLACE ALL OCCURRENCES OF '"' IN mv_prompt WITH ''''.
         REPLACE ALL OCCURRENCES OF REGEX '[[:cntrl:]]' IN mv_prompt WITH ' '.
 
         mv_answer = lo_ai->call_openai( mv_prompt ).
@@ -1453,6 +1463,9 @@ CLASS lcl_window IMPLEMENTATION.
           ls_events LIKE LINE OF lt_events.
 
     lt_button  = VALUE #(
+     ( COND #( WHEN p_dest IS NOT INITIAL
+      THEN VALUE #( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ) )
+
      ( COND #( WHEN lcl_appl=>is_mermaid_active = abap_true
       THEN VALUE #( function = 'DIAGRAM' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagram' ) ) )
      ( function = 'SMART' icon = CONV #( icon_wizard ) quickinfo = 'Calculations sequence' text = 'Calculations Flow' )
@@ -5456,9 +5469,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
         lv_bool = '|' && ls_line-code && '|'.
         IF ls_line-els_after IS NOT INITIAL.
           lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ls_line-els_after }\n|.
-          data(lv_diff) = ms_if-end_ind - ls_line-els_after.
-          data(lv_last_els) = ls_line-els_after.
-          IF ls_line-cond <> 'WHEN' AND ls_line-cond <> 'ELSEIF'  AND  lv_diff > 1 and ls_line-els_after <> ms_if-end_ind.
+          DATA(lv_diff) = ms_if-end_ind - ls_line-els_after.
+          DATA(lv_last_els) = ls_line-els_after.
+          IF ls_line-cond <> 'WHEN' AND ls_line-cond <> 'ELSEIF'  AND  lv_diff > 1 AND ls_line-els_after <> ms_if-end_ind.
             lv_mm_string = |{ lv_mm_string }{  ls_line-els_after }-->{ ms_if-end_ind }\n|.
           ENDIF.
         ELSE.
@@ -5577,5 +5590,7 @@ INITIALIZATION.
   WRITE 1.
 
 AT SELECTION-SCREEN.
+
+  SET PARAMETER ID 'API' FIELD p_apikey.
 
   DATA(gv_ace) = NEW lcl_ace( ).
