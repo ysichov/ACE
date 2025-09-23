@@ -15,6 +15,7 @@ REPORT z_ace. "ACE - Abap Code Explorer
 
 PARAMETERS: gv_prog  TYPE progname  MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY,
             p_dest   TYPE text255 MEMORY ID dest,
+            p_model  TYPE text255 MEMORY ID model,
             p_apikey TYPE text255  MEMORY ID api.
 
 CLASS lcl_ai DEFINITION DEFERRED.
@@ -687,7 +688,7 @@ CLASS lcl_ai_api IMPLEMENTATION.
 
     DATA: lv_payload TYPE string.
 
-    lv_payload = |{ '{ "model": "mistral-tiny", "messages": [{ "role": "user", "content": "' && iv_prompt &&  '" }], "max_tokens": 1000 } ' }|.
+    lv_payload = |{ '{ "model": "' && p_model && '", "messages": [{ "role": "user", "content": "' && iv_prompt &&  '" }], "max_tokens": 1000 } ' }|.
 
     ev_payload = lv_payload.
   ENDMETHOD.
@@ -4906,12 +4907,13 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
           IF ls_key-to_evtype <> 'FUNCTION'.
             READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO ls_call_line.
-
-            lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
-                                             iv_event = ls_call_line-eventname
-                                             iv_program = iv_program
-                                             iv_stack   = lv_stack
-                                             io_debugger = io_debugger ).
+            IF sy-subrc = 0.
+              lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
+                                               iv_event = ls_call_line-eventname
+                                               iv_program = iv_program
+                                               iv_stack   = lv_stack
+                                               io_debugger = io_debugger ).
+            ENDIF.
           ELSE.
             DATA: lv_func TYPE rs38l_fnam.
             lv_func = ls_key-to_evname.
@@ -4970,12 +4972,13 @@ CLASS lcl_source_parser IMPLEMENTATION.
         IF ls_key-to_evtype <> 'FUNCTION'.
 
           READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO DATA(ls_call_line).
-
-          lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
-                                                   iv_event = ls_call_line-eventname
-                                                   iv_program = iv_program
-                                                   iv_stack   = lv_stack
-                                                   io_debugger = io_debugger ).
+          IF sy-subrc = 0.
+            lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
+                                                     iv_event = ls_call_line-eventname
+                                                     iv_program = iv_program
+                                                     iv_stack   = lv_stack
+                                                     io_debugger = io_debugger ).
+          ENDIF.
 
         ELSE.
           DATA: lv_func TYPE rs38l_fnam.
@@ -5530,7 +5533,11 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       IF ls_prev_stack IS INITIAL.
         IF ls_line-cond = 'WHEN' OR ls_line-cond = 'ELSE' OR ls_line-cond = 'ELSEIF'.
-          ls_prev_stack = lt_lines[ <if>-if_ind ].
+          IF <if> IS ASSIGNED.
+            ls_prev_stack = lt_lines[ <if>-if_ind ].
+          ELSE.
+            CLEAR ls_prev_stack.
+          ENDIF.
         ELSE.
           ls_prev_stack = ls_line.
           CONTINUE.
