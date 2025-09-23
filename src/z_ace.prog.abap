@@ -357,9 +357,12 @@ CLASS lcl_source_parser DEFINITION.
 
   PUBLIC SECTION.
 
-    CLASS-DATA: mv_step TYPE i.
+    "CLASS-DATA: mv_step TYPE i.
     CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace,
-      parse_call IMPORTING iv_program TYPE program iv_index TYPE i iv_stack TYPE i iv_event TYPE string io_debugger TYPE REF TO lcl_ace.
+      parse_call IMPORTING iv_program TYPE program iv_index TYPE i iv_stack TYPE i iv_event TYPE string io_debugger TYPE REF TO lcl_ace,
+      code_execution_scanner IMPORTING iv_program TYPE program iv_evname TYPE string OPTIONAL iv_evtype TYPE string OPTIONAL
+        iv_stack TYPE i OPTIONAL io_debugger TYPE REF TO lcl_ace.
+
 
 ENDCLASS.
 
@@ -1067,17 +1070,22 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
            END OF ts_int_tabs,
            tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY,
 
-           BEGIN OF ts_progs,
-             include       TYPE program,
-             source        TYPE REF TO cl_ci_source_include,
-             scan          TYPE REF TO cl_ci_scan,
-             t_keywords    TYPE tt_kword,
+           BEGIN OF ts_prog,
+             include    TYPE program,
+             source     TYPE REF TO cl_ci_source_include,
+             scan       TYPE REF TO cl_ci_scan,
+             t_keywords TYPE tt_kword,
+           END OF ts_prog,
+           tt_progs TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
+
+           BEGIN OF ts_source,
+             tt_progs      TYPE tt_progs,
              t_calculated  TYPE tt_calculated,
              t_composed    TYPE tt_composed,
              t_params      TYPE tt_params,
              tt_tabs       TYPE tt_tabs,
              tt_calls_line TYPE tt_calls_line,
-           END OF ts_progs,
+           END OF ts_source,
 
            BEGIN OF ts_locals,
              program    TYPE tpda_program,
@@ -1138,7 +1146,8 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
           mt_coverage            TYPE tt_watch,
           m_hist_depth           TYPE i,
           m_start_stack          TYPE i,
-          mt_source              TYPE STANDARD  TABLE OF ts_progs,
+          mt_source              TYPE STANDARD  TABLE OF ts_source,
+          ms_sources             TYPE ts_source,
           mt_params              TYPE STANDARD  TABLE OF ts_params,
           mt_locals_set          TYPE STANDARD TABLE OF ts_locals,
           mt_globals_set         TYPE STANDARD TABLE OF ts_globals.
@@ -1279,8 +1288,8 @@ CLASS lcl_ace IMPLEMENTATION.
     DATA(lv_forms_rel) = mo_tree_local->add_node( iv_name = 'Subroutines' iv_icon = CONV #( icon_folder ) iv_rel = mo_tree_local->main_node_key ).
     mo_tree_local->add_node( iv_name = 'Code Flow' iv_icon = CONV #( icon_enhanced_bo ) iv_rel = mo_tree_local->main_node_key ).
 
-    READ TABLE mo_window->mt_source WITH KEY include = gv_prog INTO DATA(ls_source).
-    LOOP AT ls_source-t_params INTO DATA(ls_subs) WHERE event = 'FORM' .
+    "READ TABLE mo_window->mt_source WITH KEY include = gv_prog INTO DATA(ls_source).
+    LOOP AT mo_window->ms_sources-t_params INTO DATA(ls_subs) WHERE event = 'FORM' .
       DATA(lv_form_name) = ls_subs-name.
       AT NEW name.
         mo_tree_local->add_node( iv_name = lv_form_name iv_icon = CONV #( icon_biw_info_source_ina ) iv_rel = lv_forms_rel ).
@@ -1491,9 +1500,9 @@ CLASS lcl_window IMPLEMENTATION.
   METHOD set_program.
 
     lcl_source_parser=>parse_tokens( iv_program = iv_program io_debugger = mo_viewer ).
-    READ TABLE mt_source WITH KEY include = iv_program INTO DATA(ls_source).
+    READ TABLE ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
     IF sy-subrc = 0.
-      mo_code_viewer->set_text( table = ls_source-source->lines ).
+      mo_code_viewer->set_text( table = ls_prog-source->lines ).
     ENDIF.
 
   ENDMETHOD.
@@ -1641,8 +1650,8 @@ CLASS lcl_window IMPLEMENTATION.
 
       WHEN 'AI'.
 
-        READ TABLE mo_viewer->mo_window->mt_source INDEX 1 INTO DATA(ls_source).
-        NEW lcl_ai( ls_source-source ).
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(ls_prog).
+        NEW lcl_ai( ls_prog-source ).
 
 
 
@@ -3798,8 +3807,8 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
     ls_tree-kind = lo_table_descr->type_kind.
     IF is_var-instance NE '{A:initial}'.
 
-      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = mo_viewer->ms_stack-include INTO DATA(ls_source).
-      READ TABLE ls_source-tt_tabs WITH KEY name = is_var-short INTO DATA(ls_tab).
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = mo_viewer->ms_stack-include INTO DATA(ls_prog).
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_tabs WITH KEY name = is_var-short INTO DATA(ls_tab).
       IF sy-subrc <> 0.
         ls_tree-typename = replace( val = lo_table_descr->absolute_name sub = '\TYPE=' with = '' ).
       ELSE.
@@ -4280,15 +4289,13 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_cl_name    TYPE string,
           lv_preferred  TYPE xfeld.
 
-    CLEAR mv_step.
-
-    READ TABLE io_debugger->mo_window->mt_source WITH KEY include = iv_program INTO DATA(ls_source).
+    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
     IF sy-subrc <> 0.
 
-      ls_source-source = cl_ci_source_include=>create( p_name = iv_program ).
-      lo_scan = NEW cl_ci_scan( p_include = ls_source-source ).
+      ls_prog-source = cl_ci_source_include=>create( p_name = iv_program ).
+      lo_scan = NEW cl_ci_scan( p_include = ls_prog-source ).
 
-      ls_source-include = iv_program.
+      ls_prog-include = iv_program.
 
       lo_statement = cl_cikzn_scan_iterator_factory=>get_statement_iterator( ciscan = lo_scan ).
       lo_procedure = cl_cikzn_scan_iterator_factory=>get_procedure_iterator( ciscan = lo_scan ).
@@ -4346,10 +4353,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
         IF lt_kw = 'ENDFORM' OR lt_kw = 'ENDMETHOD'.
           CLEAR: lv_eventtype, lv_eventname, ls_tabs.
           IF ls_param-param IS INITIAL. "No params - save empty row if no params
-            READ TABLE ls_source-t_params WITH KEY event = ls_param-event name = ls_param-name TRANSPORTING NO FIELDS.
+            READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = ls_param-event name = ls_param-name TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               CLEAR ls_param-type.
-              APPEND ls_param TO ls_source-t_params.
+              APPEND ls_param TO io_debugger->mo_window->ms_sources-t_params.
             ENDIF.
           ENDIF.
         ENDIF.
@@ -4414,11 +4421,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
             MOVE-CORRESPONDING ls_tabs TO ls_call_line.
             ls_call_line-index = lo_procedure->statement_index + 1.
             "methods in definition should be overwrited by Implementation section
-            READ TABLE ls_source-tt_calls_line WITH KEY eventname = ls_call_line-eventname eventtype = ls_call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
+            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_call_line-eventname eventtype = ls_call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
             IF sy-subrc = 0.
               <call_line> = ls_call_line.
             ELSE.
-              APPEND ls_call_line TO ls_source-tt_calls_line.
+              APPEND ls_call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
             ENDIF.
 
           ENDIF.
@@ -4434,7 +4441,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
               WHEN 'CLEAR' OR 'SORT' OR 'CONDENSE'."no logic
               WHEN 'FORM'.
                 IF ls_param-name IS NOT INITIAL.
-                  APPEND ls_param TO ls_source-t_params.
+                  APPEND ls_param TO io_debugger->mo_window->ms_sources-t_params.
                   CLEAR ls_param.
                 ENDIF.
             ENDCASE.
@@ -4447,7 +4454,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           ELSEIF token = 'CHANGING' OR token = 'EXPORTING' OR token = 'RETURNING'.
 
             IF ls_param-param IS NOT INITIAL.
-              APPEND ls_param TO ls_source-t_params.
+              APPEND ls_param TO io_debugger->mo_window->ms_sources-t_params.
               CLEAR: lv_type, lv_par, ls_param-param.
             ENDIF.
 
@@ -4461,7 +4468,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           ENDIF.
 
           IF lv_preferred = abap_true.
-            READ TABLE ls_source-t_params WITH KEY event = 'METHOD' name = ls_param-name param = token ASSIGNING FIELD-SYMBOL(<param>).
+            READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = 'METHOD' name = ls_param-name param = token ASSIGNING FIELD-SYMBOL(<param>).
             IF sy-subrc = 0.
               <param>-preferred = abap_true.
             ENDIF.
@@ -4474,7 +4481,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
             IF lt_kw = 'FORM' OR lt_kw = 'METHODS' OR lt_kw = 'CLASS-METHODS'.
               IF lv_par = abap_true AND lv_type IS INITIAL AND  token NE 'TYPE'.
 
-                APPEND ls_param TO ls_source-t_params.
+                APPEND ls_param TO io_debugger->mo_window->ms_sources-t_params.
                 CLEAR: lv_par, ls_param-param.
               ENDIF.
 
@@ -4489,7 +4496,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
               ENDIF.
               IF lv_par = abap_true AND lv_type = abap_true.
 
-                APPEND ls_param TO ls_source-t_params.
+                APPEND ls_param TO io_debugger->mo_window->ms_sources-t_params.
                 CLEAR: lv_type, lv_par, ls_param-param.
               ENDIF.
             ENDIF.
@@ -4791,7 +4798,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
         READ TABLE <s_token>-tt_calls INDEX 1 INTO ls_call.
         DATA(lv_index) = 0.
-        LOOP AT ls_source-t_params INTO ls_param WHERE event = ls_call-event AND name = ls_call-name .
+        LOOP AT io_debugger->mo_window->ms_sources-t_params INTO ls_param WHERE event = ls_call-event AND name = ls_call-name .
           ADD 1 TO lv_index.
           READ TABLE <s_token>-tt_calls INDEX lv_index ASSIGNING FIELD-SYMBOL(<call>).
           IF sy-subrc = 0.
@@ -4807,106 +4814,151 @@ CLASS lcl_source_parser IMPLEMENTATION.
       ENDLOOP.
 
       "clear value(var) to var.
-      LOOP AT ls_source-t_params ASSIGNING <param>.
+      LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING <param>.
         REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.
         REPLACE ALL OCCURRENCES OF ')' IN <param>-param WITH ''.
       ENDLOOP.
 
-      ls_source-scan = lo_scan.
-      ls_source-t_keywords = lt_tokens.
-      ls_source-t_calculated = lt_calculated.
-      ls_source-t_composed = lt_composed.
-      ls_source-tt_tabs = lt_tabs.
-      APPEND ls_source TO io_debugger->mo_window->mt_source.
+      APPEND LINES OF lt_calculated TO io_debugger->mo_window->ms_sources-t_calculated.
+      APPEND LINES OF lt_composed TO io_debugger->mo_window->ms_sources-t_composed.
 
-      "code execution scanner
-      DATA: lt_str LIKE  lo_scan->structures.
+      "ls_source-tt_tabs = lt_tabs.
+      DATA ls_line LIKE LINE OF io_debugger->mo_window->ms_sources-tt_progs.
+      ls_prog-scan = lo_scan.
+      ls_prog-t_keywords = lt_tokens.
+      APPEND ls_prog TO io_debugger->mo_window->ms_sources-tt_progs.
 
-      READ TABLE lo_scan->structures WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
-      IF sy-subrc = 0.
-        lt_str = lo_scan->structures.
-        DELETE lt_str WHERE type <> 'E'.
-        SORT lt_str BY stmnt_type ASCENDING.
-      ELSE.
-        CLEAR lv_max.
-        LOOP AT lo_scan->structures INTO DATA(ls_str) WHERE type <> 'P' AND type <> 'C' .
-          IF lv_max < ls_str-stmnt_to.
-            lv_max = ls_str-stmnt_to.
-            APPEND ls_str TO lt_str.
-          ENDIF.
-        ENDLOOP.
+      IF io_debugger->m_step IS INITIAL.
+        code_execution_scanner( iv_program = iv_program io_debugger = io_debugger ).
       ENDIF.
 
+    ENDIF.
 
-      DATA: lv_event     TYPE string,
-            lv_stack     TYPE i VALUE 1,
-            lv_statement TYPE i.
+  ENDMETHOD.
 
-      LOOP AT lt_str INTO ls_str.
+  METHOD code_execution_scanner.
+    "code execution scanner
+    DATA: lv_max       TYPE i,
+          ls_call_line TYPE lcl_window=>ts_calls_line.
 
-        READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
+    DATA: lv_event     TYPE string,
+          lv_stack     TYPE i,
+          lv_statement TYPE i,
+          lv_include   TYPE program.
 
-        IF ls_str-type = 'E'.
-          lv_statement = ls_str-stmnt_from + 1.
-          lv_event = ls_key-name.
-        ELSE.
-          lv_statement = ls_str-stmnt_from.
+    lv_stack =  iv_stack + 1.
+
+    lcl_source_parser=>parse_tokens( iv_program = iv_program io_debugger = io_debugger ).
+    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
+
+    DATA: lt_str LIKE ls_prog-scan->structures.
+
+    READ TABLE ls_prog-scan->structures WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
+    IF sy-subrc = 0.
+      lt_str = ls_prog-scan->structures.
+      DELETE lt_str WHERE type <> 'E'.
+      SORT lt_str BY stmnt_type ASCENDING.
+    ELSE.
+      CLEAR lv_max.
+      LOOP AT ls_prog-scan->structures INTO DATA(ls_str) WHERE type <> 'P' AND type <> 'C' .
+        IF lv_max < ls_str-stmnt_to.
+          lv_max = ls_str-stmnt_to.
+          APPEND ls_str TO lt_str.
         ENDIF.
+      ENDLOOP.
+    ENDIF.
 
-        WHILE lv_statement <= ls_str-stmnt_to.
-          READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO ls_key.
+    LOOP AT lt_str INTO ls_str.
 
-          IF ls_key-name = 'DATA' OR ls_key-name = 'CONSTANTS' OR sy-subrc <> 0.
-            ADD 1 TO lv_statement.
-            CONTINUE.
-          ENDIF.
-          ADD 1 TO mv_step.
-          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+      READ TABLE ls_prog-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
 
-          <step>-step = mv_step.
-          <step>-line = ls_key-line.
-          <step>-eventname = lv_event.
+      IF ls_str-type = 'E'.
+        lv_statement = ls_str-stmnt_from + 1.
+        lv_event = ls_key-name.
+      ELSE.
+        lv_statement = ls_str-stmnt_from.
+      ENDIF.
+
+      WHILE lv_statement <= ls_str-stmnt_to.
+        READ TABLE ls_prog-t_keywords WITH KEY index =  lv_statement INTO ls_key.
+
+        IF ls_key-name = 'DATA' OR ls_key-name = 'CONSTANTS' OR sy-subrc <> 0.
+          ADD 1 TO lv_statement.
+          CONTINUE.
+        ENDIF.
+        ADD 1 TO io_debugger->m_step.
+        APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+
+        <step>-step = io_debugger->m_step.
+        <step>-line = ls_key-line.
+        IF iv_evtype IS INITIAL.
           <step>-eventtype = 'EVENT'.
-          <step>-stacklevel = lv_stack.
-          <step>-program = iv_program.
-          <step>-include = iv_program.
+          <step>-eventname = lv_event.
+        ELSE.
+          <step>-eventtype = iv_evtype.
+          <step>-eventname = iv_evname.
+        ENDIF.
+        <step>-stacklevel = lv_stack.
+        <step>-program = iv_program.
+        <step>-include = iv_program.
 
-          IF ls_key-to_evname IS NOT INITIAL.
-            READ TABLE ls_source-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO ls_call_line.
+        IF ls_key-to_evname IS NOT INITIAL.
+
+          IF ls_key-to_evtype <> 'FUNCTION'.
+            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO ls_call_line.
 
             lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
                                              iv_event = ls_call_line-eventname
                                              iv_program = iv_program
                                              iv_stack   = lv_stack
                                              io_debugger = io_debugger ).
+          ELSE.
+            DATA: lv_func TYPE rs38l_fnam.
+            lv_func = ls_key-to_evname.
+            CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+              CHANGING
+                funcname            = lv_func
+                include             = lv_include
+              EXCEPTIONS
+                function_not_exists = 1
+                include_not_exists  = 2
+                group_not_exists    = 3
+                no_selections       = 4
+                no_function_include = 5
+                OTHERS              = 6.
+
+
+            code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
+
           ENDIF.
+        ENDIF.
 
-          ADD 1 TO lv_statement.
-        ENDWHILE.
+        ADD 1 TO lv_statement.
+      ENDWHILE.
 
-      ENDLOOP.
-
-    ENDIF.
+    ENDLOOP.
 
   ENDMETHOD.
 
+
   METHOD parse_call.
     DATA: lv_statement TYPE i,
-          lv_stack     TYPE i.
+          lv_stack     TYPE i,
+          lv_include   TYPE progname.
 
     lv_stack = iv_stack + 1.
     lv_statement = iv_index.
-    READ TABLE io_debugger->mo_window->mt_source WITH KEY include = iv_program INTO DATA(ls_source).
+    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
     DO.
-      READ TABLE ls_source-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
+      READ TABLE ls_prog-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
       IF ls_key-name = 'DATA'.
         ADD 1 TO lv_statement.
         CONTINUE.
       ENDIF.
-      ADD 1 TO mv_step.
+      ADD 1 TO io_debugger->m_step.
       APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
 
-      <step>-step = mv_step.
+      <step>-step = io_debugger->m_step.
       <step>-line = ls_key-line.
       <step>-eventname = iv_event.
       <step>-eventtype = 'FORM'.
@@ -4915,13 +4967,33 @@ CLASS lcl_source_parser IMPLEMENTATION.
       <step>-include = iv_program.
 
       IF ls_key-to_evname IS NOT INITIAL.
-        READ TABLE ls_source-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO DATA(ls_call_line).
+        IF ls_key-to_evtype <> 'FUNCTION'.
 
-        lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
-                                                 iv_event = ls_call_line-eventname
-                                                 iv_program = iv_program
-                                                 iv_stack   = lv_stack
-                                                 io_debugger = io_debugger ).
+          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO DATA(ls_call_line).
+
+          lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
+                                                   iv_event = ls_call_line-eventname
+                                                   iv_program = iv_program
+                                                   iv_stack   = lv_stack
+                                                   io_debugger = io_debugger ).
+
+        ELSE.
+          DATA: lv_func TYPE rs38l_fnam.
+          lv_func = ls_key-to_evname.
+          CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+            CHANGING
+              funcname            = lv_func
+              include             = lv_include
+            EXCEPTIONS
+              function_not_exists = 1
+              include_not_exists  = 2
+              group_not_exists    = 3
+              no_selections       = 4
+              no_function_include = 5
+              OTHERS              = 6.
+
+          code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
+        ENDIF.
 
       ENDIF.
 
@@ -5102,9 +5174,11 @@ CLASS lcl_mermaid IMPLEMENTATION.
           ls_prev_stack TYPE ts_line,
           lv_opened     TYPE i.
 
+    READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(ls_prog).
+
     LOOP AT mo_viewer->mt_steps INTO DATA(ls_step).
-      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = ls_step-include INTO DATA(ls_source).
-      READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO DATA(ls_keyword).
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = ls_step-include INTO ls_prog.
+      READ TABLE ls_prog-t_keywords WITH KEY line = ls_step-line INTO DATA(ls_keyword).
       LOOP AT ls_keyword-tt_calls INTO DATA(ls_call).
 
         READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_call-outer TRANSPORTING NO FIELDS.
@@ -5127,15 +5201,15 @@ CLASS lcl_mermaid IMPLEMENTATION.
     "collecting dependents variables
     LOOP AT lt_steps INTO ls_step.
 
-      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = ls_step-include INTO ls_source.
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = ls_step-include INTO ls_prog.
 
-      LOOP AT ls_source-t_calculated INTO DATA(ls_calculated) WHERE line = ls_step-line.
+      LOOP AT mo_viewer->mo_window->ms_sources-t_calculated INTO DATA(ls_calculated) WHERE line = ls_step-line.
         READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
           <selected>-name = ls_calculated-calculated.
         ENDIF.
-        LOOP AT ls_source-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line.
           READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
             APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
@@ -5143,7 +5217,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
           ENDIF.
         ENDLOOP.
         "adding returning values
-        LOOP AT ls_source-t_params INTO DATA(lv_param).
+        LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_param).
           READ TABLE mo_viewer->mt_selected_var WITH KEY name = lv_param-param TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
             APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
@@ -5152,7 +5226,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ENDLOOP.
       ENDLOOP.
 
-      READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO ls_keyword.
+      READ TABLE ls_prog-t_keywords WITH KEY line = ls_step-line INTO ls_keyword.
       LOOP AT ls_keyword-tt_calls INTO ls_call.
 
         READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_call-outer TRANSPORTING NO FIELDS.
@@ -5171,8 +5245,8 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
     LOOP AT  lt_steps INTO ls_step.
 
-      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = ls_step-include INTO ls_source.
-      READ TABLE ls_source-t_keywords WITH KEY line = ls_step-line INTO DATA(ls_key).
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = ls_step-include INTO ls_prog.
+      READ TABLE ls_prog-t_keywords WITH KEY line = ls_step-line INTO DATA(ls_key).
 
       CLEAR ls_line-cond.
       IF ls_key-name = 'IF' OR ls_key-name = 'ELSE' OR ls_key-name = 'ENDIF' OR ls_key-name = 'ELSEIF' OR
@@ -5189,9 +5263,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       ENDIF.
 
-      LOOP AT  ls_source-t_calculated INTO ls_calculated WHERE line = ls_step-line.
+      LOOP AT  mo_viewer->mo_window->ms_sources-t_calculated INTO ls_calculated WHERE line = ls_step-line.
 
-        LOOP AT ls_source-t_composed INTO ls_composed WHERE line = ls_step-line.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_composed INTO ls_composed WHERE line = ls_step-line.
           READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
             APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
@@ -5227,9 +5301,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
     LOOP AT lt_lines ASSIGNING <line>.
       DATA(lv_ind) = sy-tabix.
 
-      READ TABLE mo_viewer->mo_window->mt_source WITH KEY include = <line>-include INTO ls_source.
-      READ TABLE ls_source-t_keywords WITH KEY line = <line>-line INTO ls_keyword.
-      LOOP AT ls_source-scan->tokens FROM ls_keyword-from TO ls_keyword-to INTO DATA(ls_token).
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = <line>-include INTO ls_prog.
+      READ TABLE ls_prog-t_keywords WITH KEY line = <line>-line INTO ls_keyword.
+      LOOP AT ls_prog-scan->tokens FROM ls_keyword-from TO ls_keyword-to INTO DATA(ls_token).
         IF ls_token-str = 'USING' OR ls_token-str = 'EXPORTING' OR ls_token-str = 'IMPORTING' OR ls_token-str = 'CHANGING'.
           EXIT.
         ENDIF.
@@ -5408,7 +5482,6 @@ CLASS lcl_mermaid IMPLEMENTATION.
         IF ls_line-arrow IS NOT INITIAL.
           lv_mm_string = |{ lv_mm_string }{ lv_ind }{ lv_box_s }"{ ls_line-code }"{ lv_box_e }\n|.
           ls_prev_stack = ls_line.
-          "CONTINUE.
         ENDIF.
 
         IF strlen( ls_line-code ) > 50.
