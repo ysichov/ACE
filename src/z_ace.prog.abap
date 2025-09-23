@@ -1669,6 +1669,9 @@ CLASS lcl_window IMPLEMENTATION.
 
       WHEN 'CODE'.
         m_zcode = m_zcode BIT-XOR c_mask.
+        clear: mo_viewer->mt_steps, mo_viewer->m_step.
+        read table mo_viewer->mo_window->ms_sources-tt_progs index 1 into data(ls_source).
+        lcl_source_parser=>code_execution_scanner( iv_program = ls_source-include io_debugger = mo_viewer ).
         IF m_zcode IS INITIAL.
           mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
         ELSE.
