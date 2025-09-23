@@ -1479,6 +1479,7 @@ CLASS lcl_window IMPLEMENTATION.
      ( COND #( WHEN lcl_appl=>is_mermaid_active = abap_true
       THEN VALUE #( function = 'DIAGRAM' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagram' ) ) )
      ( function = 'SMART' icon = CONV #( icon_wizard ) quickinfo = 'Calculations sequence' text = 'Calculations Flow' )
+     ( function = 'CODE' icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
      "( function = 'COVERAGE' icon = CONV #( icon_wizard ) quickinfo = 'Coverage ' text = 'Coverage' )
      ( butn_type = 3  )
      ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
@@ -1662,9 +1663,17 @@ CLASS lcl_window IMPLEMENTATION.
       WHEN 'SMART'.
         lo_mermaid = NEW lcl_mermaid( io_debugger = mo_viewer iv_type =  'SMART' ).
 
-      WHEN 'COVERAGE'.
-        show_coverage( ).
-        mo_viewer->show( ).
+*      WHEN 'COVERAGE'.
+*        show_coverage( ).
+*        mo_viewer->show( ).
+
+      WHEN 'CODE'.
+        m_zcode = m_zcode BIT-XOR c_mask.
+        IF m_zcode IS INITIAL.
+          mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
+        ELSE.
+          mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Only Z code' ).
+        ENDIF.
 
       WHEN 'INFO'.
         DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
@@ -4917,21 +4926,23 @@ CLASS lcl_source_parser IMPLEMENTATION.
           ELSE.
             DATA: lv_func TYPE rs38l_fnam.
             lv_func = ls_key-to_evname.
-            CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
-              CHANGING
-                funcname            = lv_func
-                include             = lv_include
-              EXCEPTIONS
-                function_not_exists = 1
-                include_not_exists  = 2
-                group_not_exists    = 3
-                no_selections       = 4
-                no_function_include = 5
-                OTHERS              = 6.
+            IF io_debugger->mo_window->m_zcode IS INITIAL OR
+             ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( lv_func+0(1) = 'Z' OR lv_func+0(1) = 'Y' ) ) .
 
+              CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+                CHANGING
+                  funcname            = lv_func
+                  include             = lv_include
+                EXCEPTIONS
+                  function_not_exists = 1
+                  include_not_exists  = 2
+                  group_not_exists    = 3
+                  no_selections       = 4
+                  no_function_include = 5
+                  OTHERS              = 6.
 
-            code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
-
+              code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
+            ENDIF.
           ENDIF.
         ENDIF.
 
@@ -4983,19 +4994,24 @@ CLASS lcl_source_parser IMPLEMENTATION.
         ELSE.
           DATA: lv_func TYPE rs38l_fnam.
           lv_func = ls_key-to_evname.
-          CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
-            CHANGING
-              funcname            = lv_func
-              include             = lv_include
-            EXCEPTIONS
-              function_not_exists = 1
-              include_not_exists  = 2
-              group_not_exists    = 3
-              no_selections       = 4
-              no_function_include = 5
-              OTHERS              = 6.
+          IF io_debugger->mo_window->m_zcode IS INITIAL OR
+            ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( lv_func+0(1) = 'Z' OR lv_func+0(1) = 'Y' ) ) .
 
-          code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
+
+            CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+              CHANGING
+                funcname            = lv_func
+                include             = lv_include
+              EXCEPTIONS
+                function_not_exists = 1
+                include_not_exists  = 2
+                group_not_exists    = 3
+                no_selections       = 4
+                no_function_include = 5
+                OTHERS              = 6.
+
+            code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
+          ENDIF.
         ENDIF.
 
       ENDIF.
