@@ -359,7 +359,7 @@ CLASS lcl_source_parser DEFINITION.
   PUBLIC SECTION.
 
     "CLASS-DATA: mv_step TYPE i.
-    CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace,
+    CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace iv_class TYPE string OPTIONAL,
       parse_call IMPORTING iv_program TYPE program iv_index TYPE i iv_stack TYPE i iv_event TYPE string io_debugger TYPE REF TO lcl_ace,
       code_execution_scanner IMPORTING iv_program TYPE program iv_evname TYPE string OPTIONAL iv_evtype TYPE string OPTIONAL
         iv_stack TYPE i OPTIONAL io_debugger TYPE REF TO lcl_ace.
@@ -1051,9 +1051,16 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
              composing TYPE string,
            END OF ts_composing,
 
+           BEGIN OF ts_refvar,
+             program TYPE string,
+             name    TYPE string,
+             class   TYPE string,
+           END OF ts_refvar,
+
            tt_kword      TYPE STANDARD TABLE OF ts_kword WITH EMPTY KEY,
            tt_calculated TYPE STANDARD TABLE OF ts_calculated WITH EMPTY KEY,
            tt_composed   TYPE STANDARD TABLE OF ts_composing WITH EMPTY KEY,
+           tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY,
 
            BEGIN OF ts_params,
              class     TYPE string,
@@ -1088,6 +1095,7 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
              t_params      TYPE tt_params,
              tt_tabs       TYPE tt_tabs,
              tt_calls_line TYPE tt_calls_line,
+             tt_refvar     TYPE tt_refvar,
            END OF ts_source,
 
            BEGIN OF ts_locals,
@@ -4420,12 +4428,31 @@ CLASS lcl_source_parser IMPLEMENTATION.
               ls_call-name = lt_split[ 2 ].
             ENDIF.
 
+            IF ls_call-class = 'ME' AND iv_class IS NOT INITIAL.
+              ls_call-class  =  iv_class.
+            ENDIF.
+
             ls_token-to_evname = ls_call-name.
             ls_token-to_evtype = ls_call-event = 'METHOD'.
             IF lv_new = abap_true.
               ls_call-class = ls_call-name.
               ls_call-name =  ls_token-to_evname = 'CONSTRUCTOR'.
             ENDIF.
+            IF lv_new = abap_true.
+              READ TABLE lt_calculated WITH KEY line = l_token-row INTO DATA(ls_calc).
+              IF sy-subrc = 0.
+                APPEND INITIAL LINE TO  io_debugger->mo_window->ms_sources-tt_refvar ASSIGNING FIELD-SYMBOL(<refvar>).
+                <refvar>-name = ls_calc-calculated.
+                <refvar>-class = ls_call-class.
+                ls_call-class = ls_call-class.
+              ENDIF.
+            ENDIF.
+
+            READ TABLE io_debugger->mo_window->ms_sources-tt_refvar WITH KEY name = ls_call-class INTO DATA(ls_refvar).
+            IF sy-subrc = 0.
+              ls_call-class = ls_refvar-class.
+            ENDIF.
+
             ls_token-to_class = ls_call-class.
           ENDIF.
 
@@ -4557,6 +4584,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
           IF token = 'NEW'.
             lv_new = abap_true.
+
           ENDIF.
 
           FIND FIRST OCCURRENCE OF '->' IN token.
@@ -4874,9 +4902,9 @@ CLASS lcl_source_parser IMPLEMENTATION.
   METHOD code_execution_scanner.
     "code execution scanner
     DATA: lv_max       TYPE i,
-          ls_call_line TYPE lcl_window=>ts_calls_line.
-
-    DATA: lv_event     TYPE string,
+          ls_call_line TYPE lcl_window=>ts_calls_line,
+          lv_program   TYPE program,
+          lv_event     TYPE string,
           lv_stack     TYPE i,
           lv_statement TYPE i,
           lv_include   TYPE program.
@@ -4888,7 +4916,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
     IF sy-subrc <> 0.
       RETURN.
     ENDIF.
-
 
     DATA: lt_str LIKE ls_prog-scan->structures.
 
@@ -4973,9 +5000,20 @@ CLASS lcl_source_parser IMPLEMENTATION.
               code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
             ENDIF.
           ELSE. "Method call
-            ls_key-to_class = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
-            ls_key-to_class = ls_key-to_class && 'CS'.
-            lcl_source_parser=>parse_tokens( iv_program = CONV #( ls_key-to_class ) io_debugger = io_debugger ).
+            lv_program = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ) && 'CS'.
+            IF io_debugger->mo_window->m_zcode IS INITIAL OR
+             ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( lv_program+0(1) = 'Z' OR lv_program+0(1) = 'Y' ) ) .
+
+              lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
+              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = ls_key-to_class eventtype = 'METHOD' eventname = ls_key-to_evname INTO ls_call_line.
+              IF sy-subrc = 0.
+                lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
+                                      iv_event = ls_call_line-eventname
+                                      iv_program = lv_program
+                                      iv_stack   = lv_stack
+                                      io_debugger = io_debugger ).
+              ENDIF.
+            ENDIF.
           ENDIF.
         ENDIF.
 
@@ -4990,7 +5028,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
   METHOD parse_call.
     DATA: lv_statement TYPE i,
           lv_stack     TYPE i,
-          lv_include   TYPE progname.
+          lv_include   TYPE progname,
+          lv_program   TYPE program.
 
     lv_stack = iv_stack + 1.
     lv_statement = iv_index.
@@ -5030,7 +5069,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
           IF io_debugger->mo_window->m_zcode IS INITIAL OR
             ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( lv_func+0(1) = 'Z' OR lv_func+0(1) = 'Y' ) ) .
 
-
             CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
               CHANGING
                 funcname            = lv_func
@@ -5044,11 +5082,23 @@ CLASS lcl_source_parser IMPLEMENTATION.
                 OTHERS              = 6.
 
             code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
-          ELSE. "METHOD CALL
-            ls_key-to_class = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
-            ls_key-to_class = ls_key-to_class && 'CS'.
-            lcl_source_parser=>parse_tokens( iv_program = CONV #( ls_key-to_class ) io_debugger = io_debugger ).
           ENDIF.
+        ELSE. "METHOD CALL
+          lv_program = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ) && 'CS'.
+          IF io_debugger->mo_window->m_zcode IS INITIAL OR
+           ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( lv_program+0(1) = 'Z' OR lv_program+0(1) = 'Y' ) ) .
+
+
+            lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
+            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = ls_key-to_class eventtype = 'METHOD' eventname = ls_key-to_evname INTO ls_call_line.
+            IF sy-subrc = 0.
+              lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
+                                    iv_event = ls_call_line-eventname
+                                    iv_program = lv_program
+                                    iv_stack   = lv_stack
+                                    io_debugger = io_debugger ).
+            ENDIF.
+         ENDIF.
         ENDIF.
 
       ENDIF.
