@@ -1278,11 +1278,15 @@ CLASS lcl_ace IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD show.
-
-    mo_window->m_prg-include = gv_prog.
+    IF  mo_window->m_prg-include IS INITIAL.
+      mo_window->m_prg-include = gv_prog.
+    ENDIF.
     mo_window->set_program( CONV #( mo_window->m_prg-include ) ).
-    "mo_window->set_program_line( mo_window->m_prg-line ).
+    mo_window->show_coverage( ).
+    mo_window->set_program_line( mo_window->m_prg-line ).
 
+    mo_window->show_stack( ).
+    mo_tree_local->clear( ).
     mo_tree_local->main_node_key = mo_tree_local->add_node( iv_name = CONV #( gv_prog ) iv_icon = CONV #( icon_folder ) ).
 
     mo_tree_local->add_node( iv_name = 'Local Classes' iv_icon = CONV #( icon_folder ) iv_rel = mo_tree_local->main_node_key ).
@@ -1320,12 +1324,8 @@ CLASS lcl_event_handler IMPLEMENTATION.
 
     READ TABLE mo_viewer->mo_window->mt_stack INDEX row INTO DATA(ls_stack).
     "only for coverage stack selection should work.
+    "CHECK mo_viewer->mo_window->mt_coverage IS NOT INITIAL.
 
-    CHECK mo_viewer->mo_window->mt_coverage IS NOT INITIAL.
-
-    "check if we have recorded steps for choosen stack level
-    READ TABLE  mo_viewer->mt_steps WITH KEY program = ls_stack-program include = ls_stack-include TRANSPORTING NO FIELDS.
-    CHECK sy-subrc = 0.
 
     MOVE-CORRESPONDING ls_stack TO mo_viewer->mo_window->m_prg.
     MOVE-CORRESPONDING ls_stack TO mo_viewer->ms_stack.
@@ -1395,7 +1395,7 @@ CLASS lcl_window IMPLEMENTATION.
     CREATE OBJECT mo_splitter
       EXPORTING
         parent  = mo_box
-        rows    = 2
+        rows    = 3
         columns = 1
       EXCEPTIONS
         OTHERS  = 1.
@@ -1413,6 +1413,13 @@ CLASS lcl_window IMPLEMENTATION.
         column    = 1
       RECEIVING
         container = mo_toolbar_container ).
+
+    mo_splitter->get_container(
+      EXPORTING
+        row       = 3
+        column    = 1
+      RECEIVING
+        container = mo_tables_container ).
 
     mo_splitter->set_row_height( id = 1 height = '3' ).
     mo_splitter->set_row_height( id = 2 height = '70' ).
@@ -1571,8 +1578,13 @@ CLASS lcl_window IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD show_stack.
-    RETURN.
+
     IF mo_salv_stack IS INITIAL.
+
+*      LOOP AT ms_sources-tt_progs INTO DATA(ls_prog).
+*        APPEND INITIAL LINE TO mt_stack ASSIGNING FIELD-SYMBOL(<stack>).
+*        MOVE-CORRESPONDING ls_prog TO <stack>.
+*      ENDLOOP.
 
       cl_salv_table=>factory(
         EXPORTING
@@ -1635,8 +1647,8 @@ CLASS lcl_window IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      APPEND INITIAL LINE TO mt_coverage ASSIGNING FIELD-SYMBOL(<fs_coverage>).
-      <fs_coverage>-line = ls_step-line.
+      "APPEND INITIAL LINE TO mt_coverage ASSIGNING FIELD-SYMBOL(<fs_coverage>).
+      "<fs_coverage>-line = ls_step-line.
     ENDLOOP.
 
     SORT mt_coverage.
@@ -4963,7 +4975,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           ELSE. "Method call
             ls_key-to_class = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
             ls_key-to_class = ls_key-to_class && 'CS'.
-            lcl_source_parser=>parse_tokens( iv_program = conv #( ls_key-to_class ) io_debugger = io_debugger ).
+            lcl_source_parser=>parse_tokens( iv_program = CONV #( ls_key-to_class ) io_debugger = io_debugger ).
           ENDIF.
         ENDIF.
 
@@ -5035,7 +5047,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           ELSE. "METHOD CALL
             ls_key-to_class = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
             ls_key-to_class = ls_key-to_class && 'CS'.
-            lcl_source_parser=>parse_tokens( iv_program = conv #( ls_key-to_class ) io_debugger = io_debugger ).
+            lcl_source_parser=>parse_tokens( iv_program = CONV #( ls_key-to_class ) io_debugger = io_debugger ).
           ENDIF.
         ENDIF.
 
@@ -5285,7 +5297,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
     DELETE ADJACENT DUPLICATES FROM mo_viewer->mt_selected_var.
 
     "collecting watchpoints
-    CLEAR mo_viewer->mo_window->mt_coverage.
+    "CLEAR mo_viewer->mo_window->mt_coverage.
 
     LOOP AT  lt_steps INTO ls_step.
 
