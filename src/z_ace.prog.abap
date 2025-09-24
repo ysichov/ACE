@@ -360,7 +360,7 @@ CLASS lcl_source_parser DEFINITION.
 
     "CLASS-DATA: mv_step TYPE i.
     CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace iv_class TYPE string OPTIONAL,
-      parse_call IMPORTING iv_program TYPE program iv_index TYPE i iv_stack TYPE i iv_event TYPE string io_debugger TYPE REF TO lcl_ace,
+      parse_call IMPORTING iv_program TYPE program iv_index TYPE i iv_stack TYPE i iv_ev_name TYPE string iv_ev_type TYPE string io_debugger TYPE REF TO lcl_ace,
       code_execution_scanner IMPORTING iv_program TYPE program iv_evname TYPE string OPTIONAL iv_evtype TYPE string OPTIONAL
         iv_stack TYPE i OPTIONAL io_debugger TYPE REF TO lcl_ace.
 
@@ -4986,7 +4986,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
             READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO ls_call_line.
             IF sy-subrc = 0.
               lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
-                                               iv_event = ls_call_line-eventname
+                                               iv_ev_name = ls_call_line-eventname
+                                               iv_ev_type = ls_call_line-eventtype
                                                iv_program = iv_program
                                                iv_stack   = lv_stack
                                                io_debugger = io_debugger ).
@@ -5046,7 +5047,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
               READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = ls_key-to_class eventtype = 'METHOD' eventname = ls_key-to_evname INTO ls_call_line.
               IF sy-subrc = 0.
                 lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
-                                      iv_event = ls_call_line-eventname
+                                      iv_ev_name = ls_call_line-eventname
+                                      iv_ev_type = ls_call_line-eventtype
                                       iv_program = lv_program
                                       iv_stack   = lv_stack
                                       io_debugger = io_debugger ).
@@ -5084,8 +5086,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
       <step>-step = io_debugger->m_step.
       <step>-line = ls_key-line.
-      <step>-eventname = iv_event.
-      <step>-eventtype = 'FORM'.
+      <step>-eventname = iv_ev_name.
+      <step>-eventtype = iv_ev_type.
       <step>-stacklevel = lv_stack.
       <step>-program = iv_program.
       <step>-include = iv_program.
@@ -5096,7 +5098,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
           READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO DATA(ls_call_line).
           IF sy-subrc = 0.
             lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
-                                                     iv_event = ls_call_line-eventname
+                                                     iv_ev_name = ls_call_line-eventname
+                                                     iv_ev_type = ls_call_line-eventtype
                                                      iv_program = iv_program
                                                      iv_stack   = lv_stack
                                                      io_debugger = io_debugger ).
@@ -5157,7 +5160,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
             READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = ls_key-to_class eventtype = 'METHOD' eventname = ls_key-to_evname INTO ls_call_line.
             IF sy-subrc = 0.
               lcl_source_parser=>parse_call( EXPORTING iv_index = ls_call_line-index
-                                    iv_event = ls_call_line-eventname
+                                    iv_ev_name = ls_call_line-eventname
+                                    iv_ev_type = ls_call_line-eventtype
                                     iv_program = lv_program
                                     iv_stack   = lv_stack
                                     io_debugger = io_debugger ).
