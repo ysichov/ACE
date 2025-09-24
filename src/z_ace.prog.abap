@@ -1011,6 +1011,7 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
            END OF ts_table,
 
            BEGIN OF ts_calls,
+             class TYPE string,
              event TYPE string,
              type  TYPE string,
              name  TYPE string,
@@ -1034,6 +1035,7 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
              from      TYPE i,
              to        TYPE i,
              tt_calls  TYPE tt_calls,
+             to_class  type string,
              to_evtype TYPE string,
              to_evname TYPE string,
              "to_prog   type string,
@@ -1669,8 +1671,8 @@ CLASS lcl_window IMPLEMENTATION.
 
       WHEN 'CODE'.
         m_zcode = m_zcode BIT-XOR c_mask.
-        clear: mo_viewer->mt_steps, mo_viewer->m_step.
-        read table mo_viewer->mo_window->ms_sources-tt_progs index 1 into data(ls_source).
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(ls_source).
         lcl_source_parser=>code_execution_scanner( iv_program = ls_source-include io_debugger = mo_viewer ).
         IF m_zcode IS INITIAL.
           mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
@@ -4395,17 +4397,21 @@ CLASS lcl_source_parser IMPLEMENTATION.
             FIND FIRST OCCURRENCE OF '->' IN  ls_call-name.
             IF sy-subrc = 0.
               SPLIT ls_call-name  AT '->' INTO TABLE lt_split.
+              ls_call-class = lt_split[ 1 ].
               ls_call-name = lt_split[ 2 ].
             ENDIF.
 
             FIND FIRST OCCURRENCE OF '=>' IN  ls_call-name.
             IF sy-subrc = 0.
               SPLIT ls_call-name  AT '=>' INTO TABLE lt_split.
+              ls_call-class = lt_split[ 1 ].
               ls_call-name = lt_split[ 2 ].
             ENDIF.
+            ls_token-to_class = ls_call-class.
             ls_token-to_evname = ls_call-name.
             ls_token-to_evtype = ls_call-event = 'METHOD'.
             IF lv_new = abap_true.
+              ls_call-class = ls_call-name.
               ls_call-name =  ls_token-to_evname = 'CONSTRUCTOR'.
             ENDIF.
           ENDIF.
@@ -4444,6 +4450,9 @@ CLASS lcl_source_parser IMPLEMENTATION.
           ENDIF.
 
           IF token = ''.
+            IF ls_call IS NOT INITIAL.
+              APPEND ls_call TO ls_token-tt_calls.
+            ENDIF.
             CLEAR ls_call.
             CASE lt_kw.
               WHEN 'COMPUTE'.
@@ -4860,9 +4869,12 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_include   TYPE program.
 
     lv_stack =  iv_stack + 1.
+    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO data(ls_prog).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
 
     lcl_source_parser=>parse_tokens( iv_program = iv_program io_debugger = io_debugger ).
-    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
 
     DATA: lt_str LIKE ls_prog-scan->structures.
 
@@ -4983,7 +4995,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       <step>-include = iv_program.
 
       IF ls_key-to_evname IS NOT INITIAL.
-        IF ls_key-to_evtype <> 'FUNCTION'.
+        IF ls_key-to_evtype = 'FORM'.
 
           READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO DATA(ls_call_line).
           IF sy-subrc = 0.
@@ -4994,7 +5006,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
                                                      io_debugger = io_debugger ).
           ENDIF.
 
-        ELSE.
+        ELSEIF ls_key-to_evtype <> 'FUNCTION'.
           DATA: lv_func TYPE rs38l_fnam.
           lv_func = ls_key-to_evname.
           IF io_debugger->mo_window->m_zcode IS INITIAL OR
@@ -5014,6 +5026,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
                 OTHERS              = 6.
 
             code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
+          ELSE. "METHOD CALL
           ENDIF.
         ENDIF.
 
