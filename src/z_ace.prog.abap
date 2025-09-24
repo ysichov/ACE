@@ -1528,27 +1528,27 @@ CLASS lcl_window IMPLEMENTATION.
     <line> = iv_line.
     mo_code_viewer->set_marker( EXPORTING marker_number = 7 marker_lines = lt_lines ).
 
-    "breakpoints
-    LOOP AT mt_breaks INTO DATA(ls_break) WHERE inclnamesrc = m_prg-include.
-      APPEND INITIAL LINE TO lt_lines ASSIGNING <line>.
-      <line> = ls_break-linesrc.
-    ENDLOOP.
-    mo_code_viewer->set_marker( EXPORTING marker_number = 9 marker_lines = lt_lines ).
-
-    "watchpoints or coverage
-    CLEAR lt_lines.
-    LOOP AT mt_watch INTO DATA(ls_watch).
-      APPEND INITIAL LINE TO lt_lines ASSIGNING <line>.
-      <line> = ls_watch-line.
-    ENDLOOP.
-
-    "coverage
-    LOOP AT mt_coverage INTO DATA(ls_coverage).
-      APPEND INITIAL LINE TO lt_lines ASSIGNING <line>.
-      <line> = ls_coverage-line.
-    ENDLOOP.
-
-    mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lt_lines ).
+*    "breakpoints
+*    LOOP AT mt_breaks INTO DATA(ls_break) WHERE inclnamesrc = m_prg-include.
+*      APPEND INITIAL LINE TO lt_lines ASSIGNING <line>.
+*      <line> = ls_break-linesrc.
+*    ENDLOOP.
+*    mo_code_viewer->set_marker( EXPORTING marker_number = 9 marker_lines = lt_lines ).
+*
+*    "watchpoints or coverage
+*    CLEAR lt_lines.
+*    LOOP AT mt_watch INTO DATA(ls_watch).
+*      APPEND INITIAL LINE TO lt_lines ASSIGNING <line>.
+*      <line> = ls_watch-line.
+*    ENDLOOP.
+*
+*    "coverage
+*    LOOP AT mt_coverage INTO DATA(ls_coverage).
+*      APPEND INITIAL LINE TO lt_lines ASSIGNING <line>.
+*      <line> = ls_coverage-line.
+*    ENDLOOP.
+*
+*    mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lt_lines ).
 
     mo_code_viewer->select_lines( EXPORTING from_line = iv_line to_line = iv_line ).
 
