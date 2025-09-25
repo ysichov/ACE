@@ -5025,17 +5025,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
              ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( ls_key-to_class+0(1) = 'Z' OR ls_key-to_class+0(1) = 'Y' ) )
               OR ls_key-to_prog IS NOT INITIAL.
 
-              IF ls_key-to_prog IS INITIAL.
-                lv_prefix = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
-                lv_program = lv_prefix && 'CU'.
-                lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
-
-                lv_program = lv_prefix && 'CI'.
-                lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
-
-                lv_program = lv_prefix && 'CO'.
-                lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
-
                 DATA: lv_cl_key TYPE seoclskey,
                       lt_incl   TYPE seop_methods_w_include.
                 lv_cl_key = ls_key-to_class.
@@ -5047,6 +5036,19 @@ CLASS lcl_source_parser IMPLEMENTATION.
                   EXCEPTIONS
                     _internal_class_not_existing = 1
                     OTHERS                       = 2.
+
+              IF lines( lt_incl ) > 0.
+                lv_prefix = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
+                lv_program = lv_prefix && 'CU'.
+                lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
+
+                lv_program = lv_prefix && 'CI'.
+                lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
+
+                lv_program = lv_prefix && 'CO'.
+                lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
+
+
 
                 READ TABLE lt_incl[] WITH KEY cpdkey-cpdname = ls_key-to_evname INTO DATA(ls_incl).                        .
                 IF sy-subrc = 0.
@@ -5143,7 +5145,18 @@ CLASS lcl_source_parser IMPLEMENTATION.
            ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( ls_key-to_class+0(1) = 'Z' OR ls_key-to_class+0(1) = 'Y' ) )
              OR ls_key-to_prog IS NOT INITIAL.
 
-            IF  ls_key-to_prog IS INITIAL.
+  DATA: lv_cl_key TYPE seoclskey,
+                    lt_incl   TYPE seop_methods_w_include.
+              lv_cl_key = ls_key-to_class.
+              CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+                EXPORTING
+                  clskey                       = lv_cl_key
+                IMPORTING
+                  includes                     = lt_incl
+                EXCEPTIONS
+                  _internal_class_not_existing = 1
+                  OTHERS                       = 2.
+            IF  lines( lt_incl ) > 0.
 
               lv_prefix = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
               lv_program = lv_prefix && 'CU'.
@@ -5155,17 +5168,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
               lv_program = lv_prefix && 'CO'.
               lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
 
-              DATA: lv_cl_key TYPE seoclskey,
-                    lt_incl   TYPE seop_methods_w_include.
-              lv_cl_key = ls_key-to_class.
-              CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-                EXPORTING
-                  clskey                       = lv_cl_key
-                IMPORTING
-                  includes                     = lt_incl
-                EXCEPTIONS
-                  _internal_class_not_existing = 1
-                  OTHERS                       = 2.
+
 
               READ TABLE lt_incl[] WITH KEY cpdkey-cpdname = ls_key-to_evname INTO DATA(ls_incl).                        .
               IF sy-subrc = 0.
