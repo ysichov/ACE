@@ -4968,7 +4968,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       WHILE lv_statement <= ls_str-stmnt_to.
         READ TABLE ls_prog-t_keywords WITH KEY index =  lv_statement INTO ls_key.
 
-        IF ls_key-name = 'DATA' OR ls_key-name = 'CONSTANTS' OR sy-subrc <> 0.
+        IF ls_key-name = 'DATA' OR ls_key-name = 'CONSTANTS' OR ls_key-name is INITIAL OR sy-subrc <> 0.
           ADD 1 TO lv_statement.
           CONTINUE.
         ENDIF.
@@ -5092,7 +5092,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
     DO.
       READ TABLE ls_prog-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
-      IF ls_key-name = 'DATA'.
+      IF ls_key-name = 'DATA' or ls_key-name = 'CONSTANTS' OR ls_key-name is INITIAL.
         ADD 1 TO lv_statement.
         CONTINUE.
       ENDIF.
