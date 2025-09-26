@@ -358,7 +358,7 @@ CLASS lcl_source_parser DEFINITION.
   PUBLIC SECTION.
 
     "CLASS-DATA: mv_step TYPE i.
-    CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace iv_class TYPE string OPTIONAL,
+    CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace iv_class TYPE string OPTIONAL iv_evname type string OPTIONAL,
       parse_call IMPORTING iv_program TYPE program iv_index TYPE i iv_stack TYPE i iv_ev_name TYPE string iv_ev_type TYPE string io_debugger TYPE REF TO lcl_ace,
       code_execution_scanner IMPORTING iv_program TYPE program iv_evname TYPE string OPTIONAL iv_evtype TYPE string OPTIONAL
         iv_stack TYPE i OPTIONAL io_debugger TYPE REF TO lcl_ace.
@@ -4328,11 +4328,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
     IF sy-subrc <> 0.
-      IF iv_class IS NOT INITIAL.
-        lv_class = abap_true.
-        ls_call_line-class = ls_param-class = iv_class.
-
-      ENDIF.
       ls_prog-source = cl_ci_source_include=>create( p_name = iv_program ).
       lo_scan = NEW cl_ci_scan( p_include = ls_prog-source ).
 
@@ -4340,6 +4335,17 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
       lo_statement = cl_cikzn_scan_iterator_factory=>get_statement_iterator( ciscan = lo_scan ).
       lo_procedure = cl_cikzn_scan_iterator_factory=>get_procedure_iterator( ciscan = lo_scan ).
+
+
+      "methods in definition should be overwritten by Implementation section
+      IF iv_class IS NOT INITIAL.
+      lv_class = abap_true.
+       ls_call_line-class = ls_param-class = iv_class.
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = iv_evname eventtype = 'METHOD' ASSIGNING FIELD-SYMBOL(<call_line>).
+        IF sy-subrc = 0.
+          <call_line>-index = lo_procedure->statement_index + 1.
+        ENDIF.
+      ENDIF.
 
       TRY.
           lo_statement->next( ).
@@ -4363,9 +4369,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
           CATCH cx_scan_iterator_reached_end.
         ENDTRY.
         lt_kw = lo_procedure->get_keyword( ).
-
-        "ENDIF.
-
 
         ls_token-name = lt_kw.
         ls_token-index = lo_procedure->statement_index.
@@ -4492,8 +4495,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
             MOVE-CORRESPONDING ls_tabs TO ls_call_line.
             ls_call_line-index = lo_procedure->statement_index + 1.
-            "methods in definition should be overwrited by Implementation section
-            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_call_line-eventname eventtype = ls_call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
+            "methods in definition should be overwritten by Implementation section
+            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_call_line-eventname eventtype = ls_call_line-eventtype ASSIGNING <call_line>.
             IF sy-subrc = 0.
               <call_line> = ls_call_line.
             ELSE.
@@ -4968,7 +4971,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       WHILE lv_statement <= ls_str-stmnt_to.
         READ TABLE ls_prog-t_keywords WITH KEY index =  lv_statement INTO ls_key.
 
-        IF ls_key-name = 'DATA' OR ls_key-name = 'CONSTANTS' OR ls_key-name is INITIAL OR sy-subrc <> 0.
+        IF ls_key-name = 'DATA' OR ls_key-name = 'TYPES' OR ls_key-name = 'CONSTANTS' OR ls_key-name IS INITIAL OR sy-subrc <> 0.
           ADD 1 TO lv_statement.
           CONTINUE.
         ENDIF.
@@ -5025,17 +5028,17 @@ CLASS lcl_source_parser IMPLEMENTATION.
              ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( ls_key-to_class+0(1) = 'Z' OR ls_key-to_class+0(1) = 'Y' ) )
               OR ls_key-to_prog IS NOT INITIAL.
 
-                DATA: lv_cl_key TYPE seoclskey,
-                      lt_incl   TYPE seop_methods_w_include.
-                lv_cl_key = ls_key-to_class.
-                CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-                  EXPORTING
-                    clskey                       = lv_cl_key
-                  IMPORTING
-                    includes                     = lt_incl
-                  EXCEPTIONS
-                    _internal_class_not_existing = 1
-                    OTHERS                       = 2.
+              DATA: lv_cl_key TYPE seoclskey,
+                    lt_incl   TYPE seop_methods_w_include.
+              lv_cl_key = ls_key-to_class.
+              CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+                EXPORTING
+                  clskey                       = lv_cl_key
+                IMPORTING
+                  includes                     = lt_incl
+                EXCEPTIONS
+                  _internal_class_not_existing = 1
+                  OTHERS                       = 2.
 
               IF lines( lt_incl ) > 0.
                 lv_prefix = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
@@ -5048,12 +5051,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
                 lv_program = lv_prefix && 'CO'.
                 lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
 
-
-
                 READ TABLE lt_incl[] WITH KEY cpdkey-cpdname = ls_key-to_evname INTO DATA(ls_incl).                        .
                 IF sy-subrc = 0.
                   lv_program = ls_incl-incname.
-                  lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
+                  lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class iv_evname = iv_evname ).
                 ENDIF.
               ELSE.
                 lv_program = iv_program.
@@ -5092,7 +5093,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
     DO.
       READ TABLE ls_prog-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
-      IF ls_key-name = 'DATA' or ls_key-name = 'CONSTANTS' OR ls_key-name is INITIAL.
+      IF ls_key-name = 'DATA' OR ls_key-name = 'TYPES' OR ls_key-name = 'CONSTANTS' OR ls_key-name IS INITIAL.
         ADD 1 TO lv_statement.
         CONTINUE.
       ENDIF.
@@ -5145,17 +5146,17 @@ CLASS lcl_source_parser IMPLEMENTATION.
            ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( ls_key-to_class+0(1) = 'Z' OR ls_key-to_class+0(1) = 'Y' ) )
              OR ls_key-to_prog IS NOT INITIAL.
 
-  DATA: lv_cl_key TYPE seoclskey,
-                    lt_incl   TYPE seop_methods_w_include.
-              lv_cl_key = ls_key-to_class.
-              CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-                EXPORTING
-                  clskey                       = lv_cl_key
-                IMPORTING
-                  includes                     = lt_incl
-                EXCEPTIONS
-                  _internal_class_not_existing = 1
-                  OTHERS                       = 2.
+            DATA: lv_cl_key TYPE seoclskey,
+                  lt_incl   TYPE seop_methods_w_include.
+            lv_cl_key = ls_key-to_class.
+            CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+              EXPORTING
+                clskey                       = lv_cl_key
+              IMPORTING
+                includes                     = lt_incl
+              EXCEPTIONS
+                _internal_class_not_existing = 1
+                OTHERS                       = 2.
             IF  lines( lt_incl ) > 0.
 
               lv_prefix = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
@@ -5168,12 +5169,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
               lv_program = lv_prefix && 'CO'.
               lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
 
-
-
               READ TABLE lt_incl[] WITH KEY cpdkey-cpdname = ls_key-to_evname INTO DATA(ls_incl).                        .
               IF sy-subrc = 0.
                 lv_program = ls_incl-incname.
-                lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class ).
+                lcl_source_parser=>parse_tokens( iv_program = lv_program io_debugger = io_debugger iv_class = ls_key-to_class iv_evname = iv_ev_name ).
               ENDIF.
             ELSE.
               lv_program = iv_program.
