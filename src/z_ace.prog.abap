@@ -446,12 +446,6 @@ CLASS lcl_ace DEFINITION.
                  ref    LIKE cl_abap_typedescr=>kind_ref VALUE cl_abap_typedescr=>kind_ref,
                END OF c_kind.
 
-    METHODS:
-      get_class_name   IMPORTING i_name        TYPE string
-                       RETURNING VALUE(e_name) TYPE string.
-
-    .
-
 
 ENDCLASS.
 
@@ -1017,7 +1011,7 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
              outer TYPE string,
              inner TYPE string,
            END OF ts_calls,
-           tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY event,
+           tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer,
 
            BEGIN OF ts_calls_line,
              program   TYPE string,
@@ -1207,33 +1201,6 @@ CLASS lcl_ace IMPLEMENTATION.
 
 
 
-
-  METHOD get_class_name.
-
-    DATA: lo_object TYPE REF TO cl_tpda_script_objectdescr,
-          lo_descr  TYPE REF TO cl_tpda_script_data_descr.
-
-    FIELD-SYMBOLS: <ls_symobjref> TYPE tpda_sys_symbobjref.
-
-    TRY.
-        CALL METHOD cl_tpda_script_data_descr=>get_quick_info
-          EXPORTING
-            p_var_name   = i_name
-          RECEIVING
-            p_symb_quick = DATA(l_quick).
-
-        ASSIGN l_quick-quickdata->* TO <ls_symobjref>.
-        IF <ls_symobjref>-instancename <> '{O:initial}'.
-
-          lo_descr = cl_tpda_script_data_descr=>factory( <ls_symobjref>-instancename ).
-          lo_object ?= lo_descr.
-
-          e_name = lo_object->classname( ).
-        ENDIF.
-      CATCH cx_tpda_varname .
-    ENDTRY.
-
-  ENDMETHOD.
 
 
   METHOD hndl_script_buttons.
@@ -2480,45 +2447,45 @@ CLASS lcl_table_viewer IMPLEMENTATION.
 
   METHOD handle_doubleclick.
 
-    DATA: lo_table_descr TYPE REF TO cl_tpda_script_tabledescr,
-          table_clone    TYPE REF TO data.
-    FIELD-SYMBOLS: <f_tab>  TYPE STANDARD TABLE.
-
-    CHECK es_row_no-row_id IS NOT INITIAL.
-    ASSIGN mr_table->* TO  <f_tab>.
-    READ TABLE <f_tab> INDEX es_row_no-row_id ASSIGNING FIELD-SYMBOL(<tab>).
-    ASSIGN COMPONENT e_column-fieldname  OF STRUCTURE <tab> TO FIELD-SYMBOL(<val>).
-
-    CASE e_column-fieldname.
-      WHEN 'VALUE'.
-        IF sy-subrc = 0.
-          IF <val> = 'Table'.
-            ASSIGN COMPONENT 'REF'  OF STRUCTURE <tab> TO FIELD-SYMBOL(<ref>).
-            lcl_appl=>open_int_table( EXPORTING iv_name = CONV #( e_column-fieldname ) it_ref = <ref> io_window = mo_window ).
-          ENDIF.
-        ELSE.
-          TRY.
-              lo_table_descr ?= cl_tpda_script_data_descr=>factory( |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| ).
-              table_clone = lo_table_descr->elem_clone( ).
-              lcl_appl=>open_int_table( EXPORTING iv_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
-            CATCH cx_sy_move_cast_error.
-          ENDTRY.
-        ENDIF.
-      WHEN 'STEP'.
-        MOVE-CORRESPONDING <tab> TO mo_window->m_prg.
-        MOVE-CORRESPONDING <tab> TO mo_window->mo_viewer->ms_stack.
-
-        mo_window->show_coverage( ).
-        mo_window->mo_viewer->show( ).
-      WHEN OTHERS. "check if it is an embedded table.
-        TRY.
-            lo_table_descr ?= cl_tpda_script_data_descr=>factory( |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| ).
-            table_clone = lo_table_descr->elem_clone( ).
-            lcl_appl=>open_int_table( EXPORTING iv_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
-          CATCH cx_sy_move_cast_error.
-        ENDTRY.
-    ENDCASE.
-
+*    DATA: lo_table_descr TYPE REF TO cl_tpda_script_tabledescr,
+*          table_clone    TYPE REF TO data.
+*    FIELD-SYMBOLS: <f_tab>  TYPE STANDARD TABLE.
+*
+*    CHECK es_row_no-row_id IS NOT INITIAL.
+*    ASSIGN mr_table->* TO  <f_tab>.
+*    READ TABLE <f_tab> INDEX es_row_no-row_id ASSIGNING FIELD-SYMBOL(<tab>).
+*    ASSIGN COMPONENT e_column-fieldname  OF STRUCTURE <tab> TO FIELD-SYMBOL(<val>).
+*
+*    CASE e_column-fieldname.
+*      WHEN 'VALUE'.
+*        IF sy-subrc = 0.
+*          IF <val> = 'Table'.
+*            ASSIGN COMPONENT 'REF'  OF STRUCTURE <tab> TO FIELD-SYMBOL(<ref>).
+*            lcl_appl=>open_int_table( EXPORTING iv_name = CONV #( e_column-fieldname ) it_ref = <ref> io_window = mo_window ).
+*          ENDIF.
+*        ELSE.
+*          TRY.
+*              lo_table_descr ?= cl_tpda_script_data_descr=>factory( |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| ).
+*              table_clone = lo_table_descr->elem_clone( ).
+*              lcl_appl=>open_int_table( EXPORTING iv_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
+*            CATCH cx_sy_move_cast_error.
+*          ENDTRY.
+*        ENDIF.
+*      WHEN 'STEP'.
+*        MOVE-CORRESPONDING <tab> TO mo_window->m_prg.
+*        MOVE-CORRESPONDING <tab> TO mo_window->mo_viewer->ms_stack.
+*
+*        mo_window->show_coverage( ).
+*        mo_window->mo_viewer->show( ).
+*      WHEN OTHERS. "check if it is an embedded table.
+*        TRY.
+*            lo_table_descr ?= cl_tpda_script_data_descr=>factory( |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| ).
+*            table_clone = lo_table_descr->elem_clone( ).
+*            lcl_appl=>open_int_table( EXPORTING iv_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
+*          CATCH cx_sy_move_cast_error.
+*        ENDTRY.
+*    ENDCASE.
+*
   ENDMETHOD.
 
   METHOD before_user_command.
@@ -5574,14 +5541,15 @@ CLASS lcl_mermaid IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF '`' IN  <line>-code WITH ''.
        REPLACE ALL OCCURRENCES OF '"' IN  <line>-code WITH ''.
 
-      LOOP AT ls_keyword-tt_calls INTO ls_call WHERE type IS NOT INITIAL.
+      SORT ls_keyword-tt_calls by outer.
+      delete ADJACENT DUPLICATES FROM ls_keyword-tt_calls.
+      LOOP AT ls_keyword-tt_calls INTO ls_call. "WHERE type IS NOT INITIAL.
         IF sy-tabix <> 1.
           <line>-arrow = |{ <line>-arrow }, |.
         ENDIF.
         <line>-arrow  = |{ <line>-arrow  } { ls_call-outer } { ls_call-type } { ls_call-inner }|.
-
-      ENDLOOP.
       <line>-subname = ls_call-name.
+      ENDLOOP.
       REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
       REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''.
       REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
@@ -5802,6 +5770,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
           ENDIF.
         ELSE.
           ls_prev_stack = ls_line.
+
           CONTINUE.
         ENDIF.
 
