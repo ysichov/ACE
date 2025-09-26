@@ -5531,8 +5531,9 @@ DELETE lt_lines where del = abap_true.
           <line>-code = |{  <line>-code } { ls_token-str }|.
         ENDIF.
       ENDLOOP.
+      replace all OCCURRENCES OF '`' in  <line>-code with ''.
 
-      LOOP AT ls_keyword-tt_calls INTO ls_call.
+      LOOP AT ls_keyword-tt_calls INTO ls_call where type is not INITIAL.
         IF sy-tabix <> 1.
           <line>-arrow = |{ <line>-arrow }, |.
         ENDIF.
@@ -5766,9 +5767,9 @@ DELETE lt_lines where del = abap_true.
           lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ls_line-els_after }\n|.
           DATA(lv_diff) = ms_if-end_ind - ls_line-els_after.
           DATA(lv_last_els) = ls_line-els_after.
-          IF ls_line-cond <> 'WHEN' AND ls_line-cond <> 'ELSEIF'  AND  lv_diff > 1 AND ls_line-els_after <> ms_if-end_ind.
-            lv_mm_string = |{ lv_mm_string }{  ls_line-els_after }-->{ ms_if-end_ind }\n|.
-          ENDIF.
+*          IF ls_line-cond <> 'WHEN' AND ls_line-cond <> 'ELSEIF'  AND  lv_diff > 1 AND ls_line-els_after <> ms_if-end_ind.
+*            lv_mm_string = |{ lv_mm_string }{  ls_line-els_after }-->{ ms_if-end_ind }\n|.
+*          ENDIF.
         ELSE.
           lv_mm_string = |{ lv_mm_string }{ ms_if-if_ind }-->{ lv_bool }{ ms_if-end_ind }\n|.
         ENDIF.
