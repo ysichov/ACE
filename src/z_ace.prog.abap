@@ -358,7 +358,7 @@ CLASS lcl_source_parser DEFINITION.
   PUBLIC SECTION.
 
     "CLASS-DATA: mv_step TYPE i.
-    CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace iv_class TYPE string OPTIONAL iv_evname type string OPTIONAL,
+    CLASS-METHODS: parse_tokens IMPORTING iv_program TYPE program io_debugger TYPE REF TO lcl_ace iv_class TYPE string OPTIONAL iv_evname TYPE string OPTIONAL,
       parse_call IMPORTING iv_program TYPE program iv_index TYPE i iv_stack TYPE i iv_ev_name TYPE string iv_ev_type TYPE string io_debugger TYPE REF TO lcl_ace,
       code_execution_scanner IMPORTING iv_program TYPE program iv_evname TYPE string OPTIONAL iv_evtype TYPE string OPTIONAL
         iv_stack TYPE i OPTIONAL io_debugger TYPE REF TO lcl_ace.
@@ -4339,8 +4339,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
       "methods in definition should be overwritten by Implementation section
       IF iv_class IS NOT INITIAL.
-      lv_class = abap_true.
-       ls_call_line-class = ls_param-class = iv_class.
+        lv_class = abap_true.
+        ls_call_line-class = ls_param-class = iv_class.
         READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = iv_evname eventtype = 'METHOD' ASSIGNING FIELD-SYMBOL(<call_line>).
         IF sy-subrc = 0.
           <call_line>-index = lo_procedure->statement_index + 1.
@@ -5396,6 +5396,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
     ENDLOOP.
 
     DATA(lt_steps) = mo_viewer->mt_steps.
+
     SORT lt_steps BY step DESCENDING.
 
     "collecting dependents variables
@@ -5451,11 +5452,15 @@ CLASS lcl_mermaid IMPLEMENTATION.
       CLEAR ls_line-cond.
       IF ls_key-name = 'IF' OR ls_key-name = 'ELSE' OR ls_key-name = 'ENDIF' OR ls_key-name = 'ELSEIF' OR
          ls_key-name = 'CASE' OR ls_key-name = 'WHEN' OR ls_key-name = 'ENDCASE' OR
-          ls_key-name = 'DO' OR ls_key-name = 'ENDDO'  OR ls_key-name = 'LOOP'  OR ls_key-name = 'ENDLOOP' OR ls_key-name = 'WHILE' OR ls_key-name = 'ENDWHILE'.
+          ls_key-name = 'DO' OR ls_key-name = 'ENDDO'  OR ls_key-name = 'LOOP'  OR ls_key-name = 'ENDLOOP'
+         OR ls_key-name = 'WHILE' OR ls_key-name = 'ENDWHILE'
+         OR ls_key-tt_calls IS NOT INITIAL.
         APPEND INITIAL LINE TO mo_viewer->mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
         <watch>-program = ls_step-program.
         <watch>-line = ls_line-line = ls_step-line.
-        ls_line-cond = ls_key-name.
+        IF ls_key-tt_calls IS INITIAL.
+          ls_line-cond = ls_key-name.
+        ENDIF.
         ls_line-event = ls_step-eventname.
         ls_line-stack = ls_step-stacklevel.
         ls_line-include = ls_step-include.
@@ -5496,6 +5501,19 @@ CLASS lcl_mermaid IMPLEMENTATION.
     ENDLOOP.
 
     DELETE lt_lines WHERE del = abap_true.
+
+"delete empty blocks
+LOOP AT lt_lines ASSIGNING <line>.
+  IF <line>-cond = 'IF' OR <line>-cond = 'DO' OR <line>-cond = 'LOOP' OR <line>-cond = 'WHILE'.
+    READ TABLE lt_lines index sy-tabix + 1 ASSIGNING FIELD-SYMBOL(<line2>).
+    IF <line2>-cond = 'ENDIF' OR <line2>-cond = 'ENDDO' OR <line2>-cond = 'ENDLOOP' OR <line2>-cond = 'ENDWHILE'.
+      <line>-del = <line2>-del = abap_true.
+    ENDIF.
+  ENDIF.
+
+ENDLOOP.
+DELETE lt_lines where del = abap_true.
+
 
     "getting code texts and calls params
     LOOP AT lt_lines ASSIGNING <line>.
