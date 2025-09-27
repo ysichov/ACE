@@ -4842,9 +4842,9 @@ CLASS lcl_source_parser IMPLEMENTATION.
         ENDIF.
         "check class names
 
-        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line into ls_call_line with key eventname = ls_token-to_evname  eventtype = ls_token-to_evtype .
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line INTO ls_call_line WITH KEY eventname = ls_token-to_evname  eventtype = ls_token-to_evtype .
         IF sy-subrc = 0.
-        ls_token-to_class = ls_call_line-class.
+          ls_token-to_class = ls_call_line-class.
         ENDIF.
 
         APPEND ls_token TO lt_tokens.
@@ -4935,7 +4935,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_include   TYPE program.
 
     lv_stack =  iv_stack + 1.
- check lv_stack < 10.
+    CHECK lv_stack < 10.
 
     lcl_source_parser=>parse_tokens( iv_program = iv_program io_debugger = io_debugger ).
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
@@ -5095,6 +5095,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_prefix    TYPE string,
           lv_program   TYPE program.
 
+    READ TABLE io_debugger->mt_steps WITH KEY program = iv_program eventname = iv_ev_name eventtype = iv_ev_type TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      RETURN.
+    ENDIF.
+
     DATA: lv_cl_key TYPE seoclskey,
           lt_incl   TYPE seop_methods_w_include.
     lv_cl_key = iv_class.
@@ -5114,10 +5119,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
     ENDIF.
 
     lv_stack = iv_stack + 1.
-    check lv_stack < 10.
+    CHECK lv_stack < 10.
 
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
-    data(lv_max) = lines( ls_prog-t_keywords ).
+    DATA(lv_max) = lines( ls_prog-t_keywords ).
     DO.
       IF lv_statement > lv_max.
         EXIT.
