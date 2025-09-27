@@ -5581,14 +5581,16 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       SORT ls_keyword-tt_calls BY outer.
       DELETE ADJACENT DUPLICATES FROM ls_keyword-tt_calls.
-      LOOP AT ls_keyword-tt_calls INTO ls_call. "WHERE type IS NOT INITIAL.
-        IF sy-tabix <> 1.
-          <line>-arrow = |{ <line>-arrow }, |.
-        ENDIF.
-        "<line>-arrow  = |{ <line>-arrow  } { ls_call-outer } { ls_call-type } { ls_call-inner }|.
-        <line>-arrow  = |{ <line>-arrow  } { ls_call-outer } as  { ls_call-inner }|.
-        <line>-subname = ls_call-name.
-      ENDLOOP.
+      IF ls_keyword-to_evname IS NOT INITIAL.
+        LOOP AT ls_keyword-tt_calls INTO ls_call. "WHERE type IS NOT INITIAL.
+          IF sy-tabix <> 1.
+            <line>-arrow = |{ <line>-arrow }, |.
+          ENDIF.
+          "<line>-arrow  = |{ <line>-arrow  } { ls_call-outer } { ls_call-type } { ls_call-inner }|.
+          <line>-arrow  = |{ <line>-arrow  } { ls_call-outer } as  { ls_call-inner }|.
+          <line>-subname = ls_call-name.
+        ENDLOOP.
+      ENDIF.
       REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
       REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''.
       REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
@@ -5615,7 +5617,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
       IF <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE'.
         <if>-end_ind = <line>-ind.
         SUBTRACT 1 FROM if_depth.
-        READ TABLE mt_if INDEX if_depth ASSIGNING <if>.
+        LOOP AT mt_if  ASSIGNING <if> WHERE end_ind = 0.
+        ENDLOOP.
+        "READ TABLE mt_if INDEX if_depth ASSIGNING <if>.
       ENDIF.
 
       IF <line>-cond = 'WHEN'.
@@ -5675,8 +5679,8 @@ CLASS lcl_mermaid IMPLEMENTATION.
           ENDIF.
         ENDDO.
         IF when_count = 1.
-          <if>-if_ind = lv_els_before.
-          CLEAR <line>-els_before.
+*          <if>-if_ind = lv_els_before.
+*          CLEAR <line>-els_before.
         ENDIF.
       ENDIF.
 
