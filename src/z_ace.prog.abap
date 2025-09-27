@@ -1,7 +1,7 @@
 REPORT z_ace. "ACE - Abap Code Explorer
 *  & Multi-windows program for ABAP code analysis
 *  &---------------------------------------------------------------------*
-*  & version: beta 0.1.00
+*  & version: beta 0.3
 *  & Git https://github.com/ysichov/ACE
 
 *  & Written by Yurii Sychov
@@ -4934,8 +4934,13 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_statement TYPE i,
           lv_include   TYPE program.
 
+    READ TABLE io_debugger->mt_steps WITH KEY program = iv_program eventname = iv_evname eventtype = iv_evtype TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      RETURN.
+    ENDIF.
+
     lv_stack =  iv_stack + 1.
-    CHECK lv_stack < 10.
+    "CHECK lv_stack < 20.
 
     lcl_source_parser=>parse_tokens( iv_program = iv_program io_debugger = io_debugger ).
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
@@ -5119,7 +5124,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
     ENDIF.
 
     lv_stack = iv_stack + 1.
-    CHECK lv_stack < 10.
+    "CHECK lv_stack < 20.
 
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
     DATA(lv_max) = lines( ls_prog-t_keywords ).
