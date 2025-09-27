@@ -1037,13 +1037,13 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
            END OF ts_kword,
 
            BEGIN OF ts_calculated,
-             program type string,
+             program    TYPE string,
              line       TYPE i,
              calculated TYPE string,
            END OF ts_calculated,
 
            BEGIN OF ts_composing,
-             program   type string,
+             program   TYPE string,
              line      TYPE i,
              composing TYPE string,
            END OF ts_composing,
@@ -4310,7 +4310,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
       IF iv_class IS NOT INITIAL.
         lv_class = abap_true.
         ls_call_line-class = ls_param-class = iv_class.
-        "        IF iv_evname IS NOT INITIAL.
         READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = iv_evname eventtype = 'METHOD' ASSIGNING FIELD-SYMBOL(<call_line>).
         IF sy-subrc = 0.
           <call_line>-index = lo_procedure->statement_index + 1.
@@ -4841,6 +4840,13 @@ CLASS lcl_source_parser IMPLEMENTATION.
         IF iv_class IS INITIAL.
           ls_token-to_prog = iv_program.
         ENDIF.
+        "check class names
+
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line into ls_call_line with key eventname = ls_token-to_evname  eventtype = ls_token-to_evtype .
+        IF sy-subrc = 0.
+        ls_token-to_class = ls_call_line-class.
+        ENDIF.
+
         APPEND ls_token TO lt_tokens.
         IF lo_procedure->statement_index = lv_max.
           EXIT.
@@ -4929,6 +4935,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_include   TYPE program.
 
     lv_stack =  iv_stack + 1.
+ check lv_stack < 10.
 
     lcl_source_parser=>parse_tokens( iv_program = iv_program io_debugger = io_debugger ).
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
@@ -4987,7 +4994,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
         <step>-program = iv_program.
         <step>-include = iv_program.
 
-        IF ls_key-to_evname IS NOT INITIAL.
+        IF ls_key-to_evname IS NOT INITIAL AND NOT ( ls_key-to_evtype = 'METHOD' AND ls_key-to_class IS INITIAL ).
 
           IF ls_key-to_evtype = 'FORM'.
             READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO ls_call_line.
@@ -5020,21 +5027,24 @@ CLASS lcl_source_parser IMPLEMENTATION.
               code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
             ENDIF.
           ELSE. "Method call
+
+            DATA: lv_cl_key TYPE seoclskey,
+                  lt_incl   TYPE seop_methods_w_include.
+            lv_cl_key = ls_key-to_class.
+            CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+              EXPORTING
+                clskey                       = lv_cl_key
+              IMPORTING
+                includes                     = lt_incl
+              EXCEPTIONS
+                _internal_class_not_existing = 1
+                OTHERS                       = 2.
+
+
             IF io_debugger->mo_window->m_zcode IS INITIAL OR
              ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( ls_key-to_class+0(1) = 'Z' OR ls_key-to_class+0(1) = 'Y' ) )
-              OR ls_key-to_prog IS NOT INITIAL.
+              OR lt_incl IS INITIAL.
 
-              DATA: lv_cl_key TYPE seoclskey,
-                    lt_incl   TYPE seop_methods_w_include.
-              lv_cl_key = ls_key-to_class.
-              CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-                EXPORTING
-                  clskey                       = lv_cl_key
-                IMPORTING
-                  includes                     = lt_incl
-                EXCEPTIONS
-                  _internal_class_not_existing = 1
-                  OTHERS                       = 2.
 
               IF lines( lt_incl ) > 0.
                 lv_prefix = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
@@ -5085,15 +5095,33 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lv_prefix    TYPE string,
           lv_program   TYPE program.
 
-    lv_stack = iv_stack + 1.
-    IF iv_class IS INITIAL.
+    DATA: lv_cl_key TYPE seoclskey,
+          lt_incl   TYPE seop_methods_w_include.
+    lv_cl_key = iv_class.
+    CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+      EXPORTING
+        clskey                       = lv_cl_key
+      IMPORTING
+        includes                     = lt_incl
+      EXCEPTIONS
+        _internal_class_not_existing = 1
+        OTHERS                       = 2.
+
+    IF lines( lt_incl ) IS INITIAL.
       lv_statement = iv_index.
     ELSE.
       lv_statement = 1.
     ENDIF.
+
+    lv_stack = iv_stack + 1.
+    check lv_stack < 10.
+
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = iv_program INTO DATA(ls_prog).
-    "data(lv_max) = lines( ls_prog-t_keywords ).
+    data(lv_max) = lines( ls_prog-t_keywords ).
     DO.
+      IF lv_statement > lv_max.
+        EXIT.
+      ENDIF.
       READ TABLE ls_prog-t_keywords WITH KEY index =  lv_statement INTO DATA(ls_key).
       IF sy-subrc <> 0.
         ADD 1 TO lv_statement.
@@ -5114,7 +5142,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
       <step>-program = iv_program.
       <step>-include = iv_program.
 
-      IF ls_key-to_evname IS NOT INITIAL.
+      IF ls_key-to_evname IS NOT INITIAL AND NOT ( ls_key-to_evtype = 'METHOD' AND ls_key-to_class IS INITIAL ).
+        .
         IF ls_key-to_evtype = 'FORM'.
 
           READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = ls_key-to_evname eventtype = ls_key-to_evtype INTO DATA(ls_call_line).
@@ -5148,21 +5177,20 @@ CLASS lcl_source_parser IMPLEMENTATION.
             code_execution_scanner( iv_program = lv_include iv_stack = lv_stack iv_evtype = ls_key-to_evtype iv_evname = ls_key-to_evname io_debugger = io_debugger ).
           ENDIF.
         ELSE. "METHOD CALL
+          lv_cl_key = ls_key-to_class.
+          CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+            EXPORTING
+              clskey                       = lv_cl_key
+            IMPORTING
+              includes                     = lt_incl
+            EXCEPTIONS
+              _internal_class_not_existing = 1
+              OTHERS                       = 2.
+
           IF io_debugger->mo_window->m_zcode IS INITIAL OR
            ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( ls_key-to_class+0(1) = 'Z' OR ls_key-to_class+0(1) = 'Y' ) )
-             OR ls_key-to_prog IS NOT INITIAL.
+             OR lt_incl IS INITIAL.
 
-            DATA: lv_cl_key TYPE seoclskey,
-                  lt_incl   TYPE seop_methods_w_include.
-            lv_cl_key = ls_key-to_class.
-            CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-              EXPORTING
-                clskey                       = lv_cl_key
-              IMPORTING
-                includes                     = lt_incl
-              EXCEPTIONS
-                _internal_class_not_existing = 1
-                OTHERS                       = 2.
             IF  lines( lt_incl ) > 0.
 
               lv_prefix = ls_key-to_class && repeat( val = `=` occ = 30 - strlen( ls_key-to_class ) ).
@@ -5411,13 +5439,13 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = ls_step-include INTO ls_prog.
 
-      LOOP AT mo_viewer->mo_window->ms_sources-t_calculated INTO DATA(ls_calculated) WHERE line = ls_step-line and program = ls_prog-include.
+      LOOP AT mo_viewer->mo_window->ms_sources-t_calculated INTO DATA(ls_calculated) WHERE line = ls_step-line AND program = ls_prog-include.
         READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_calculated-calculated TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
           <selected>-name = ls_calculated-calculated.
         ENDIF.
-        LOOP AT mo_viewer->mo_window->ms_sources-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line and program = ls_prog-include.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_composed INTO DATA(ls_composed) WHERE line = ls_step-line AND program = ls_prog-include.
           READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
             APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
@@ -5475,9 +5503,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       ENDIF.
 
-      LOOP AT  mo_viewer->mo_window->ms_sources-t_calculated INTO ls_calculated WHERE line = ls_step-line and program = ls_prog-include.
+      LOOP AT  mo_viewer->mo_window->ms_sources-t_calculated INTO ls_calculated WHERE line = ls_step-line AND program = ls_prog-include.
 
-        LOOP AT mo_viewer->mo_window->ms_sources-t_composed INTO ls_composed WHERE line = ls_step-line and program = ls_prog-include.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_composed INTO ls_composed WHERE line = ls_step-line AND program = ls_prog-include.
           READ TABLE mo_viewer->mt_selected_var WITH KEY name = ls_composed-composing TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
             APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
@@ -5539,16 +5567,17 @@ CLASS lcl_mermaid IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
       REPLACE ALL OCCURRENCES OF '`' IN  <line>-code WITH ''.
-       REPLACE ALL OCCURRENCES OF '"' IN  <line>-code WITH ''.
+      REPLACE ALL OCCURRENCES OF '"' IN  <line>-code WITH ''.
 
-      SORT ls_keyword-tt_calls by outer.
-      delete ADJACENT DUPLICATES FROM ls_keyword-tt_calls.
+      SORT ls_keyword-tt_calls BY outer.
+      DELETE ADJACENT DUPLICATES FROM ls_keyword-tt_calls.
       LOOP AT ls_keyword-tt_calls INTO ls_call. "WHERE type IS NOT INITIAL.
         IF sy-tabix <> 1.
           <line>-arrow = |{ <line>-arrow }, |.
         ENDIF.
-        <line>-arrow  = |{ <line>-arrow  } { ls_call-outer } { ls_call-type } { ls_call-inner }|.
-      <line>-subname = ls_call-name.
+        "<line>-arrow  = |{ <line>-arrow  } { ls_call-outer } { ls_call-type } { ls_call-inner }|.
+        <line>-arrow  = |{ <line>-arrow  } { ls_call-outer } as  { ls_call-inner }|.
+        <line>-subname = ls_call-name.
       ENDLOOP.
       REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
       REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''.
