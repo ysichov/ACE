@@ -17,5 +17,7 @@ Type in program, press enter - new window will be opened.
  
 <img width="1852" height="901" alt="image" src="https://github.com/user-attachments/assets/76270fab-3b75-4e1d-bec5-c525acca761b" />
 
+Update: Ask AI button added to chat with any AI model (Settings on the selection screen )
+
 
 
