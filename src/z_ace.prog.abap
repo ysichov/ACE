@@ -809,6 +809,8 @@ CLASS lcl_ai_api IMPLEMENTATION.
       lv_reasoning = ls_response-choices[ 1 ]-message-reasoning_content.
     ELSE.
       lv_content = lv_string.
+       cl_abap_browser=>show_html(  html_string = lv_content title = 'Error (' ).
+      RETURN.
     ENDIF.
 
     rv_answer = lv_content.
