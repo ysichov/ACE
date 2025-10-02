@@ -2131,6 +2131,13 @@ CLASS lcl_table_viewer IMPLEMENTATION.
 
     mo_box = create( i_width = 800 i_hight = 150 ).
 
+      "save new popup ref
+      APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+      <popup>-parent = mo_window->mo_box.
+      <popup>-child = mo_box.
+
+      SET HANDLER on_box_close FOR mo_box.
+
     CREATE OBJECT mo_splitter
       EXPORTING
         parent  = mo_box
