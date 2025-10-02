@@ -29,7 +29,8 @@ CLASS lcl_mermaid DEFINITION DEFERRED.
 CLASS lcl_box_handler DEFINITION."for memory clearing
 
   PUBLIC SECTION.
-    METHODS: on_box_close FOR EVENT close OF cl_gui_dialogbox_container IMPORTING sender.
+    METHODS: on_box_close FOR EVENT close OF cl_gui_dialogbox_container IMPORTING sender,
+      on_table_close FOR EVENT close OF cl_gui_dialogbox_container IMPORTING sender.
 
 ENDCLASS.
 
@@ -108,6 +109,11 @@ CLASS lcl_appl DEFINITION.
              alv_viewer TYPE REF TO lcl_table_viewer,
            END OF t_obj,
 
+           BEGIN OF t_popup,
+             parent TYPE REF TO cl_gui_dialogbox_container,
+             child  TYPE REF TO cl_gui_dialogbox_container,
+           END OF t_popup,
+
            BEGIN OF t_classes_types,
              name TYPE string,
              full TYPE string,
@@ -146,6 +152,7 @@ CLASS lcl_appl DEFINITION.
     CLASS-DATA: m_option_icons     TYPE TABLE OF sign_option_icon_s,
                 mt_lang            TYPE TABLE OF t_lang,
                 mt_obj             TYPE TABLE OF t_obj, "main object table
+                mt_popups          TYPE TABLE OF t_popup, "dependents popups
                 m_ctrl_box_handler TYPE REF TO lcl_box_handler,
                 c_dragdropalv      TYPE REF TO cl_dragdrop,
                 is_mermaid_active  TYPE xfeld.
@@ -220,7 +227,16 @@ CLASS lcl_popup IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD on_box_close.
+    LOOP AT lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>) WHERE parent = sender .
+      <popup>-child->free( ).
+      CLEAR <popup>-child.
+    ENDLOOP.
+    IF sy-subrc <> 0.
+      DELETE  lcl_appl=>mt_popups WHERE child = sender.
+    ENDIF.
+    DELETE lcl_appl=>mt_popups WHERE child IS INITIAL.
     sender->free( ).
+
   ENDMETHOD.
 
 ENDCLASS.
@@ -620,205 +636,6 @@ CLASS lcl_rtti_tree DEFINITION FINAL. " INHERITING FROM lcl_popup.
 
 ENDCLASS.
 
-CLASS lcl_ai_api DEFINITION.
-
-  PUBLIC SECTION.
-
-    METHODS  call_openai  IMPORTING iv_prompt TYPE string RETURNING VALUE(rv_answer) TYPE string.
-  PRIVATE SECTION.
-    DATA: mv_api_key TYPE string.
-
-    METHODS: build_request
-      IMPORTING
-        iv_prompt  TYPE string
-      EXPORTING
-        ev_payload TYPE string ,
-
-      send_request
-        IMPORTING
-          iv_payload  TYPE string
-        EXPORTING
-          ev_response TYPE string
-          ev_error    TYPE xfeld,
-      output
-        IMPORTING
-                  iv_prompt        TYPE string
-                  iv_content       TYPE string
-        RETURNING VALUE(rv_answer) TYPE string.
-
-ENDCLASS.
-
-CLASS lcl_ai_api IMPLEMENTATION.
-
-  METHOD call_openai.
-    DATA: lv_prompt   TYPE string,
-          lv_payload  TYPE string,
-          lv_response TYPE string.
-
-    "Build payload
-    CALL METHOD build_request
-      EXPORTING
-        iv_prompt  = iv_prompt
-      IMPORTING
-        ev_payload = lv_payload.
-
-    CALL METHOD me->send_request
-      EXPORTING
-        iv_payload  = lv_payload
-      IMPORTING
-        ev_response = lv_response
-        ev_error    = DATA(lv_error).
-
-    IF lv_error IS NOT INITIAL.
-      rv_answer = lv_response.
-    ELSE.
-      rv_answer = output(
-        EXPORTING
-          iv_prompt  = iv_prompt
-          iv_content = lv_response ).
-    ENDIF.
-  ENDMETHOD.
-
-  METHOD build_request.
-
-    DATA: lv_payload TYPE string.
-
-    lv_payload = |{ '{ "model": "' && p_model && '", "messages": [{ "role": "user", "content": "' && iv_prompt &&  '" }], "max_tokens": 1000 } ' }|.
-
-    ev_payload = lv_payload.
-  ENDMETHOD.
-
-  METHOD send_request.
-
-    DATA: lo_http_client   TYPE REF TO if_http_client,
-          lv_response_body TYPE string,
-          lv_header        TYPE string.
-
-    CALL METHOD cl_http_client=>create_by_destination
-      EXPORTING
-        destination                = p_dest
-      IMPORTING
-        client                     = lo_http_client
-      EXCEPTIONS
-        argument_not_found         = 1
-        destination_not_found      = 2
-        destination_no_authority   = 3
-        plugin_not_active          = 4
-        internal_error             = 5
-        oa2c_set_token_error       = 6
-        oa2c_missing_authorization = 7
-        oa2c_invalid_config        = 8
-        oa2c_invalid_parameters    = 9
-        oa2c_invalid_scope         = 10
-        oa2c_invalid_grant         = 11
-        oa2c_secstore_adm          = 12
-        OTHERS                     = 13.
-    IF sy-subrc = 2.
-      ev_response = 'Destination not found. Please check it in SM59 transaction'.
-      ev_error = abap_true.
-      RETURN.
-    ELSEIF sy-subrc <> 0.
-      ev_response = |cl_http_client=>create_by_destination error №' { sy-subrc }|.
-      ev_error = abap_true.
-      RETURN.
-    ENDIF.
-
-    "mv_api_key = 'lmstudio'. "any name for local LLMs or secret key for external
-    mv_api_key = p_apikey.
-    "set request header
-    lo_http_client->request->set_header_field( name = 'Content-Type' value = 'application/json' ).
-    lo_http_client->request->set_header_field( name = 'Authorization' value = |Bearer { mv_api_key }| ).
-
-    lo_http_client->request->set_method('POST').
-
-    "set payload
-    lo_http_client->request->set_cdata( iv_payload ).
-
-    CALL METHOD lo_http_client->send
-      EXCEPTIONS
-        http_communication_failure = 1
-        http_invalid_state         = 2
-        http_processing_failed     = 3
-        http_invalid_timeout       = 4
-        OTHERS                     = 5.
-    IF sy-subrc = 0.
-      CALL METHOD lo_http_client->receive
-        EXCEPTIONS
-          http_communication_failure = 1
-          http_invalid_state         = 2
-          http_processing_failed     = 3
-          OTHERS                     = 4.
-      "Get response
-      IF sy-subrc <> 0.
-        lv_response_body = lo_http_client->response->get_data( ).
-        ev_response = lv_response_body.
-      ELSE.
-        lv_response_body = lo_http_client->response->get_data( ).
-        IF lv_response_body IS NOT INITIAL.
-          ev_response = lv_response_body.
-        ELSE.
-          ev_response = 'Call was succeesful, but got no response'.
-        ENDIF.
-      ENDIF.
-
-    ENDIF.
-
-  ENDMETHOD.
-
-  METHOD output.
-
-    DATA: lv_text(1000) TYPE c,
-          lv_string     TYPE string,
-          lv_content    TYPE string,
-          lv_reasoning  TYPE string.
-
-    TYPES: BEGIN OF lty_s_message,
-             role              TYPE string,
-             content           TYPE string,
-             reasoning_content TYPE string,
-           END           OF lty_s_message,
-           lty_t_message TYPE STANDARD TABLE OF lty_s_message WITH NON-UNIQUE DEFAULT KEY,
-           BEGIN OF lty_s_choice,
-             index         TYPE string,
-             message       TYPE lty_s_message,
-             logprobs      TYPE string,
-             finish_reason TYPE string,
-           END      OF lty_s_choice,
-           BEGIN OF lty_s_base_chatgpt_res,
-             id      TYPE string,
-             object  TYPE string,
-             created TYPE string,
-             model   TYPE string,
-             choices TYPE TABLE OF lty_s_choice WITH NON-UNIQUE DEFAULT KEY,
-           END OF lty_s_base_chatgpt_res.
-
-    DATA ls_response TYPE lty_s_base_chatgpt_res.
-
-    DATA: lv_binary TYPE xstring.
-
-    DATA: lo_x2c TYPE REF TO cl_abap_conv_in_ce.
-    lo_x2c = cl_abap_conv_in_ce=>create( encoding = 'UTF-8' ).
-    lv_binary = iv_content.
-    lo_x2c->convert( EXPORTING input = lv_binary
-                     IMPORTING data  = lv_string ).
-
-    /ui2/cl_json=>deserialize( EXPORTING json = lv_string CHANGING data = ls_response ).
-
-    IF  ls_response-choices IS NOT INITIAL.
-      lv_content = ls_response-choices[ 1 ]-message-content.
-      lv_reasoning = ls_response-choices[ 1 ]-message-reasoning_content.
-    ELSE.
-      lv_content = lv_string.
-       cl_abap_browser=>show_html(  html_string = lv_content title = 'Error (' ).
-      RETURN.
-    ENDIF.
-
-    rv_answer = lv_content.
-
-  ENDMETHOD.
-
-ENDCLASS.
-
 CLASS lcl_ai DEFINITION INHERITING FROM lcl_popup.
 
   PUBLIC SECTION.
@@ -833,7 +650,8 @@ CLASS lcl_ai DEFINITION INHERITING FROM lcl_popup.
           mv_prompt               TYPE string,
           mv_answer               TYPE string.
 
-    METHODS:  constructor IMPORTING io_source TYPE REF TO cl_ci_source_include,
+    METHODS:  constructor IMPORTING io_source TYPE REF TO cl_ci_source_include
+              io_parent  type ref to cl_gui_dialogbox_container,
       add_ai_toolbar_buttons,
       hnd_ai_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode.
 
@@ -852,6 +670,13 @@ CLASS lcl_ai IMPLEMENTATION.
         columns = 1
       EXCEPTIONS
         OTHERS  = 1.
+
+ "save new popup ref
+      APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+      <popup>-parent = io_parent.
+      <popup>-child = mo_ai_box.
+
+      SET HANDLER on_box_close FOR mo_ai_box.
 
     mo_ai_splitter->get_container(
          EXPORTING
@@ -968,7 +793,7 @@ CLASS lcl_ai IMPLEMENTATION.
       WHEN 'AI'.
 
         cl_gui_cfw=>flush( ).
-        DATA(lo_ai) = NEW lcl_ai_api( ).
+        DATA(lo_ai) = NEW zcl_ace_ai_api( iv_model = p_model iv_dest = p_dest iv_apikey = p_apikey ).
 
         DATA lt_text TYPE TABLE OF char255.
         CALL METHOD mo_prompt_text->get_text_as_stream
@@ -1427,6 +1252,7 @@ CLASS lcl_window IMPLEMENTATION.
     m_hist_depth = 9.
 
     mo_box = create( i_name = lv_text i_width = 1100 i_hight = 300 ).
+    SET HANDLER on_box_close FOR mo_box.
     CREATE OBJECT mo_splitter
       EXPORTING
         parent  = mo_box
@@ -1755,7 +1581,7 @@ CLASS lcl_window IMPLEMENTATION.
       WHEN 'AI'.
 
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY selected = abap_true INTO DATA(ls_prog).
-        NEW lcl_ai( ls_prog-source ).
+        NEW lcl_ai( io_source = ls_prog-source io_parent =  mo_viewer->mo_window->mo_box ).
 
       WHEN 'DIAGRAM'.
         DATA(lo_mermaid) = NEW lcl_mermaid( io_debugger = mo_viewer iv_type =  'DIAG' ).
@@ -2134,6 +1960,10 @@ ENDCLASS.
 CLASS lcl_box_handler IMPLEMENTATION.
 
   METHOD on_box_close.
+
+  ENDMETHOD.
+
+  METHOD on_table_close.
     DATA: lv_tabix LIKE sy-tabix.
     sender->free( ).
 
@@ -2329,7 +2159,7 @@ CLASS lcl_table_viewer IMPLEMENTATION.
     IF lcl_appl=>m_ctrl_box_handler IS INITIAL.
       lcl_appl=>m_ctrl_box_handler = NEW #( ).
     ENDIF.
-    SET HANDLER lcl_appl=>m_ctrl_box_handler->on_box_close FOR mo_box.
+    SET HANDLER lcl_appl=>m_ctrl_box_handler->on_table_close FOR mo_box.
 
   ENDMETHOD.
 
@@ -5375,6 +5205,12 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
     IF mo_box IS INITIAL.
       mo_box = create( i_name = lv_text i_width = 1000 i_hight = 300 ).
+
+      "save new popup ref
+      APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+      <popup>-parent = mo_viewer->mo_window->mo_box.
+      <popup>-child = mo_box.
+
       SET HANDLER on_box_close FOR mo_box.
 
       CREATE OBJECT mo_splitter
