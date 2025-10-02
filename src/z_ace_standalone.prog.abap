@@ -13,7 +13,7 @@ REPORT z_ace. "ACE - Abap Code Explorer
 *  & External resources
 *  & https://github.com/WegnerDan/abapMermaid
 
-PARAMETERS: gv_prog  TYPE progname  MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY,
+PARAMETERS: p_prog   TYPE progname  MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY,
             p_dest   TYPE text255 MEMORY ID dest,
             p_model  TYPE text255 MEMORY ID model,
             p_apikey TYPE text255  MEMORY ID api.
@@ -37,6 +37,41 @@ ENDCLASS.
 CLASS lcl_appl DEFINITION.
 
   PUBLIC SECTION.
+
+    TYPES:
+      BEGIN OF selection_display_s,
+        ind         TYPE i,
+        field_label TYPE lvc_fname,
+        int_type(1),
+        inherited   TYPE aqadh_type_of_icon,
+        emitter     TYPE aqadh_type_of_icon,
+        sign        TYPE tvarv_sign,
+        opti        TYPE tvarv_opti,
+        option_icon TYPE aqadh_type_of_icon,
+        low         TYPE string,
+        high        TYPE string,
+        more_icon   TYPE aqadh_type_of_icon,
+        range       TYPE aqadh_t_ranges,
+        name        TYPE reptext,
+        element     TYPE text60,
+        domain      TYPE text60,
+        datatype    TYPE string,
+        length      TYPE i,
+        transmitter TYPE REF TO lcl_data_transmitter,
+        receiver    TYPE REF TO lcl_data_receiver,
+        color       TYPE lvc_t_scol,
+        style       TYPE lvc_t_styl,
+      END OF selection_display_s,
+      BEGIN OF t_sel_row,
+        sign        TYPE tvarv_sign,
+        opti        TYPE tvarv_opti,
+        option_icon TYPE aqadh_type_of_icon,
+        low         TYPE string, "aqadh_range_value,
+        high        TYPE string, "aqadh_range_value,
+        more_icon   TYPE aqadh_type_of_icon,
+        range       TYPE aqadh_t_ranges,
+      END OF t_sel_row.
+
     TYPES: BEGIN OF sign_option_icon_s,
              sign          TYPE tvarv_sign,
              option        TYPE tvarv_opti,
@@ -156,6 +191,8 @@ CLASS lcl_appl DEFINITION.
                 m_ctrl_box_handler TYPE REF TO lcl_box_handler,
                 c_dragdropalv      TYPE REF TO cl_dragdrop,
                 is_mermaid_active  TYPE xfeld.
+
+    CLASS-DATA: mt_sel TYPE TABLE OF selection_display_s.
 
     CLASS-METHODS:
       init_icons_table,
@@ -408,7 +445,11 @@ CLASS lcl_ace DEFINITION.
              refval TYPE REF TO data,
            END OF t_sel_var.
 
-    DATA: mt_obj            TYPE TABLE OF t_obj,
+    DATA: mv_prog           TYPE prog,
+          mv_dest           TYPE text255,
+          mv_model          TYPE text255,
+          mv_apikey         TYPE text255,
+          mt_obj            TYPE TABLE OF t_obj,
           mt_compo          TYPE TABLE OF scompo,
           mt_locals         TYPE tpda_scr_locals_it,
           mt_globals        TYPE tpda_scr_globals_it,
@@ -446,7 +487,10 @@ CLASS lcl_ace DEFINITION.
           mr_statements     TYPE RANGE OF string.
 
     METHODS:
-      constructor,"  REDEFINITION,
+      constructor IMPORTING iv_prog   TYPE prog
+                            iv_dest   TYPE text255
+                            iv_model  TYPE text255
+                            iv_apikey TYPE text255,
 
 
       hndl_script_buttons IMPORTING iv_stack_changed TYPE xfeld
@@ -494,6 +538,216 @@ CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
       add_toolbar_buttons,
       hnd_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode,
       open_mermaid IMPORTING iv_mm_string TYPE string.
+
+ENDCLASS.
+
+
+CLASS lcl_ai_api DEFINITION.
+
+  PUBLIC SECTION.
+
+    METHODS:      constructor IMPORTING
+                                iv_dest   TYPE text255
+                                iv_model  TYPE text255
+                                iv_apikey TYPE text255 ,
+      call_openai   IMPORTING iv_prompt TYPE string RETURNING VALUE(rv_answer) TYPE string,
+
+
+      build_request
+        IMPORTING
+          iv_prompt  TYPE string
+        EXPORTING
+          ev_payload TYPE string ,
+
+      send_request
+        IMPORTING
+          iv_payload  TYPE string
+        EXPORTING
+          ev_response TYPE string
+          ev_error    TYPE xfeld,
+      output
+        IMPORTING
+                  iv_prompt        TYPE string
+                  iv_content       TYPE string
+        RETURNING VALUE(rv_answer) TYPE string.
+
+  PRIVATE SECTION.
+    DATA mv_api_key TYPE string .
+    DATA mv_dest TYPE text255 .
+    DATA mv_model TYPE string .
+
+ENDCLASS.
+
+CLASS lcl_ai_api IMPLEMENTATION.
+
+  METHOD constructor.
+
+    mv_dest = iv_dest.
+    mv_model = iv_model.
+    mv_api_key = iv_apikey.
+
+  ENDMETHOD.
+
+
+  METHOD call_openai.
+    DATA: lv_prompt   TYPE string,
+          lv_payload  TYPE string,
+          lv_response TYPE string.
+
+    "Build payload
+    CALL METHOD build_request
+      EXPORTING
+        iv_prompt  = iv_prompt
+      IMPORTING
+        ev_payload = lv_payload.
+
+    CALL METHOD me->send_request
+      EXPORTING
+        iv_payload  = lv_payload
+      IMPORTING
+        ev_response = lv_response
+        ev_error    = DATA(lv_error).
+
+    IF lv_error IS NOT INITIAL.
+      rv_answer = lv_response.
+    ELSE.
+      rv_answer = output(
+        EXPORTING
+          iv_prompt  = iv_prompt
+          iv_content = lv_response ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD build_request.
+
+    DATA: lv_payload TYPE string.
+
+    lv_payload = |{ '{ "model": "' && p_model && '", "messages": [{ "role": "user", "content": "' && iv_prompt &&  '" }], "max_tokens": 10000 } ' }|.
+
+    ev_payload = lv_payload.
+  ENDMETHOD.
+
+  METHOD send_request.
+
+    DATA: lo_http_client   TYPE REF TO if_http_client,
+          lv_response_body TYPE string,
+          lv_header        TYPE string.
+
+    CALL METHOD cl_http_client=>create_by_destination
+      EXPORTING
+        destination              = p_dest
+      IMPORTING
+        client                   = lo_http_client
+      EXCEPTIONS
+        argument_not_found       = 1
+        destination_not_found    = 2
+        destination_no_authority = 3
+        plugin_not_active        = 4
+        internal_error           = 5
+        OTHERS                   = 13.
+    IF sy-subrc = 2.
+      ev_response = 'Destination not found. Please check it in SM59 transaction'.
+      ev_error = abap_true.
+      RETURN.
+    ELSEIF sy-subrc <> 0.
+      ev_response = |cl_http_client=>create_by_destination error №' { sy-subrc }|.
+      ev_error = abap_true.
+      RETURN.
+    ENDIF.
+
+    "mv_api_key = 'lmstudio'. "any name for local LLMs or secret key for external
+    mv_api_key = p_apikey.
+    "set request header
+    lo_http_client->request->set_header_field( name = 'Content-Type' value = 'application/json' ).
+    lo_http_client->request->set_header_field( name = 'Authorization' value = |Bearer { mv_api_key }| ).
+
+    lo_http_client->request->set_method('POST').
+
+    "set payload
+    lo_http_client->request->set_cdata( iv_payload ).
+
+    CALL METHOD lo_http_client->send
+      EXCEPTIONS
+        http_communication_failure = 1
+        http_invalid_state         = 2
+        http_processing_failed     = 3
+        http_invalid_timeout       = 4
+        OTHERS                     = 5.
+    IF sy-subrc = 0.
+      CALL METHOD lo_http_client->receive
+        EXCEPTIONS
+          http_communication_failure = 1
+          http_invalid_state         = 2
+          http_processing_failed     = 3
+          OTHERS                     = 4.
+      "Get response
+      IF sy-subrc <> 0.
+        lv_response_body = lo_http_client->response->get_data( ).
+        ev_response = lv_response_body.
+      ELSE.
+        lv_response_body = lo_http_client->response->get_data( ).
+        IF lv_response_body IS NOT INITIAL.
+          ev_response = lv_response_body.
+        ELSE.
+          ev_response = 'Call was succeesful, but got no response'.
+        ENDIF.
+      ENDIF.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD output.
+
+    DATA: lv_text(1000) TYPE c,
+          lv_string     TYPE string,
+          lv_content    TYPE string,
+          lv_reasoning  TYPE string.
+
+    TYPES: BEGIN OF lty_s_message,
+             role              TYPE string,
+             content           TYPE string,
+             reasoning_content TYPE string,
+           END           OF lty_s_message,
+           lty_t_message TYPE STANDARD TABLE OF lty_s_message WITH NON-UNIQUE DEFAULT KEY,
+           BEGIN OF lty_s_choice,
+             index         TYPE string,
+             message       TYPE lty_s_message,
+             logprobs      TYPE string,
+             finish_reason TYPE string,
+           END      OF lty_s_choice,
+           BEGIN OF lty_s_base_chatgpt_res,
+             id      TYPE string,
+             object  TYPE string,
+             created TYPE string,
+             model   TYPE string,
+             choices TYPE TABLE OF lty_s_choice WITH NON-UNIQUE DEFAULT KEY,
+           END OF lty_s_base_chatgpt_res.
+
+    DATA ls_response TYPE lty_s_base_chatgpt_res.
+
+    DATA: lv_binary TYPE xstring.
+
+    DATA: lo_x2c TYPE REF TO cl_abap_conv_in_ce.
+    lo_x2c = cl_abap_conv_in_ce=>create( encoding = 'UTF-8' ).
+    lv_binary = iv_content.
+    lo_x2c->convert( EXPORTING input = lv_binary
+                     IMPORTING data  = lv_string ).
+
+    /ui2/cl_json=>deserialize( EXPORTING json = lv_string CHANGING data = ls_response ).
+
+    IF  ls_response-choices IS NOT INITIAL.
+      lv_content = ls_response-choices[ 1 ]-message-content.
+      lv_reasoning = ls_response-choices[ 1 ]-message-reasoning_content.
+    ELSE.
+      lv_content = lv_string.
+      cl_abap_browser=>show_html(  html_string = lv_content title = 'Error (' ).
+      RETURN.
+    ENDIF.
+
+    rv_answer = lv_content.
+
+  ENDMETHOD.
 
 ENDCLASS.
 
@@ -651,7 +905,7 @@ CLASS lcl_ai DEFINITION INHERITING FROM lcl_popup.
           mv_answer               TYPE string.
 
     METHODS:  constructor IMPORTING io_source TYPE REF TO cl_ci_source_include
-              io_parent  type ref to cl_gui_dialogbox_container,
+                                    io_parent TYPE REF TO cl_gui_dialogbox_container,
       add_ai_toolbar_buttons,
       hnd_ai_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode.
 
@@ -671,12 +925,12 @@ CLASS lcl_ai IMPLEMENTATION.
       EXCEPTIONS
         OTHERS  = 1.
 
- "save new popup ref
-      APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
-      <popup>-parent = io_parent.
-      <popup>-child = mo_ai_box.
+    "save new popup ref
+    APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+    <popup>-parent = io_parent.
+    <popup>-child = mo_ai_box.
 
-      SET HANDLER on_box_close FOR mo_ai_box.
+    SET HANDLER on_box_close FOR mo_ai_box.
 
     mo_ai_splitter->get_container(
          EXPORTING
@@ -792,8 +1046,7 @@ CLASS lcl_ai IMPLEMENTATION.
 
       WHEN 'AI'.
 
-        cl_gui_cfw=>flush( ).
-        DATA(lo_ai) = NEW zcl_ace_ai_api( iv_model = p_model iv_dest = p_dest iv_apikey = p_apikey ).
+        DATA(lo_ai) = NEW lcl_ai_api( iv_model = p_model iv_dest = p_dest iv_apikey = p_apikey ).
 
         DATA lt_text TYPE TABLE OF char255.
         CALL METHOD mo_prompt_text->get_text_as_stream
@@ -809,6 +1062,7 @@ CLASS lcl_ai IMPLEMENTATION.
         REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN mv_prompt WITH ''.
         REPLACE ALL OCCURRENCES OF '#' IN mv_prompt WITH ''.
         REPLACE ALL OCCURRENCES OF '"' IN mv_prompt WITH ''''.
+        REPLACE ALL OCCURRENCES OF '/' IN mv_prompt WITH ''.
         REPLACE ALL OCCURRENCES OF REGEX '[[:cntrl:]]' IN mv_prompt WITH ' '.
 
         mv_answer = lo_ai->call_openai( mv_prompt ).
@@ -1020,6 +1274,11 @@ CLASS lcl_ace IMPLEMENTATION.
 
     CONSTANTS: c_mask TYPE x VALUE '01'.
 
+    mv_prog = iv_prog.
+    mv_dest = iv_dest.
+    mv_model = iv_model.
+    mv_apikey = iv_apikey.
+
     is_step = abap_on.
     lcl_appl=>check_mermaid( ).
     lcl_appl=>init_lang( ).
@@ -1096,7 +1355,7 @@ CLASS lcl_ace IMPLEMENTATION.
 
   METHOD show.
     IF  mo_window->m_prg-include IS INITIAL.
-      mo_window->m_prg-program =  mo_window->m_prg-include = gv_prog.
+      mo_window->m_prg-program =  mo_window->m_prg-include = mv_prog.
     ENDIF.
     mo_window->set_program( CONV #( mo_window->m_prg-include ) ).
     mo_window->show_coverage( ).
@@ -1104,7 +1363,7 @@ CLASS lcl_ace IMPLEMENTATION.
 
     mo_window->show_stack( ).
     mo_tree_local->clear( ).
-    mo_tree_local->main_node_key = mo_tree_local->add_node( iv_name = CONV #( gv_prog ) iv_icon = CONV #( icon_folder ) ).
+    mo_tree_local->main_node_key = mo_tree_local->add_node( iv_name = CONV #( mv_prog ) iv_icon = CONV #( icon_folder ) ).
 
     mo_tree_local->add_node( iv_name = 'Local Classes' iv_icon = CONV #( icon_folder ) iv_rel = mo_tree_local->main_node_key ).
     mo_tree_local->add_node( iv_name = 'Global Fields' iv_icon = CONV #( icon_header ) iv_rel = mo_tree_local->main_node_key ).
@@ -1198,53 +1457,53 @@ CLASS lcl_event_handler IMPLEMENTATION.
 
 ENDCLASS.
 
-CLASS lcl_types DEFINITION ABSTRACT.
-
-  PUBLIC SECTION.
-    TYPES:
-      BEGIN OF selection_display_s,
-        ind         TYPE i,
-        field_label TYPE lvc_fname,
-        int_type(1),
-        inherited   TYPE aqadh_type_of_icon,
-        emitter     TYPE aqadh_type_of_icon,
-        sign        TYPE tvarv_sign,
-        opti        TYPE tvarv_opti,
-        option_icon TYPE aqadh_type_of_icon,
-        low         TYPE string,
-        high        TYPE string,
-        more_icon   TYPE aqadh_type_of_icon,
-        range       TYPE aqadh_t_ranges,
-        name        TYPE reptext,
-        element     TYPE text60,
-        domain      TYPE text60,
-        datatype    TYPE string,
-        length      TYPE i,
-        transmitter TYPE REF TO lcl_data_transmitter,
-        receiver    TYPE REF TO lcl_data_receiver,
-        color       TYPE lvc_t_scol,
-        style       TYPE lvc_t_styl,
-      END OF selection_display_s,
-      BEGIN OF t_sel_row,
-        sign        TYPE tvarv_sign,
-        opti        TYPE tvarv_opti,
-        option_icon TYPE aqadh_type_of_icon,
-        low         TYPE string, "aqadh_range_value,
-        high        TYPE string, "aqadh_range_value,
-        more_icon   TYPE aqadh_type_of_icon,
-        range       TYPE aqadh_t_ranges,
-      END OF t_sel_row.
-
-    CLASS-DATA: mt_sel TYPE TABLE OF lcl_types=>selection_display_s.
-
-ENDCLASS.
+*CLASS lcl_appl DEFINITION ABSTRACT.
+*
+*  PUBLIC SECTION.
+*    TYPES:
+*      BEGIN OF selection_display_s,
+*        ind         TYPE i,
+*        field_label TYPE lvc_fname,
+*        int_type(1),
+*        inherited   TYPE aqadh_type_of_icon,
+*        emitter     TYPE aqadh_type_of_icon,
+*        sign        TYPE tvarv_sign,
+*        opti        TYPE tvarv_opti,
+*        option_icon TYPE aqadh_type_of_icon,
+*        low         TYPE string,
+*        high        TYPE string,
+*        more_icon   TYPE aqadh_type_of_icon,
+*        range       TYPE aqadh_t_ranges,
+*        name        TYPE reptext,
+*        element     TYPE text60,
+*        domain      TYPE text60,
+*        datatype    TYPE string,
+*        length      TYPE i,
+*        transmitter TYPE REF TO lcl_data_transmitter,
+*        receiver    TYPE REF TO lcl_data_receiver,
+*        color       TYPE lvc_t_scol,
+*        style       TYPE lvc_t_styl,
+*      END OF selection_display_s,
+*      BEGIN OF t_sel_row,
+*        sign        TYPE tvarv_sign,
+*        opti        TYPE tvarv_opti,
+*        option_icon TYPE aqadh_type_of_icon,
+*        low         TYPE string, "aqadh_range_value,
+*        high        TYPE string, "aqadh_range_value,
+*        more_icon   TYPE aqadh_type_of_icon,
+*        range       TYPE aqadh_t_ranges,
+*      END OF t_sel_row.
+*
+*    CLASS-DATA: mt_sel TYPE TABLE OF lcl_appl=>selection_display_s.
+*
+*ENDCLASS.
 
 CLASS lcl_window IMPLEMENTATION.
 
   METHOD constructor.
 
     DATA: lv_text TYPE char100.
-    lv_text = gv_prog.
+    lv_text = i_debugger->mv_prog.
 
     super->constructor( ).
     mo_viewer = i_debugger.
@@ -1658,9 +1917,9 @@ ENDCLASS.
 CLASS lcl_data_transmitter DEFINITION.
 
   PUBLIC SECTION.
-    EVENTS: data_changed EXPORTING VALUE(e_row) TYPE lcl_types=>t_sel_row,
+    EVENTS: data_changed EXPORTING VALUE(e_row) TYPE lcl_appl=>t_sel_row,
       col_changed EXPORTING VALUE(e_column) TYPE lvc_fname.
-    METHODS: emit IMPORTING e_row TYPE lcl_types=>t_sel_row,
+    METHODS: emit IMPORTING e_row TYPE lcl_appl=>t_sel_row,
       emit_col IMPORTING e_column TYPE lvc_fname.
 
 ENDCLASS.
@@ -1709,7 +1968,7 @@ CLASS lcl_sel_opt DEFINITION.
     DATA: mo_viewer  TYPE REF TO lcl_table_viewer,
           mo_sel_alv TYPE REF TO cl_gui_alv_grid,
           mt_fcat    TYPE lvc_t_fcat,
-          mt_sel_tab TYPE TABLE OF lcl_types=>selection_display_s,
+          mt_sel_tab TYPE TABLE OF lcl_appl=>selection_display_s,
           ms_layout  TYPE lvc_s_layo.
 
     EVENTS: selection_done.
@@ -1718,7 +1977,7 @@ CLASS lcl_sel_opt DEFINITION.
       raise_selection_done,
       update_sel_tab,
       set_value IMPORTING  i_field TYPE any i_low TYPE any OPTIONAL i_high TYPE any OPTIONAL i_clear TYPE xfeld DEFAULT abap_true ,
-      update_sel_row CHANGING c_sel_row TYPE lcl_types=>selection_display_s.
+      update_sel_row CHANGING c_sel_row TYPE lcl_appl=>selection_display_s.
 
   PRIVATE SECTION.
     METHODS:
@@ -1916,7 +2175,7 @@ CLASS lcl_data_receiver IMPLEMENTATION.
   METHOD update_col.
 
     DATA: l_updated,
-          lt_sel_row   TYPE lcl_types=>t_sel_row.
+          lt_sel_row   TYPE lcl_appl=>t_sel_row.
 
     FIELD-SYMBOLS: <tab>   TYPE STANDARD TABLE,
                    <field> TYPE any.
@@ -2131,12 +2390,12 @@ CLASS lcl_table_viewer IMPLEMENTATION.
 
     mo_box = create( i_width = 800 i_hight = 150 ).
 
-      "save new popup ref
-      APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
-      <popup>-parent = mo_window->mo_box.
-      <popup>-child = mo_box.
+    "save new popup ref
+    APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+    <popup>-parent = mo_window->mo_box.
+    <popup>-child = mo_box.
 
-      SET HANDLER on_box_close FOR mo_box.
+    SET HANDLER on_box_close FOR mo_box.
 
     CREATE OBJECT mo_splitter
       EXPORTING
@@ -2536,7 +2795,7 @@ CLASS lcl_table_viewer IMPLEMENTATION.
 
   METHOD refresh_table.
 
-    DATA: ls_row    TYPE lcl_types=>t_sel_row,
+    DATA: ls_row    TYPE lcl_appl=>t_sel_row,
           lt_filter TYPE lvc_t_filt.
 
     CLEAR lt_filter.
@@ -2656,7 +2915,7 @@ CLASS lcl_sel_opt IMPLEMENTATION.
 
   METHOD raise_selection_done.
 
-    DATA: ls_row TYPE lcl_types=>t_sel_row.
+    DATA: ls_row TYPE lcl_appl=>t_sel_row.
 
     lcl_alv_common=>refresh( mo_sel_alv ).
     RAISE EVENT selection_done.
@@ -2732,7 +2991,7 @@ CLASS lcl_sel_opt IMPLEMENTATION.
       update_sel_row( CHANGING c_sel_row = <to> ).
     ENDIF.
     IF <to>-transmitter IS BOUND.
-      DATA: ls_row TYPE lcl_types=>t_sel_row.
+      DATA: ls_row TYPE lcl_appl=>t_sel_row.
       MOVE-CORRESPONDING <to> TO ls_row.
       <to>-transmitter->emit( EXPORTING e_row = ls_row ).
     ENDIF.
@@ -2861,7 +3120,7 @@ CLASS lcl_sel_opt IMPLEMENTATION.
     READ TABLE mt_sel_tab ASSIGNING FIELD-SYMBOL(<sel>) INDEX es_row_no-row_id.
     DATA(l_fname) =  <sel>-field_label.
 
-    lcl_types=>mt_sel[] = mt_sel_tab[].
+    lcl_appl=>mt_sel[] = mt_sel_tab[].
     IF <sel>-element = 'HROBJID'.
       READ TABLE mt_sel_tab INTO DATA(l_sel) WITH KEY field_label = 'OTYPE'.
       l_otype = l_sel-low.
@@ -4075,7 +4334,7 @@ CLASS lcl_dragdrop IMPLEMENTATION.
 
   METHOD drop."It should be refactored someday...
 
-    DATA: ls_row          TYPE lcl_types=>t_sel_row,
+    DATA: ls_row          TYPE lcl_appl=>t_sel_row,
           lv_set_receiver.
 
     LOOP AT lcl_appl=>mt_obj INTO DATA(lo).
@@ -5901,4 +6160,4 @@ AT SELECTION-SCREEN.
 
   SET PARAMETER ID 'API' FIELD p_apikey.
 
-  DATA(gv_ace) = NEW lcl_ace( ).
+  DATA(gv_ace) = NEW lcl_ace( iv_prog = p_prog iv_dest = p_dest iv_model = p_model iv_apikey = p_apikey ).

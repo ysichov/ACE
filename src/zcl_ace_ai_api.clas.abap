@@ -52,7 +52,7 @@ CLASS ZCL_ACE_AI_API IMPLEMENTATION.
 
     data: lv_payload type string.
 
-    lv_payload = |{ '{ "model": "' && mv_model && '", "messages": [{ "role": "user", "content": "' && iv_prompt &&  '" }], "max_tokens": 1000 } ' }|.
+    lv_payload = |{ '{ "model": "' && mv_model && '", "messages": [{ "role": "user", "content": "' && iv_prompt &&  '" }], "max_tokens": 10000 } ' }|.
 
     ev_payload = lv_payload.
 
@@ -170,19 +170,12 @@ CLASS ZCL_ACE_AI_API IMPLEMENTATION.
         plugin_not_active        = 4
         internal_error           = 5
         OTHERS                   = 13.
-    IF sy-subrc <> 0.
-      CASE sy-subrc.
-        WHEN 1.
-          ev_response = 'argument_not_found'.
-        WHEN 2.
-          ev_response = 'destination_not_found'.
-        WHEN 3.
-          ev_response = 'destination_no_authority'.
-        WHEN 4.
-          ev_response = 'plugin_not_active'.
-        WHEN 5.
-          ev_response = 'internal_error'.
-      ENDCASE.
+ IF sy-subrc = 2.
+      ev_response = 'Destination not found. Please check it in SM59 transaction'.
+      ev_error = abap_true.
+      RETURN.
+    ELSEIF sy-subrc <> 0.
+      ev_response = |cl_http_client=>create_by_destination error №' { sy-subrc }|.
       ev_error = abap_true.
       RETURN.
     ENDIF.
