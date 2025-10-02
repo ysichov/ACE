@@ -1,75 +1,113 @@
-class ZCL_ACE_SEL_OPT definition
-  public
-  create public .
+CLASS zcl_ace_sel_opt DEFINITION
+  PUBLIC
+  CREATE PUBLIC .
 
-public section.
+  PUBLIC SECTION.
 
-  data MO_VIEWER type ref to ZCL_ace_TABLE_VIEWER .
-  data MO_SEL_ALV type ref to CL_GUI_ALV_GRID .
-  data MT_FCAT type LVC_T_FCAT .
-  data:
-    mt_sel_tab TYPE TABLE OF zcl_ace_types=>selection_display_s .
-  data MS_LAYOUT type LVC_S_LAYO .
+    TYPES:
+      BEGIN OF selection_display_s,
+        ind         TYPE i,
+        field_label TYPE lvc_fname,
+        int_type(1),
+        inherited   TYPE aqadh_type_of_icon,
+        emitter     TYPE aqadh_type_of_icon,
+        sign        TYPE tvarv_sign,
+        opti        TYPE tvarv_opti,
+        option_icon TYPE aqadh_type_of_icon,
+        low         TYPE string,
+        high        TYPE string,
+        more_icon   TYPE aqadh_type_of_icon,
+        range       TYPE aqadh_t_ranges,
+        name        TYPE reptext,
+        element     TYPE text60,
+        domain      TYPE text60,
+        datatype    TYPE string,
+        length      TYPE i,
+        transmitter TYPE REF TO zcl_ace_data_transmitter,
+        receiver    TYPE REF TO zcl_ace_data_receiver,
+        color       TYPE lvc_t_scol,
+        style       TYPE lvc_t_styl,
+      END OF selection_display_s .
+    TYPES:
+      BEGIN OF t_sel_row,
+        sign        TYPE tvarv_sign,
+        opti        TYPE tvarv_opti,
+        option_icon TYPE aqadh_type_of_icon,
+        low         TYPE string, "aqadh_range_value,
+        high        TYPE string, "aqadh_range_value,
+        more_icon   TYPE aqadh_type_of_icon,
+        range       TYPE aqadh_t_ranges,
+      END OF t_sel_row .
 
-  events SELECTION_DONE .
+    CLASS-DATA:
+      mt_sel TYPE TABLE OF zcl_ace_sel_opt=>selection_display_s .
 
-  methods CONSTRUCTOR
-    importing
-      !IO_VIEWER type ref to ZCL_ace_TABLE_VIEWER
-      !IO_CONTAINER type ref to CL_GUI_CONTAINER .
-  methods RAISE_SELECTION_DONE .
-  methods UPDATE_SEL_TAB .
-  methods SET_VALUE
-    importing
-      !I_FIELD type ANY
-      !I_LOW type ANY optional
-      !I_HIGH type ANY optional
-      !I_CLEAR type XFELD default ABAP_TRUE .
-  methods UPDATE_SEL_ROW
-    changing
-      !C_SEL_ROW type zCL_ace_TYPES=>SELECTION_DISPLAY_S .
+    DATA mo_viewer TYPE REF TO zcl_ace_table_viewer .
+    DATA mo_sel_alv TYPE REF TO cl_gui_alv_grid .
+    DATA mt_fcat TYPE lvc_t_fcat .
+    DATA:
+      mt_sel_tab TYPE TABLE OF zcl_ace_sel_opt=>selection_display_s .
+    DATA ms_layout TYPE lvc_s_layo .
+
+    EVENTS selection_done .
+
+    METHODS constructor
+      IMPORTING
+        !io_viewer    TYPE REF TO zcl_ace_table_viewer
+        !io_container TYPE REF TO cl_gui_container .
+    METHODS raise_selection_done .
+    METHODS update_sel_tab .
+    METHODS set_value
+      IMPORTING
+        !i_field TYPE any
+        !i_low   TYPE any OPTIONAL
+        !i_high  TYPE any OPTIONAL
+        !i_clear TYPE xfeld DEFAULT abap_true .
+    METHODS update_sel_row
+      CHANGING
+        !c_sel_row TYPE zcl_ace_sel_opt=>selection_display_s .
 protected section.
-private section.
+PRIVATE SECTION.
 
-  methods INIT_FCAT
-    importing
-      !I_DD_HANDLE type I .
-  methods HANDLE_SEL_TOOLBAR
-    for event TOOLBAR of CL_GUI_ALV_GRID
-    importing
-      !E_OBJECT .
-  methods ON_F4
-    for event ONF4 of CL_GUI_ALV_GRID
-    importing
-      !ER_EVENT_DATA
-      !ES_ROW_NO
-      !E_FIELDNAME .
-  methods ON_GRID_BUTTON_CLICK
-    for event BUTTON_CLICK of CL_GUI_ALV_GRID
-    importing
-      !ES_COL_ID
-      !ES_ROW_NO .
-  methods ON_DATA_CHANGED
-    for event DATA_CHANGED of CL_GUI_ALV_GRID
-    importing
-      !ER_DATA_CHANGED .
-  methods ON_DATA_CHANGED_FINISHED
-    for event DATA_CHANGED_FINISHED of CL_GUI_ALV_GRID
-    importing
-      !E_MODIFIED .
-  methods HANDLE_USER_COMMAND
-    for event USER_COMMAND of CL_GUI_ALV_GRID
-    importing
-      !E_UCOMM .
-  methods HANDLE_DOUBLECLICK
-    for event DOUBLE_CLICK of CL_GUI_ALV_GRID
-    importing
-      !ES_ROW_NO
-      !E_COLUMN .
-  methods HANDLE_CONTEXT_MENU_REQUEST
-    for event CONTEXT_MENU_REQUEST of CL_GUI_ALV_GRID
-    importing
-      !E_OBJECT .
+  METHODS init_fcat
+    IMPORTING
+      !i_dd_handle TYPE i .
+  METHODS handle_sel_toolbar
+    FOR EVENT toolbar OF cl_gui_alv_grid
+    IMPORTING
+      !e_object .
+  METHODS on_f4
+    FOR EVENT onf4 OF cl_gui_alv_grid
+    IMPORTING
+      !er_event_data
+      !es_row_no
+      !e_fieldname .
+  METHODS on_grid_button_click
+    FOR EVENT button_click OF cl_gui_alv_grid
+    IMPORTING
+      !es_col_id
+      !es_row_no .
+  METHODS on_data_changed
+    FOR EVENT data_changed OF cl_gui_alv_grid
+    IMPORTING
+      !er_data_changed .
+  METHODS on_data_changed_finished
+    FOR EVENT data_changed_finished OF cl_gui_alv_grid
+    IMPORTING
+      !e_modified .
+  METHODS handle_user_command
+    FOR EVENT user_command OF cl_gui_alv_grid
+    IMPORTING
+      !e_ucomm .
+  METHODS handle_doubleclick
+    FOR EVENT double_click OF cl_gui_alv_grid
+    IMPORTING
+      !es_row_no
+      !e_column .
+  METHODS handle_context_menu_request
+    FOR EVENT context_menu_request OF cl_gui_alv_grid
+    IMPORTING
+      !e_object .
 ENDCLASS.
 
 
@@ -425,7 +463,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
     READ TABLE mt_sel_tab ASSIGNING FIELD-SYMBOL(<sel>) INDEX es_row_no-row_id.
     DATA(l_fname) =  <sel>-field_label.
 
-    zcl_ace_types=>mt_sel[] = mt_sel_tab[].
+    zcl_ace_sel_opt=>mt_sel[] = mt_sel_tab[].
     IF <sel>-element = 'HROBJID'.
       READ TABLE mt_sel_tab INTO DATA(l_sel) WITH KEY field_label = 'OTYPE'.
       l_otype = l_sel-low.
@@ -574,7 +612,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
   method RAISE_SELECTION_DONE.
 
 
-    DATA: ls_row TYPE zcl_ace_types=>t_sel_row.
+    DATA: ls_row TYPE zcl_ace_sel_opt=>t_sel_row.
 
     zcl_ace_alv_common=>refresh( mo_sel_alv ).
     RAISE EVENT selection_done.
@@ -613,7 +651,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       update_sel_row( CHANGING c_sel_row = <to> ).
     ENDIF.
     IF <to>-transmitter IS BOUND.
-      DATA: ls_row TYPE zcl_ace_types=>t_sel_row.
+      DATA: ls_row TYPE zcl_ace_sel_opt=>t_sel_row.
       MOVE-CORRESPONDING <to> TO ls_row.
       <to>-transmitter->emit( EXPORTING e_row = ls_row ).
     ENDIF.

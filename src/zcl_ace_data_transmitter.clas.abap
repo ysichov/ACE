@@ -1,22 +1,22 @@
-class ZCL_ACE_DATA_TRANSMITTER definition
-  public
-  create public .
+CLASS zcl_ace_data_transmitter DEFINITION
+  PUBLIC
+  CREATE PUBLIC .
 
-public section.
+  PUBLIC SECTION.
 
-  events DATA_CHANGED
-    exporting
-      value(E_ROW) type zCL_ace_TYPES=>T_SEL_ROW .
-  events COL_CHANGED
-    exporting
-      value(E_COLUMN) type LVC_FNAME .
+    EVENTS data_changed
+      EXPORTING
+        VALUE(e_row) TYPE zcl_ace_sel_opt=>t_sel_row .
+    EVENTS col_changed
+      EXPORTING
+        VALUE(e_column) TYPE lvc_fname .
 
-  methods EMIT
-    importing
-      !E_ROW type zCL_ace_TYPES=>T_SEL_ROW .
-  methods EMIT_COL
-    importing
-      !E_COLUMN type LVC_FNAME .
+    METHODS emit
+      IMPORTING
+        !e_row TYPE zcl_ace_sel_opt=>t_sel_row .
+    METHODS emit_col
+      IMPORTING
+        !e_column TYPE lvc_fname .
 protected section.
 private section.
 ENDCLASS.

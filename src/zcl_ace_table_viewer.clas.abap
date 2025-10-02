@@ -609,7 +609,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
   method REFRESH_TABLE.
 
 
-    DATA: ls_row    TYPE zcl_ace_types=>t_sel_row,
+    DATA: ls_row    TYPE zcl_ace_sel_opt=>t_sel_row,
           lt_filter TYPE lvc_t_filt.
 
     CLEAR lt_filter.

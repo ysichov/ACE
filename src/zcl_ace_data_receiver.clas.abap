@@ -117,7 +117,7 @@ CLASS ZCL_ACE_DATA_RECEIVER IMPLEMENTATION.
 
 
     DATA: l_updated,
-          lt_sel_row   TYPE zcl_ace_types=>t_sel_row.
+          lt_sel_row   TYPE zcl_ace_sel_opt=>t_sel_row.
 
     FIELD-SYMBOLS: <tab>   TYPE STANDARD TABLE,
                    <field> TYPE any.

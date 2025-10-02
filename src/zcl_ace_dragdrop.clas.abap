@@ -39,7 +39,7 @@ CLASS ZCL_ACE_DRAGDROP IMPLEMENTATION.
   method DROP.
 "It should be refactored someday...
 
-    DATA: ls_row          TYPE zcl_ace_types=>t_sel_row,
+    DATA: ls_row          TYPE zcl_ace_sel_opt=>t_sel_row,
           lv_set_receiver.
 
     LOOP AT zcl_ace_appl=>mt_obj INTO DATA(lo).

@@ -152,7 +152,7 @@ CLASS ZCL_ACE_AI_API IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD SEND_REQUEST.
+  METHOD send_request.
 
     DATA: lo_http_client   TYPE REF TO if_http_client,
           lv_response_body TYPE string,
@@ -160,28 +160,34 @@ CLASS ZCL_ACE_AI_API IMPLEMENTATION.
 
     CALL METHOD cl_http_client=>create_by_destination
       EXPORTING
-        destination                = mv_dest
+        destination              = mv_dest
       IMPORTING
-        client                     = lo_http_client
+        client                   = lo_http_client
       EXCEPTIONS
-        argument_not_found         = 1
-        destination_not_found      = 2
-        destination_no_authority   = 3
-        plugin_not_active          = 4
-        internal_error             = 5
-        oa2c_set_token_error       = 6
-        oa2c_missing_authorization = 7
-        oa2c_invalid_config        = 8
-        oa2c_invalid_parameters    = 9
-        oa2c_invalid_scope         = 10
-        oa2c_invalid_grant         = 11
-        oa2c_secstore_adm          = 12
-        OTHERS                     = 13.
+        argument_not_found       = 1
+        destination_not_found    = 2
+        destination_no_authority = 3
+        plugin_not_active        = 4
+        internal_error           = 5
+        OTHERS                   = 13.
     IF sy-subrc <> 0.
-*     Implement suitable error handling here
+      CASE sy-subrc.
+        WHEN 1.
+          ev_response = 'argument_not_found'.
+        WHEN 2.
+          ev_response = 'destination_not_found'.
+        WHEN 3.
+          ev_response = 'destination_no_authority'.
+        WHEN 4.
+          ev_response = 'plugin_not_active'.
+        WHEN 5.
+          ev_response = 'internal_error'.
+      ENDCASE.
+      ev_error = abap_true.
+      RETURN.
     ENDIF.
 
-MV_API_KEY = mv_api_key.
+    mv_api_key = mv_api_key.
 
     "set request header
     lo_http_client->request->set_header_field( name = 'Content-Type' value = 'application/json' ).
@@ -211,7 +217,7 @@ MV_API_KEY = mv_api_key.
         ev_response = lv_response_body.
       ELSE.
         lv_response_body = lo_http_client->response->get_data( ).
-        IF lv_response_body is not INITIAL.
+        IF lv_response_body IS NOT INITIAL.
           ev_response = lv_response_body.
         ELSE.
           ev_response = 'Call was succeesful, but got no response'.
