@@ -2,6 +2,8 @@
 
 New Idea. I don't need debug to analyse code flow ). So it moves from ABAP Script to the usual program )
 
+Standalone version is here - https://github.com/ysichov/ACE/blob/main/src/z_ace_standalone.prog.abap
+
 # Mermaid installed is obligatory - https://github.com/WegnerDan/abapMermaid  to draw diagrams
 
 <img width="892" height="897" alt="image" src="https://github.com/user-attachments/assets/de40d1f4-221d-4a0c-955d-61967522a318" />
@@ -19,6 +21,7 @@ Type in program, press enter - new window will be opened.
 <img width="1852" height="901" alt="image" src="https://github.com/user-attachments/assets/76270fab-3b75-4e1d-bec5-c525acca761b" />
 
 Update: Ask AI button added to chat with any AI model (Settings on the selection screen )
+
 
 
 
