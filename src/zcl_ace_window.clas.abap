@@ -161,7 +161,7 @@ public section.
   data M_DEBUG_BUTTON like SY-UCOMM .
   data M_SHOW_STEP type XFELD .
   data MT_BPOINTS type TT_BPOINTS .
-  data MO_VIEWER type ref to zCL_ACE .
+  data MO_VIEWER type ref to ZCL_ACE .
   data MO_SPLITTER_CODE type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_SPLITTER_VAR type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_SPLITTER_STEPS type ref to CL_GUI_SPLITTER_CONTAINER .
@@ -199,7 +199,7 @@ public section.
 
   methods CONSTRUCTOR
     importing
-      !I_DEBUGGER type ref to zCL_ACE
+      !I_DEBUGGER type ref to ZCL_ACE
       !I_ADDITIONAL_NAME type STRING optional .
   methods ADD_TOOLBAR_BUTTONS .
   methods HND_TOOLBAR
@@ -215,6 +215,21 @@ public section.
   methods CREATE_CODE_VIEWER .
   methods SHOW_STACK .
   methods SHOW_COVERAGE .
+  methods ON_STACK_DOUBLE_CLICK
+    for event DOUBLE_CLICK of CL_SALV_EVENTS_TABLE
+    importing
+      !ROW
+      !COLUMN .
+  methods ON_EDITOR_DOUBLE_CLICK
+    for event DBLCLICK of CL_GUI_ABAPEDIT
+    importing
+      !SENDER .
+  methods ON_EDITOR_BORDER_CLICK
+    for event BORDER_CLICK of CL_GUI_ABAPEDIT
+    importing
+      !CNTRL_PRESSED_SET
+      !LINE
+      !SHIFT_PRESSED_SET .
 protected section.
 private section.
 ENDCLASS.
@@ -367,7 +382,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         dp_error_send    = 3
         OTHERS           = 4 ).
 
-    DATA(lo_handler) = NEW zcl_ace_event_handler( mo_viewer ).
     ls_event-eventid    = cl_gui_textedit=>event_double_click.
     APPEND ls_event TO lt_events.
 
@@ -375,8 +389,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     mo_code_viewer->register_event_border_click( ).
     mo_code_viewer->register_event_break_changed( ).
 
-    SET HANDLER lo_handler->on_editor_double_click FOR mo_code_viewer.
-    SET HANDLER lo_handler->on_editor_border_click FOR mo_code_viewer.
+    SET HANDLER on_editor_double_click FOR mo_code_viewer.
+    SET HANDLER on_editor_border_click FOR mo_code_viewer.
 
     mo_code_viewer->set_statusbar_mode( statusbar_mode = cl_gui_abapedit=>true ).
     mo_code_viewer->create_document( ).
@@ -576,8 +590,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   endmethod.
 
 
-  method SHOW_STACK.
-
+  METHOD show_stack.
 
     IF mo_salv_stack IS INITIAL.
 
@@ -617,16 +630,78 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       DATA(lo_event) =  mo_salv_stack->get_event( ).
 
-      DATA(lo_handler) = NEW zcl_ace_event_handler( mo_viewer ).
-
-      " Event double click
-      SET HANDLER lo_handler->on_double_click FOR lo_event.
+      SET HANDLER on_stack_double_click FOR lo_event.
 
       mo_salv_stack->display( ).
     ELSE.
       mo_salv_stack->refresh( ).
     ENDIF.
 
+  ENDMETHOD.
+
+
+  method ON_EDITOR_BORDER_CLICK.
+     DATA: lv_type    TYPE char1.
+
+    IF cntrl_pressed_set IS INITIAL.
+      lv_type = 'S'.
+    ELSE.
+      lv_type = 'E'.
+    ENDIF.
+
+    LOOP AT mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = line.
+      lv_type = <point>-type.
+
+      CALL FUNCTION 'RS_DELETE_BREAKPOINT'
+        EXPORTING
+          index        = line
+          mainprog     = m_prg-program
+          program      = m_prg-include
+          bp_type      = lv_type
+        EXCEPTIONS
+          not_executed = 1
+          OTHERS       = 2.
+
+      IF sy-subrc = 0.
+        <point>-del = abap_true.
+      ENDIF.
+    ENDLOOP.
+
+    IF sy-subrc <> 0. "create
+      CALL FUNCTION 'RS_SET_BREAKPOINT'
+        EXPORTING
+          index        = line
+          program      = m_prg-include
+          mainprogram  = m_prg-program
+          bp_type      = lv_type
+        EXCEPTIONS
+          not_executed = 1
+          OTHERS       = 2.
+
+    ENDIF.
+    DELETE mt_bpoints WHERE del IS NOT INITIAL.
+    set_program_line( ).
+  endmethod.
+
+
+  method ON_EDITOR_DOUBLE_CLICK.
+
+     sender->get_selection_pos( IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos) to_line = DATA(to_line) to_pos = DATA(to_pos) ).
 
   endmethod.
+
+
+  METHOD on_stack_double_click.
+
+    READ TABLE mo_viewer->mo_window->mt_stack INDEX row INTO DATA(ls_stack).
+    "only for coverage stack selection should work.
+    "CHECK mo_viewer->mo_window->mt_coverage IS NOT INITIAL.
+
+    MOVE-CORRESPONDING ls_stack TO mo_viewer->mo_window->m_prg.
+    MOVE-CORRESPONDING ls_stack TO mo_viewer->ms_stack.
+
+    show_coverage( ).
+    mo_viewer->show( ).
+
+  ENDMETHOD.
 ENDCLASS.

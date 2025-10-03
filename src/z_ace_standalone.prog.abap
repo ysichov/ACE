@@ -22,17 +22,16 @@ CLASS lcl_ai DEFINITION DEFERRED.
 CLASS lcl_data_receiver DEFINITION DEFERRED.
 CLASS lcl_data_transmitter DEFINITION DEFERRED.
 CLASS lcl_rtti_tree DEFINITION DEFERRED.
-CLASS lcl_window DEFINITION DEFERRED.
+CLASS lcl_ace_window DEFINITION DEFERRED.
 CLASS lcl_table_viewer DEFINITION DEFERRED.
 CLASS lcl_mermaid DEFINITION DEFERRED.
 
-CLASS lcl_box_handler DEFINITION."for memory clearing
-
-  PUBLIC SECTION.
-    METHODS: on_box_close FOR EVENT close OF cl_gui_dialogbox_container IMPORTING sender,
-      on_table_close FOR EVENT close OF cl_gui_dialogbox_container IMPORTING sender.
-
-ENDCLASS.
+*CLASS lcl_box_handler DEFINITION."for memory clearing
+*
+*  PUBLIC SECTION.
+*    METHODS: on_table_close FOR EVENT close OF cl_gui_dialogbox_container IMPORTING sender.
+*
+*ENDCLASS.
 
 CLASS lcl_appl DEFINITION.
 
@@ -184,13 +183,12 @@ CLASS lcl_appl DEFINITION.
              time       LIKE sy-uzeit,
            END OF t_step_counter.
 
-    CLASS-DATA: m_option_icons     TYPE TABLE OF sign_option_icon_s,
-                mt_lang            TYPE TABLE OF t_lang,
-                mt_obj             TYPE TABLE OF t_obj, "main object table
-                mt_popups          TYPE TABLE OF t_popup, "dependents popups
-                m_ctrl_box_handler TYPE REF TO lcl_box_handler,
-                c_dragdropalv      TYPE REF TO cl_dragdrop,
-                is_mermaid_active  TYPE xfeld.
+    CLASS-DATA: m_option_icons    TYPE TABLE OF sign_option_icon_s,
+                mt_lang           TYPE TABLE OF t_lang,
+                mt_obj            TYPE TABLE OF t_obj, "main object table
+                mt_popups         TYPE TABLE OF t_popup, "dependents popups
+                c_dragdropalv     TYPE REF TO cl_dragdrop,
+                is_mermaid_active TYPE xfeld.
 
     CLASS-DATA: mt_sel TYPE TABLE OF selection_display_s.
 
@@ -201,7 +199,7 @@ CLASS lcl_appl DEFINITION.
       open_int_table IMPORTING it_tab    TYPE ANY TABLE OPTIONAL
                                it_ref    TYPE REF TO data OPTIONAL
                                iv_name   TYPE string
-                               io_window TYPE REF TO lcl_window.
+                               io_window TYPE REF TO lcl_ace_window.
 
 ENDCLASS.
 
@@ -419,18 +417,6 @@ CLASS lcl_source_parser DEFINITION.
 
 ENDCLASS.
 
-CLASS lcl_event_handler DEFINITION.
-  PUBLIC SECTION.
-    DATA: mo_viewer TYPE REF TO lcl_ace.
-    METHODS: constructor IMPORTING io_debugger TYPE REF TO lcl_ace,
-      on_double_click
-        FOR EVENT double_click OF cl_salv_events_table IMPORTING row column,
-      on_editor_double_click  FOR EVENT dblclick OF cl_gui_abapedit IMPORTING sender,
-      on_editor_border_click  FOR EVENT border_click OF cl_gui_abapedit IMPORTING line cntrl_pressed_set shift_pressed_set.
-
-ENDCLASS.
-
-
 CLASS lcl_ace DEFINITION.
 
   PUBLIC SECTION.
@@ -474,7 +460,7 @@ CLASS lcl_ace DEFINITION.
           mt_state          TYPE STANDARD TABLE OF lcl_appl=>var_table,
           mv_recurse        TYPE i,
           mt_classes_types  TYPE TABLE OF lcl_appl=>t_classes_types,
-          mo_window         TYPE REF TO lcl_window,
+          mo_window         TYPE REF TO lcl_ace_window,
           mv_f7_stop        TYPE xfeld,
           m_f6_level        TYPE i,
           m_target_stack    TYPE i,
@@ -1062,7 +1048,9 @@ CLASS lcl_ai IMPLEMENTATION.
         REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN mv_prompt WITH ''.
         REPLACE ALL OCCURRENCES OF '#' IN mv_prompt WITH ''.
         REPLACE ALL OCCURRENCES OF '"' IN mv_prompt WITH ''''.
-        REPLACE ALL OCCURRENCES OF '/' IN mv_prompt WITH ''.
+        DO 50 TIMES.
+          REPLACE ALL OCCURRENCES OF '/' IN mv_prompt WITH ''.
+        ENDDO.
         REPLACE ALL OCCURRENCES OF REGEX '[[:cntrl:]]' IN mv_prompt WITH ' '.
 
         mv_answer = lo_ai->call_openai( mv_prompt ).
@@ -1075,7 +1063,7 @@ CLASS lcl_ai IMPLEMENTATION.
 ENDCLASS.
 
 
-CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
+CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_popup .
 
   PUBLIC SECTION.
 
@@ -1262,7 +1250,10 @@ CLASS lcl_window DEFINITION INHERITING FROM lcl_popup .
       set_program_line IMPORTING iv_line LIKE sy-index OPTIONAL,
       create_code_viewer,
       show_stack,
-      show_coverage.
+      show_coverage,
+      on_stack_double_click FOR EVENT double_click OF cl_salv_events_table IMPORTING row column,
+      on_editor_double_click  FOR EVENT dblclick OF cl_gui_abapedit IMPORTING sender,
+      on_editor_border_click  FOR EVENT border_click OF cl_gui_abapedit IMPORTING line cntrl_pressed_set shift_pressed_set.
 
 ENDCLASS.
 
@@ -1284,7 +1275,7 @@ CLASS lcl_ace IMPLEMENTATION.
     lcl_appl=>init_lang( ).
     lcl_appl=>init_icons_table( ).
 
-    mo_window = NEW lcl_window( me ).
+    mo_window = NEW lcl_ace_window( me ).
 
 
     mo_tree_local = NEW lcl_rtti_tree( i_header   = 'Objects & Code Flow'
@@ -1385,120 +1376,7 @@ CLASS lcl_ace IMPLEMENTATION.
 
 ENDCLASS.                    "lcl_ace IMPLEMENTATION
 
-CLASS lcl_event_handler IMPLEMENTATION.
-
-  METHOD constructor.
-    mo_viewer = io_debugger.
-  ENDMETHOD.
-
-  METHOD on_double_click.
-
-    READ TABLE mo_viewer->mo_window->mt_stack INDEX row INTO DATA(ls_stack).
-    "only for coverage stack selection should work.
-    "CHECK mo_viewer->mo_window->mt_coverage IS NOT INITIAL.
-
-
-    MOVE-CORRESPONDING ls_stack TO mo_viewer->mo_window->m_prg.
-    MOVE-CORRESPONDING ls_stack TO mo_viewer->ms_stack.
-
-    mo_viewer->mo_window->show_coverage( ).
-    mo_viewer->show( ).
-
-  ENDMETHOD.
-
-  METHOD on_editor_double_click.
-    sender->get_selection_pos( IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos) to_line = DATA(to_line) to_pos = DATA(to_pos) ).
-
-  ENDMETHOD.
-
-  METHOD on_editor_border_click.
-
-    DATA: lv_type    TYPE char1.
-
-    IF cntrl_pressed_set IS INITIAL.
-      lv_type = 'S'.
-    ELSE.
-      lv_type = 'E'.
-    ENDIF.
-
-    LOOP AT mo_viewer->mo_window->mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = line.
-      lv_type = <point>-type.
-
-      CALL FUNCTION 'RS_DELETE_BREAKPOINT'
-        EXPORTING
-          index        = line
-          mainprog     = mo_viewer->mo_window->m_prg-program
-          program      = mo_viewer->mo_window->m_prg-include
-          bp_type      = lv_type
-        EXCEPTIONS
-          not_executed = 1
-          OTHERS       = 2.
-
-      IF sy-subrc = 0.
-        <point>-del = abap_true.
-      ENDIF.
-    ENDLOOP.
-
-    IF sy-subrc <> 0. "create
-      CALL FUNCTION 'RS_SET_BREAKPOINT'
-        EXPORTING
-          index        = line
-          program      = mo_viewer->mo_window->m_prg-include
-          mainprogram  = mo_viewer->mo_window->m_prg-program
-          bp_type      = lv_type
-        EXCEPTIONS
-          not_executed = 1
-          OTHERS       = 2.
-
-    ENDIF.
-    DELETE mo_viewer->mo_window->mt_bpoints WHERE del IS NOT INITIAL.
-    mo_viewer->mo_window->set_program_line( ).
-  ENDMETHOD.
-
-ENDCLASS.
-
-*CLASS lcl_appl DEFINITION ABSTRACT.
-*
-*  PUBLIC SECTION.
-*    TYPES:
-*      BEGIN OF selection_display_s,
-*        ind         TYPE i,
-*        field_label TYPE lvc_fname,
-*        int_type(1),
-*        inherited   TYPE aqadh_type_of_icon,
-*        emitter     TYPE aqadh_type_of_icon,
-*        sign        TYPE tvarv_sign,
-*        opti        TYPE tvarv_opti,
-*        option_icon TYPE aqadh_type_of_icon,
-*        low         TYPE string,
-*        high        TYPE string,
-*        more_icon   TYPE aqadh_type_of_icon,
-*        range       TYPE aqadh_t_ranges,
-*        name        TYPE reptext,
-*        element     TYPE text60,
-*        domain      TYPE text60,
-*        datatype    TYPE string,
-*        length      TYPE i,
-*        transmitter TYPE REF TO lcl_data_transmitter,
-*        receiver    TYPE REF TO lcl_data_receiver,
-*        color       TYPE lvc_t_scol,
-*        style       TYPE lvc_t_styl,
-*      END OF selection_display_s,
-*      BEGIN OF t_sel_row,
-*        sign        TYPE tvarv_sign,
-*        opti        TYPE tvarv_opti,
-*        option_icon TYPE aqadh_type_of_icon,
-*        low         TYPE string, "aqadh_range_value,
-*        high        TYPE string, "aqadh_range_value,
-*        more_icon   TYPE aqadh_type_of_icon,
-*        range       TYPE aqadh_t_ranges,
-*      END OF t_sel_row.
-*
-*    CLASS-DATA: mt_sel TYPE TABLE OF lcl_appl=>selection_display_s.
-*
-*ENDCLASS.
-
-CLASS lcl_window IMPLEMENTATION.
+CLASS lcl_ace_window IMPLEMENTATION.
 
   METHOD constructor.
 
@@ -1732,7 +1610,6 @@ CLASS lcl_window IMPLEMENTATION.
         dp_error_send    = 3
         OTHERS           = 4 ).
 
-    DATA(lo_handler) = NEW lcl_event_handler( mo_viewer ).
     ls_event-eventid    = cl_gui_textedit=>event_double_click.
     APPEND ls_event TO lt_events.
 
@@ -1740,8 +1617,8 @@ CLASS lcl_window IMPLEMENTATION.
     mo_code_viewer->register_event_border_click( ).
     mo_code_viewer->register_event_break_changed( ).
 
-    SET HANDLER lo_handler->on_editor_double_click FOR mo_code_viewer.
-    SET HANDLER lo_handler->on_editor_border_click FOR mo_code_viewer.
+    SET HANDLER on_editor_double_click FOR mo_code_viewer.
+    SET HANDLER on_editor_border_click FOR mo_code_viewer.
 
     mo_code_viewer->set_statusbar_mode( statusbar_mode = cl_gui_abapedit=>true ).
     mo_code_viewer->create_document( ).
@@ -1789,11 +1666,8 @@ CLASS lcl_window IMPLEMENTATION.
 
       DATA(lo_event) =  mo_salv_stack->get_event( ).
 
-      DATA(lo_handler) = NEW lcl_event_handler( mo_viewer ).
-
       " Event double click
-      SET HANDLER lo_handler->on_double_click FOR lo_event.
-
+      SET HANDLER on_stack_double_click FOR lo_event.
       mo_salv_stack->display( ).
     ELSE.
       mo_salv_stack->refresh( ).
@@ -1827,6 +1701,69 @@ CLASS lcl_window IMPLEMENTATION.
     SORT mt_coverage.
     DELETE ADJACENT DUPLICATES FROM mt_coverage.
 
+  ENDMETHOD.
+
+  METHOD on_stack_double_click.
+
+    READ TABLE mo_viewer->mo_window->mt_stack INDEX row INTO DATA(ls_stack).
+    "only for coverage stack selection should work.
+    "CHECK mo_viewer->mo_window->mt_coverage IS NOT INITIAL.
+
+    MOVE-CORRESPONDING ls_stack TO mo_viewer->mo_window->m_prg.
+    MOVE-CORRESPONDING ls_stack TO mo_viewer->ms_stack.
+
+    show_coverage( ).
+    mo_viewer->show( ).
+
+  ENDMETHOD.
+
+  METHOD on_editor_double_click.
+    sender->get_selection_pos( IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos) to_line = DATA(to_line) to_pos = DATA(to_pos) ).
+
+  ENDMETHOD.
+
+  METHOD on_editor_border_click.
+
+    DATA: lv_type    TYPE char1.
+
+    IF cntrl_pressed_set IS INITIAL.
+      lv_type = 'S'.
+    ELSE.
+      lv_type = 'E'.
+    ENDIF.
+
+    LOOP AT mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = line.
+      lv_type = <point>-type.
+
+      CALL FUNCTION 'RS_DELETE_BREAKPOINT'
+        EXPORTING
+          index        = line
+          mainprog     = m_prg-program
+          program      = m_prg-include
+          bp_type      = lv_type
+        EXCEPTIONS
+          not_executed = 1
+          OTHERS       = 2.
+
+      IF sy-subrc = 0.
+        <point>-del = abap_true.
+      ENDIF.
+    ENDLOOP.
+
+    IF sy-subrc <> 0. "create
+      CALL FUNCTION 'RS_SET_BREAKPOINT'
+        EXPORTING
+          index        = line
+          program      = m_prg-include
+          mainprogram  = m_prg-program
+          bp_type      = lv_type
+        EXCEPTIONS
+          not_executed = 1
+          OTHERS       = 2.
+
+    ENDIF.
+    DELETE mt_bpoints WHERE del IS NOT INITIAL.
+    set_program_line( ).
   ENDMETHOD.
 
   METHOD hnd_toolbar.
@@ -2022,13 +1959,13 @@ CLASS lcl_table_viewer DEFINITION INHERITING FROM lcl_popup.
           m_visible,
           m_std_tbar         TYPE x,
           m_show_empty       TYPE i,
-          mo_window          TYPE REF TO lcl_window.
+          mo_window          TYPE REF TO lcl_ace_window.
 
     METHODS:
       constructor IMPORTING i_tname           TYPE any OPTIONAL
                             i_additional_name TYPE string OPTIONAL
                             ir_tab            TYPE REF TO data OPTIONAL
-                            io_window         TYPE REF TO lcl_window,
+                            io_window         TYPE REF TO lcl_ace_window,
       refresh_table FOR EVENT selection_done OF lcl_sel_opt.
 
   PRIVATE SECTION.
@@ -2043,7 +1980,8 @@ CLASS lcl_table_viewer DEFINITION INHERITING FROM lcl_popup.
       handle_tab_toolbar  FOR EVENT toolbar OF cl_gui_alv_grid  IMPORTING e_object,
       before_user_command FOR EVENT before_user_command OF cl_gui_alv_grid IMPORTING e_ucomm,
       handle_user_command FOR EVENT user_command OF cl_gui_alv_grid IMPORTING e_ucomm,
-      handle_doubleclick FOR EVENT double_click OF cl_gui_alv_grid IMPORTING e_column es_row_no.
+      handle_doubleclick FOR EVENT double_click OF cl_gui_alv_grid IMPORTING e_column es_row_no,
+      on_table_close FOR EVENT close OF cl_gui_dialogbox_container IMPORTING sender.
 
 ENDCLASS.
 
@@ -2216,43 +2154,39 @@ CLASS lcl_data_receiver IMPLEMENTATION.
 
 ENDCLASS.
 
-CLASS lcl_box_handler IMPLEMENTATION.
-
-  METHOD on_box_close.
-
-  ENDMETHOD.
-
-  METHOD on_table_close.
-    DATA: lv_tabix LIKE sy-tabix.
-    sender->free( ).
-
-    "Free Memory
-    LOOP AT lcl_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
-      IF <obj>-alv_viewer->mo_box = sender.
-        lv_tabix = sy-tabix.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
-    IF sy-subrc = 0.
-      FREE <obj>-alv_viewer->mr_table.
-      FREE <obj>-alv_viewer->mo_alv.
-
-      "shutdown receivers.
-      IF <obj>-alv_viewer->mo_sel IS NOT INITIAL.
-        LOOP AT <obj>-alv_viewer->mo_sel->mt_sel_tab INTO DATA(l_sel).
-          IF l_sel-receiver IS BOUND.
-            l_sel-receiver->shut_down( ).
-          ENDIF.
-        ENDLOOP.
-      ENDIF.
-      FREE <obj>-alv_viewer.
-      IF lv_tabix NE 0.
-        DELETE lcl_appl=>mt_obj INDEX lv_tabix.
-      ENDIF.
-    ENDIF.
-  ENDMETHOD.                    "ON_BOX_CLOSE
-
-ENDCLASS.               "lcl_box_handler
+*CLASS lcl_box_handler IMPLEMENTATION.
+*
+*   METHOD on_table_close.
+*    DATA: lv_tabix LIKE sy-tabix.
+*    sender->free( ).
+*
+*    "Free Memory
+*    LOOP AT lcl_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
+*      IF <obj>-alv_viewer->mo_box = sender.
+*        lv_tabix = sy-tabix.
+*        EXIT.
+*      ENDIF.
+*    ENDLOOP.
+*    IF sy-subrc = 0.
+*      FREE <obj>-alv_viewer->mr_table.
+*      FREE <obj>-alv_viewer->mo_alv.
+*
+*      "shutdown receivers.
+*      IF <obj>-alv_viewer->mo_sel IS NOT INITIAL.
+*        LOOP AT <obj>-alv_viewer->mo_sel->mt_sel_tab INTO DATA(l_sel).
+*          IF l_sel-receiver IS BOUND.
+*            l_sel-receiver->shut_down( ).
+*          ENDIF.
+*        ENDLOOP.
+*      ENDIF.
+*      FREE <obj>-alv_viewer.
+*      IF lv_tabix NE 0.
+*        DELETE lcl_appl=>mt_obj INDEX lv_tabix.
+*      ENDIF.
+*    ENDIF.
+*  ENDMETHOD.                    "ON_BOX_CLOSE
+*
+*ENDCLASS.               "lcl_box_handler
 
 CLASS lcl_table_viewer IMPLEMENTATION.
 
@@ -2422,10 +2356,8 @@ CLASS lcl_table_viewer IMPLEMENTATION.
        RECEIVING
         container = mo_alv_parent.
 
-    IF lcl_appl=>m_ctrl_box_handler IS INITIAL.
-      lcl_appl=>m_ctrl_box_handler = NEW #( ).
-    ENDIF.
-    SET HANDLER lcl_appl=>m_ctrl_box_handler->on_table_close FOR mo_box.
+
+    SET HANDLER on_table_close FOR mo_box.
 
   ENDMETHOD.
 
@@ -2689,6 +2621,37 @@ CLASS lcl_table_viewer IMPLEMENTATION.
 *        ENDTRY.
 *    ENDCASE.
 *
+  ENDMETHOD.
+
+  METHOD on_table_close.
+    DATA: lv_tabix LIKE sy-tabix.
+    sender->free( ).
+
+    "Free Memory
+    LOOP AT lcl_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
+      IF <obj>-alv_viewer->mo_box = sender.
+        lv_tabix = sy-tabix.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+    IF sy-subrc = 0.
+      FREE <obj>-alv_viewer->mr_table.
+      FREE <obj>-alv_viewer->mo_alv.
+
+      "shutdown receivers.
+      IF <obj>-alv_viewer->mo_sel IS NOT INITIAL.
+        LOOP AT <obj>-alv_viewer->mo_sel->mt_sel_tab INTO DATA(l_sel).
+          IF l_sel-receiver IS BOUND.
+            l_sel-receiver->shut_down( ).
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+      FREE <obj>-alv_viewer.
+      IF lv_tabix NE 0.
+        DELETE lcl_appl=>mt_obj INDEX lv_tabix.
+      ENDIF.
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD before_user_command.
@@ -4479,19 +4442,19 @@ CLASS lcl_source_parser IMPLEMENTATION.
           lo_scan       TYPE REF TO cl_ci_scan,
           lo_statement  TYPE REF TO if_ci_kzn_statement_iterator,
           lo_procedure  TYPE REF TO if_ci_kzn_statement_iterator,
-          ls_token      TYPE lcl_window=>ts_kword,
-          ls_calculated TYPE lcl_window=>ts_calculated,
-          ls_composed   TYPE lcl_window=>ts_composing,
-          lt_tokens     TYPE lcl_window=>tt_kword,
-          lt_calculated TYPE lcl_window=>tt_calculated,
-          lt_composed   TYPE lcl_window=>tt_composed,
-          ls_call       TYPE lcl_window=>ts_calls,
-          ls_call_line  TYPE lcl_window=>ts_calls_line,
-          ls_tabs       TYPE lcl_window=>ts_int_tabs,
-          lt_tabs       TYPE lcl_window=>tt_tabs,
+          ls_token      TYPE lcl_ace_window=>ts_kword,
+          ls_calculated TYPE lcl_ace_window=>ts_calculated,
+          ls_composed   TYPE lcl_ace_window=>ts_composing,
+          lt_tokens     TYPE lcl_ace_window=>tt_kword,
+          lt_calculated TYPE lcl_ace_window=>tt_calculated,
+          lt_composed   TYPE lcl_ace_window=>tt_composed,
+          ls_call       TYPE lcl_ace_window=>ts_calls,
+          ls_call_line  TYPE lcl_ace_window=>ts_calls_line,
+          ls_tabs       TYPE lcl_ace_window=>ts_int_tabs,
+          lt_tabs       TYPE lcl_ace_window=>tt_tabs,
           lv_eventtype  TYPE string,
           lv_eventname  TYPE string,
-          ls_param      TYPE lcl_window=>ts_params,
+          ls_param      TYPE lcl_ace_window=>ts_params,
           lv_par        TYPE char1,
           lv_type       TYPE char1,
           lv_class      TYPE xfeld,
@@ -5129,7 +5092,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
   METHOD code_execution_scanner.
     "code execution scanner
     DATA: lv_max       TYPE i,
-          ls_call_line TYPE lcl_window=>ts_calls_line,
+          ls_call_line TYPE lcl_ace_window=>ts_calls_line,
           lv_program   TYPE program,
           lv_prefix    TYPE string,
           lv_event     TYPE string,

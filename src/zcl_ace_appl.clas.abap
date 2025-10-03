@@ -125,7 +125,6 @@ public section.
     mt_obj             TYPE TABLE OF t_obj .
   class-data:
     mt_popups          TYPE TABLE OF t_popup .
-  class-data M_CTRL_BOX_HANDLER type ref to ZCL_ACE_BOX_HANDLER .
   class-data C_DRAGDROPALV type ref to CL_DRAGDROP .
   class-data IS_MERMAID_ACTIVE type XFELD .
 

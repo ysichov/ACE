@@ -1,25 +1,25 @@
 class ZCL_ACE_TABLE_VIEWER definition
   public
-  inheriting from zCL_ace_POPUP
+  inheriting from ZCL_ACE_POPUP
   create public .
 
 public section.
 
   types:
     BEGIN OF t_column_emitter,
-             column  TYPE lvc_fname,
-             emitter TYPE REF TO zcl_ace_data_transmitter,
-           END OF t_column_emitter .
+        column  TYPE lvc_fname,
+        emitter TYPE REF TO zcl_ace_data_transmitter,
+      END OF t_column_emitter .
   types:
     BEGIN OF t_elem,
-             field TYPE fieldname,
-             elem  TYPE ddobjname,
-           END OF t_elem .
+        field TYPE fieldname,
+        elem  TYPE ddobjname,
+      END OF t_elem .
 
   data M_LANG type DDLANGUAGE .
   data M_TABNAME type TABNAME .
   data MO_ALV type ref to CL_GUI_ALV_GRID .
-  data MO_SEL type ref to zCL_ace_SEL_OPT .
+  data MO_SEL type ref to ZCL_ACE_SEL_OPT .
   data MR_TABLE type ref to DATA .
   data MO_SEL_PARENT type ref to CL_GUI_CONTAINER .
   data MO_ALV_PARENT type ref to CL_GUI_CONTAINER .
@@ -32,16 +32,20 @@ public section.
   data M_VISIBLE type C .
   data M_STD_TBAR type X .
   data M_SHOW_EMPTY type I .
-  data MO_WINDOW type ref to zCL_ace_WINDOW .
+  data MO_WINDOW type ref to ZCL_ACE_WINDOW .
 
   methods CONSTRUCTOR
     importing
       !I_TNAME type ANY optional
       !I_ADDITIONAL_NAME type STRING optional
       !IR_TAB type ref to DATA optional
-      !IO_WINDOW type ref to zCL_ace_WINDOW .
+      !IO_WINDOW type ref to ZCL_ACE_WINDOW .
   methods REFRESH_TABLE
-    for event SELECTION_DONE of ZCL_ace_SEL_OPT .
+    for event SELECTION_DONE of ZCL_ACE_SEL_OPT .
+  methods ON_TABLE_CLOSE
+    for event CLOSE of CL_GUI_DIALOGBOX_CONTAINER
+    importing
+      !SENDER .
 protected section.
 private section.
 
@@ -408,10 +412,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
        RECEIVING
         container = mo_alv_parent.
 
-    IF zcl_ace_appl=>m_ctrl_box_handler IS INITIAL.
-      zcl_ace_appl=>m_ctrl_box_handler = NEW #( ).
-    ENDIF.
-    SET HANDLER zcl_ace_appl=>m_ctrl_box_handler->on_table_close FOR mo_box.
+    SET HANDLER on_table_close FOR mo_box.
 
 
   endmethod.
@@ -689,4 +690,35 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
 
 
   endmethod.
+
+
+  METHOD on_table_close.
+    DATA: lv_tabix LIKE sy-tabix.
+    sender->free( ).
+
+    "Free Memory
+    LOOP AT zcl_ace_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
+      IF <obj>-alv_viewer->mo_box = sender.
+        lv_tabix = sy-tabix.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+    IF sy-subrc = 0.
+      FREE <obj>-alv_viewer->mr_table.
+      FREE <obj>-alv_viewer->mo_alv.
+
+      "shutdown receivers.
+      IF <obj>-alv_viewer->mo_sel IS NOT INITIAL.
+        LOOP AT <obj>-alv_viewer->mo_sel->mt_sel_tab INTO DATA(l_sel).
+          IF l_sel-receiver IS BOUND.
+            l_sel-receiver->shut_down( ).
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+      FREE <obj>-alv_viewer.
+      IF lv_tabix NE 0.
+        DELETE zcl_ace_appl=>mt_obj INDEX lv_tabix.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
 ENDCLASS.
