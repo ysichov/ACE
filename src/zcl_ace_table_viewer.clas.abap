@@ -674,7 +674,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
 
     CALL FUNCTION 'DDIF_DTEL_GET'
       EXPORTING
-        name          = CONV ddobjname( l_field-elem )
+        name          = l_field-elem
         langu         = i_lang
       IMPORTING
         dd04v_wa      = l_dd04

@@ -186,7 +186,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
     IF  mo_window->m_prg-include IS INITIAL.
       mo_window->m_prg-program =  mo_window->m_prg-include = mv_prog.
     ENDIF.
-    mo_window->set_program( CONV #( mo_window->m_prg-include ) ).
+    mo_window->set_program(  mo_window->m_prg-include ).
     mo_window->show_coverage( ).
     mo_window->set_program_line( mo_window->m_prg-line ).
 
