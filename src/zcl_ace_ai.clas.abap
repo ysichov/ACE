@@ -38,21 +38,21 @@ CLASS ZCL_ACE_AI IMPLEMENTATION.
 
   METHOD add_ai_toolbar_buttons.
 
-    DATA: lt_button TYPE ttb_button,
-          lt_events TYPE cntl_simple_events,
-          ls_events LIKE LINE OF lt_events.
+    DATA: buttons TYPE ttb_button,
+          events TYPE cntl_simple_events,
+          event LIKE LINE OF events.
 
-    lt_button  = VALUE #(
+   buttons  = VALUE #(
      ( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ).
 
-    mo_ai_toolbar->add_button_group( lt_button ).
+    mo_ai_toolbar->add_button_group( buttons ).
 
 *   Register events
-    ls_events-eventid = cl_gui_toolbar=>m_id_function_selected.
-    ls_events-appl_event = space.
-    APPEND ls_events TO lt_events.
+    event-eventid = cl_gui_toolbar=>m_id_function_selected.
+    event-appl_event = space.
+    APPEND event TO events.
 
-    mo_ai_toolbar->set_registered_events( events = lt_events ).
+    mo_ai_toolbar->set_registered_events( events = events ).
     SET HANDLER me->hnd_ai_toolbar FOR mo_ai_toolbar.
 
   ENDMETHOD.
@@ -168,7 +168,7 @@ CLASS ZCL_ACE_AI IMPLEMENTATION.
 
   METHOD hnd_ai_toolbar.
 
-    DATA: lv_prompt TYPE string.
+    DATA: prompt TYPE string.
 
     CASE fcode.
 
@@ -182,8 +182,8 @@ CLASS ZCL_ACE_AI IMPLEMENTATION.
           IMPORTING
             text = lt_text.
         CLEAR mv_prompt.
-        LOOP AT lt_text INTO DATA(lv_line).
-          CONCATENATE mv_prompt lv_line
+        LOOP AT lt_text INTO DATA(line).
+          CONCATENATE mv_prompt line
                       "cl_abap_char_utilities=>newline
                  INTO mv_prompt.
         ENDLOOP.
