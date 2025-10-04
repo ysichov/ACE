@@ -502,7 +502,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
   endmethod.
 
 
-  method TRAVERSE_ELEM.
+  METHOD traverse_elem.
 
 
     DATA: lo_elem_descr TYPE REF TO cl_abap_elemdescr,
@@ -578,9 +578,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     LOOP AT lt_nodes INTO DATA(ls_nodes).
       DATA(lv_name) = ls_nodes-node->get_text( ).
       DATA(lr_row) = ls_nodes-node->get_data_row( ).
-      DATA ls_row TYPE ts_table.
-      ls_row = lr_row->*.
-      IF ls_row-fullname = is_var-name.
+      FIELD-SYMBOLS <ls_row> TYPE ts_table.
+      ASSIGN lr_row->* TO <ls_row>.
+      IF <ls_row>-fullname = is_var-name.
         DATA(l_node) = ls_nodes-node.
         EXIT.
       ENDIF.
@@ -660,7 +660,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     ENDTRY.
 
 
-  endmethod.
+  ENDMETHOD.
 
 
   method TRAVERSE_OBJ.
@@ -738,7 +738,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
   endmethod.
 
 
-  method TRAVERSE_STRUCT.
+  METHOD traverse_struct.
 
 
     DATA: lt_component    TYPE abap_component_tab,
@@ -798,9 +798,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         DATA(lt_nodes) = tree->get_nodes( )->get_all_nodes( ).
         LOOP AT lt_nodes INTO DATA(ls_nodes).
           DATA(lr_row) = ls_nodes-node->get_data_row( ).
-          DATA ls_row TYPE ts_table.
-          ls_row = lr_row->*.
-          IF ls_row-fullname = is_var-name.
+          FIELD-SYMBOLS <ls_row> TYPE ts_table.
+          ASSIGN lr_row->* TO <ls_row>.
+          IF <ls_row>-fullname = is_var-name.
             DATA(l_node) = ls_nodes-node.
             EXIT.
           ENDIF.
@@ -865,10 +865,10 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     ENDIF.
 
 
-  endmethod.
+  ENDMETHOD.
 
 
-  method TRAVERSE_TABLE.
+  METHOD traverse_table.
 
 
     DATA: lo_table_descr TYPE REF TO cl_abap_tabledescr,
@@ -914,9 +914,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     DATA(lt_nodes) = tree->get_nodes( )->get_all_nodes( ).
     LOOP AT lt_nodes INTO DATA(ls_nodes).
       DATA(lr_row) = ls_nodes-node->get_data_row( ).
-      DATA ls_row TYPE ts_table.
-      ls_row = lr_row->*.
-      IF ls_row-fullname = is_var-name.
+      FIELD-SYMBOLS <ls_row> TYPE ts_table.
+      ASSIGN lr_row->* TO <ls_row>.
+      IF <ls_row>-fullname = is_var-name.
         DATA(l_node) = ls_nodes-node.
         EXIT.
       ENDIF.
@@ -1001,5 +1001,5 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     ENDIF.
 
 
-  endmethod.
+  ENDMETHOD.
 ENDCLASS.
