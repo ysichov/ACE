@@ -79,7 +79,7 @@ CLASS lcl_appl DEFINITION.
              eventtype(30) TYPE c,
              eventname(61) TYPE c,
              first         TYPE xfeld,
-             i_appear     TYPE xfeld,
+             i_appear      TYPE xfeld,
              del           TYPE xfeld,
              leaf          TYPE string,
              name(1000)               ,
@@ -105,7 +105,7 @@ CLASS lcl_appl DEFINITION.
              name          TYPE string,
              value         TYPE string,
              first         TYPE xfeld,
-             i_appear     TYPE xfeld,
+             i_appear      TYPE xfeld,
              del           TYPE xfeld,
              program(40)   TYPE c,
              leaf          TYPE string,
@@ -177,11 +177,11 @@ CLASS lcl_appl DEFINITION.
              time       LIKE sy-uzeit,
            END OF t_step_counter.
 
-    CLASS-DATA: m_option_icons    TYPE TABLE OF sign_option_icon_s,
-                mt_lang           TYPE TABLE OF t_lang,
-                mt_obj            TYPE TABLE OF t_obj, "main object table
-                mt_popups         TYPE TABLE OF t_popup, "dependents popups
-                mo_dragdropalv     TYPE REF TO cl_dragdrop,
+    CLASS-DATA: m_option_icons   TYPE TABLE OF sign_option_icon_s,
+                mt_lang          TYPE TABLE OF t_lang,
+                mt_obj           TYPE TABLE OF t_obj, "main object table
+                mt_popups        TYPE TABLE OF t_popup, "dependents popups
+                mo_dragdropalv   TYPE REF TO cl_dragdrop,
                 i_mermaid_active TYPE xfeld.
 
     CLASS-DATA: mt_sel TYPE TABLE OF selection_display_s.
@@ -192,7 +192,7 @@ CLASS lcl_appl DEFINITION.
       check_mermaid,
       open_int_table IMPORTING it_tab    TYPE ANY TABLE OPTIONAL
                                it_ref    TYPE REF TO data OPTIONAL
-                               i_name   TYPE string
+                               i_name    TYPE string
                                io_window TYPE REF TO lcl_ace_window.
 
 ENDCLASS.
@@ -421,9 +421,33 @@ CLASS lcl_ace DEFINITION.
 
            BEGIN OF t_sel_var,
              name   TYPE string,
-             i_sel TYPE xfeld,
+             i_sel  TYPE xfeld,
              refval TYPE REF TO data,
-           END OF t_sel_var.
+           END OF t_sel_var,
+
+           BEGIN OF ts_if,
+             if_ind      TYPE i,
+             end_ind     TYPE i,
+             before_else TYPE i,
+           END OF ts_if,
+           tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY,
+
+           BEGIN OF ts_line,
+             cond       TYPE string,
+             include    TYPE string,
+             line       TYPE i,
+             ind        TYPE i,
+             ev_name    TYPE string,
+             ev_type    TYPE string,
+             stack      TYPE i,
+             code       TYPE string,
+             arrow      TYPE string,
+             subname    TYPE string,
+             del        TYPE flag,
+             els_before TYPE i,
+             els_after  TYPE i,
+           END OF ts_line,
+           tt_line TYPE TABLE OF ts_line WITH EMPTY KEY.
 
     DATA: mv_prog           TYPE prog,
           mv_dest           TYPE text255,
@@ -438,15 +462,15 @@ CLASS lcl_ace DEFINITION.
           mt_steps          TYPE  TABLE OF lcl_appl=>t_step_counter, "source code steps
           mt_var_step       TYPE  TABLE OF lcl_appl=>var_table_h,
           m_step            TYPE i,
-          m_i_find         TYPE xfeld,
+          m_i_find          TYPE xfeld,
           m_stop_stack      TYPE i,
           m_debug           TYPE x,
           m_refresh         TYPE xfeld, "to refactor
           m_update          TYPE xfeld,
-          i_step           TYPE xfeld,
+          i_step            TYPE xfeld,
           ms_stack_prev     TYPE   lcl_appl=>t_stack,
           ms_stack          TYPE   lcl_appl=>t_stack,
-          i_history        TYPE xfeld,
+          i_history         TYPE xfeld,
           m_hist_step       TYPE i,
           m_step_delta      TYPE i,
           mt_vars_hist_view TYPE STANDARD TABLE OF lcl_appl=>var_table,
@@ -464,7 +488,9 @@ CLASS lcl_ace DEFINITION.
           m_variable        TYPE REF TO data,
           mt_new_string     TYPE TABLE OF  string,
           m_quick           TYPE tpda_scr_quick_info,
-          mr_statements     TYPE RANGE OF string.
+          mr_statements     TYPE RANGE OF string,
+          ms_if             TYPE ts_if,
+          mt_if             TYPE tt_if.
 
     METHODS:
       constructor IMPORTING i_prog   TYPE prog
@@ -474,8 +500,10 @@ CLASS lcl_ace DEFINITION.
 
 
       hndl_script_buttons IMPORTING i_stack_changed TYPE xfeld
-                          RETURNING VALUE(rv_stop)   TYPE xfeld,
-      show.
+                          RETURNING VALUE(rv_stop)  TYPE xfeld,
+      show,
+      get_code_flow RETURNING VALUE(results) TYPE tt_line,
+      get_code_mix.
 
   PRIVATE SECTION.
 
@@ -494,12 +522,6 @@ ENDCLASS.
 CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
 
   PUBLIC SECTION.
-    TYPES: BEGIN OF ts_if,
-             if_ind      TYPE i,
-             end_ind     TYPE i,
-             before_else TYPE i,
-           END OF ts_if,
-           tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY.
 
     DATA: mo_viewer       TYPE REF TO lcl_ace,
           mo_mm_container TYPE REF TO cl_gui_container,
@@ -507,11 +529,10 @@ CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
           mo_toolbar      TYPE REF TO cl_gui_toolbar,
           mo_diagram      TYPE REF TO zcl_wd_gui_mermaid_js_diagram,
           mv_type         TYPE string,
-          ms_if           TYPE ts_if,
-          mt_if           TYPE tt_if.
+          mv_direction    type ui_func.
 
     METHODS: constructor IMPORTING io_debugger TYPE REF TO lcl_ace
-                                   i_type     TYPE string,
+                                   i_type      TYPE string,
 
       steps_flow IMPORTING i_direction TYPE ui_func OPTIONAL,
       magic_search IMPORTING i_direction TYPE ui_func OPTIONAL,
@@ -547,8 +568,8 @@ CLASS lcl_ai_api DEFINITION.
           e_error    TYPE xfeld,
       output
         IMPORTING
-                  i_prompt        TYPE string
-                  i_content       TYPE string
+                  i_prompt         TYPE string
+                  i_content        TYPE string
         RETURNING VALUE(rv_answer) TYPE string.
 
   PRIVATE SECTION.
@@ -610,8 +631,8 @@ CLASS lcl_ai_api IMPLEMENTATION.
   METHOD send_request.
 
     DATA: o_http_client TYPE REF TO if_http_client,
-          response_body  TYPE string,
-          header         TYPE string.
+          response_body TYPE string,
+          header        TYPE string.
 
     CALL METHOD cl_http_client=>create_by_destination
       EXPORTING
@@ -787,14 +808,14 @@ CLASS lcl_rtti_tree DEFINITION FINAL. " INHERITING FROM lcl_popup.
     METHODS add_buttons IMPORTING i_type TYPE xfeld.
     METHODS add_node
       IMPORTING
-                i_name        TYPE string
-                i_rel         TYPE salv_de_node_key OPTIONAL
-                i_icon        TYPE salv_de_tree_image OPTIONAL
+                i_name         TYPE string
+                i_rel          TYPE salv_de_node_key OPTIONAL
+                i_icon         TYPE salv_de_tree_image OPTIONAL
       RETURNING VALUE(rv_node) TYPE salv_de_node_key.
 
     METHODS add_obj_nodes
       IMPORTING
-                i_var            TYPE lcl_appl=>var_table
+                i_var             TYPE lcl_appl=>var_table
       RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
 
     METHODS delete_node IMPORTING i_key TYPE salv_de_node_key.
@@ -803,53 +824,53 @@ CLASS lcl_rtti_tree DEFINITION FINAL. " INHERITING FROM lcl_popup.
     METHODS traverse
       IMPORTING
                 io_type_descr     TYPE REF TO cl_abap_typedescr
-                i_parent_key     TYPE salv_de_node_key
-                i_rel            TYPE salv_de_node_relation
-                i_var            TYPE lcl_appl=>var_table
+                i_parent_key      TYPE salv_de_node_key
+                i_rel             TYPE salv_de_node_relation
+                i_var             TYPE lcl_appl=>var_table
                 ir_up             TYPE REF TO data OPTIONAL
-                i_parent_name    TYPE string OPTIONAL
-                i_struc_name     TYPE string OPTIONAL
+                i_parent_name     TYPE string OPTIONAL
+                i_struc_name      TYPE string OPTIONAL
       RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
 
     METHODS traverse_struct
       IMPORTING
                 io_type_descr     TYPE REF TO cl_abap_typedescr
-                i_parent_key     TYPE salv_de_node_key
-                i_rel            TYPE salv_de_node_relation
-                i_var            TYPE lcl_appl=>var_table
+                i_parent_key      TYPE salv_de_node_key
+                i_rel             TYPE salv_de_node_relation
+                i_var             TYPE lcl_appl=>var_table
                 ir_up             TYPE REF TO data OPTIONAL
-                i_parent_name    TYPE string OPTIONAL
-                i_struc_name     TYPE string OPTIONAL
+                i_parent_name     TYPE string OPTIONAL
+                i_struc_name      TYPE string OPTIONAL
       RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
 
     METHODS traverse_elem
       IMPORTING
                 io_type_descr     TYPE REF TO cl_abap_typedescr
-                i_parent_key     TYPE salv_de_node_key
-                i_rel            TYPE salv_de_node_relation
-                i_var            TYPE lcl_appl=>var_table
-                i_value          TYPE any OPTIONAL
-                i_parent_name    TYPE string OPTIONAL
+                i_parent_key      TYPE salv_de_node_key
+                i_rel             TYPE salv_de_node_relation
+                i_var             TYPE lcl_appl=>var_table
+                i_value           TYPE any OPTIONAL
+                i_parent_name     TYPE string OPTIONAL
       RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
 
     METHODS traverse_obj
       IMPORTING
-                i_parent_key     TYPE salv_de_node_key
-                i_rel            TYPE salv_de_node_relation
-                i_var            TYPE lcl_appl=>var_table
-                i_value          TYPE any OPTIONAL
+                i_parent_key      TYPE salv_de_node_key
+                i_rel             TYPE salv_de_node_relation
+                i_var             TYPE lcl_appl=>var_table
+                i_value           TYPE any OPTIONAL
                 ir_up             TYPE REF TO data OPTIONAL
-                i_parent_name    TYPE string OPTIONAL
+                i_parent_name     TYPE string OPTIONAL
       RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
 
     METHODS traverse_table
       IMPORTING
                 io_type_descr     TYPE REF TO cl_abap_typedescr
-                i_parent_key     TYPE salv_de_node_key
-                i_rel            TYPE salv_de_node_relation
-                i_var            TYPE lcl_appl=>var_table
+                i_parent_key      TYPE salv_de_node_key
+                i_rel             TYPE salv_de_node_relation
+                i_var             TYPE lcl_appl=>var_table
                 ir_up             TYPE REF TO data OPTIONAL
-                i_parent_name    TYPE string OPTIONAL
+                i_parent_name     TYPE string OPTIONAL
       RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
 
   PRIVATE SECTION.
@@ -1109,9 +1130,9 @@ CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_popup .
            END OF ts_calculated_var,
 
            BEGIN OF ts_composed_var,
-             program   TYPE string,
-             line      TYPE i,
-             name TYPE string,
+             program TYPE string,
+             line    TYPE i,
+             name    TYPE string,
            END OF ts_composed_var,
 
            BEGIN OF ts_refvar,
@@ -1368,6 +1389,353 @@ CLASS lcl_ace IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD get_code_flow.
+
+    DATA: add         TYPE xfeld,
+          mm_string   TYPE string,
+          sub         TYPE string,
+          form        TYPE string,
+          direction   TYPE string,
+          box_s       TYPE string,
+          box_e       TYPE string,
+          ind2        TYPE i,
+          start       TYPE i,
+          end         TYPE i,
+          bool        TYPE string,
+          block_first TYPE i,
+          els_before  TYPE i.
+
+    DATA: line      TYPE ts_line,
+          pre_stack TYPE ts_line,
+          opened    TYPE i.
+
+    READ TABLE mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(prog).
+
+    LOOP AT mt_steps INTO DATA(step).
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
+      READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(keyword).
+      LOOP AT keyword-tt_calls INTO DATA(call).
+
+        READ TABLE mt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO  mt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
+          <selected>-name = call-outer.
+        ENDIF.
+
+        READ TABLE mt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO  mt_selected_var ASSIGNING <selected>.
+          <selected>-name = call-inner.
+        ENDIF.
+      ENDLOOP.
+    ENDLOOP.
+
+    DATA(steps) = mt_steps.
+
+    SORT steps BY step DESCENDING.
+
+    "collecting dependents variables
+    LOOP AT steps INTO step.
+
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
+
+      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calculated_var) WHERE line = step-line AND program = prog-include.
+        READ TABLE mt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO mt_selected_var ASSIGNING <selected>.
+          <selected>-name = calculated_var-name.
+        ENDIF.
+        LOOP AT mo_window->ms_sources-t_composed INTO DATA(composed_var) WHERE line = step-line AND program = prog-include.
+          READ TABLE mt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO mt_selected_var ASSIGNING <selected>.
+            <selected>-name = composed_var-name.
+          ENDIF.
+        ENDLOOP.
+        "adding returning values
+        LOOP AT mo_window->ms_sources-t_params INTO DATA(param).
+          READ TABLE mt_selected_var WITH KEY name =  param-param TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO mt_selected_var ASSIGNING <selected>.
+            <selected>-name =  param-param.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
+
+      READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
+      LOOP AT keyword-tt_calls INTO call.
+
+        READ TABLE mt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          APPEND INITIAL LINE TO  mt_selected_var ASSIGNING <selected>.
+          <selected>-name = call-inner.
+        ENDIF.
+      ENDLOOP.
+
+    ENDLOOP.
+    SORT mo_window->mo_viewer->mt_selected_var.
+    DELETE ADJACENT DUPLICATES FROM mo_window->mo_viewer->mt_selected_var.
+
+    "collecting watchpoints
+    "CLEAR mo_viewer->mo_window->mt_coverage.
+
+    LOOP AT  steps INTO step.
+
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
+      READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(key).
+
+      CLEAR line-cond.
+      IF key-name = 'IF' OR key-name = 'ELSE' OR key-name = 'ENDIF' OR key-name = 'ELSEIF' OR
+         key-name = 'CASE' OR key-name = 'WHEN' OR key-name = 'ENDCASE' OR
+          key-name = 'DO' OR key-name = 'ENDDO'  OR key-name = 'LOOP'  OR key-name = 'ENDLOOP'
+         OR key-name = 'WHILE' OR key-name = 'ENDWHILE'
+         OR key-tt_calls IS NOT INITIAL.
+        APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
+        <watch>-program = step-program.
+        <watch>-line = line-line = step-line.
+        IF key-tt_calls IS INITIAL.
+          line-cond = key-name.
+        ENDIF.
+        line-ev_name = step-eventname.
+        line-ev_type = step-eventtype.
+        line-stack = step-stacklevel.
+        line-include = step-include.
+        INSERT line INTO results INDEX 1.
+
+      ENDIF.
+
+      LOOP AT  mo_window->ms_sources-t_calculated INTO calculated_var WHERE line = step-line AND program = prog-include.
+
+        LOOP AT mo_window->ms_sources-t_composed INTO composed_var WHERE line = step-line AND program = prog-include.
+          READ TABLE mt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO  mt_selected_var ASSIGNING <selected>.
+            <selected>-name = composed_var-name.
+          ENDIF.
+        ENDLOOP.
+
+        READ TABLE mt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+
+          APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING <watch>.
+          <watch>-program = step-program.
+          <watch>-line = line-line = step-line.
+
+          LOOP AT results ASSIGNING FIELD-SYMBOL(<line>) WHERE line = line-line AND ev_name = step-eventname AND stack = step-stacklevel .
+            <line>-del = abap_true.
+          ENDLOOP.
+
+          line-ev_name = step-eventname.
+          line-ev_type = step-eventtype.
+          line-stack = step-stacklevel.
+          line-include = step-include.
+          INSERT line INTO results INDEX 1.
+
+        ENDIF.
+
+      ENDLOOP.
+
+    ENDLOOP.
+
+    DELETE results WHERE del = abap_true.
+
+    "delete empty blocks
+    LOOP AT results ASSIGNING <line>.
+      IF <line>-cond = 'IF' OR <line>-cond = 'DO' OR <line>-cond = 'LOOP' OR <line>-cond = 'WHILE'.
+        READ TABLE results INDEX sy-tabix + 1 ASSIGNING FIELD-SYMBOL(<line2>).
+        IF <line2>-cond = 'ENDIF' OR <line2>-cond = 'ENDDO' OR <line2>-cond = 'ENDLOOP' OR <line2>-cond = 'ENDWHILE'.
+          <line>-del = <line2>-del = abap_true.
+        ENDIF.
+      ENDIF.
+
+    ENDLOOP.
+    DELETE results WHERE del = abap_true.
+
+
+    "getting code texts and calls params
+    LOOP AT results ASSIGNING <line>.
+      DATA(ind) = sy-tabix.
+
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = <line>-include INTO prog.
+      READ TABLE prog-t_keywords WITH KEY line = <line>-line INTO keyword.
+      LOOP AT prog-scan->tokens FROM keyword-from TO keyword-to INTO DATA(token).
+        IF token-str = 'USING' OR token-str = 'EXPORTING' OR token-str = 'IMPORTING' OR token-str = 'CHANGING'.
+          EXIT.
+        ENDIF.
+        IF <line>-code IS INITIAL.
+          <line>-code = token-str.
+        ELSE.
+          <line>-code = |{  <line>-code } { token-str }|.
+        ENDIF.
+      ENDLOOP.
+      REPLACE ALL OCCURRENCES OF '`' IN  <line>-code WITH ''.
+      REPLACE ALL OCCURRENCES OF '"' IN  <line>-code WITH ''.
+
+      SORT keyword-tt_calls BY outer.
+      DELETE ADJACENT DUPLICATES FROM keyword-tt_calls.
+      IF keyword-to_evname IS NOT INITIAL.
+        LOOP AT keyword-tt_calls INTO call. "WHERE type IS NOT INITIAL.
+          IF sy-tabix <> 1.
+            <line>-arrow = |{ <line>-arrow }, |.
+          ENDIF.
+          "<line>-arrow  = |{ <line>-arrow  } { call-outer } { call-type } { call-inner }|.
+          <line>-arrow  = |{ <line>-arrow  } { call-outer } as  { call-inner }|.
+          <line>-subname = call-name.
+        ENDLOOP.
+      ENDIF.
+      REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
+      REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''.
+      REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
+      REPLACE ALL OCCURRENCES OF '(' IN <line>-subname WITH ''.
+      REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
+    ENDLOOP.
+
+    "check subform execution steps existance and if/case structures build
+
+    DATA: if_depth   TYPE i,
+          when_count TYPE i.
+    LOOP AT results ASSIGNING <line> WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE' AND code <> 'LOOP' AND code <> 'ENDLOOP' .
+      <line>-ind = sy-tabix.
+
+      FIELD-SYMBOLS: <if> TYPE ts_if.
+      IF <line>-cond = 'IF' OR  <line>-cond = 'CASE'.
+        ADD 1 TO if_depth.
+        CLEAR when_count.
+        APPEND INITIAL LINE TO mt_if  ASSIGNING <if>.
+        <if>-if_ind = <line>-ind.
+
+      ENDIF.
+
+      IF <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE'.
+        <if>-end_ind = <line>-ind.
+        SUBTRACT 1 FROM if_depth.
+        LOOP AT mt_if  ASSIGNING <if> WHERE end_ind = 0.
+        ENDLOOP.
+        "READ TABLE mt_if INDEX if_depth ASSIGNING <if>.
+      ENDIF.
+
+      IF <line>-cond = 'WHEN'.
+        ADD 1 TO when_count.
+      ENDIF.
+
+      IF <line>-cond = 'ELSE' OR <line>-cond = 'ELSEIF'.
+
+        <line>-els_before =  els_before.
+        <line>-els_after = <line>-ind.
+        DATA(counter) = <line>-ind + 1.
+        DO.
+          READ TABLE results INDEX  counter INTO line.
+          IF sy-subrc <> 0.
+            CLEAR <line>-els_after.
+            EXIT.
+          ENDIF.
+
+          IF line-cond = 'ELSE' OR line-cond = 'ELSEIF'.
+            CLEAR <line>-els_after.
+            EXIT.
+          ELSEIF  line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
+            <line>-els_after =  counter.
+            EXIT.
+          ELSE.
+            ADD 1 TO  counter.
+
+          ENDIF.
+        ENDDO.
+        IF when_count = 1.
+          <if>-if_ind =  els_before.
+          CLEAR <line>-els_before.
+        ENDIF.
+      ENDIF.
+
+      IF <line>-cond = 'WHEN'.
+
+        <line>-els_before =  els_before.
+        <line>-els_after = <line>-ind.
+        counter = <line>-ind + 1.
+        DO.
+          READ TABLE results INDEX  counter INTO line.
+          IF sy-subrc <> 0.
+            CLEAR <line>-els_after.
+            EXIT.
+          ENDIF.
+
+          IF line-cond = 'WHEN'.
+            CLEAR <line>-els_after.
+            EXIT.
+          ELSEIF  line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
+            <line>-els_after =  counter.
+            EXIT.
+          ELSE.
+            ADD 1 TO  counter.
+
+          ENDIF.
+        ENDDO.
+        IF when_count = 1."to refactor
+*          <if>-if_ind =  els_before.
+*          CLEAR <line>-els_before.
+        ENDIF.
+      ENDIF.
+
+      IF <line>-cond <> 'ELSE' AND <line>-cond <> 'ELSEIF' AND <line>-cond <> 'WHEN'.
+        els_before = <line>-ind.
+      ELSE.
+        CLEAR    els_before.
+      ENDIF.
+
+      READ TABLE results WITH KEY ev_name = <line>-subname TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        CLEAR <line>-arrow.
+      ENDIF.
+    ENDLOOP.
+
+    IF mt_if IS INITIAL AND ms_if-if_ind IS NOT INITIAL.
+      INSERT ms_if INTO mt_if INDEX 1.
+    ENDIF.
+
+    IF lines( results ) > 0.
+      IF results[ lines( results ) ]-arrow IS NOT INITIAL.
+        CLEAR results[ lines( results ) ]-arrow .
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD get_code_mix.
+
+    "code flow
+    DATA: flow_lines TYPE sci_include,
+          splits     TYPE TABLE OF string,
+          form       TYPE string.
+
+    CLEAR form.
+
+    DATA(lines) = get_code_flow( ).
+    LOOP AT lines INTO DATA(line).
+
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = line-include INTO DATA(prog).
+      READ TABLE prog-t_keywords WITH KEY line = line-line INTO DATA(keyword).
+      DATA(from_row) = prog-scan->tokens[ keyword-from ]-row.
+      DATA(to_row) = prog-scan->tokens[ keyword-to ]-row.
+      DATA(spaces) = repeat( val = | | occ = ( line-stack - 1 ) * 3 ).
+      IF form <> line-ev_name. "new event
+        SPLIT line-include AT '=' INTO TABLE splits.
+
+        APPEND INITIAL LINE TO flow_lines ASSIGNING FIELD-SYMBOL(<flow>).
+        <flow> =  | "{ line-ev_type } { line-ev_name } in { splits[ 1 ] }|.
+      ENDIF.
+
+      LOOP AT prog-source->lines FROM from_row TO to_row INTO DATA(source_line).
+        APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
+        <flow> = |{ spaces }{ source_line }|.
+      ENDLOOP.
+      form = line-ev_name.
+    ENDLOOP.
+
+    mo_window->mo_code_viewer->set_text( table = flow_lines ).
+
+
+  ENDMETHOD.
+
 ENDCLASS.                    "lcl_ace IMPLEMENTATION
 
 CLASS lcl_ace_window IMPLEMENTATION.
@@ -1464,8 +1832,8 @@ CLASS lcl_ace_window IMPLEMENTATION.
       THEN VALUE #( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ) )
 
      ( COND #( WHEN lcl_appl=>i_mermaid_active = abap_true
-      THEN VALUE #( function = 'DIAGRAM' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagram' ) ) )
-     ( function = 'SMART' icon = CONV #( icon_wizard ) quickinfo = 'Calculations sequence' text = 'Calculations Flow' )
+      THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
+     ( function = 'CODEMIX' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
      ( function = 'CODE' icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
      "( function = 'COVERAGE' icon = CONV #( icon_wizard ) quickinfo = 'Coverage ' text = 'Coverage' )
      ( butn_type = 3  )
@@ -1773,12 +2141,12 @@ CLASS lcl_ace_window IMPLEMENTATION.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY selected = abap_true INTO DATA(prog).
         NEW lcl_ai( io_source = prog-source io_parent =  mo_viewer->mo_window->mo_box ).
 
-      WHEN 'DIAGRAM'.
-        DATA(o_mermaid) = NEW lcl_mermaid( io_debugger = mo_viewer i_type =  'DIAG' ).
+      WHEN 'CALLS'.
+        DATA(o_mermaid) = NEW lcl_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
 
-      WHEN 'SMART'.
-        o_mermaid = NEW lcl_mermaid( io_debugger = mo_viewer i_type =  'SMART' ).
-
+      WHEN 'CODEMIX'.
+        "o_mermaid = NEW lcl_mermaid( io_debugger = mo_viewer i_type =  'FLOW' ).
+        mo_viewer->get_code_mix( ).
 *      WHEN 'COVERAGE'.
 *        show_coverage( ).
 *        mo_viewer->show( ).
@@ -1872,8 +2240,8 @@ CLASS lcl_data_receiver DEFINITION.
 
   PUBLIC SECTION.
     DATA: mo_transmitter TYPE REF TO lcl_data_transmitter,
-          o_tab_from    TYPE REF TO lcl_table_viewer,
-          o_sel_to      TYPE REF TO lcl_sel_opt,
+          o_tab_from     TYPE REF TO lcl_table_viewer,
+          o_sel_to       TYPE REF TO lcl_sel_opt,
           m_from_field   TYPE lvc_fname,
           m_to_field     TYPE lvc_fname.
     METHODS: constructor
@@ -2198,7 +2566,7 @@ CLASS lcl_table_viewer IMPLEMENTATION.
 
     DATA: handle_notab   TYPE REF TO cl_abap_structdescr,
           handle_tab2str TYPE REF TO cl_abap_structdescr,
-          o_new_tab     TYPE REF TO cl_abap_tabledescr.
+          o_new_tab      TYPE REF TO cl_abap_tabledescr.
 
     FIELD-SYMBOLS: <notab>   TYPE STANDARD TABLE,
                    <tab2str> TYPE STANDARD TABLE,
@@ -3040,12 +3408,12 @@ CLASS lcl_sel_opt IMPLEMENTATION.
           IF c_sel_row-int_type = 'D'.
             CALL FUNCTION 'CONVERT_DATE_TO_INTERNAL'
               EXPORTING
-                date_external            = <field>
+                date_external           = <field>
               IMPORTING
-                date_internal            = <field>
+                date_internal           = <field>
               EXCEPTIONS
                 date_external_i_invalid = 1
-                OTHERS                   = 2.
+                OTHERS                  = 2.
           ELSE.
             REPLACE ALL OCCURRENCES OF ':' IN <field> WITH ''.
           ENDIF.
@@ -3448,7 +3816,7 @@ CLASS lcl_appl IMPLEMENTATION.
       EXCEPTIONS
         not_specified = 1
         not_existing  = 2
-        i_interface  = 3
+        i_interface   = 3
         no_text       = 4
         inconsistent  = 5
         OTHERS        = 6.
@@ -3596,13 +3964,13 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
 
   METHOD traverse_struct.
 
-    DATA: component       TYPE abap_component_tab,
+    DATA: component      TYPE abap_component_tab,
           o_struct_descr TYPE REF TO cl_abap_structdescr,
-          tree            TYPE ts_table,
-          text            TYPE lvc_value,
-          l_key           TYPE salv_de_node_key,
-          l_rel           TYPE salv_de_node_relation,
-          icon            TYPE salv_de_tree_image.
+          tree           TYPE ts_table,
+          text           TYPE lvc_value,
+          l_key          TYPE salv_de_node_key,
+          l_rel          TYPE salv_de_node_relation,
+          icon           TYPE salv_de_tree_image.
 
     ASSIGN i_var-ref->* TO FIELD-SYMBOL(<new_value>).
     l_rel = i_rel.
@@ -3725,11 +4093,11 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
   METHOD traverse_elem.
 
     DATA: o_elem_descr TYPE REF TO cl_abap_elemdescr,
-          tree          TYPE ts_table,
-          text          TYPE lvc_value,
-          icon          TYPE salv_de_tree_image,
-          l_key         TYPE salv_de_node_key,
-          l_rel         TYPE salv_de_node_relation.
+          tree         TYPE ts_table,
+          text         TYPE lvc_value,
+          icon         TYPE salv_de_tree_image,
+          l_key        TYPE salv_de_node_key,
+          l_rel        TYPE salv_de_node_relation.
 
     o_elem_descr ?= io_type_descr.
     tree-ref = i_var-ref.
@@ -3955,11 +4323,11 @@ CLASS lcl_rtti_tree IMPLEMENTATION.
   METHOD traverse_table.
 
     DATA: o_table_descr TYPE REF TO cl_abap_tabledescr,
-          tree           TYPE ts_table,
-          text           TYPE lvc_value,
-          icon           TYPE salv_de_tree_image,
-          l_key          TYPE salv_de_node_key,
-          l_rel          TYPE salv_de_node_relation.
+          tree          TYPE ts_table,
+          text          TYPE lvc_value,
+          icon          TYPE salv_de_tree_image,
+          l_key         TYPE salv_de_node_key,
+          l_rel         TYPE salv_de_node_relation.
 
     FIELD-SYMBOLS: <tab> TYPE ANY TABLE.
 
@@ -4434,9 +4802,9 @@ CLASS lcl_source_parser IMPLEMENTATION.
           prev            TYPE string,
           change          TYPE string,
           split           TYPE TABLE OF string,
-          o_scan         TYPE REF TO cl_ci_scan,
-          o_statement    TYPE REF TO if_ci_kzn_statement_iterator,
-          o_procedure    TYPE REF TO if_ci_kzn_statement_iterator,
+          o_scan          TYPE REF TO cl_ci_scan,
+          o_statement     TYPE REF TO if_ci_kzn_statement_iterator,
+          o_procedure     TYPE REF TO if_ci_kzn_statement_iterator,
           token           TYPE lcl_ace_window=>ts_kword,
           calculated      TYPE lcl_ace_window=>ts_calculated_var,
           composed        TYPE lcl_ace_window=>ts_composed_var,
@@ -5054,8 +5422,6 @@ CLASS lcl_source_parser IMPLEMENTATION.
       IF io_debugger->m_step IS INITIAL.
         code_execution_scanner( i_program = i_program io_debugger = io_debugger ).
 
-
-
         "Fill keyword links for calls
         LOOP AT io_debugger->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
           LOOP AT prog-t_keywords ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
@@ -5421,9 +5787,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
     CHECK lcl_appl=>i_mermaid_active = abap_true.
 
     CASE mv_type.
-      WHEN 'DIAG'.
+      WHEN 'CALLS'.
         text = 'Calls flow'.
-      WHEN 'SMART'.
+      WHEN 'FLOW'.
         text = 'Calculations sequence'.
     ENDCASE.
 
@@ -5471,9 +5837,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
       mo_toolbar->set_visible( 'X' ).
     ENDIF.
     CASE mv_type.
-      WHEN 'DIAG'.
+      WHEN 'CALLS'.
         steps_flow( ).
-      WHEN 'SMART'.
+      WHEN 'FLOW'.
         magic_search( ).
     ENDCASE.
 
@@ -5552,6 +5918,8 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
   METHOD magic_search.
 
+    FIELD-SYMBOLS: <if> TYPE mo_viewer->ts_if.
+
     DATA: add         TYPE xfeld,
           mm_string   TYPE string,
           sub         TYPE string,
@@ -5566,312 +5934,11 @@ CLASS lcl_mermaid IMPLEMENTATION.
           block_first TYPE i,
           els_before  TYPE i.
 
-    TYPES: BEGIN OF ts_line,
-             cond       TYPE string,
-             include    TYPE string,
-             line       TYPE i,
-             ind        TYPE i,
-             event      TYPE string,
-             stack      TYPE i,
-             code       TYPE string,
-             arrow      TYPE string,
-             subname    TYPE string,
-             del        TYPE flag,
-             els_before TYPE i,
-             els_after  TYPE i,
-           END OF ts_line.
+    DATA: line      TYPE mo_viewer->ts_line,
+          pre_stack TYPE mo_viewer->ts_line,
+          opened    TYPE i.
 
-    DATA: line       TYPE ts_line,
-          lines      TYPE STANDARD TABLE OF ts_line,
-          pre_stack TYPE ts_line,
-          opened     TYPE i.
-
-    READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(prog).
-
-    LOOP AT mo_viewer->mt_steps INTO DATA(step).
-      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
-      READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(keyword).
-      LOOP AT keyword-tt_calls INTO DATA(call).
-
-        READ TABLE mo_viewer->mt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
-          <selected>-name = call-outer.
-        ENDIF.
-
-        READ TABLE mo_viewer->mt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
-          <selected>-name = call-inner.
-        ENDIF.
-      ENDLOOP.
-    ENDLOOP.
-
-    DATA(steps) = mo_viewer->mt_steps.
-
-    SORT steps BY step DESCENDING.
-
-    "collecting dependents variables
-    LOOP AT steps INTO step.
-
-      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
-
-      LOOP AT mo_viewer->mo_window->ms_sources-t_calculated INTO DATA(calculated_var) WHERE line = step-line AND program = prog-include.
-        READ TABLE mo_viewer->mt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
-          <selected>-name = calculated_var-name.
-        ENDIF.
-        LOOP AT mo_viewer->mo_window->ms_sources-t_composed INTO DATA(composed_var) WHERE line = step-line AND program = prog-include.
-          READ TABLE mo_viewer->mt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
-          IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
-            <selected>-name = composed_var-name.
-          ENDIF.
-        ENDLOOP.
-        "adding returning values
-        LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(param).
-          READ TABLE mo_viewer->mt_selected_var WITH KEY name =  param-param TRANSPORTING NO FIELDS.
-          IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
-            <selected>-name =  param-param.
-          ENDIF.
-        ENDLOOP.
-      ENDLOOP.
-
-      READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
-      LOOP AT keyword-tt_calls INTO call.
-
-        READ TABLE mo_viewer->mt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
-          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
-          <selected>-name = call-inner.
-        ENDIF.
-      ENDLOOP.
-
-    ENDLOOP.
-    SORT mo_viewer->mt_selected_var.
-    DELETE ADJACENT DUPLICATES FROM mo_viewer->mt_selected_var.
-
-    "collecting watchpoints
-    "CLEAR mo_viewer->mo_window->mt_coverage.
-
-    LOOP AT  steps INTO step.
-
-      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
-      READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(key).
-
-      CLEAR line-cond.
-      IF key-name = 'IF' OR key-name = 'ELSE' OR key-name = 'ENDIF' OR key-name = 'ELSEIF' OR
-         key-name = 'CASE' OR key-name = 'WHEN' OR key-name = 'ENDCASE' OR
-          key-name = 'DO' OR key-name = 'ENDDO'  OR key-name = 'LOOP'  OR key-name = 'ENDLOOP'
-         OR key-name = 'WHILE' OR key-name = 'ENDWHILE'
-         OR key-tt_calls IS NOT INITIAL.
-        APPEND INITIAL LINE TO mo_viewer->mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
-        <watch>-program = step-program.
-        <watch>-line = line-line = step-line.
-        IF key-tt_calls IS INITIAL.
-          line-cond = key-name.
-        ENDIF.
-        line-event = step-eventname.
-        line-stack = step-stacklevel.
-        line-include = step-include.
-        INSERT line INTO lines INDEX 1.
-
-      ENDIF.
-
-      LOOP AT  mo_viewer->mo_window->ms_sources-t_calculated INTO calculated_var WHERE line = step-line AND program = prog-include.
-
-        LOOP AT mo_viewer->mo_window->ms_sources-t_composed INTO composed_var WHERE line = step-line AND program = prog-include.
-          READ TABLE mo_viewer->mt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
-          IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
-            <selected>-name = composed_var-name.
-          ENDIF.
-        ENDLOOP.
-
-        READ TABLE mo_viewer->mt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
-
-          APPEND INITIAL LINE TO mo_viewer->mo_window->mt_watch ASSIGNING <watch>.
-          <watch>-program = step-program.
-          <watch>-line = line-line = step-line.
-
-          LOOP AT lines ASSIGNING FIELD-SYMBOL(<line>) WHERE line = line-line AND event = step-eventname AND stack = step-stacklevel .
-            <line>-del = abap_true.
-          ENDLOOP.
-
-          line-event = step-eventname.
-          line-stack = step-stacklevel.
-          line-include = step-include.
-          INSERT line INTO lines INDEX 1.
-
-        ENDIF.
-
-      ENDLOOP.
-
-    ENDLOOP.
-
-    DELETE lines WHERE del = abap_true.
-
-    "delete empty blocks
-    LOOP AT lines ASSIGNING <line>.
-      IF <line>-cond = 'IF' OR <line>-cond = 'DO' OR <line>-cond = 'LOOP' OR <line>-cond = 'WHILE'.
-        READ TABLE lines INDEX sy-tabix + 1 ASSIGNING FIELD-SYMBOL(<line2>).
-        IF <line2>-cond = 'ENDIF' OR <line2>-cond = 'ENDDO' OR <line2>-cond = 'ENDLOOP' OR <line2>-cond = 'ENDWHILE'.
-          <line>-del = <line2>-del = abap_true.
-        ENDIF.
-      ENDIF.
-
-    ENDLOOP.
-    DELETE lines WHERE del = abap_true.
-
-
-    "getting code texts and calls params
-    LOOP AT lines ASSIGNING <line>.
-      DATA(ind) = sy-tabix.
-
-      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = <line>-include INTO prog.
-      READ TABLE prog-t_keywords WITH KEY line = <line>-line INTO keyword.
-      LOOP AT prog-scan->tokens FROM keyword-from TO keyword-to INTO DATA(token).
-        IF token-str = 'USING' OR token-str = 'EXPORTING' OR token-str = 'IMPORTING' OR token-str = 'CHANGING'.
-          EXIT.
-        ENDIF.
-        IF <line>-code IS INITIAL.
-          <line>-code = token-str.
-        ELSE.
-          <line>-code = |{  <line>-code } { token-str }|.
-        ENDIF.
-      ENDLOOP.
-      REPLACE ALL OCCURRENCES OF '`' IN  <line>-code WITH ''.
-      REPLACE ALL OCCURRENCES OF '"' IN  <line>-code WITH ''.
-
-      SORT keyword-tt_calls BY outer.
-      DELETE ADJACENT DUPLICATES FROM keyword-tt_calls.
-      IF keyword-to_evname IS NOT INITIAL.
-        LOOP AT keyword-tt_calls INTO call. "WHERE type IS NOT INITIAL.
-          IF sy-tabix <> 1.
-            <line>-arrow = |{ <line>-arrow }, |.
-          ENDIF.
-          "<line>-arrow  = |{ <line>-arrow  } { call-outer } { call-type } { call-inner }|.
-          <line>-arrow  = |{ <line>-arrow  } { call-outer } as  { call-inner }|.
-          <line>-subname = call-name.
-        ENDLOOP.
-      ENDIF.
-      REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
-      REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''.
-      REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
-      REPLACE ALL OCCURRENCES OF '(' IN <line>-subname WITH ''.
-      REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
-    ENDLOOP.
-
-    "check subform execution steps existance and if/case structures build
-
-    DATA: if_depth   TYPE i,
-          when_count TYPE i.
-    LOOP AT lines ASSIGNING <line> WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE' AND code <> 'LOOP' AND code <> 'ENDLOOP' .
-      <line>-ind = sy-tabix.
-
-      FIELD-SYMBOLS: <if> TYPE ts_if.
-      IF <line>-cond = 'IF' OR  <line>-cond = 'CASE'.
-        ADD 1 TO if_depth.
-        CLEAR when_count.
-        APPEND INITIAL LINE TO mt_if  ASSIGNING <if>.
-        <if>-if_ind = <line>-ind.
-
-      ENDIF.
-
-      IF <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE'.
-        <if>-end_ind = <line>-ind.
-        SUBTRACT 1 FROM if_depth.
-        LOOP AT mt_if  ASSIGNING <if> WHERE end_ind = 0.
-        ENDLOOP.
-        "READ TABLE mt_if INDEX if_depth ASSIGNING <if>.
-      ENDIF.
-
-      IF <line>-cond = 'WHEN'.
-        ADD 1 TO when_count.
-      ENDIF.
-
-      IF <line>-cond = 'ELSE' OR <line>-cond = 'ELSEIF'.
-
-        <line>-els_before =  els_before.
-        <line>-els_after = <line>-ind.
-        DATA(counter) = <line>-ind + 1.
-        DO.
-          READ TABLE lines INDEX  counter INTO line.
-          IF sy-subrc <> 0.
-            CLEAR <line>-els_after.
-            EXIT.
-          ENDIF.
-
-          IF line-cond = 'ELSE' OR line-cond = 'ELSEIF'.
-            CLEAR <line>-els_after.
-            EXIT.
-          ELSEIF  line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
-            <line>-els_after =  counter.
-            EXIT.
-          ELSE.
-            ADD 1 TO  counter.
-
-          ENDIF.
-        ENDDO.
-        IF when_count = 1.
-          <if>-if_ind =  els_before.
-          CLEAR <line>-els_before.
-        ENDIF.
-      ENDIF.
-
-      IF <line>-cond = 'WHEN'.
-
-        <line>-els_before =  els_before.
-        <line>-els_after = <line>-ind.
-        counter = <line>-ind + 1.
-        DO.
-          READ TABLE lines INDEX  counter INTO line.
-          IF sy-subrc <> 0.
-            CLEAR <line>-els_after.
-            EXIT.
-          ENDIF.
-
-          IF line-cond = 'WHEN'.
-            CLEAR <line>-els_after.
-            EXIT.
-          ELSEIF  line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
-            <line>-els_after =  counter.
-            EXIT.
-          ELSE.
-            ADD 1 TO  counter.
-
-          ENDIF.
-        ENDDO.
-        IF when_count = 1."to refactor
-*          <if>-if_ind =  els_before.
-*          CLEAR <line>-els_before.
-        ENDIF.
-      ENDIF.
-
-      IF <line>-cond <> 'ELSE' AND <line>-cond <> 'ELSEIF' AND <line>-cond <> 'WHEN'.
-        els_before = <line>-ind.
-      ELSE.
-        CLEAR    els_before.
-      ENDIF.
-
-      READ TABLE lines WITH KEY event = <line>-subname TRANSPORTING NO FIELDS.
-      IF sy-subrc <> 0.
-        CLEAR <line>-arrow.
-      ENDIF.
-    ENDLOOP.
-
-    IF mt_if IS INITIAL AND ms_if-if_ind IS NOT INITIAL.
-      INSERT ms_if INTO mt_if INDEX 1.
-    ENDIF.
-
-    IF lines( lines ) > 0.
-      IF lines[ lines( lines ) ]-arrow IS NOT INITIAL.
-        CLEAR lines[ lines( lines ) ]-arrow .
-      ENDIF.
-    ENDIF.
+    DATA(lines) = mo_viewer->get_code_flow( ).
 
     "creating mermaid code
     CHECK lines IS NOT INITIAL.
@@ -5889,7 +5956,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
     mm_string = |graph {  direction }\n |.
 
     LOOP AT lines INTO line WHERE cond <> 'ELSE' AND cond <> 'ELSEIF' AND  cond <> 'WHEN'.
-      ind = sy-tabix.
+      DATA(ind) = sy-tabix.
 
       IF line-cond IS INITIAL.
         box_s = '('.
@@ -5903,8 +5970,8 @@ CLASS lcl_mermaid IMPLEMENTATION.
         pre_stack = line.
       ENDIF.
 
-      IF ( pre_stack-stack > line-stack OR pre_stack-event <> line-event ) AND  opened > 0 AND  sub IS INITIAL.
-        IF pre_stack-stack = line-stack AND pre_stack-event <> line-event.
+      IF ( pre_stack-stack > line-stack OR pre_stack-ev_name <> line-ev_name ) AND  opened > 0 AND  sub IS INITIAL.
+        IF pre_stack-stack = line-stack AND pre_stack-ev_name <> line-ev_name.
           DATA(times) = 1.
         ELSE.
           times = pre_stack-stack - line-stack.
@@ -5967,7 +6034,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
       IF line-cond = 'IF' OR line-cond = 'CASE' .
         ADD 1 TO if_ind.
-        READ TABLE mt_if INDEX if_ind INTO ms_if.
+        READ TABLE mo_viewer->mt_if INDEX if_ind INTO mo_viewer->ms_if.
       ENDIF.
 
 
@@ -5995,18 +6062,18 @@ CLASS lcl_mermaid IMPLEMENTATION.
       IF line-cond = 'ELSE' OR line-cond = 'ELSEIF' OR line-cond = 'WHEN'.
         bool = '|' && line-code && '|'.
         IF line-els_after IS NOT INITIAL.
-          mm_string = |{  mm_string }{ ms_if-if_ind }-->{  bool }{ line-els_after }\n|.
-          DATA(diff) = ms_if-end_ind - line-els_after.
+          mm_string = |{  mm_string }{ mo_viewer->ms_if-if_ind }-->{  bool }{ line-els_after }\n|.
+          DATA(diff) = mo_viewer->ms_if-end_ind - line-els_after.
           DATA(last_els) = line-els_after.
 *          IF line-cond <> 'WHEN' AND line-cond <> 'ELSEIF'  AND   diff > 1 AND line-els_after <> ms_if-end_ind.
 *             mm_string = |{  mm_string }{  line-els_after }-->{ ms_if-end_ind }\n|.
 *          ENDIF.
         ELSE.
-          mm_string = |{  mm_string }{ ms_if-if_ind }-->{  bool }{ ms_if-end_ind }\n|.
+          mm_string = |{  mm_string }{ mo_viewer->ms_if-if_ind }-->{  bool }{ mo_viewer->ms_if-end_ind }\n|.
         ENDIF.
 
-        IF line-els_before IS NOT INITIAL AND line-els_before <> ms_if-if_ind.
-          mm_string = |{  mm_string }{ line-els_before }-->{ ms_if-end_ind }\n|.
+        IF line-els_before IS NOT INITIAL AND line-els_before <> mo_viewer->ms_if-if_ind.
+          mm_string = |{  mm_string }{ line-els_before }-->{ mo_viewer->ms_if-end_ind }\n|.
         ENDIF.
 
         IF lines[ line-ind + 1 ]-cond <> 'ENDIF' AND lines[ line-ind + 1 ]-cond <> 'ENDCASE'.
@@ -6030,9 +6097,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
       pre_stack = line.
 
       IF line-cond = 'ENDIF' OR line-cond = 'ENDCASE'.
-        DELETE mt_if INDEX if_ind.
+        DELETE mo_viewer->mt_if INDEX if_ind.
         SUBTRACT 1 FROM if_ind.
-        READ TABLE mt_if INDEX if_ind INTO ms_if.
+        READ TABLE mo_viewer->mt_if INDEX if_ind INTO mo_viewer->ms_if.
       ENDIF.
 
     ENDLOOP.
@@ -6051,6 +6118,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
      ( function = 'TB' icon = CONV #( icon_view_expand_vertical ) quickinfo = 'Vertical' text = '' )
      ( function = 'LR' icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
      ( butn_type = 3  )
+     ( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow' text = 'Calls Flow' )
+     ( function = 'FLOW' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
+     ( butn_type = 3  )
      ( function = 'TEXT' icon = CONV #( icon_wd_caption ) quickinfo = 'Mermaid Diagram text' text = '' )
                     ).
 
@@ -6068,7 +6138,6 @@ CLASS lcl_mermaid IMPLEMENTATION.
 
   METHOD hnd_toolbar.
 
-
     IF fcode = 'TEXT'.
       DATA: mm_string TYPE string,
             ref       TYPE REF TO data.
@@ -6079,11 +6148,17 @@ CLASS lcl_mermaid IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    IF fcode =  'LR' OR fcode =  'TB'.
+      mv_direction = fcode.
+    ELSE.
+      mv_type = fcode.
+    ENDIF.
+
     CASE mv_type.
-      WHEN 'DIAG'.
-        steps_flow( fcode ).
-      WHEN 'SMART'.
-        magic_search( fcode ).
+      WHEN 'CALLS'.
+        steps_flow( mv_direction ).
+      WHEN 'FLOW'.
+        magic_search( mv_direction ).
 
     ENDCASE.
 
