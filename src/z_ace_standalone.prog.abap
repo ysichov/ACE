@@ -910,7 +910,7 @@ CLASS lcl_ai DEFINITION INHERITING FROM lcl_popup.
           mv_prompt               TYPE string,
           mv_answer               TYPE string.
 
-    METHODS:  constructor IMPORTING i_source TYPE SCI_INCLUDE
+    METHODS:  constructor IMPORTING i_source  TYPE sci_include
                                     io_parent TYPE REF TO cl_gui_dialogbox_container,
       add_ai_toolbar_buttons,
       hnd_ai_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode.
@@ -1173,7 +1173,7 @@ CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_popup .
              include    TYPE program,
              "source     TYPE REF TO cl_ci_source_include,
              source_tab TYPE sci_include,
-             SCAN       TYPE REF TO cl_ci_scan,
+             scan       TYPE REF TO cl_ci_scan,
              t_keywords TYPE tt_kword,
              selected   TYPE xfeld,
            END OF ts_prog,
@@ -4856,7 +4856,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
     IF sy-subrc <> 0.
 
-      data(o_source) = cl_ci_source_include=>create( p_name = i_include ).
+      DATA(o_source) = cl_ci_source_include=>create( p_name = i_include ).
       prog-source_tab = o_source->lines.
       o_scan = NEW cl_ci_scan( p_include = o_source ).
 
@@ -5555,7 +5555,12 @@ CLASS lcl_source_parser IMPLEMENTATION.
         ENDIF.
         <step>-stacklevel =  stack.
         <step>-program = i_program.
-        <step>-include = i_include.
+
+        IF i_include IS NOT INITIAL.
+          <step>-include = i_include.
+        ELSE.
+          <step>-include = i_program.
+        ENDIF.
 
         IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
 
@@ -5687,8 +5692,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
     stack = i_stack + 1.
     "CHECK  stack < 20.
-
-    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
+    IF i_include IS NOT INITIAL.
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
+    ELSE.
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_program INTO prog.
+    ENDIF.
     DATA(max) = lines( prog-t_keywords ).
     DO.
       IF  statement >  max.
@@ -5712,7 +5720,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
       <step>-eventtype = i_e_type.
       <step>-stacklevel =  stack.
       <step>-program = i_program.
-      <step>-include = i_include.
+      IF i_include IS NOT INITIAL.
+        <step>-include = i_include.
+      ELSE.
+        <step>-include = i_program.
+      ENDIF.
 
       IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
         .
