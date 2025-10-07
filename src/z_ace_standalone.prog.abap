@@ -910,7 +910,7 @@ CLASS lcl_ai DEFINITION INHERITING FROM lcl_popup.
           mv_prompt               TYPE string,
           mv_answer               TYPE string.
 
-    METHODS:  constructor IMPORTING io_source TYPE REF TO cl_ci_source_include
+    METHODS:  constructor IMPORTING i_source TYPE SCI_INCLUDE
                                     io_parent TYPE REF TO cl_gui_dialogbox_container,
       add_ai_toolbar_buttons,
       hnd_ai_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode.
@@ -1012,7 +1012,7 @@ CLASS lcl_ai IMPLEMENTATION.
     APPEND INITIAL LINE TO string ASSIGNING <str>.
 
 
-    LOOP AT io_source->lines INTO DATA(line).
+    LOOP AT i_source INTO DATA(line).
       APPEND INITIAL LINE TO string ASSIGNING <str>.
       <str> = line.
       mv_prompt = mv_prompt && <str>.
@@ -1171,8 +1171,9 @@ CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_popup .
 
            BEGIN OF ts_prog,
              include    TYPE program,
-             source     TYPE REF TO cl_ci_source_include,
-             scan       TYPE REF TO cl_ci_scan,
+             "source     TYPE REF TO cl_ci_source_include,
+             source_tab TYPE sci_include,
+             SCAN       TYPE REF TO cl_ci_scan,
              t_keywords TYPE tt_kword,
              selected   TYPE xfeld,
            END OF ts_prog,
@@ -1370,7 +1371,7 @@ CLASS lcl_ace IMPLEMENTATION.
     ENDIF.
     mo_window->set_program( CONV #( mo_window->m_prg-include ) ).
     mo_window->show_coverage( ).
-    IF  mo_window->m_prg-line is INITIAL.
+    IF  mo_window->m_prg-line IS INITIAL.
       mo_window->m_prg-line = mo_window->mt_stack[ 1 ]-line.
     ENDIF.
     mo_window->set_program_line( mo_window->m_prg-line ).
@@ -1719,7 +1720,6 @@ CLASS lcl_ace IMPLEMENTATION.
 
     DATA(lines) = get_code_flow( ).
     LOOP AT lines INTO DATA(line).
-
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = line-include INTO DATA(prog).
       READ TABLE prog-t_keywords WITH KEY line = line-line INTO DATA(keyword).
       DATA(from_row) = prog-scan->tokens[ keyword-from ]-row.
@@ -1732,7 +1732,7 @@ CLASS lcl_ace IMPLEMENTATION.
         <flow> =  | "{ line-ev_type } { line-ev_name } in { splits[ 1 ] }|.
       ENDIF.
 
-      LOOP AT prog-source->lines FROM from_row TO to_row INTO DATA(source_line).
+      LOOP AT prog-source_tab FROM from_row TO to_row INTO DATA(source_line).
         APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
         <flow> = |{ spaces }{ source_line }|.
       ENDLOOP.
@@ -1741,6 +1741,11 @@ CLASS lcl_ace IMPLEMENTATION.
 
     mo_window->mo_code_viewer->set_text( table = flow_lines ).
 
+    APPEND INITIAL LINE TO mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
+    INSERT INITIAL LINE INTO mo_window->mt_stack INDEX 1 ASSIGNING FIELD-SYMBOL(<stack>).
+    <prog>-include = <stack>-program = <stack>-include = 'Code Flow Mix'.
+    <prog>-source_tab = flow_lines.
+    mo_window->show_stack( ).
 
   ENDMETHOD.
 
@@ -1877,7 +1882,7 @@ CLASS lcl_ace_window IMPLEMENTATION.
 *      IF m_prg-line IS INITIAL.
 *        m_prg-line = <prog>-t_keywords[ 1 ]-line.
 *      ENDIF.
-      mo_code_viewer->set_text( table = <prog>-source->lines ).
+      mo_code_viewer->set_text( table = <prog>-source_tab ).
     ENDIF.
   ENDMETHOD.
 
@@ -2058,7 +2063,8 @@ CLASS lcl_ace_window IMPLEMENTATION.
   METHOD show_coverage.
 
     DATA: split TYPE TABLE OF string.
-    CLEAR: mt_watch, mt_coverage,mt_stack.
+    CLEAR: mt_watch, mt_coverage. "mt_stack.
+    CHECK mt_stack IS INITIAL.
     LOOP AT mo_viewer->mt_steps INTO DATA(step).
 
       READ TABLE mt_stack WITH KEY include = step-include TRANSPORTING NO FIELDS.
@@ -2161,14 +2167,15 @@ CLASS lcl_ace_window IMPLEMENTATION.
       WHEN 'AI'.
 
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY selected = abap_true INTO DATA(prog).
-        NEW lcl_ai( io_source = prog-source io_parent =  mo_viewer->mo_window->mo_box ).
+        NEW lcl_ai( i_source = prog-source_tab io_parent =  mo_viewer->mo_window->mo_box ).
 
       WHEN 'CALLS'.
         DATA(o_mermaid) = NEW lcl_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
 
       WHEN 'CODEMIX'.
-        "o_mermaid = NEW lcl_mermaid( io_debugger = mo_viewer i_type =  'FLOW' ).
+
         mo_viewer->get_code_mix( ).
+
 *      WHEN 'COVERAGE'.
 *        show_coverage( ).
 *        mo_viewer->show( ).
@@ -4848,8 +4855,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
     IF sy-subrc <> 0.
-      prog-source = cl_ci_source_include=>create( p_name = i_include ).
-      o_scan = NEW cl_ci_scan( p_include = prog-source ).
+
+      data(o_source) = cl_ci_source_include=>create( p_name = i_include ).
+      prog-source_tab = o_source->lines.
+      o_scan = NEW cl_ci_scan( p_include = o_source ).
 
       prog-include = i_include.
 
