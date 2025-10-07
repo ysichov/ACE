@@ -1,22 +1,22 @@
-REPORT z_ace. "ACE - Abap Code Explorer
-*  & Multi-windows program for ABAP code analysis
-*  &---------------------------------------------------------------------*
-*  & version: beta 0.3
-*  & Git https://github.com/ysichov/ACE
+REPORT z_ace. " ACE - Abap Code Explorer
+" & Multi-windows program for ABAP code analysis
+" &----------------------------------------------------------------------
+" & version: beta 0.3
+" & Git https://github.com/ysichov/ACE
 
-*  & Written by Yurii Sychov
-*  & e-mail:   ysichov@gmail.com
-*  & blog:     https://ysychov.wordpress.com/blog/
-*  & LinkedIn: https://www.linkedin.com/in/ysychov/
-*  &---------------------------------------------------------------------*
+" & Written by Yurii Sychov
+" & e-mail:   ysichov@gmail.com
+" & blog:     https://ysychov.wordpress.com/blog/
+" & LinkedIn: https://www.linkedin.com/in/ysychov/
+" &----------------------------------------------------------------------
 
-*  & External resources
-*  & https://github.com/WegnerDan/abapMermaid
+" & External resources
+" & https://github.com/WegnerDan/abapMermaid
 
-PARAMETERS: p_prog   TYPE progname  MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY,
+PARAMETERS: p_prog   TYPE progname MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY,
             p_dest   TYPE text255 MEMORY ID dest,
             p_model  TYPE text255 MEMORY ID model,
-            p_apikey TYPE text255  MEMORY ID api.
+            p_apikey TYPE text255 MEMORY ID api.
 
 CLASS lcl_ai DEFINITION DEFERRED.
 CLASS lcl_data_receiver DEFINITION DEFERRED.
@@ -161,6 +161,7 @@ CLASS lcl_appl DEFINITION.
              program    TYPE tpda_program,
              eventtype  TYPE tpda_event_type,
              eventname  TYPE tpda_event,
+             prg        TYPE program,
              include    TYPE tpda_include,
            END OF t_stack,
 
@@ -231,7 +232,7 @@ CLASS lcl_popup IMPLEMENTATION.
           l_left TYPE i.
 
     ADD 1 TO m_counter.
-    l_top  = l_left =  100 -  20 * ( m_counter DIV 5 ) - ( m_counter MOD 5 ) * 20.
+    l_top  = l_left =  50 -  5 * ( m_counter DIV 5 ) - ( m_counter MOD 5 ) * 5.
     CREATE OBJECT ro_box
       EXPORTING
         width                       = i_width
@@ -403,9 +404,13 @@ CLASS lcl_source_parser DEFINITION.
   PUBLIC SECTION.
 
     "CLASS-DATA: mv_step TYPE i.
-    CLASS-METHODS: parse_tokens IMPORTING i_program TYPE program io_debugger TYPE REF TO lcl_ace i_class TYPE string OPTIONAL i_evname TYPE string OPTIONAL,
-      parse_call IMPORTING i_program TYPE program i_index TYPE i i_stack TYPE i i_e_name TYPE string i_e_type TYPE string i_class TYPE string OPTIONAL io_debugger TYPE REF TO lcl_ace,
-      code_execution_scanner IMPORTING i_program TYPE program i_evname TYPE string OPTIONAL i_evtype TYPE string OPTIONAL
+    CLASS-METHODS: parse_tokens IMPORTING i_include TYPE program io_debugger TYPE REF TO lcl_ace i_class TYPE string OPTIONAL i_evname TYPE string OPTIONAL,
+      parse_call IMPORTING i_program TYPE program
+                           i_include TYPE program
+                           i_index TYPE i i_stack TYPE i i_e_name TYPE string i_e_type TYPE string i_class TYPE string OPTIONAL io_debugger TYPE REF TO lcl_ace,
+      code_execution_scanner IMPORTING i_program TYPE program
+                                       i_include TYPE program
+                                       i_evname TYPE string OPTIONAL i_evtype TYPE string OPTIONAL
         i_stack TYPE i OPTIONAL io_debugger TYPE REF TO lcl_ace.
 
 
@@ -529,7 +534,7 @@ CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
           mo_toolbar      TYPE REF TO cl_gui_toolbar,
           mo_diagram      TYPE REF TO zcl_wd_gui_mermaid_js_diagram,
           mv_type         TYPE string,
-          mv_direction    type ui_func.
+          mv_direction    TYPE ui_func.
 
     METHODS: constructor IMPORTING io_debugger TYPE REF TO lcl_ace
                                    i_type      TYPE string,
@@ -1261,7 +1266,7 @@ CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_popup .
     METHODS: constructor IMPORTING i_debugger TYPE REF TO lcl_ace i_additional_name TYPE string OPTIONAL,
       add_toolbar_buttons,
       hnd_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode,
-      set_program IMPORTING i_program TYPE program,
+      set_program IMPORTING i_include TYPE program,
       set_program_line IMPORTING i_line LIKE sy-index OPTIONAL,
       create_code_viewer,
       show_stack,
@@ -1365,6 +1370,9 @@ CLASS lcl_ace IMPLEMENTATION.
     ENDIF.
     mo_window->set_program( CONV #( mo_window->m_prg-include ) ).
     mo_window->show_coverage( ).
+    IF  mo_window->m_prg-line is INITIAL.
+      mo_window->m_prg-line = mo_window->mt_stack[ 1 ]-line.
+    ENDIF.
     mo_window->set_program_line( mo_window->m_prg-line ).
 
     mo_window->show_stack( ).
@@ -1750,7 +1758,7 @@ CLASS lcl_ace_window IMPLEMENTATION.
     m_history = m_varhist =  m_zcode  = '01'.
     m_hist_depth = 9.
 
-    mo_box = create( i_name =  text i_width = 1100 i_hight = 300 ).
+    mo_box = create( i_name =  text i_width = 1300 i_hight = 350 ).
     SET HANDLER on_box_close FOR mo_box.
     CREATE OBJECT mo_splitter
       EXPORTING
@@ -1856,16 +1864,19 @@ CLASS lcl_ace_window IMPLEMENTATION.
 
   METHOD set_program.
 
-    lcl_source_parser=>parse_tokens( i_program = i_program io_debugger = mo_viewer ).
+    lcl_source_parser=>parse_tokens( i_include = i_include io_debugger = mo_viewer ).
 
     LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
       CLEAR <prog>-selected.
     ENDLOOP.
 
-    READ TABLE ms_sources-tt_progs WITH KEY include = i_program ASSIGNING <prog>.
+    READ TABLE ms_sources-tt_progs WITH KEY include = i_include ASSIGNING <prog>.
     IF sy-subrc = 0.
 
       <prog>-selected = abap_true.
+*      IF m_prg-line IS INITIAL.
+*        m_prg-line = <prog>-t_keywords[ 1 ]-line.
+*      ENDIF.
       mo_code_viewer->set_text( table = <prog>-source->lines ).
     ENDIF.
   ENDMETHOD.
@@ -1873,7 +1884,8 @@ CLASS lcl_ace_window IMPLEMENTATION.
   METHOD set_program_line.
 
     TYPES: lntab TYPE STANDARD TABLE OF i.
-    DATA lines TYPE lntab.
+    DATA: lines    TYPE lntab,
+          line_num TYPE i.
 
     mo_code_viewer->remove_all_marker( 2 ).
     mo_code_viewer->remove_all_marker( 4 ).
@@ -1881,7 +1893,7 @@ CLASS lcl_ace_window IMPLEMENTATION.
 *    "session breakpoints
     CALL METHOD cl_abap_debugger=>read_breakpoints
       EXPORTING
-        main_program         = mo_viewer->mo_window->m_prg-include
+        main_program         = mo_viewer->mo_window->m_prg-program
       IMPORTING
         breakpoints_complete = DATA(points)
       EXCEPTIONS
@@ -1890,7 +1902,7 @@ CLASS lcl_ace_window IMPLEMENTATION.
         wrong_parameters     = 3
         OTHERS               = 4.
 
-    LOOP AT points INTO DATA(point). "WHERE inclnamesrc = m_prg-include.
+    LOOP AT points INTO DATA(point) WHERE  include = m_prg-include.
       APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
       <line> = point-line.
 
@@ -1938,16 +1950,22 @@ CLASS lcl_ace_window IMPLEMENTATION.
 *      <line> = coverage-line.
 *    ENDLOOP.
 
-    CLEAR lines.
-    "blue arrow - current line
-    APPEND INITIAL LINE TO lines ASSIGNING <line>.
-    <line> = i_line.
-    mo_code_viewer->set_marker( EXPORTING marker_number = 7 marker_lines = lines ).
-
     IF i_line IS NOT INITIAL.
+
+      IF i_line IS NOT INITIAL.
+        line_num = i_line.
+      ELSE.
+        line_num = m_prg-line.
+      ENDIF.
+
+      CLEAR lines.
+      "blue arrow - current line
+      APPEND INITIAL LINE TO lines ASSIGNING <line>.
+      <line> = i_line.
+
+      mo_code_viewer->set_marker( EXPORTING marker_number = 7 marker_lines = lines ).
       mo_code_viewer->select_lines( EXPORTING from_line = i_line to_line = i_line ).
     ENDIF.
-
     mo_code_viewer->clear_line_markers( 'S' ).
     mo_code_viewer->draw( ).
   ENDMETHOD.
@@ -2048,7 +2066,9 @@ CLASS lcl_ace_window IMPLEMENTATION.
         APPEND INITIAL LINE TO mt_stack ASSIGNING FIELD-SYMBOL(<stack>).
         MOVE-CORRESPONDING step TO <stack>.
 
+
         SPLIT <stack>-program  AT '=' INTO TABLE split.
+        <stack>-prg = <stack>-program.
         <stack>-program = split[ 1 ].
       ENDIF.
 
@@ -2073,6 +2093,8 @@ CLASS lcl_ace_window IMPLEMENTATION.
 
     MOVE-CORRESPONDING stack TO mo_viewer->mo_window->m_prg.
     MOVE-CORRESPONDING stack TO mo_viewer->ms_stack.
+
+    mo_viewer->mo_window->m_prg-program = stack-prg.
 
     show_coverage( ).
     mo_viewer->show( ).
@@ -2155,7 +2177,7 @@ CLASS lcl_ace_window IMPLEMENTATION.
         m_zcode = m_zcode BIT-XOR c_mask.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
-        lcl_source_parser=>code_execution_scanner( i_program = source-include io_debugger = mo_viewer ).
+        lcl_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
         IF m_zcode IS INITIAL.
           mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
         ELSE.
@@ -4824,12 +4846,12 @@ CLASS lcl_source_parser IMPLEMENTATION.
           cl_name         TYPE string,
           preferred       TYPE xfeld.
 
-    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_program INTO DATA(prog).
+    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
     IF sy-subrc <> 0.
-      prog-source = cl_ci_source_include=>create( p_name = i_program ).
+      prog-source = cl_ci_source_include=>create( p_name = i_include ).
       o_scan = NEW cl_ci_scan( p_include = prog-source ).
 
-      prog-include = i_program.
+      prog-include = i_include.
 
       o_statement = cl_cikzn_scan_iterator_factory=>get_statement_iterator( ciscan = o_scan ).
       o_procedure = cl_cikzn_scan_iterator_factory=>get_procedure_iterator( ciscan = o_scan ).
@@ -4877,7 +4899,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
         READ TABLE o_scan->tokens INDEX statement-from INTO DATA(l_token).
         token-line = calculated-line = composed-line = l_token-row.
-        calculated-program = composed-program = i_program.
+        calculated-program = composed-program = i_include.
 
         DATA  new TYPE xfeld.
 
@@ -4954,7 +4976,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
               call-name =  token-to_evname = 'CONSTRUCTOR'.
             ENDIF.
             IF  new = abap_true.
-              READ TABLE calculated_vars WITH KEY line = l_token-row program = i_program INTO DATA(calc).
+              READ TABLE calculated_vars WITH KEY line = l_token-row program = i_include INTO DATA(calc).
               IF sy-subrc = 0.
                 APPEND INITIAL LINE TO  io_debugger->mo_window->ms_sources-tt_refvar ASSIGNING FIELD-SYMBOL(<refvar>).
                 <refvar>-name = calc-name.
@@ -5000,7 +5022,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
               <call_line> = call_line.
             ELSE.
               IF i_class IS INITIAL.
-                call_line-program = i_program.
+                call_line-program = i_include.
               ENDIF.
               APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
             ENDIF.
@@ -5334,10 +5356,10 @@ CLASS lcl_source_parser IMPLEMENTATION.
               SPLIT  change AT '-' INTO TABLE split.
               change = split[ 1 ].
               IF  eventtype IS INITIAL. "Global fs
-                READ TABLE io_debugger->mo_window->mt_globals_set WITH KEY program = i_program ASSIGNING FIELD-SYMBOL(<globals_set>).
+                READ TABLE io_debugger->mo_window->mt_globals_set WITH KEY program = i_include ASSIGNING FIELD-SYMBOL(<globals_set>).
                 IF sy-subrc <> 0.
                   APPEND INITIAL LINE TO io_debugger->mo_window->mt_globals_set ASSIGNING <globals_set>.
-                  <globals_set>-program = i_program.
+                  <globals_set>-program = i_include.
                 ENDIF.
                 READ TABLE  <globals_set>-mt_fs WITH KEY name =  change TRANSPORTING NO FIELDS.
                 IF sy-subrc <> 0.
@@ -5347,11 +5369,11 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
               ELSE."local fs
                 READ TABLE io_debugger->mo_window->mt_locals_set
-                 WITH KEY program = i_program eventtype =  eventtype eventname =  eventname
+                 WITH KEY program = i_include eventtype =  eventtype eventname =  eventname
                  ASSIGNING FIELD-SYMBOL(<locals_set>).
                 IF sy-subrc <> 0.
                   APPEND INITIAL LINE TO io_debugger->mo_window->mt_locals_set ASSIGNING <locals_set>.
-                  <locals_set>-program = i_program.
+                  <locals_set>-program = i_include.
                   <locals_set>-eventname =  eventname.
                   <locals_set>-eventtype =  eventtype.
                 ENDIF.
@@ -5367,7 +5389,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
         token-from = statement-from.
         token-to = statement-to.
         IF i_class IS INITIAL.
-          token-to_prog = i_program.
+          token-to_prog = i_include.
         ENDIF.
         "check class names
 
@@ -5420,7 +5442,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
 
       IF io_debugger->m_step IS INITIAL.
-        code_execution_scanner( i_program = i_program io_debugger = io_debugger ).
+        code_execution_scanner( i_program = i_include i_include = i_include io_debugger = io_debugger ).
 
         "Fill keyword links for calls
         LOOP AT io_debugger->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
@@ -5461,7 +5483,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           statement TYPE i,
           include   TYPE program.
 
-    READ TABLE io_debugger->mt_steps WITH KEY program = i_program eventname = i_evname eventtype = i_evtype TRANSPORTING NO FIELDS.
+    READ TABLE io_debugger->mt_steps WITH KEY program = i_include eventname = i_evname eventtype = i_evtype TRANSPORTING NO FIELDS.
     IF sy-subrc = 0.
       RETURN.
     ENDIF.
@@ -5469,8 +5491,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
     stack =  i_stack + 1.
     "CHECK  stack < 20.
 
-    lcl_source_parser=>parse_tokens( i_program = i_program io_debugger = io_debugger ).
-    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_program INTO DATA(prog).
+    lcl_source_parser=>parse_tokens( i_include = i_include io_debugger = io_debugger ).
+    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
     IF sy-subrc <> 0.
       RETURN.
     ENDIF.
@@ -5524,7 +5546,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
         ENDIF.
         <step>-stacklevel =  stack.
         <step>-program = i_program.
-        <step>-include = i_program.
+        <step>-include = i_include.
 
         IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
 
@@ -5535,6 +5557,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
                                                i_e_name = call_line-eventname
                                                i_e_type = call_line-eventtype
                                                i_program = i_program
+                                               i_include = i_include
                                                i_stack   =  stack
                                                io_debugger = io_debugger ).
             ENDIF.
@@ -5556,7 +5579,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
                   no_function_include = 5
                   OTHERS              = 6.
 
-              code_execution_scanner( i_program =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
+              code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
             ENDIF.
           ELSE. "Method call
 
@@ -5581,21 +5604,23 @@ CLASS lcl_source_parser IMPLEMENTATION.
               IF lines( meth_includes ) > 0.
                 prefix = key-to_class && repeat( val = `=` occ = 30 - strlen( key-to_class ) ).
                 program =  prefix && 'CU'.
-                lcl_source_parser=>parse_tokens( i_program =  program io_debugger = io_debugger i_class = key-to_class ).
+                lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
 
                 program =  prefix && 'CI'.
-                lcl_source_parser=>parse_tokens( i_program =  program io_debugger = io_debugger i_class = key-to_class ).
+                lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
 
                 program =  prefix && 'CO'.
-                lcl_source_parser=>parse_tokens( i_program =  program io_debugger = io_debugger i_class = key-to_class ).
+                lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
+
+                program = prefix && 'CP'.
 
                 READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = key-to_evname INTO DATA(incl).                        .
                 IF sy-subrc = 0.
-                  program = incl-incname.
-                  lcl_source_parser=>parse_tokens( i_program =  program io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
+                  include = incl-incname.
+                  lcl_source_parser=>parse_tokens( i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
                 ENDIF.
               ELSE.
-                program = i_program.
+                program = i_include.
               ENDIF.
               READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = key-to_class eventtype = 'METHOD' eventname = key-to_evname INTO call_line.
               IF sy-subrc = 0.
@@ -5603,6 +5628,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
                                       i_e_name = call_line-eventname
                                       i_e_type = call_line-eventtype
                                       i_program =  program
+                                      i_include =  include
                                       i_class = key-to_class
                                       i_stack   =  stack
                                       io_debugger = io_debugger ).
@@ -5627,7 +5653,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
           prefix    TYPE string,
           program   TYPE program.
 
-    READ TABLE io_debugger->mt_steps WITH KEY program = i_program eventname = i_e_name eventtype = i_e_type TRANSPORTING NO FIELDS.
+    READ TABLE io_debugger->mt_steps WITH KEY program = i_include eventname = i_e_name eventtype = i_e_type TRANSPORTING NO FIELDS.
     IF sy-subrc = 0.
       RETURN.
     ENDIF.
@@ -5653,7 +5679,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
     stack = i_stack + 1.
     "CHECK  stack < 20.
 
-    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_program INTO DATA(prog).
+    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
     DATA(max) = lines( prog-t_keywords ).
     DO.
       IF  statement >  max.
@@ -5677,7 +5703,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
       <step>-eventtype = i_e_type.
       <step>-stacklevel =  stack.
       <step>-program = i_program.
-      <step>-include = i_program.
+      <step>-include = i_include.
 
       IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
         .
@@ -5688,7 +5714,8 @@ CLASS lcl_source_parser IMPLEMENTATION.
             lcl_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                                      i_e_name = call_line-eventname
                                                      i_e_type = call_line-eventtype
-                                                     i_program = i_program
+                                                     i_program = i_include
+                                                     i_include = i_include
                                                      i_stack   =  stack
                                                      io_debugger = io_debugger ).
           ENDIF.
@@ -5711,7 +5738,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
                 no_function_include = 5
                 OTHERS              = 6.
 
-            code_execution_scanner( i_program =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
+            code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
           ENDIF.
         ELSE. "METHOD CALL
           cl_key = key-to_class.
@@ -5732,21 +5759,23 @@ CLASS lcl_source_parser IMPLEMENTATION.
 
               prefix = key-to_class && repeat( val = `=` occ = 30 - strlen( key-to_class ) ).
               program =  prefix && 'CU'.
-              lcl_source_parser=>parse_tokens( i_program =  program io_debugger = io_debugger i_class = key-to_class ).
+              lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
 
               program =  prefix && 'CI'.
-              lcl_source_parser=>parse_tokens( i_program =  program io_debugger = io_debugger i_class = key-to_class ).
+              lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
 
               program =  prefix && 'CO'.
-              lcl_source_parser=>parse_tokens( i_program =  program io_debugger = io_debugger i_class = key-to_class ).
+              lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
+
+              program = prefix && 'CP'.
 
               READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = key-to_evname INTO DATA(incl).                        .
               IF sy-subrc = 0.
-                program = incl-incname.
-                lcl_source_parser=>parse_tokens( i_program =  program io_debugger = io_debugger i_class = key-to_class i_evname = i_e_name ).
+                include = incl-incname.
+                lcl_source_parser=>parse_tokens( i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = i_e_name ).
               ENDIF.
             ELSE.
-              program = i_program.
+              program = i_include.
             ENDIF.
             READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = key-to_class eventtype = 'METHOD' eventname = key-to_evname INTO call_line.
             IF sy-subrc = 0.
@@ -5754,6 +5783,7 @@ CLASS lcl_source_parser IMPLEMENTATION.
                                     i_e_name = call_line-eventname
                                     i_e_type = call_line-eventtype
                                     i_program =  program
+                                    i_include =  include
                                     i_class = key-to_class
                                     i_stack   =  stack
                                     io_debugger = io_debugger ).

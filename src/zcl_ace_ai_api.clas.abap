@@ -18,29 +18,24 @@ public section.
       !IV_MODEL type TEXT255
       !IV_APIKEY type TEXT255 .
 protected section.
-private section.
+  PRIVATE SECTION.
+    DATA mv_api_key TYPE string.
+    DATA mv_dest    TYPE text255.
+    DATA mv_model   TYPE string.
 
-  data MV_API_KEY type STRING .
-  data MV_DEST type TEXT255 .
-  data MV_MODEL type STRING .
+    METHODS build_request
+      IMPORTING iv_prompt  TYPE string
+      EXPORTING ev_payload TYPE string.
 
-  methods BUILD_REQUEST
-    importing
-      !IV_PROMPT type STRING
-    exporting
-      !EV_PAYLOAD type STRING .
-  methods SEND_REQUEST
-    importing
-      !IV_PAYLOAD type STRING
-    exporting
-      !EV_RESPONSE type STRING
-      !EV_ERROR type XFELD .
-  methods OUTPUT
-    importing
-      !IV_PROMPT type STRING
-      !IV_CONTENT type STRING
-    returning
-      value(RV_ANSWER) type STRING .
+    METHODS send_request
+      IMPORTING iv_payload  TYPE string
+      EXPORTING ev_response TYPE string
+                ev_error    TYPE xfeld.
+
+    METHODS output
+      IMPORTING iv_prompt        TYPE string
+                iv_content       TYPE string
+      RETURNING VALUE(rv_answer) TYPE string.
 ENDCLASS.
 
 
