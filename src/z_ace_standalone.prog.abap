@@ -2172,7 +2172,22 @@
 
         WHEN 'RUN'.
 
-          SELECT Count(*) into @data(count) FROM reposrc WHERE progname = @p_prog AND subc = '1'.
+          DATA: lt_source TYPE STANDARD TABLE OF text255,
+                lv_prog   TYPE progname VALUE 'Z_SMART_DEBUGGER_SCRIPT_MM'.
+
+
+          READ REPORT lv_prog INTO lt_source.
+          IF sy-subrc = 0.
+            CALL FUNCTION 'CLPB_EXPORT'
+              TABLES
+                data_tab   = lt_source
+              EXCEPTIONS
+                clpb_error = 1
+                OTHERS     = 2.
+
+          ENDIF.
+
+          SELECT COUNT(*) INTO @DATA(count) FROM reposrc WHERE progname = @p_prog AND subc = '1'.
 
           IF count = 1.
             SUBMIT (p_prog) VIA SELECTION-SCREEN AND RETURN.
