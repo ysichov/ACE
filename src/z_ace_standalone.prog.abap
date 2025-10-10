@@ -404,7 +404,11 @@
     PUBLIC SECTION.
 
       "CLASS-DATA: mv_step TYPE i.
-      CLASS-METHODS: parse_tokens IMPORTING i_include TYPE program io_debugger TYPE REF TO lcl_ace i_class TYPE string OPTIONAL i_evname TYPE string OPTIONAL,
+      CLASS-METHODS: parse_tokens IMPORTING i_program TYPE program
+                                            i_include TYPE program
+                                            io_debugger TYPE REF TO lcl_ace
+                                            i_class TYPE string OPTIONAL
+                                            i_evname TYPE string OPTIONAL,
         parse_call IMPORTING i_program TYPE program
                              i_include TYPE program
                              i_index TYPE i i_stack TYPE i i_e_name TYPE string i_e_type TYPE string i_class TYPE string OPTIONAL io_debugger TYPE REF TO lcl_ace,
@@ -1120,7 +1124,7 @@
                include   TYPE string,
                index     TYPE i,
                line      TYPE i,
-               v_line    type i, "virtual line in code Mix
+               v_line    TYPE i, "virtual line in code Mix
                name      TYPE string,
                from      TYPE i,
                to        TYPE i,
@@ -1174,6 +1178,7 @@
              tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY,
 
              BEGIN OF ts_prog,
+               program    TYPE program,
                include    TYPE program,
                source_tab TYPE sci_include,
                scan       TYPE REF TO cl_ci_scan,
@@ -1272,6 +1277,7 @@
         hnd_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode,
         set_program IMPORTING i_include TYPE program,
         set_program_line IMPORTING i_line LIKE sy-index OPTIONAL,
+        set_mixprog_line IMPORTING i_line LIKE sy-index OPTIONAL,
         create_code_viewer,
         show_stack,
         show_coverage,
@@ -1718,7 +1724,7 @@
       DATA: flow_lines TYPE sci_include,
             splits     TYPE TABLE OF string,
             form       TYPE string,
-            ind        type i.
+            ind        TYPE i.
 
       CLEAR form.
 
@@ -1765,6 +1771,7 @@
       mo_window->mo_code_viewer->set_text( table = flow_lines ).
       <prog_mix>-source_tab = flow_lines.
       mo_window->m_prg-include = 'Code_Flow_Mix'.
+      mo_window->set_mixprog_line( ).
       mo_window->show_stack( ).
 
     ENDMETHOD.
@@ -1890,7 +1897,7 @@
 
     METHOD set_program.
 
-      lcl_source_parser=>parse_tokens( i_include = i_include io_debugger = mo_viewer ).
+      lcl_source_parser=>parse_tokens( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
 
       LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
         CLEAR <prog>-selected.
@@ -1994,6 +2001,90 @@
       ENDIF.
       mo_code_viewer->clear_line_markers( 'S' ).
       mo_code_viewer->draw( ).
+
+    ENDMETHOD.
+
+    METHOD set_mixprog_line.
+
+      TYPES: lntab TYPE STANDARD TABLE OF i.
+      DATA: lines    TYPE lntab,
+            line_num TYPE i,
+            flag     TYPE boolean,
+            programs TYPE TABLE OF program.
+
+      mo_code_viewer->remove_all_marker( 2 ).
+      mo_code_viewer->remove_all_marker( 4 ).
+
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(prog) WHERE include <> 'Code_Flow_Mix'.
+        COLLECT prog-program INTO programs.
+      ENDLOOP.
+
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' INTO prog.
+
+      flag = abap_true.
+      DO 2 TIMES.
+
+        LOOP AT programs INTO DATA(program).
+*    "session breakpoints
+          CALL METHOD cl_abap_debugger=>read_breakpoints
+            EXPORTING
+              main_program         = program
+              flag_other_session   = flag
+            IMPORTING
+              breakpoints_complete = DATA(points)
+            EXCEPTIONS
+              c_call_error         = 1
+              generate             = 2
+              wrong_parameters     = 3
+              OTHERS               = 4.
+
+          LOOP AT points INTO DATA(point).
+            CLEAR lines.
+            READ TABLE prog-t_keywords WITH KEY include = point-include line = point-line INTO DATA(keyword).
+            IF sy-subrc = 0.
+              APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
+              <line> = keyword-v_line.
+
+              APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
+              MOVE-CORRESPONDING point TO <point>.
+
+              IF flag IS INITIAL.
+                <point>-type = 'S'.
+              ELSE.
+                <point>-type = 'E'.
+              ENDIF.
+            ENDIF.
+
+          ENDLOOP.
+
+        ENDLOOP.
+        IF flag IS NOT INITIAL.
+          mo_code_viewer->set_marker( EXPORTING marker_number = 4 marker_lines = lines )."external
+        ELSE.
+          mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lines )."Session
+        ENDIF.
+        CLEAR flag.
+      ENDDO.
+
+      IF i_line IS NOT INITIAL.
+
+        IF i_line IS NOT INITIAL.
+          line_num = i_line.
+        ELSE.
+          line_num = m_prg-line.
+        ENDIF.
+
+        CLEAR lines.
+        "blue arrow - current line
+        APPEND INITIAL LINE TO lines ASSIGNING <line>.
+        <line> = i_line.
+
+        mo_code_viewer->set_marker( EXPORTING marker_number = 7 marker_lines = lines ).
+        mo_code_viewer->select_lines( EXPORTING from_line = i_line to_line = i_line ).
+      ENDIF.
+      mo_code_viewer->clear_line_markers( 'S' ).
+      mo_code_viewer->draw( ).
+
     ENDMETHOD.
 
     METHOD create_code_viewer.
@@ -2135,10 +2226,10 @@
 
     METHOD on_editor_border_click.
 
-      DATA: type    TYPE char1,
-            program TYPE program,
-            include TYPE program,
-            code_line type i.
+      DATA: type      TYPE char1,
+            program   TYPE program,
+            include   TYPE program,
+            code_line TYPE i.
 
       IF cntrl_pressed_set IS INITIAL.
         type = 'S'.
@@ -2146,8 +2237,8 @@
         type = 'E'.
       ENDIF.
       IF m_prg-include = 'Code_Flow_Mix'.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs with key include =  'Code_Flow_Mix' INTO DATA(prog_mix).
-        Read table prog_mix-t_keywords with key v_line = line  into data(keyword).
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include =  'Code_Flow_Mix' INTO DATA(prog_mix).
+        READ TABLE prog_mix-t_keywords WITH KEY v_line = line  INTO DATA(keyword).
         program = keyword-program.
         include = keyword-include.
         code_line = keyword-line.
@@ -2156,7 +2247,7 @@
         include = m_prg-include.
         code_line = line.
       ENDIF.
-      LOOP AT mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = line.
+      LOOP AT mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = code_line AND include = include.
         type = <point>-type.
 
         CALL FUNCTION 'RS_DELETE_BREAKPOINT'
@@ -2187,7 +2278,13 @@
 
       ENDIF.
       DELETE mt_bpoints WHERE del IS NOT INITIAL.
-      set_program_line( ).
+
+      IF m_prg-include = 'Code_Flow_Mix'.
+        set_mixprog_line( ).
+      ELSE.
+        set_program_line( ).
+      ENDIF.
+
     ENDMETHOD.
 
     METHOD hnd_toolbar.
@@ -5505,6 +5602,7 @@
         DATA line LIKE LINE OF io_debugger->mo_window->ms_sources-tt_progs.
         prog-scan = o_scan.
         prog-t_keywords = tokens.
+        prog-program = i_program.
         APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
 
         IF io_debugger->m_step IS INITIAL.
@@ -5543,11 +5641,11 @@
       DATA: max       TYPE i,
             call_line TYPE lcl_ace_window=>ts_calls_line,
             program   TYPE program,
+            include   TYPE program,
             prefix    TYPE string,
             event     TYPE string,
             stack     TYPE i,
-            statement TYPE i,
-            include   TYPE program.
+            statement TYPE i.
 
       READ TABLE io_debugger->mt_steps WITH KEY program = i_include eventname = i_evname eventtype = i_evtype TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
@@ -5557,7 +5655,7 @@
       stack =  i_stack + 1.
       "CHECK  stack < 20.
 
-      lcl_source_parser=>parse_tokens( i_include = i_include io_debugger = io_debugger ).
+      lcl_source_parser=>parse_tokens( i_program = i_program i_include = i_include io_debugger = io_debugger ).
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
       IF sy-subrc <> 0.
         RETURN.
@@ -5674,21 +5772,20 @@
 
                 IF lines( meth_includes ) > 0.
                   prefix = key-to_class && repeat( val = `=` occ = 30 - strlen( key-to_class ) ).
-                  program =  prefix && 'CU'.
-                  lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
-
-                  program =  prefix && 'CI'.
-                  lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
-
-                  program =  prefix && 'CO'.
-                  lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
-
                   program = prefix && 'CP'.
+                  include =  prefix && 'CU'.
+                  lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+
+                  include =  prefix && 'CI'.
+                  lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+
+                  include =  prefix && 'CO'.
+                  lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
 
                   READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = key-to_evname INTO DATA(incl).                        .
                   IF sy-subrc = 0.
                     include = incl-incname.
-                    lcl_source_parser=>parse_tokens( i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
+                    lcl_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
                   ENDIF.
                 ELSE.
                   program = i_include.
@@ -5833,24 +5930,22 @@
              ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( key-to_class+0(1) = 'Z' OR key-to_class+0(1) = 'Y' ) )
                OR meth_includes IS INITIAL.
 
-              IF  lines( meth_includes ) > 0.
-
+              IF lines( meth_includes ) > 0.
                 prefix = key-to_class && repeat( val = `=` occ = 30 - strlen( key-to_class ) ).
-                program =  prefix && 'CU'.
-                lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
-
-                program =  prefix && 'CI'.
-                lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
-
-                program =  prefix && 'CO'.
-                lcl_source_parser=>parse_tokens( i_include =  program io_debugger = io_debugger i_class = key-to_class ).
-
                 program = prefix && 'CP'.
+                include =  prefix && 'CU'.
+                lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+
+                include =  prefix && 'CI'.
+                lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+
+                include =  prefix && 'CO'.
+                lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
 
                 READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = key-to_evname INTO DATA(incl).                        .
                 IF sy-subrc = 0.
                   include = incl-incname.
-                  lcl_source_parser=>parse_tokens( i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = i_e_name ).
+                  lcl_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
                 ENDIF.
               ELSE.
                 program = i_include.
