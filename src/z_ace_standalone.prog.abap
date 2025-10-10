@@ -18,7 +18,7 @@
               p_model  TYPE text255 MEMORY ID model,
               p_apikey TYPE text255 MEMORY ID api.
 
-  CLASS lcl_ai DEFINITION DEFERRED.
+  CLASS lcl_ace_ai DEFINITION DEFERRED.
   CLASS lcl_data_receiver DEFINITION DEFERRED.
   CLASS lcl_data_transmitter DEFINITION DEFERRED.
   CLASS lcl_rtti_tree DEFINITION DEFERRED.
@@ -439,6 +439,7 @@
 
              BEGIN OF ts_line,
                cond       TYPE string,
+               program    TYPE string,
                include    TYPE string,
                line       TYPE i,
                ind        TYPE i,
@@ -548,7 +549,7 @@
   ENDCLASS.
 
 
-  CLASS lcl_ai_api DEFINITION.
+  CLASS lcl_ace_ai_api DEFINITION.
 
     PUBLIC SECTION.
 
@@ -584,7 +585,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_ai_api IMPLEMENTATION.
+  CLASS lcl_ace_ai_api IMPLEMENTATION.
 
     METHOD constructor.
 
@@ -896,7 +897,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_ai DEFINITION INHERITING FROM lcl_popup.
+  CLASS lcl_ace_ai DEFINITION INHERITING FROM lcl_popup.
 
     PUBLIC SECTION.
       DATA: mo_ai_box               TYPE REF TO cl_gui_dialogbox_container,
@@ -917,7 +918,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_ai IMPLEMENTATION.
+  CLASS lcl_ace_ai IMPLEMENTATION.
 
     METHOD constructor.
       super->constructor( ).
@@ -1052,7 +1053,7 @@
 
         WHEN 'AI'.
 
-          DATA(o_ai) = NEW lcl_ai_api( i_model = p_model i_dest = p_dest i_apikey = p_apikey ).
+          DATA(o_ai) = NEW lcl_ace_ai_api( i_model = p_model i_dest = p_dest i_apikey = p_apikey ).
 
           DATA text TYPE TABLE OF char255.
           CALL METHOD mo_prompt_text->get_text_as_stream
@@ -1115,8 +1116,11 @@
              tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
 
              BEGIN OF ts_kword,
+               program   TYPE string,
+               include   TYPE string,
                index     TYPE i,
                line      TYPE i,
+               v_line    type i, "virtual line in code Mix
                name      TYPE string,
                from      TYPE i,
                to        TYPE i,
@@ -1171,7 +1175,6 @@
 
              BEGIN OF ts_prog,
                include    TYPE program,
-               "source     TYPE REF TO cl_ci_source_include,
                source_tab TYPE sci_include,
                scan       TYPE REF TO cl_ci_scan,
                t_keywords TYPE tt_kword,
@@ -1508,6 +1511,7 @@
           line-ev_name = step-eventname.
           line-ev_type = step-eventtype.
           line-stack = step-stacklevel.
+          line-program = step-program.
           line-include = step-include.
           INSERT line INTO results INDEX 1.
 
@@ -1711,17 +1715,32 @@
 
     METHOD get_code_mix.
 
-      "code flow
       DATA: flow_lines TYPE sci_include,
             splits     TYPE TABLE OF string,
-            form       TYPE string.
+            form       TYPE string,
+            ind        type i.
 
       CLEAR form.
 
       DATA(lines) = get_code_flow( ).
+
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' ASSIGNING FIELD-SYMBOL(<prog_mix>).
+      IF sy-subrc <> 0.
+        APPEND INITIAL LINE TO mo_window->ms_sources-tt_progs ASSIGNING <prog_mix>.
+        INSERT INITIAL LINE INTO mo_window->mt_stack INDEX 1 ASSIGNING FIELD-SYMBOL(<stack_mix>).
+        <prog_mix>-include = <stack_mix>-program = <stack_mix>-include = 'Code_Flow_Mix'.
+      ENDIF.
+
+
       LOOP AT lines INTO DATA(line).
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = line-include INTO DATA(prog).
         READ TABLE prog-t_keywords WITH KEY line = line-line INTO DATA(keyword).
+
+        APPEND INITIAL LINE TO <prog_mix>-t_keywords ASSIGNING FIELD-SYMBOL(<keyword_mix>).
+        <keyword_mix> = keyword.
+        <keyword_mix>-include = line-include.
+        <keyword_mix>-program = line-program.
+
         DATA(from_row) = prog-scan->tokens[ keyword-from ]-row.
         DATA(to_row) = prog-scan->tokens[ keyword-to ]-row.
         DATA(spaces) = repeat( val = | | occ = ( line-stack - 1 ) * 3 ).
@@ -1729,22 +1748,23 @@
           SPLIT line-include AT '=' INTO TABLE splits.
 
           APPEND INITIAL LINE TO flow_lines ASSIGNING FIELD-SYMBOL(<flow>).
+          ind  = sy-tabix.
           <flow> =  | "{ line-ev_type } { line-ev_name } in { splits[ 1 ] }|.
         ENDIF.
 
+        <keyword_mix>-v_line = ind + 1.
+
         LOOP AT prog-source_tab FROM from_row TO to_row INTO DATA(source_line).
           APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
+          ind = sy-tabix.
           <flow> = |{ spaces }{ source_line }|.
         ENDLOOP.
         form = line-ev_name.
       ENDLOOP.
 
       mo_window->mo_code_viewer->set_text( table = flow_lines ).
-
-      APPEND INITIAL LINE TO mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
-      INSERT INITIAL LINE INTO mo_window->mt_stack INDEX 1 ASSIGNING FIELD-SYMBOL(<stack>).
-      <prog>-include = <stack>-program = <stack>-include = 'Code Flow Mix'.
-      <prog>-source_tab = flow_lines.
+      <prog_mix>-source_tab = flow_lines.
+      mo_window->m_prg-include = 'Code_Flow_Mix'.
       mo_window->show_stack( ).
 
     ENDMETHOD.
@@ -2115,22 +2135,35 @@
 
     METHOD on_editor_border_click.
 
-      DATA:  type    TYPE char1.
+      DATA: type    TYPE char1,
+            program TYPE program,
+            include TYPE program,
+            code_line type i.
 
       IF cntrl_pressed_set IS INITIAL.
         type = 'S'.
       ELSE.
         type = 'E'.
       ENDIF.
-
+      IF m_prg-include = 'Code_Flow_Mix'.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs with key include =  'Code_Flow_Mix' INTO DATA(prog_mix).
+        Read table prog_mix-t_keywords with key v_line = line  into data(keyword).
+        program = keyword-program.
+        include = keyword-include.
+        code_line = keyword-line.
+      ELSE.
+        program = m_prg-program.
+        include = m_prg-include.
+        code_line = line.
+      ENDIF.
       LOOP AT mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = line.
         type = <point>-type.
 
         CALL FUNCTION 'RS_DELETE_BREAKPOINT'
           EXPORTING
-            index        = line
-            mainprog     = m_prg-program
-            program      = m_prg-include
+            index        = code_line
+            mainprog     = program
+            program      = include
             bp_type      = type
           EXCEPTIONS
             not_executed = 1
@@ -2144,9 +2177,9 @@
       IF sy-subrc <> 0. "create
         CALL FUNCTION 'RS_SET_BREAKPOINT'
           EXPORTING
-            index        = line
-            program      = m_prg-include
-            mainprogram  = m_prg-program
+            index        = code_line
+            program      = include
+            mainprogram  = program
             bp_type      = type
           EXCEPTIONS
             not_executed = 1
@@ -2168,7 +2201,7 @@
         WHEN 'AI'.
 
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY selected = abap_true INTO DATA(prog).
-          NEW lcl_ai( i_source = prog-source_tab io_parent =  mo_viewer->mo_window->mo_box ).
+          NEW lcl_ace_ai( i_source = prog-source_tab io_parent =  mo_viewer->mo_window->mo_box ).
 
         WHEN 'RUN'.
 
