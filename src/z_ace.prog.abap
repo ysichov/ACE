@@ -20,4 +20,4 @@ PARAMETERS: p_prog   TYPE progname  MATCHCODE OBJECT progname MODIF ID prg OBLIG
 
 AT SELECTION-SCREEN.
 
-data(lo_ace) =  NEW zcl_ace( iv_prog = p_prog iv_dest = p_dest iv_model = p_model iv_apikey = p_apikey ).
+data(lo_ace) =  NEW zcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).

@@ -532,7 +532,7 @@
             mo_mm_container TYPE REF TO cl_gui_container,
             mo_mm_toolbar   TYPE REF TO cl_gui_container,
             mo_toolbar      TYPE REF TO cl_gui_toolbar,
-            mo_diagram      TYPE REF TO zcl_wd_gui_mermaid_js_diagram,
+            mo_diagram      TYPE REF TO object,
             mv_type         TYPE string,
             mv_direction    TYPE ui_func.
 
@@ -1842,7 +1842,7 @@
 
       button  = VALUE #(
        ( function = 'RUN' icon = CONV #( icon_execute_object ) quickinfo = 'Run report' )
-       ( COND #( WHEN p_dest IS NOT INITIAL
+       ( COND #( WHEN mo_viewer->mv_dest IS NOT INITIAL
         THEN VALUE #( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ) )
 
        ( COND #( WHEN lcl_appl=>i_mermaid_active = abap_true
@@ -2173,7 +2173,7 @@
         WHEN 'RUN'.
 
           DATA: lt_source TYPE STANDARD TABLE OF text255,
-                lv_prog   TYPE progname VALUE 'Z_SMART_DEBUGGER_SCRIPT_MM'.
+                lv_prog   TYPE progname VALUE 'Z_SMART_DEBUGGER_SCRIPT'.
 
 
           READ REPORT lv_prog INTO lt_source.
@@ -2186,11 +2186,11 @@
                 OTHERS     = 2.
 
           ENDIF.
-
-          SELECT COUNT(*) INTO @DATA(count) FROM reposrc WHERE progname = @p_prog AND subc = '1'.
+          lv_prog = mo_viewer->mv_prog.
+          SELECT COUNT(*) INTO @DATA(count) FROM reposrc WHERE progname = @lv_prog AND subc = '1'.
 
           IF count = 1.
-            SUBMIT (p_prog) VIA SELECTION-SCREEN AND RETURN.
+            SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN.
           ENDIF.
 
         WHEN 'CALLS'.
@@ -6216,7 +6216,7 @@
       IF fcode = 'TEXT'.
         DATA: mm_string TYPE string,
               ref       TYPE REF TO data.
-        mm_string = mo_diagram->get_source_code_string( ).
+        mm_string = mo_diagram->('GET_SOURCE_CODE_STRING').
         GET REFERENCE OF  mm_string INTO  ref.
         NEW lcl_text_viewer(  ref ).
 
@@ -6245,12 +6245,12 @@
 
       TRY.
           IF mo_diagram IS INITIAL.
-            mo_diagram = NEW zcl_wd_gui_mermaid_js_diagram( parent = mo_mm_container ).
+            CREATE OBJECT mo_diagram TYPE ('ZCL_WD_GUI_MERMAID_JS_DIAGRAM') EXPORTING parent = mo_mm_container.
           ENDIF.
-          mo_diagram->set_source_code_string( i_mm_string ).
-          mo_diagram->display( ).
+          CALL METHOD mo_diagram->('SET_SOURCE_CODE_STRING') EXPORTING source_code = i_mm_string.
+          CALL METHOD mo_diagram->('DISPLAY').
 
-        CATCH zcx_wd_gui_mermaid_js_diagram INTO DATA(error).
+        CATCH cx_root INTO DATA(error).
           MESSAGE error TYPE 'E'.
       ENDTRY.
 

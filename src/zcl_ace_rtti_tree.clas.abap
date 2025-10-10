@@ -419,7 +419,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         l_node->set_row_style( if_salv_c_tree_style=>emphasized_b ).
         APPEND INITIAL LINE TO mo_viewer->mt_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
         <sel>-name = <fullname>.
-        <sel>-is_sel = abap_true.
+        <sel>-i_sel = abap_true.
       ENDIF.
 
       CASE <kind>.

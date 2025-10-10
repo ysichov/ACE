@@ -101,6 +101,7 @@ public section.
              program    TYPE tpda_program,
              eventtype  TYPE tpda_event_type,
              eventname  TYPE tpda_event,
+             prg        TYPE program,
              include    TYPE tpda_include,
            END OF t_stack .
   types:

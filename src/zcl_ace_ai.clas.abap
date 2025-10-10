@@ -1,32 +1,31 @@
-CLASS zcl_ace_ai DEFINITION
-  PUBLIC
-  INHERITING FROM zcl_ace_popup
-  CREATE PUBLIC .
+class ZCL_ACE_AI definition
+  public
+  inheriting from ZCL_ACE_POPUP
+  create public .
 
-  PUBLIC SECTION.
+public section.
 
-    DATA mo_ai_box TYPE REF TO cl_gui_dialogbox_container .
-    DATA mo_ai_splitter TYPE REF TO cl_gui_splitter_container .
-    DATA mo_ai_toolbar_container TYPE REF TO cl_gui_container .
-    DATA mo_ai_toolbar TYPE REF TO cl_gui_toolbar .
-    DATA mo_prompt_container TYPE REF TO cl_gui_container .
-    DATA mo_answer_container TYPE REF TO cl_gui_container .
-    DATA mo_prompt_text TYPE REF TO cl_gui_textedit .
-    DATA mo_answer_text TYPE REF TO cl_gui_textedit .
-    DATA mv_prompt TYPE string .
-    DATA mv_answer TYPE string .
-    DATA mo_viewer TYPE REF TO zcl_ace .
+  data MO_AI_BOX type ref to CL_GUI_DIALOGBOX_CONTAINER .
+  data MO_AI_SPLITTER type ref to CL_GUI_SPLITTER_CONTAINER .
+  data MO_AI_TOOLBAR_CONTAINER type ref to CL_GUI_CONTAINER .
+  data MO_AI_TOOLBAR type ref to CL_GUI_TOOLBAR .
+  data MO_PROMPT_CONTAINER type ref to CL_GUI_CONTAINER .
+  data MO_ANSWER_CONTAINER type ref to CL_GUI_CONTAINER .
+  data MO_PROMPT_TEXT type ref to CL_GUI_TEXTEDIT .
+  data MO_ANSWER_TEXT type ref to CL_GUI_TEXTEDIT .
+  data MV_PROMPT type STRING .
+  data MV_ANSWER type STRING .
+  data MO_VIEWER type ref to ZCL_ACE .
 
-    METHODS constructor
-      IMPORTING
-        !io_source TYPE REF TO cl_ci_source_include
-        !io_viewer TYPE REF TO zcl_ace
-        !io_parent TYPE REF TO cl_gui_dialogbox_container .
-    METHODS add_ai_toolbar_buttons .
-    METHODS hnd_ai_toolbar
-      FOR EVENT function_selected OF cl_gui_toolbar
-      IMPORTING
-        !fcode .
+  methods CONSTRUCTOR
+    importing
+      !I_SOURCE type SCI_INCLUDE
+      !IO_PARENT type ref to CL_GUI_DIALOGBOX_CONTAINER .
+  methods ADD_AI_TOOLBAR_BUTTONS .
+  methods HND_AI_TOOLBAR
+    for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
+    importing
+      !FCODE .
 protected section.
 private section.
 ENDCLASS.
@@ -61,7 +60,6 @@ CLASS ZCL_ACE_AI IMPLEMENTATION.
   METHOD constructor.
 
     super->constructor( ).
-    mo_viewer = io_viewer.
 
     mo_ai_box = create( i_name = 'ACE: Abap Code Explorer - AI chat' i_width = 1400 i_hight = 400 ).
     CREATE OBJECT mo_ai_splitter
@@ -153,7 +151,7 @@ CLASS ZCL_ACE_AI IMPLEMENTATION.
     APPEND INITIAL LINE TO lt_string ASSIGNING <str>.
 
 
-    LOOP AT io_source->lines INTO DATA(ls_line).
+    LOOP AT i_source INTO DATA(ls_line).
       APPEND INITIAL LINE TO lt_string ASSIGNING <str>.
       <str> = ls_line.
       mv_prompt = mv_prompt && <str>.
