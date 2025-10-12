@@ -176,7 +176,33 @@
                program    TYPE tpda_program,
                include    TYPE tpda_include,
                time       LIKE sy-uzeit,
-             END OF t_step_counter.
+             END OF t_step_counter,
+
+             BEGIN OF ts_calls,
+               class TYPE string,
+               event TYPE string,
+               type  TYPE string,
+               name  TYPE string,
+               outer TYPE string,
+               inner TYPE string,
+             END OF ts_calls,
+             tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer,
+
+             BEGIN OF ts_kword,
+               program   TYPE string,
+               include   TYPE string,
+               index     TYPE i,
+               line      TYPE i,
+               v_line    TYPE i, "virtual line in code Mix
+               name      TYPE string,
+               from      TYPE i,
+               to        TYPE i,
+               tt_calls  TYPE tt_calls,
+               to_prog   TYPE string,
+               to_class  TYPE string,
+               to_evtype TYPE string,
+               to_evname TYPE string,
+             END OF ts_kword.
 
       CLASS-DATA: m_option_icons   TYPE TABLE OF sign_option_icon_s,
                   mt_lang          TYPE TABLE OF t_lang,
@@ -399,6 +425,7 @@
 
   CLASS lcl_ace DEFINITION DEFERRED.
 
+
   CLASS lcl_source_parser DEFINITION.
 
     PUBLIC SECTION.
@@ -411,7 +438,17 @@
                                             i_evname TYPE string OPTIONAL,
         parse_call IMPORTING i_program TYPE program
                              i_include TYPE program
-                             i_index TYPE i i_stack TYPE i i_e_name TYPE string i_e_type TYPE string i_class TYPE string OPTIONAL io_debugger TYPE REF TO lcl_ace,
+                             i_index TYPE i i_stack TYPE i
+                             i_e_name TYPE string
+                             i_e_type TYPE string
+                             i_class TYPE string OPTIONAL
+                             io_debugger TYPE REF TO lcl_ace,
+
+        parse_class IMPORTING key TYPE lcl_appl=>ts_kword
+                              i_include TYPE program
+                              i_stack   TYPE i
+                              io_debugger TYPE REF TO lcl_ace,
+
         code_execution_scanner IMPORTING i_program TYPE program
                                          i_include TYPE program
                                          i_evname TYPE string OPTIONAL i_evtype TYPE string OPTIONAL
@@ -5751,58 +5788,7 @@
                 code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
               ENDIF.
             ELSE. "Method call
-
-              DATA: cl_key        TYPE seoclskey,
-                    meth_includes TYPE seop_methods_w_include.
-              cl_key = key-to_class.
-              CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-                EXPORTING
-                  clskey                       = cl_key
-                IMPORTING
-                  includes                     = meth_includes
-                EXCEPTIONS
-                  _internal_class_not_existing = 1
-                  OTHERS                       = 2.
-
-
-              IF io_debugger->mo_window->m_zcode IS INITIAL OR
-               ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( key-to_class+0(1) = 'Z' OR key-to_class+0(1) = 'Y' ) )
-                OR meth_includes IS INITIAL.
-
-
-                IF lines( meth_includes ) > 0.
-                  prefix = key-to_class && repeat( val = `=` occ = 30 - strlen( key-to_class ) ).
-                  program = prefix && 'CP'.
-                  include =  prefix && 'CU'.
-                  lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
-
-                  include =  prefix && 'CI'.
-                  lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
-
-                  include =  prefix && 'CO'.
-                  lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
-
-                  READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = key-to_evname INTO DATA(incl).                        .
-                  IF sy-subrc = 0.
-                    include = incl-incname.
-                    lcl_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
-                  ENDIF.
-                ELSE.
-                  program = i_include.
-                ENDIF.
-                READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = key-to_class eventtype = 'METHOD' eventname = key-to_evname INTO call_line.
-                IF sy-subrc = 0.
-                  lcl_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                        i_e_name = call_line-eventname
-                                        i_e_type = call_line-eventtype
-                                        i_program =  program
-                                        i_include =  include
-                                        i_class = key-to_class
-                                        i_stack   =  stack
-                                        io_debugger = io_debugger ).
-                ENDIF.
-
-              ENDIF.
+              parse_class( i_include = i_include i_stack = stack io_debugger = io_debugger key = key ).
             ENDIF.
           ENDIF.
 
@@ -5916,52 +5902,7 @@
               code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
             ENDIF.
           ELSE. "METHOD CALL
-            cl_key = key-to_class.
-            CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-              EXPORTING
-                clskey                       = cl_key
-              IMPORTING
-                includes                     = meth_includes
-              EXCEPTIONS
-                _internal_class_not_existing = 1
-                OTHERS                       = 2.
-
-            IF io_debugger->mo_window->m_zcode IS INITIAL OR
-             ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( key-to_class+0(1) = 'Z' OR key-to_class+0(1) = 'Y' ) )
-               OR meth_includes IS INITIAL.
-
-              IF lines( meth_includes ) > 0.
-                prefix = key-to_class && repeat( val = `=` occ = 30 - strlen( key-to_class ) ).
-                program = prefix && 'CP'.
-                include =  prefix && 'CU'.
-                lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
-
-                include =  prefix && 'CI'.
-                lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
-
-                include =  prefix && 'CO'.
-                lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
-
-                READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = key-to_evname INTO DATA(incl).                        .
-                IF sy-subrc = 0.
-                  include = incl-incname.
-                  lcl_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
-                ENDIF.
-              ELSE.
-                program = i_include.
-              ENDIF.
-              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = key-to_class eventtype = 'METHOD' eventname = key-to_evname INTO call_line.
-              IF sy-subrc = 0.
-                lcl_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                      i_e_name = call_line-eventname
-                                      i_e_type = call_line-eventtype
-                                      i_program =  program
-                                      i_include =  include
-                                      i_class = key-to_class
-                                      i_stack   =  stack
-                                      io_debugger = io_debugger ).
-              ENDIF.
-            ENDIF.
+            parse_class( i_include = i_include i_stack = stack io_debugger = io_debugger key = key ).
           ENDIF.
 
         ENDIF.
@@ -5972,6 +5913,64 @@
 
         ADD 1 TO  statement.
       ENDDO.
+    ENDMETHOD.
+
+    METHOD parse_class.
+
+      DATA: cl_key        TYPE seoclskey,
+            meth_includes TYPE seop_methods_w_include,
+            prefix        TYPE string,
+            program       TYPE program,
+            include       TYPE progname.
+
+      cl_key = key-to_class.
+      CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+        EXPORTING
+          clskey                       = cl_key
+        IMPORTING
+          includes                     = meth_includes
+        EXCEPTIONS
+          _internal_class_not_existing = 1
+          OTHERS                       = 2.
+
+      IF io_debugger->mo_window->m_zcode IS INITIAL OR
+       ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( key-to_class+0(1) = 'Z' OR key-to_class+0(1) = 'Y' ) )
+         OR meth_includes IS INITIAL.
+
+        IF lines( meth_includes ) > 0.
+          prefix = key-to_class && repeat( val = `=` occ = 30 - strlen( key-to_class ) ).
+          program = prefix && 'CP'.
+          include =  prefix && 'CU'.
+          lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+
+          include =  prefix && 'CI'.
+          lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+
+          include =  prefix && 'CO'.
+          lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+
+          READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = key-to_evname INTO DATA(incl).                        .
+          IF sy-subrc = 0.
+            include = incl-incname.
+            lcl_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
+          ENDIF.
+        ELSE.
+          program = i_include.
+        ENDIF.
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = key-to_class eventtype = 'METHOD' eventname = key-to_evname INTO DATA(call_line).
+        IF sy-subrc = 0.
+          lcl_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                                i_e_name = call_line-eventname
+                                i_e_type = call_line-eventtype
+                                i_program =  program
+                                i_include =  include
+                                i_class = key-to_class
+                                i_stack   =  i_stack
+                                io_debugger = io_debugger ).
+        ENDIF.
+      ENDIF.
+
+
     ENDMETHOD.
 
   ENDCLASS.
