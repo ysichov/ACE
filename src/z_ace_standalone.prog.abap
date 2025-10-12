@@ -1156,17 +1156,11 @@
              END OF ts_calls_line,
              tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
 
-             BEGIN OF ts_calculated_var,
+             BEGIN OF ts_var,
                program TYPE string,
                line    TYPE i,
                name    TYPE string,
-             END OF ts_calculated_var,
-
-             BEGIN OF ts_composed_var,
-               program TYPE string,
-               line    TYPE i,
-               name    TYPE string,
-             END OF ts_composed_var,
+             END OF ts_var,
 
              BEGIN OF ts_refvar,
                program TYPE string,
@@ -1175,8 +1169,10 @@
              END OF ts_refvar,
 
              tt_kword      TYPE STANDARD TABLE OF lcl_ace_appl=>ts_kword WITH EMPTY KEY,
-             tt_calculated TYPE STANDARD TABLE OF ts_calculated_var WITH EMPTY KEY,
-             tt_composed   TYPE STANDARD TABLE OF ts_composed_var WITH EMPTY KEY,
+             tt_calculated TYPE STANDARD TABLE OF ts_var WITH EMPTY KEY,
+             tt_composed   TYPE STANDARD TABLE OF ts_var WITH EMPTY KEY,
+             tt_events     TYPE STANDARD TABLE OF ts_var WITH EMPTY KEY,
+
              tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY,
 
              BEGIN OF ts_params,
@@ -1203,6 +1199,7 @@
                source_tab TYPE sci_include,
                scan       TYPE REF TO cl_ci_scan,
                t_keywords TYPE tt_kword,
+               t_events   type tt_events,
                selected   TYPE boolean,
              END OF ts_prog,
              tt_progs TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
@@ -1756,7 +1753,6 @@
         INSERT INITIAL LINE INTO mo_window->mt_stack INDEX 1 ASSIGNING FIELD-SYMBOL(<stack_mix>).
         <prog_mix>-include = <stack_mix>-program = <stack_mix>-include = 'Code_Flow_Mix'.
       ENDIF.
-
 
       LOOP AT lines INTO DATA(line).
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = line-include INTO DATA(prog).
@@ -3190,7 +3186,10 @@
 
     METHOD on_table_close.
       DATA:  tabix LIKE sy-tabix.
-      sender->free( ).
+      CALL METHOD sender->free
+        EXCEPTIONS
+          cntl_error = 1
+          OTHERS     = 2.
 
       "Free Memory
       LOOP AT lcl_ace_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
@@ -5009,8 +5008,8 @@
             o_statement     TYPE REF TO if_ci_kzn_statement_iterator,
             o_procedure     TYPE REF TO if_ci_kzn_statement_iterator,
             token           TYPE lcl_ace_appl=>ts_kword,
-            calculated      TYPE lcl_ace_window=>ts_calculated_var,
-            composed        TYPE lcl_ace_window=>ts_composed_var,
+            calculated      TYPE lcl_ace_window=>ts_var,
+            composed        TYPE lcl_ace_window=>ts_var,
             tokens          TYPE lcl_ace_window=>tt_kword,
             calculated_vars TYPE lcl_ace_window=>tt_calculated,
             composed_vars   TYPE lcl_ace_window=>tt_composed,
@@ -5676,21 +5675,24 @@
       "CHECK  stack < 20.
 
       lcl_ace_source_parser=>parse_tokens( i_program = i_program i_include = i_include io_debugger = io_debugger ).
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog>).
       IF sy-subrc <> 0.
         RETURN.
       ENDIF.
 
-      DATA: structures LIKE prog-scan->structures.
+      DATA: structures LIKE <prog>-scan->structures.
 
-      READ TABLE prog-scan->structures WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
+      READ TABLE <prog>-scan->structures WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
       IF sy-subrc = 0.
-        structures = prog-scan->structures.
+        structures = <prog>-scan->structures.
         DELETE structures WHERE type <> 'E'.
+        LOOP AT structures  ASSIGNING FIELD-SYMBOL(<structure>) WHERE stmnt_type = 'g'.
+          CLEAR <structure>-stmnt_type.
+        ENDLOOP.
         SORT structures BY stmnt_type ASCENDING.
       ELSE.
         CLEAR  max.
-        LOOP AT prog-scan->structures INTO DATA(str) WHERE type <> 'P' AND type <> 'C' .
+        LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'P' AND type <> 'C' .
           IF  max < str-stmnt_to.
             max = str-stmnt_to.
             APPEND str TO structures.
@@ -5700,17 +5702,32 @@
 
       LOOP AT structures INTO str.
 
-        READ TABLE prog-t_keywords WITH KEY index =  str-stmnt_from INTO DATA(key).
+        READ TABLE <prog>-t_keywords WITH KEY index =  str-stmnt_from INTO DATA(key).
 
         IF str-type = 'E'.
+          "get event name.
+          READ TABLE <prog>-scan->statements INDEX str-stmnt_from INTO DATA(command).
+          clear event.
+          LOOP AT <prog>-scan->tokens FROM command-from TO command-to INTO DATA(word).
+            IF event IS INITIAL.
+              event = word-str.
+            ELSE.
+              event = |{ event } { word-str }|.
+            ENDIF.
+          ENDLOOP.
+          APPEND INITIAL LINE TO <prog>-t_events ASSIGNING FIELD-SYMBOL(<event>).
+          <event>-program = <prog>-program.
+          <event>-name = event.
+          <event>-line = word-row.
           statement = str-stmnt_from + 1.
-          event = key-name.
+
         ELSE.
           statement = str-stmnt_from.
         ENDIF.
 
+
         WHILE  statement <= str-stmnt_to.
-          READ TABLE prog-t_keywords WITH KEY index =   statement INTO key.
+          READ TABLE <prog>-t_keywords WITH KEY index =   statement INTO key.
 
           IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS' OR key-name IS INITIAL OR sy-subrc <> 0.
             ADD 1 TO  statement.
