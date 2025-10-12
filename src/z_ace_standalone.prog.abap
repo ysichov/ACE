@@ -1067,8 +1067,10 @@
 
              BEGIN OF ts_calls_line,
                program   TYPE string,
+               include   type string,
                class     TYPE string,
                eventtype TYPE string,
+               meth_type TYPE i,
                eventname TYPE string,
                index     TYPE i,
              END OF ts_calls_line,
@@ -1311,8 +1313,13 @@
 
     METHOD show.
 
-      DATA: tree TYPE lcl_ace_appl=>ts_tree.
-      SORT mo_window->ms_sources-tt_calls_line.
+      DATA: tree        TYPE lcl_ace_appl=>ts_tree,
+            cl_name     TYPE string,
+            icon        TYPE salv_de_tree_image,
+            forms_rel   TYPE salv_de_node_key,
+            classes_rel TYPE salv_de_node_key,
+            events_rel  TYPE salv_de_node_key,
+            splits      TYPE TABLE OF string.
 
       IF  mo_window->m_prg-include IS INITIAL.
         mo_window->m_prg-program =  mo_window->m_prg-include = mv_prog.
@@ -1328,25 +1335,76 @@
 
       mo_window->show_stack( ).
       mo_tree_local->clear( ).
-      mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mv_prog ) i_icon = CONV #( icon_folder ) ).
+      SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits.
+      IF lines( splits ) = 1.
+        mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-program ) i_icon = CONV #( icon_folder ) ).
+      ENDIF.
 
-      mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
-      mo_tree_local->add_node( i_name = 'Global Fields' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
+      "mo_tree_local->add_node( i_name = 'Global Fields' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
 
-      DATA(events_rel) = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+      "Virtual Start event - first executable step
+      READ TABLE mo_window->mo_viewer->mt_steps INDEX 1 INTO DATA(step).
+      IF step-line IS NOT INITIAL AND step-program = mo_window->m_prg-program.
+        IF events_rel IS INITIAL.
+          events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+        ENDIF.
+        tree-value = step-line.
+        mo_tree_local->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
+      ENDIF.
+
       LOOP AT prog-t_events INTO DATA(event).
+        IF events_rel IS INITIAL.
+          events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+        ENDIF.
         tree-value = event-line.
         mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
       ENDLOOP.
 
-      DATA(forms_rel) = mo_tree_local->add_node( i_name = 'Subroutines' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
-      mo_tree_local->add_node( i_name = 'Code Flow' i_icon = CONV #( icon_enhanced_bo ) i_rel = mo_tree_local->main_node_key ).
+      "mo_tree_local->add_node( i_name = 'Code Flow' i_icon = CONV #( icon_enhanced_bo ) i_rel = mo_tree_local->main_node_key ).
 
-      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE eventtype = 'FORM'.
-        read table prog-t_keywords with key index = subs-index into data(keyword).
+      SORT mo_window->ms_sources-tt_calls_line BY program class eventtype meth_type eventname .
+      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs). "WHERE program = splits[ 1 ].
+        READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
         DATA(form_name) = subs-eventname.
         tree-value = keyword-line.
-          mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
+
+        IF subs-eventtype = 'FORM'.
+          IF subs-program = splits[ 1 ].
+            IF forms_rel IS INITIAL.
+              forms_rel = mo_tree_local->add_node( i_name = 'Subroutines' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+            ENDIF.
+
+            mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
+          ENDIF.
+        ELSEIF subs-eventtype = 'METHOD'.
+
+          IF subs-class = splits[ 1 ] OR subs-program = splits[ 1 ].
+            IF subs-class = splits[ 1 ].
+              tree-include = subs-include.
+            ENDIF.
+            IF classes_rel IS INITIAL.
+              IF subs-class = splits[ 1 ].
+              ELSE.
+                classes_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+              ENDIF.
+            ENDIF.
+            IF cl_name <> subs-class.
+              DATA(class_rel) = mo_tree_local->add_node( i_name = subs-class i_icon = CONV #( icon_folder ) i_rel = classes_rel ).
+              cl_name = subs-class.
+            ENDIF.
+            CASE subs-meth_type.
+              WHEN 1.
+                icon = icon_led_green.
+              WHEN 2.
+                icon = icon_led_yellow.
+              WHEN 3.
+                icon = icon_led_red.
+
+            ENDCASE.
+            mo_tree_local->add_node( i_name =  form_name i_icon = icon i_rel =  class_rel i_tree = tree ).
+          ENDIF.
+        ENDIF.
+
       ENDLOOP.
 
       mo_tree_local->display( ).
@@ -4111,6 +4169,11 @@
       ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
       ASSIGN COMPONENT 'KIND' OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
       ASSIGN COMPONENT 'VALUE' OF STRUCTURE <row> TO FIELD-SYMBOL(<value>).
+      ASSIGN COMPONENT 'INCLUDE' OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
+
+      IF <include> IS NOT INITIAL.
+        mo_viewer->mo_window->set_program( CONV #( <include> ) ).
+      ENDIF.
 
       mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
 
@@ -4293,7 +4356,8 @@
             type            TYPE char1,
             class           TYPE boolean,
             cl_name         TYPE string,
-            preferred       TYPE boolean.
+            preferred       TYPE boolean,
+            method_type     TYPE i.
 
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
       IF sy-subrc <> 0.
@@ -4318,11 +4382,11 @@
           ENDIF.
         ENDIF.
 
-        TRY.
-            o_statement->next( ).
-          CATCH cx_scan_iterator_reached_end.
-            EXIT.
-        ENDTRY.
+*        TRY.
+*            o_statement->next( ).
+*          CATCH cx_scan_iterator_reached_end.
+*            EXIT.
+*        ENDTRY.
 
         DATA(kw) = o_statement->get_keyword( ).
 
@@ -4369,6 +4433,9 @@
             ENDIF.
           ENDIF.
 
+          IF kw = 'ENDCLASS'.
+            call_line-class = param-class = ''.
+          ENDIF.
           IF kw = 'ENDFORM' OR kw = 'ENDMETHOD'.
             CLEAR:  eventtype,  eventname, tabs.
             IF param-param IS INITIAL. "No params - save empty row if no params
@@ -4470,11 +4537,15 @@
               "methods in definition should be overwritten by Implementation section
               READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
               IF sy-subrc = 0.
-                <call_line> = call_line.
+                <call_line>-index = call_line-index.
+                <call_line>-include = i_include.
               ELSE.
                 IF i_class IS INITIAL.
                   call_line-program = i_include.
+                else.
+                  call_line-include = i_include.
                 ENDIF.
+                call_line-meth_type = method_type.
                 APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
               ENDIF.
 
@@ -4584,6 +4655,16 @@
             ENDIF.
 
             CASE kw.
+
+              WHEN 'PUBLIC'.
+                method_type = 1.
+
+              WHEN 'PROTECTED'.
+                method_type = 2.
+
+              WHEN 'PRIVATE'.
+                method_type = 3.
+
               WHEN 'DATA' OR 'PARAMETERS'.
                 IF (   prev = 'OF' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
                   tab-type =  temp.
@@ -4998,7 +5079,7 @@
         WHILE  statement <= str-stmnt_to.
           READ TABLE <prog>-t_keywords WITH KEY index =   statement INTO key.
 
-          IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS' OR key-name IS INITIAL OR sy-subrc <> 0.
+          IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS'  OR key-name = 'PARAMETERS' OR key-name IS INITIAL OR sy-subrc <> 0.
             ADD 1 TO  statement.
             CONTINUE.
           ENDIF.
