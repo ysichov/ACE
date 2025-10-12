@@ -1067,7 +1067,7 @@
 
              BEGIN OF ts_calls_line,
                program   TYPE string,
-               include   type string,
+               include   TYPE string,
                class     TYPE string,
                eventtype TYPE string,
                meth_type TYPE i,
@@ -1363,7 +1363,8 @@
       "mo_tree_local->add_node( i_name = 'Code Flow' i_icon = CONV #( icon_enhanced_bo ) i_rel = mo_tree_local->main_node_key ).
 
       SORT mo_window->ms_sources-tt_calls_line BY program class eventtype meth_type eventname .
-      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs). "WHERE program = splits[ 1 ].
+      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs).
+        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
         READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
         DATA(form_name) = subs-eventname.
         tree-value = keyword-line.
@@ -4376,10 +4377,10 @@
         IF i_class IS NOT INITIAL.
           class = abap_true.
           call_line-class = param-class = i_class.
-          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = i_evname eventtype = 'METHOD' ASSIGNING FIELD-SYMBOL(<call_line>).
-          IF sy-subrc = 0.
-            <call_line>-index = o_procedure->statement_index + 1.
-          ENDIF.
+*          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = i_evname eventtype = 'METHOD' ASSIGNING FIELD-SYMBOL(<call_line>).
+*          IF sy-subrc = 0.
+*            <call_line>-index = o_procedure->statement_index + 1.
+*          ENDIF.
         ENDIF.
 
 *        TRY.
@@ -4398,7 +4399,7 @@
         DATA(max) = lines( o_scan->statements ).
         DO.
           CLEAR token-tt_calls.
-          "IF sy-index <> 1.
+
           TRY.
               o_procedure->next( ).
             CATCH cx_scan_iterator_reached_end.
@@ -4452,7 +4453,6 @@
             DATA(count) = 0.
           ENDIF.
           CLEAR:  new, token-to_evname, token-to_evtype, token-to_class .
-
 
           WHILE 1 = 1.
             IF kw IS INITIAL.
@@ -4535,14 +4535,14 @@
               MOVE-CORRESPONDING tab TO call_line.
               call_line-index = o_procedure->statement_index + 1.
               "methods in definition should be overwritten by Implementation section
-              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
+              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
               IF sy-subrc = 0.
                 <call_line>-index = call_line-index.
                 <call_line>-include = i_include.
               ELSE.
                 IF i_class IS INITIAL.
                   call_line-program = i_include.
-                else.
+                ELSE.
                   call_line-include = i_include.
                 ENDIF.
                 call_line-meth_type = method_type.
