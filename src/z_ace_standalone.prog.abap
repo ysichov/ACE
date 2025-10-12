@@ -19,14 +19,14 @@
               p_apikey TYPE text255 MEMORY ID api.
 
   CLASS lcl_ace_ai DEFINITION DEFERRED.
-  CLASS lcl_data_receiver DEFINITION DEFERRED.
-  CLASS lcl_data_transmitter DEFINITION DEFERRED.
-  CLASS lcl_rtti_tree DEFINITION DEFERRED.
+  CLASS lcl_ace_data_receiver DEFINITION DEFERRED.
+  CLASS lcl_ace_data_transmitter DEFINITION DEFERRED.
+  CLASS lcl_ace_rtti_tree DEFINITION DEFERRED.
   CLASS lcl_ace_window DEFINITION DEFERRED.
-  CLASS lcl_table_viewer DEFINITION DEFERRED.
-  CLASS lcl_mermaid DEFINITION DEFERRED.
+  CLASS lcl_ace_table_viewer DEFINITION DEFERRED.
+  CLASS lcl_ace_mermaid DEFINITION DEFERRED.
 
-  CLASS lcl_appl DEFINITION.
+  CLASS lcl_ace_appl DEFINITION.
 
     PUBLIC SECTION.
 
@@ -49,8 +49,8 @@
           domain      TYPE text60,
           datatype    TYPE string,
           length      TYPE i,
-          transmitter TYPE REF TO lcl_data_transmitter,
-          receiver    TYPE REF TO lcl_data_receiver,
+          transmitter TYPE REF TO lcl_ace_data_transmitter,
+          receiver    TYPE REF TO lcl_ace_data_receiver,
           color       TYPE lvc_t_scol,
           style       TYPE lvc_t_styl,
         END OF selection_display_s,
@@ -128,13 +128,13 @@
                short         TYPE string,
                cl_leaf       TYPE int4,  "?
                ref           TYPE REF TO data,
-               tree          TYPE REF TO lcl_rtti_tree,
+               tree          TYPE REF TO lcl_ace_rtti_tree,
                time          LIKE sy-uname,
              END OF var_table_h,
 
              BEGIN OF t_obj,
                name       TYPE string,
-               alv_viewer TYPE REF TO lcl_table_viewer,
+               alv_viewer TYPE REF TO lcl_ace_table_viewer,
              END OF t_obj,
 
              BEGIN OF t_popup,
@@ -224,7 +224,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_popup DEFINITION.
+  CLASS lcl_ace_popup DEFINITION.
 
     PUBLIC SECTION.
       CLASS-DATA m_counter              TYPE i.
@@ -245,7 +245,7 @@
   ENDCLASS.
 
 
-  CLASS lcl_popup IMPLEMENTATION.
+  CLASS lcl_ace_popup IMPLEMENTATION.
 
     METHOD constructor.
       m_additional_name = i_additional_name.
@@ -283,28 +283,28 @@
     ENDMETHOD.
 
     METHOD on_box_close.
-      LOOP AT lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>) WHERE parent = sender .
+      LOOP AT lcl_ace_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>) WHERE parent = sender .
         <popup>-child->free( ).
         CLEAR <popup>-child.
       ENDLOOP.
       IF sy-subrc <> 0.
-        DELETE  lcl_appl=>mt_popups WHERE child = sender.
+        DELETE  lcl_ace_appl=>mt_popups WHERE child = sender.
       ENDIF.
-      DELETE lcl_appl=>mt_popups WHERE child IS INITIAL.
+      DELETE lcl_ace_appl=>mt_popups WHERE child IS INITIAL.
       sender->free( ).
 
     ENDMETHOD.
 
   ENDCLASS.
 
-  CLASS lcl_ddic DEFINITION.
+  CLASS lcl_ace_ddic DEFINITION.
 
     PUBLIC SECTION.
       CLASS-METHODS: get_text_table IMPORTING i_tname TYPE tabname
                                     EXPORTING e_tab   TYPE tabname.
   ENDCLASS.
 
-  CLASS lcl_ddic IMPLEMENTATION.
+  CLASS lcl_ace_ddic IMPLEMENTATION.
 
     METHOD get_text_table.
       CALL FUNCTION 'DDUT_TEXTTABLE_GET'
@@ -316,7 +316,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_dd_data DEFINITION."drag&drop data
+  CLASS lcl_ace_dragdrop_data DEFINITION."drag&drop data
 
     PUBLIC  SECTION.
       DATA: m_row    TYPE i,
@@ -324,7 +324,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_dragdrop DEFINITION.
+  CLASS lcl_ace_dragdrop DEFINITION.
 
     PUBLIC SECTION.
       CLASS-METHODS:
@@ -333,7 +333,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_alv_common DEFINITION.
+  CLASS lcl_ace_alv_common DEFINITION.
 
     PUBLIC SECTION.
       CONSTANTS: c_white(4) TYPE x VALUE '00000001'. "white background
@@ -345,7 +345,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_alv_common IMPLEMENTATION.
+  CLASS lcl_ace_alv_common IMPLEMENTATION.
 
     METHOD refresh.
 
@@ -410,7 +410,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_rtti DEFINITION.
+  CLASS lcl_ace_rtti DEFINITION.
 
     PUBLIC SECTION.
       CLASS-METHODS:
@@ -426,7 +426,7 @@
   CLASS lcl_ace DEFINITION DEFERRED.
 
 
-  CLASS lcl_source_parser DEFINITION.
+  CLASS lcl_ace_source_parser DEFINITION.
 
     PUBLIC SECTION.
 
@@ -444,7 +444,7 @@
                              i_class TYPE string OPTIONAL
                              io_debugger TYPE REF TO lcl_ace,
 
-        parse_class IMPORTING key TYPE lcl_appl=>ts_kword
+        parse_class IMPORTING key TYPE lcl_ace_appl=>ts_kword
                               i_include TYPE program
                               i_stack   TYPE i
                               io_debugger TYPE REF TO lcl_ace,
@@ -506,8 +506,8 @@
             mt_globals        TYPE tpda_scr_globals_it,
             mt_ret_exp        TYPE tpda_scr_locals_it,
             m_counter         TYPE i,
-            mt_steps          TYPE  TABLE OF lcl_appl=>t_step_counter, "source code steps
-            mt_var_step       TYPE  TABLE OF lcl_appl=>var_table_h,
+            mt_steps          TYPE  TABLE OF lcl_ace_appl=>t_step_counter, "source code steps
+            mt_var_step       TYPE  TABLE OF lcl_ace_appl=>var_table_h,
             m_step            TYPE i,
             m_i_find          TYPE boolean,
             m_stop_stack      TYPE i,
@@ -515,21 +515,21 @@
             m_refresh         TYPE boolean, "to refactor
             m_update          TYPE boolean,
             i_step            TYPE boolean,
-            ms_stack_prev     TYPE   lcl_appl=>t_stack,
-            ms_stack          TYPE   lcl_appl=>t_stack,
+            ms_stack_prev     TYPE   lcl_ace_appl=>t_stack,
+            ms_stack          TYPE   lcl_ace_appl=>t_stack,
             i_history         TYPE boolean,
             m_hist_step       TYPE i,
             m_step_delta      TYPE i,
-            mt_vars_hist_view TYPE STANDARD TABLE OF lcl_appl=>var_table,
-            mt_vars_hist      TYPE STANDARD TABLE OF lcl_appl=>var_table,
-            mt_state          TYPE STANDARD TABLE OF lcl_appl=>var_table,
+            mt_vars_hist_view TYPE STANDARD TABLE OF lcl_ace_appl=>var_table,
+            mt_vars_hist      TYPE STANDARD TABLE OF lcl_ace_appl=>var_table,
+            mt_state          TYPE STANDARD TABLE OF lcl_ace_appl=>var_table,
             mv_recurse        TYPE i,
-            mt_classes_types  TYPE TABLE OF lcl_appl=>t_classes_types,
+            mt_classes_types  TYPE TABLE OF lcl_ace_appl=>t_classes_types,
             mo_window         TYPE REF TO lcl_ace_window,
             mv_f7_stop        TYPE boolean,
             m_f6_level        TYPE i,
             m_target_stack    TYPE i,
-            mo_tree_local     TYPE REF TO lcl_rtti_tree,
+            mo_tree_local     TYPE REF TO lcl_ace_rtti_tree,
             mt_selected_var   TYPE TABLE OF t_sel_var,
             mv_stack_changed  TYPE boolean,
             m_variable        TYPE REF TO data,
@@ -566,7 +566,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_mermaid DEFINITION INHERITING FROM lcl_popup FRIENDS  lcl_ace.
+  CLASS lcl_ace_mermaid DEFINITION INHERITING FROM lcl_ace_popup FRIENDS  lcl_ace.
 
     PUBLIC SECTION.
 
@@ -799,7 +799,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_rtti_tree DEFINITION FINAL. " INHERITING FROM lcl_popup.
+  CLASS lcl_ace_rtti_tree DEFINITION FINAL. " INHERITING FROM lcl_ace_popup.
 
     PUBLIC SECTION.
 
@@ -837,7 +837,7 @@
             m_syst_key      TYPE salv_de_node_key,
             m_ldb_key       TYPE salv_de_node_key,
             m_icon          TYPE salv_de_tree_image,
-            mt_vars         TYPE STANDARD TABLE OF lcl_appl=>var_table,
+            mt_vars         TYPE STANDARD TABLE OF lcl_ace_appl=>var_table,
             mt_classes_leaf TYPE TABLE OF t_classes_leaf,
             m_prg_info      TYPE tpda_scr_prg_info,
             mo_viewer       TYPE REF TO lcl_ace,
@@ -862,7 +862,7 @@
 
       METHODS add_obj_nodes
         IMPORTING
-                  i_var             TYPE lcl_appl=>var_table
+                  i_var             TYPE lcl_ace_appl=>var_table
         RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
 
       METHODS delete_node IMPORTING i_key TYPE salv_de_node_key.
@@ -873,7 +873,7 @@
                   io_type_descr     TYPE REF TO cl_abap_typedescr
                   i_parent_key      TYPE salv_de_node_key
                   i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_appl=>var_table
+                  i_var             TYPE lcl_ace_appl=>var_table
                   ir_up             TYPE REF TO data OPTIONAL
                   i_parent_name     TYPE string OPTIONAL
                   i_struc_name      TYPE string OPTIONAL
@@ -884,7 +884,7 @@
                   io_type_descr     TYPE REF TO cl_abap_typedescr
                   i_parent_key      TYPE salv_de_node_key
                   i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_appl=>var_table
+                  i_var             TYPE lcl_ace_appl=>var_table
                   ir_up             TYPE REF TO data OPTIONAL
                   i_parent_name     TYPE string OPTIONAL
                   i_struc_name      TYPE string OPTIONAL
@@ -895,7 +895,7 @@
                   io_type_descr     TYPE REF TO cl_abap_typedescr
                   i_parent_key      TYPE salv_de_node_key
                   i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_appl=>var_table
+                  i_var             TYPE lcl_ace_appl=>var_table
                   i_value           TYPE any OPTIONAL
                   i_parent_name     TYPE string OPTIONAL
         RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
@@ -904,7 +904,7 @@
         IMPORTING
                   i_parent_key      TYPE salv_de_node_key
                   i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_appl=>var_table
+                  i_var             TYPE lcl_ace_appl=>var_table
                   i_value           TYPE any OPTIONAL
                   ir_up             TYPE REF TO data OPTIONAL
                   i_parent_name     TYPE string OPTIONAL
@@ -915,7 +915,7 @@
                   io_type_descr     TYPE REF TO cl_abap_typedescr
                   i_parent_key      TYPE salv_de_node_key
                   i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_appl=>var_table
+                  i_var             TYPE lcl_ace_appl=>var_table
                   ir_up             TYPE REF TO data OPTIONAL
                   i_parent_name     TYPE string OPTIONAL
         RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
@@ -938,7 +938,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_ace_ai DEFINITION INHERITING FROM lcl_popup.
+  CLASS lcl_ace_ai DEFINITION INHERITING FROM lcl_ace_popup.
 
     PUBLIC SECTION.
       DATA: mo_ai_box               TYPE REF TO cl_gui_dialogbox_container,
@@ -974,7 +974,7 @@
           OTHERS  = 1.
 
       "save new popup ref
-      APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+      APPEND INITIAL LINE TO lcl_ace_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
       <popup>-parent = io_parent.
       <popup>-child = mo_ai_box.
 
@@ -1125,7 +1125,7 @@
   ENDCLASS.
 
 
-  CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_popup .
+  CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_ace_popup .
 
     PUBLIC SECTION.
 
@@ -1156,23 +1156,6 @@
              END OF ts_calls_line,
              tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
 
-             BEGIN OF ts_kword,
-               program   TYPE string,
-               include   TYPE string,
-               index     TYPE i,
-               line      TYPE i,
-               v_line    TYPE i, "virtual line in code Mix
-               name      TYPE string,
-               from      TYPE i,
-               to        TYPE i,
-               tt_calls  TYPE tt_calls,
-               to_prog   TYPE string,
-               to_class  TYPE string,
-               to_evtype TYPE string,
-               to_evname TYPE string,
-               "to_prog   type string,
-             END OF ts_kword,
-
              BEGIN OF ts_calculated_var,
                program TYPE string,
                line    TYPE i,
@@ -1191,7 +1174,7 @@
                class   TYPE string,
              END OF ts_refvar,
 
-             tt_kword      TYPE STANDARD TABLE OF ts_kword WITH EMPTY KEY,
+             tt_kword      TYPE STANDARD TABLE OF lcl_ace_appl=>ts_kword WITH EMPTY KEY,
              tt_calculated TYPE STANDARD TABLE OF ts_calculated_var WITH EMPTY KEY,
              tt_composed   TYPE STANDARD TABLE OF ts_composed_var WITH EMPTY KEY,
              tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY,
@@ -1293,7 +1276,7 @@
             mo_stack_container     TYPE REF TO cl_gui_container,
             mo_hist_container      TYPE REF TO cl_gui_container,
             mo_code_viewer         TYPE REF TO cl_gui_abapedit,
-            mt_stack               TYPE TABLE OF lcl_appl=>t_stack,
+            mt_stack               TYPE TABLE OF lcl_ace_appl=>t_stack,
             mo_toolbar             TYPE REF TO cl_gui_toolbar,
             mo_salv_stack          TYPE REF TO cl_salv_table,
             mo_salv_steps          TYPE REF TO cl_salv_table,
@@ -1338,14 +1321,14 @@
       mv_apikey = i_apikey.
 
       i_step = abap_on.
-      lcl_appl=>check_mermaid( ).
-      lcl_appl=>init_lang( ).
-      lcl_appl=>init_icons_table( ).
+      lcl_ace_appl=>check_mermaid( ).
+      lcl_ace_appl=>init_lang( ).
+      lcl_ace_appl=>init_icons_table( ).
 
       mo_window = NEW lcl_ace_window( me ).
 
 
-      mo_tree_local = NEW lcl_rtti_tree( i_header   = 'Objects & Code Flow'
+      mo_tree_local = NEW lcl_ace_rtti_tree( i_header   = 'Objects & Code Flow'
                                          i_type     = 'L'
                                          i_cont     = mo_window->mo_locals_container
                                          i_debugger = me ).
@@ -1909,7 +1892,7 @@
        ( COND #( WHEN mo_viewer->mv_dest IS NOT INITIAL
         THEN VALUE #( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ) )
 
-       ( COND #( WHEN lcl_appl=>i_mermaid_active = abap_true
+       ( COND #( WHEN lcl_ace_appl=>i_mermaid_active = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
        ( function = 'CODEMIX' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
        ( function = 'CODE' icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
@@ -1934,7 +1917,7 @@
 
     METHOD set_program.
 
-      lcl_source_parser=>parse_tokens( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+      lcl_ace_source_parser=>parse_tokens( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
 
       LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
         CLEAR <prog>-selected.
@@ -2361,7 +2344,7 @@
           ENDIF.
 
         WHEN 'CALLS'.
-          DATA(o_mermaid) = NEW lcl_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
+          DATA(o_mermaid) = NEW lcl_ace_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
 
         WHEN 'CODEMIX'.
 
@@ -2375,7 +2358,7 @@
           m_zcode = m_zcode BIT-XOR c_mask.
           CLEAR: mo_viewer->mt_steps, mo_viewer->m_step.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
-          lcl_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+          lcl_ace_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
           IF m_zcode IS INITIAL.
             mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
           ELSE.
@@ -2392,7 +2375,7 @@
 
         WHEN 'STEPS'.
 
-          lcl_appl=>open_int_table( i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
+          lcl_ace_appl=>open_int_table( i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
 
       ENDCASE.
@@ -2402,9 +2385,9 @@
 
   ENDCLASS.
 
-  CLASS lcl_sel_opt DEFINITION DEFERRED.
+  CLASS lcl_ace_sel_opt DEFINITION DEFERRED.
 
-  CLASS lcl_rtti IMPLEMENTATION.
+  CLASS lcl_ace_rtti IMPLEMENTATION.
 
     METHOD create_struc_handle.
       cl_abap_typedescr=>describe_by_name( EXPORTING  p_name         = i_tname
@@ -2433,17 +2416,17 @@
 
   ENDCLASS.
 
-  CLASS lcl_data_transmitter DEFINITION.
+  CLASS lcl_ace_data_transmitter DEFINITION.
 
     PUBLIC SECTION.
-      EVENTS: data_changed EXPORTING VALUE(e_row) TYPE lcl_appl=>t_sel_row,
+      EVENTS: data_changed EXPORTING VALUE(e_row) TYPE lcl_ace_appl=>t_sel_row,
         col_changed EXPORTING VALUE(e_column) TYPE lvc_fname.
-      METHODS: emit IMPORTING e_row TYPE lcl_appl=>t_sel_row,
+      METHODS: emit IMPORTING e_row TYPE lcl_ace_appl=>t_sel_row,
         emit_col IMPORTING e_column TYPE lvc_fname.
 
   ENDCLASS.
 
-  CLASS lcl_data_transmitter IMPLEMENTATION.
+  CLASS lcl_ace_data_transmitter IMPLEMENTATION.
 
     METHOD  emit.
       RAISE EVENT data_changed EXPORTING e_row = e_row.
@@ -2456,23 +2439,23 @@
 
   ENDCLASS.
 
-  CLASS lcl_data_receiver DEFINITION.
+  CLASS lcl_ace_data_receiver DEFINITION.
 
     PUBLIC SECTION.
-      DATA: mo_transmitter TYPE REF TO lcl_data_transmitter,
-            o_tab_from     TYPE REF TO lcl_table_viewer,
-            o_sel_to       TYPE REF TO lcl_sel_opt,
+      DATA: mo_transmitter TYPE REF TO lcl_ace_data_transmitter,
+            o_tab_from     TYPE REF TO lcl_ace_table_viewer,
+            o_sel_to       TYPE REF TO lcl_ace_sel_opt,
             m_from_field   TYPE lvc_fname,
             m_to_field     TYPE lvc_fname.
       METHODS: constructor
-        IMPORTING io_transmitter TYPE REF TO lcl_data_transmitter OPTIONAL
-                  io_tab_from    TYPE REF TO lcl_table_viewer OPTIONAL
-                  io_sel_to      TYPE REF TO lcl_sel_opt OPTIONAL
+        IMPORTING io_transmitter TYPE REF TO lcl_ace_data_transmitter OPTIONAL
+                  io_tab_from    TYPE REF TO lcl_ace_table_viewer OPTIONAL
+                  io_sel_to      TYPE REF TO lcl_ace_sel_opt OPTIONAL
                   i_from_field   TYPE lvc_fname OPTIONAL
                   i_to_field     TYPE lvc_fname OPTIONAL,
         shut_down,
-        update FOR EVENT data_changed OF lcl_data_transmitter IMPORTING e_row,
-        update_col FOR EVENT col_changed OF lcl_data_transmitter IMPORTING e_column,
+        update FOR EVENT data_changed OF lcl_ace_data_transmitter IMPORTING e_row,
+        update_col FOR EVENT col_changed OF lcl_ace_data_transmitter IMPORTING e_column,
         on_grid_button_click
           FOR EVENT button_click OF cl_gui_alv_grid
           IMPORTING
@@ -2481,22 +2464,22 @@
 
   ENDCLASS.
 
-  CLASS lcl_sel_opt DEFINITION.
+  CLASS lcl_ace_sel_opt DEFINITION.
 
     PUBLIC SECTION.
-      DATA: mo_viewer  TYPE REF TO lcl_table_viewer,
+      DATA: mo_viewer  TYPE REF TO lcl_ace_table_viewer,
             mo_sel_alv TYPE REF TO cl_gui_alv_grid,
             mt_fcat    TYPE lvc_t_fcat,
-            mt_sel_tab TYPE TABLE OF lcl_appl=>selection_display_s,
+            mt_sel_tab TYPE TABLE OF lcl_ace_appl=>selection_display_s,
             ms_layout  TYPE lvc_s_layo.
 
       EVENTS: selection_done.
       METHODS:
-        constructor IMPORTING io_viewer TYPE REF TO lcl_table_viewer io_container TYPE REF TO cl_gui_container,
+        constructor IMPORTING io_viewer TYPE REF TO lcl_ace_table_viewer io_container TYPE REF TO cl_gui_container,
         raise_selection_done,
         update_sel_tab,
         set_value IMPORTING  i_field TYPE any i_low TYPE any OPTIONAL i_high TYPE any OPTIONAL i_clear TYPE boolean DEFAULT abap_true ,
-        update_sel_row CHANGING c_sel_row TYPE lcl_appl=>selection_display_s.
+        update_sel_row CHANGING c_sel_row TYPE lcl_ace_appl=>selection_display_s.
 
     PRIVATE SECTION.
       METHODS:
@@ -2515,12 +2498,12 @@
 
   ENDCLASS.
 
-  CLASS lcl_table_viewer DEFINITION INHERITING FROM lcl_popup.
+  CLASS lcl_ace_table_viewer DEFINITION INHERITING FROM lcl_ace_popup.
 
     PUBLIC SECTION.
       TYPES: BEGIN OF t_column_emitter,
                column  TYPE lvc_fname,
-               emitter TYPE REF TO lcl_data_transmitter,
+               emitter TYPE REF TO lcl_ace_data_transmitter,
              END OF t_column_emitter,
              BEGIN OF t_elem,
                field TYPE fieldname,
@@ -2530,7 +2513,7 @@
       DATA: m_lang             TYPE ddlanguage,
             m_tabname          TYPE tabname,
             mo_alv             TYPE REF TO cl_gui_alv_grid,
-            mo_sel             TYPE REF TO lcl_sel_opt,
+            mo_sel             TYPE REF TO lcl_ace_sel_opt,
             mr_table           TYPE REF TO data,
             mo_sel_parent      TYPE REF TO cl_gui_container,
             mo_alv_parent      TYPE REF TO cl_gui_container,
@@ -2548,7 +2531,7 @@
                               i_additional_name TYPE string OPTIONAL
                               ir_tab            TYPE REF TO data OPTIONAL
                               io_window         TYPE REF TO lcl_ace_window,
-        refresh_table FOR EVENT selection_done OF lcl_sel_opt.
+        refresh_table FOR EVENT selection_done OF lcl_ace_sel_opt.
 
     PRIVATE SECTION.
       METHODS:
@@ -2567,14 +2550,14 @@
 
   ENDCLASS.
 
-  CLASS lcl_text_viewer DEFINITION FINAL INHERITING FROM lcl_popup.
+  CLASS lcl_ace_text_viewer DEFINITION FINAL INHERITING FROM lcl_ace_popup.
 
     PUBLIC SECTION.
       DATA: mo_text     TYPE REF TO cl_gui_textedit.
       METHODS: constructor IMPORTING ir_str TYPE REF TO data.
   ENDCLASS.
 
-  CLASS lcl_text_viewer IMPLEMENTATION.
+  CLASS lcl_ace_text_viewer IMPLEMENTATION.
 
     METHOD constructor.
       super->constructor( ).
@@ -2629,7 +2612,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_data_receiver IMPLEMENTATION.
+  CLASS lcl_ace_data_receiver IMPLEMENTATION.
 
     METHOD constructor.
 
@@ -2695,7 +2678,7 @@
     METHOD update_col.
 
       DATA: l_updated,
-            sel_row   TYPE lcl_appl=>t_sel_row.
+            sel_row   TYPE lcl_ace_appl=>t_sel_row.
 
       FIELD-SYMBOLS: <tab>   TYPE STANDARD TABLE,
                      <field> TYPE any.
@@ -2743,7 +2726,7 @@
 *    sender->free( ).
 *
 *    "Free Memory
-*    LOOP AT lcl_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
+*    LOOP AT lcl_ace_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
 *      IF <obj>-alv_viewer->mo_box = sender.
 *         tabix = sy-tabix.
 *        EXIT.
@@ -2763,14 +2746,14 @@
 *      ENDIF.
 *      FREE <obj>-alv_viewer.
 *      IF  tabix NE 0.
-*        DELETE lcl_appl=>mt_obj INDEX  tabix.
+*        DELETE lcl_ace_appl=>mt_obj INDEX  tabix.
 *      ENDIF.
 *    ENDIF.
 *  ENDMETHOD.                    "ON_BOX_CLOSE
 *
 *ENDCLASS.               "lcl_box_handler
 
-  CLASS lcl_table_viewer IMPLEMENTATION.
+  CLASS lcl_ace_table_viewer IMPLEMENTATION.
 
     METHOD constructor.
 
@@ -2801,7 +2784,7 @@
       create_popup( ).
 
       IF ir_tab IS NOT BOUND.
-        lcl_rtti=>create_table_by_name( EXPORTING i_tname = m_tabname CHANGING c_table = mr_table ).
+        lcl_ace_rtti=>create_table_by_name( EXPORTING i_tname = m_tabname CHANGING c_table = mr_table ).
       ELSE.
         FIELD-SYMBOLS:<any> TYPE any.
         ASSIGN ir_tab->* TO <any>.
@@ -2907,7 +2890,7 @@
       mo_box = create( i_width = 800 i_hight = 150 ).
 
       "save new popup ref
-      APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+      APPEND INITIAL LINE TO lcl_ace_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
       <popup>-parent = mo_window->mo_box.
       <popup>-child = mo_box.
 
@@ -2962,24 +2945,24 @@
       set_header( ).
       layout-cwidth_opt = abap_true.
       layout-sel_mode = 'D'.
-      CREATE OBJECT lcl_appl=>mo_dragdropalv.
+      CREATE OBJECT lcl_ace_appl=>mo_dragdropalv.
       effect = cl_dragdrop=>move + cl_dragdrop=>copy.
 
-      CALL METHOD lcl_appl=>mo_dragdropalv->add
+      CALL METHOD lcl_ace_appl=>mo_dragdropalv->add
         EXPORTING
           flavor     = 'Line' ##NO_TEXT
           dragsrc    = abap_true
           droptarget = abap_true
           effect     = effect.
 
-      CALL METHOD lcl_appl=>mo_dragdropalv->get_handle IMPORTING handle = DATA(handle_alv).
+      CALL METHOD lcl_ace_appl=>mo_dragdropalv->get_handle IMPORTING handle = DATA(handle_alv).
       layout-s_dragdrop-grid_ddid = handle_alv.
 
       SET HANDLER   before_user_command
                     handle_user_command
                     handle_tab_toolbar
                     handle_doubleclick
-                    lcl_dragdrop=>drag
+                    lcl_ace_dragdrop=>drag
                     FOR mo_alv.
 
       CALL METHOD mo_alv->set_table_for_first_display
@@ -3002,7 +2985,7 @@
       mo_alv->set_frontend_fieldcatalog( EXPORTING it_fieldcatalog = mt_alv_catalog ).
 
       LOOP AT mt_alv_catalog ASSIGNING FIELD-SYMBOL(<cat>) WHERE scrtext_l IS INITIAL.
-        lcl_alv_common=>translate_field( CHANGING c_fld = <cat> ).
+        lcl_ace_alv_common=>translate_field( CHANGING c_fld = <cat> ).
       ENDLOOP.
 
       mo_alv->set_frontend_fieldcatalog( EXPORTING it_fieldcatalog = mt_alv_catalog ).
@@ -3074,7 +3057,7 @@
 
       APPEND VALUE #( function = 'TECH' icon = icon_wd_caption quickinfo = 'Tech names'  butn_type = 0 ) TO toolbar.
 
-      LOOP AT lcl_appl=>mt_lang INTO DATA(lang).
+      LOOP AT lcl_ace_appl=>mt_lang INTO DATA(lang).
         IF sy-tabix > 10.
           EXIT.
         ENDIF.
@@ -3121,7 +3104,7 @@
       ENDTRY.
 
       it_tabdescr[] = lr_table_descr->components[].
-      lcl_ddic=>get_text_table( EXPORTING i_tname = i_tname IMPORTING e_tab = l_texttab ).
+      lcl_ace_ddic=>get_text_table( EXPORTING i_tname = i_tname IMPORTING e_tab = l_texttab ).
 
       LOOP AT it_tabdescr INTO DATA(ls)
          WHERE type_kind NE 'h'
@@ -3149,7 +3132,7 @@
         APPEND INITIAL LINE TO et_catalog ASSIGNING FIELD-SYMBOL(<catalog>).
 
         <catalog>-col_pos = l_ind.
-        <catalog>-style = lcl_alv_common=>c_white.
+        <catalog>-style = lcl_ace_alv_common=>c_white.
         <catalog>-fieldname = ls-name.
         <catalog>-f4availabl = abap_true.
 
@@ -3178,13 +3161,13 @@
 *        IF sy-subrc = 0.
 *          IF <val> = 'Table'.
 *            ASSIGN COMPONENT 'REF'  OF STRUCTURE <tab> TO FIELD-SYMBOL(<ref>).
-*            lcl_appl=>open_int_table( EXPORTING i_name = CONV #( e_column-fieldname ) it_ref = <ref> io_window = mo_window ).
+*            lcl_ace_appl=>open_int_table( EXPORTING i_name = CONV #( e_column-fieldname ) it_ref = <ref> io_window = mo_window ).
 *          ENDIF.
 *        ELSE.
 *          TRY.
 *              o_table_descr ?= cl_tpda_script_data_descr=>factory( |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| ).
 *              table_clone = o_table_descr->elem_clone( ).
-*              lcl_appl=>open_int_table( EXPORTING i_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
+*              lcl_ace_appl=>open_int_table( EXPORTING i_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
 *            CATCH cx_sy_move_cast_error.
 *          ENDTRY.
 *        ENDIF.
@@ -3198,7 +3181,7 @@
 *        TRY.
 *            o_table_descr ?= cl_tpda_script_data_descr=>factory( |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| ).
 *            table_clone = o_table_descr->elem_clone( ).
-*            lcl_appl=>open_int_table( EXPORTING i_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
+*            lcl_ace_appl=>open_int_table( EXPORTING i_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
 *          CATCH cx_sy_move_cast_error.
 *        ENDTRY.
 *    ENDCASE.
@@ -3210,7 +3193,7 @@
       sender->free( ).
 
       "Free Memory
-      LOOP AT lcl_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
+      LOOP AT lcl_ace_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
         IF <obj>-alv_viewer->mo_box = sender.
           tabix = sy-tabix.
           EXIT.
@@ -3230,7 +3213,7 @@
         ENDIF.
         FREE <obj>-alv_viewer.
         IF  tabix NE 0.
-          DELETE lcl_appl=>mt_obj INDEX  tabix.
+          DELETE lcl_ace_appl=>mt_obj INDEX  tabix.
         ENDIF.
       ENDIF.
 
@@ -3299,7 +3282,7 @@
               <fields>-scrtext_l = <fields>-scrtext_m = <fields>-scrtext_s =  <fields>-reptext = <fields>-fieldname.
 
             WHEN OTHERS. "header names translation
-              IF line_exists( lcl_appl=>mt_lang[ spras = e_ucomm ] ).
+              IF line_exists( lcl_ace_appl=>mt_lang[ spras = e_ucomm ] ).
                 translate_field( EXPORTING i_lang = CONV #( e_ucomm )  CHANGING c_fld = <fields> ).
                 IF mo_sel IS BOUND.
                   READ TABLE mo_sel->mt_sel_tab ASSIGNING FIELD-SYMBOL(<sel>) WITH KEY field_label = <fields>-fieldname.
@@ -3319,7 +3302,7 @@
         ENDLOOP.
       ENDIF.
 
-      IF line_exists( lcl_appl=>mt_lang[ spras = e_ucomm ] ).
+      IF line_exists( lcl_ace_appl=>mt_lang[ spras = e_ucomm ] ).
         m_lang = e_ucomm.
         set_header( ).
         mo_sel->set_value( i_field = 'SPRSL' i_low = m_lang ).
@@ -3327,12 +3310,12 @@
 
       CALL METHOD mo_alv->set_frontend_fieldcatalog EXPORTING it_fieldcatalog = it_fields[].
 
-      lcl_alv_common=>refresh( mo_alv ).
+      lcl_ace_alv_common=>refresh( mo_alv ).
       IF mo_sel IS BOUND.
         IF  e_ucomm = 'HIDE' OR e_ucomm = 'SHOW' OR e_ucomm = 'UPDATE' .
           mo_sel->update_sel_tab( ).
         ENDIF.
-        lcl_alv_common=>refresh( mo_sel->mo_sel_alv ).
+        lcl_ace_alv_common=>refresh( mo_sel->mo_sel_alv ).
         mo_sel->mo_sel_alv->refresh_table_display(  ).
       ENDIF.
 
@@ -3340,7 +3323,7 @@
 
     METHOD refresh_table.
 
-      DATA: row    TYPE lcl_appl=>t_sel_row,
+      DATA: row    TYPE lcl_ace_appl=>t_sel_row,
             filter TYPE lvc_t_filt.
 
       CLEAR filter.
@@ -3364,8 +3347,8 @@
         CALL METHOD mo_alv->set_filter_criteria
           EXPORTING
             it_filter = filter.
-        lcl_alv_common=>refresh( mo_sel->mo_sel_alv ).
-        lcl_alv_common=>refresh( mo_alv ).
+        lcl_ace_alv_common=>refresh( mo_sel->mo_sel_alv ).
+        lcl_ace_alv_common=>refresh( mo_alv ).
         mo_sel->mo_viewer->handle_user_command( 'SHOW' ).
         LOOP AT mo_column_emitters INTO DATA(l_emit).
           l_emit-emitter->emit_col( l_emit-column ).
@@ -3374,7 +3357,7 @@
     ENDMETHOD.
   ENDCLASS.
 
-  CLASS lcl_sel_opt IMPLEMENTATION.
+  CLASS lcl_ace_sel_opt IMPLEMENTATION.
     METHOD constructor.
       DATA: effect     TYPE i,
             handle_alv TYPE i.
@@ -3382,17 +3365,17 @@
       mo_viewer = io_viewer.
       mo_sel_alv = NEW #( i_parent = io_container ).
       update_sel_tab( ).
-      CREATE OBJECT lcl_appl=>mo_dragdropalv.
+      CREATE OBJECT lcl_ace_appl=>mo_dragdropalv.
       effect =  cl_dragdrop=>copy. " + cl_dragdrop=>move.
 
-      CALL METHOD lcl_appl=>mo_dragdropalv->add
+      CALL METHOD lcl_ace_appl=>mo_dragdropalv->add
         EXPORTING
           flavor     = 'Line'
           dragsrc    = abap_true
           droptarget = abap_true
           effect     = effect.
 
-      CALL METHOD lcl_appl=>mo_dragdropalv->get_handle IMPORTING handle = handle_alv.
+      CALL METHOD lcl_ace_appl=>mo_dragdropalv->get_handle IMPORTING handle = handle_alv.
       ms_layout-s_dragdrop-col_ddid = handle_alv.
       init_fcat( handle_alv ).
       ms_layout-cwidth_opt = abap_true.
@@ -3411,8 +3394,8 @@
 
       SET HANDLER handle_user_command
                   handle_sel_toolbar
-                  lcl_dragdrop=>drag
-                  lcl_dragdrop=>drop
+                  lcl_ace_dragdrop=>drag
+                  lcl_ace_dragdrop=>drop
                   on_data_changed
                   on_data_changed_finished
                   on_grid_button_click
@@ -3460,9 +3443,9 @@
 
     METHOD raise_selection_done.
 
-      DATA: row TYPE lcl_appl=>t_sel_row.
+      DATA: row TYPE lcl_ace_appl=>t_sel_row.
 
-      lcl_alv_common=>refresh( mo_sel_alv ).
+      lcl_ace_alv_common=>refresh( mo_sel_alv ).
       RAISE EVENT selection_done.
       LOOP AT mt_sel_tab  ASSIGNING FIELD-SYMBOL(<sel>).
         IF <sel>-transmitter IS NOT INITIAL.
@@ -3499,7 +3482,7 @@
         <sel_tab>-domain =  l_catalog-domname.
         <sel_tab>-datatype = l_catalog-datatype.
         <sel_tab>-length = l_catalog-outputlen.
-        lcl_alv_common=>translate_field( EXPORTING i_lang = mo_viewer->m_lang CHANGING c_fld = l_catalog ).
+        lcl_ace_alv_common=>translate_field( EXPORTING i_lang = mo_viewer->m_lang CHANGING c_fld = l_catalog ).
         <sel_tab>-name = l_catalog-scrtext_l.
       ENDLOOP.
 
@@ -3536,7 +3519,7 @@
         update_sel_row( CHANGING c_sel_row = <to> ).
       ENDIF.
       IF <to>-transmitter IS BOUND.
-        DATA: row TYPE lcl_appl=>t_sel_row.
+        DATA: row TYPE lcl_ace_appl=>t_sel_row.
         MOVE-CORRESPONDING <to> TO row.
         <to>-transmitter->emit( EXPORTING e_row = row ).
       ENDIF.
@@ -3605,7 +3588,7 @@
       ENDIF.
 
       TRY.
-          c_sel_row-option_icon = lcl_appl=>m_option_icons[ sign = c_sel_row-sign option = c_sel_row-opti ]-icon_name.
+          c_sel_row-option_icon = lcl_ace_appl=>m_option_icons[ sign = c_sel_row-sign option = c_sel_row-opti ]-icon_name.
         CATCH cx_sy_itab_line_not_found.                "#EC NO_HANDLER
       ENDTRY.
 
@@ -3665,7 +3648,7 @@
       READ TABLE mt_sel_tab ASSIGNING FIELD-SYMBOL(<sel>) INDEX es_row_no-row_id.
       DATA(l_fname) =  <sel>-field_label.
 
-      lcl_appl=>mt_sel[] = mt_sel_tab[].
+      lcl_ace_appl=>mt_sel[] = mt_sel_tab[].
       IF <sel>-element = 'HROBJID'.
         READ TABLE mt_sel_tab INTO DATA(l_sel) WITH KEY field_label = 'OTYPE'.
         l_otype = l_sel-low.
@@ -3887,7 +3870,7 @@
       ENDIF.
 
       update_sel_row( CHANGING c_sel_row = <tab> ).
-      lcl_alv_common=>refresh( EXPORTING i_obj = mo_sel_alv i_layout = ms_layout ).
+      lcl_ace_alv_common=>refresh( EXPORTING i_obj = mo_sel_alv i_layout = ms_layout ).
       raise_selection_done( ).
 
     ENDMETHOD.
@@ -3904,7 +3887,7 @@
       DATA: func  TYPE ui_func,
             funcs TYPE ui_functions.
 
-      DATA(l_index) = lcl_alv_common=>get_selected( mo_sel_alv ).
+      DATA(l_index) = lcl_ace_alv_common=>get_selected( mo_sel_alv ).
 
       IF l_index IS NOT INITIAL.
         READ TABLE mt_sel_tab INTO DATA(l_sel) INDEX l_index.
@@ -3983,14 +3966,14 @@
         RAISE EVENT selection_done.
       ENDIF.
 
-      lcl_alv_common=>refresh( mo_viewer->mo_alv ).
+      lcl_ace_alv_common=>refresh( mo_viewer->mo_alv ).
       RAISE EVENT selection_done.
 
     ENDMETHOD.                           "handle_user_command
 
   ENDCLASS.
 
-  CLASS lcl_appl IMPLEMENTATION.
+  CLASS lcl_ace_appl IMPLEMENTATION.
 
     METHOD init_icons_table.
 
@@ -4055,7 +4038,7 @@
       ELSE.
         GET REFERENCE OF it_tab INTO r_tab.
       ENDIF.
-      APPEND INITIAL LINE TO lcl_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>).
+      APPEND INITIAL LINE TO lcl_ace_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>).
       <obj>-alv_viewer = NEW #(  i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
       <obj>-alv_viewer->mo_sel->raise_selection_done( ).
 
@@ -4063,7 +4046,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_rtti_tree IMPLEMENTATION.
+  CLASS lcl_ace_rtti_tree IMPLEMENTATION.
 
     METHOD constructor.
 
@@ -4813,9 +4796,9 @@
 
         CASE <kind>.
           WHEN cl_abap_datadescr=>typekind_table.
-            lcl_appl=>open_int_table( i_name = <fullname> it_ref = <ref> io_window = mo_viewer->mo_window ).
+            lcl_ace_appl=>open_int_table( i_name = <fullname> it_ref = <ref> io_window = mo_viewer->mo_window ).
           WHEN cl_abap_datadescr=>typekind_string.
-            NEW lcl_text_viewer( <ref> ).
+            NEW lcl_ace_text_viewer( <ref> ).
         ENDCASE.
       ENDIF.
 
@@ -4867,11 +4850,11 @@
 
   ENDCLASS.
 
-  CLASS lcl_dragdrop IMPLEMENTATION.
+  CLASS lcl_ace_dragdrop IMPLEMENTATION.
 
     METHOD drag.
 
-      DATA(dataobj) = NEW lcl_dd_data( ).
+      DATA(dataobj) = NEW lcl_ace_dragdrop_data( ).
       dataobj->m_row = e_row-index.
       dataobj->m_column = e_column.
       e_dragdropobj->object = dataobj.
@@ -4880,10 +4863,10 @@
 
     METHOD drop."It should be refactored someday...
 
-      DATA: row          TYPE lcl_appl=>t_sel_row,
+      DATA: row          TYPE lcl_ace_appl=>t_sel_row,
             set_receiver.
 
-      LOOP AT lcl_appl=>mt_obj INTO DATA(lo).
+      LOOP AT lcl_ace_appl=>mt_obj INTO DATA(lo).
         "to
         IF lo-alv_viewer->mo_sel IS BOUND.
           IF e_dragdropobj->droptargetctrl = lo-alv_viewer->mo_sel->mo_sel_alv.
@@ -5005,7 +4988,7 @@
       ENDIF.
 
       DATA(o_alv) = CAST cl_gui_alv_grid( e_dragdropobj->dragsourcectrl ).
-      lcl_alv_common=>refresh( EXPORTING i_obj = o_alv ).
+      lcl_ace_alv_common=>refresh( EXPORTING i_obj = o_alv ).
 
       o_alv ?= e_dragdropobj->droptargetctrl.
       o_to->raise_selection_done( ).
@@ -5014,7 +4997,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_source_parser IMPLEMENTATION.
+  CLASS lcl_ace_source_parser IMPLEMENTATION.
 
     METHOD parse_tokens.
 
@@ -5025,7 +5008,7 @@
             o_scan          TYPE REF TO cl_ci_scan,
             o_statement     TYPE REF TO if_ci_kzn_statement_iterator,
             o_procedure     TYPE REF TO if_ci_kzn_statement_iterator,
-            token           TYPE lcl_ace_window=>ts_kword,
+            token           TYPE lcl_ace_appl=>ts_kword,
             calculated      TYPE lcl_ace_window=>ts_calculated_var,
             composed        TYPE lcl_ace_window=>ts_composed_var,
             tokens          TYPE lcl_ace_window=>tt_kword,
@@ -5692,7 +5675,7 @@
       stack =  i_stack + 1.
       "CHECK  stack < 20.
 
-      lcl_source_parser=>parse_tokens( i_program = i_program i_include = i_include io_debugger = io_debugger ).
+      lcl_ace_source_parser=>parse_tokens( i_program = i_program i_include = i_include io_debugger = io_debugger ).
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
       IF sy-subrc <> 0.
         RETURN.
@@ -5759,7 +5742,7 @@
             IF key-to_evtype = 'FORM'.
               READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = key-to_evname eventtype = key-to_evtype INTO call_line.
               IF sy-subrc = 0.
-                lcl_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                                  i_e_name = call_line-eventname
                                                  i_e_type = call_line-eventtype
                                                  i_program = i_program
@@ -5872,7 +5855,7 @@
 
             READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = key-to_evname eventtype = key-to_evtype INTO DATA(call_line).
             IF sy-subrc = 0.
-              lcl_source_parser=>parse_call( EXPORTING i_index = call_line-index
+              lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                                        i_e_name = call_line-eventname
                                                        i_e_type = call_line-eventtype
                                                        i_program = i_include
@@ -5941,25 +5924,25 @@
           prefix = key-to_class && repeat( val = `=` occ = 30 - strlen( key-to_class ) ).
           program = prefix && 'CP'.
           include =  prefix && 'CU'.
-          lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
 
           include =  prefix && 'CI'.
-          lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
 
           include =  prefix && 'CO'.
-          lcl_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
 
           READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = key-to_evname INTO DATA(incl).                        .
           IF sy-subrc = 0.
             include = incl-incname.
-            lcl_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
+            lcl_ace_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
           ENDIF.
         ELSE.
           program = i_include.
         ENDIF.
         READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = key-to_class eventtype = 'METHOD' eventname = key-to_evname INTO DATA(call_line).
         IF sy-subrc = 0.
-          lcl_source_parser=>parse_call( EXPORTING i_index = call_line-index
+          lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                 i_e_name = call_line-eventname
                                 i_e_type = call_line-eventtype
                                 i_program =  program
@@ -5975,7 +5958,7 @@
 
   ENDCLASS.
 
-  CLASS lcl_mermaid IMPLEMENTATION.
+  CLASS lcl_ace_mermaid IMPLEMENTATION.
 
     METHOD constructor.
 
@@ -5986,7 +5969,7 @@
       mo_viewer = io_debugger.
       mv_type = i_type.
 
-      CHECK lcl_appl=>i_mermaid_active = abap_true.
+      CHECK lcl_ace_appl=>i_mermaid_active = abap_true.
 
       CASE mv_type.
         WHEN 'CALLS'.
@@ -5999,7 +5982,7 @@
         mo_box = create( i_name =  text i_width = 1000 i_hight = 300 ).
 
         "save new popup ref
-        APPEND INITIAL LINE TO lcl_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+        APPEND INITIAL LINE TO lcl_ace_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
         <popup>-parent = mo_viewer->mo_window->mo_box.
         <popup>-child = mo_box.
 
@@ -6345,7 +6328,7 @@
               ref       TYPE REF TO data.
         mm_string = mo_diagram->('GET_SOURCE_CODE_STRING').
         GET REFERENCE OF  mm_string INTO  ref.
-        NEW lcl_text_viewer(  ref ).
+        NEW lcl_ace_text_viewer(  ref ).
 
         RETURN.
       ENDIF.
@@ -6368,7 +6351,7 @@
 
     METHOD open_mermaid.
 
-      CHECK lcl_appl=>i_mermaid_active = abap_true.
+      CHECK lcl_ace_appl=>i_mermaid_active = abap_true.
 
       TRY.
           IF mo_diagram IS INITIAL.
@@ -6387,8 +6370,8 @@
 
   INITIALIZATION.
 
-    lcl_appl=>init_lang( ).
-    lcl_appl=>init_icons_table( ).
+    lcl_ace_appl=>init_lang( ).
+    lcl_ace_appl=>init_icons_table( ).
     WRITE 1.
 
   AT SELECTION-SCREEN.
