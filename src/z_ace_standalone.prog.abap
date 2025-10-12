@@ -202,7 +202,14 @@
                to_class  TYPE string,
                to_evtype TYPE string,
                to_evname TYPE string,
-             END OF ts_kword.
+             END OF ts_kword,
+
+             BEGIN OF ts_tree,
+               kind(1),
+               value   TYPE string,
+               include TYPE program,
+             END OF ts_tree.
+      .
 
       CLASS-DATA: m_option_icons   TYPE TABLE OF sign_option_icon_s,
                   mt_lang          TYPE TABLE OF t_lang,
@@ -799,56 +806,22 @@
 
   ENDCLASS.
 
-  CLASS lcl_ace_rtti_tree DEFINITION FINAL. " INHERITING FROM lcl_ace_popup.
+  CLASS lcl_ace_rtti_tree DEFINITION FINAL.
 
     PUBLIC SECTION.
 
-      TYPES: BEGIN OF t_classes_leaf,
-               name TYPE string,
-               type TYPE char1,
-               key  TYPE salv_de_node_key,
-             END OF t_classes_leaf.
-
-      TYPES: BEGIN OF ts_table,
-               ref      TYPE REF TO data,
-               kind(1),
-               value    TYPE string,
-               typename TYPE abap_abstypename,
-               fullname TYPE string,
-               path     TYPE string,
-             END OF ts_table.
-
-      TYPES tt_table TYPE STANDARD TABLE OF ts_table
+      TYPES tt_table TYPE STANDARD TABLE OF lcl_ace_appl=>ts_tree
             WITH NON-UNIQUE DEFAULT KEY.
 
-      DATA: main_node_key   TYPE salv_de_node_key,
-            m_refresh       TYPE boolean,
-            m_leaf          TYPE string,
-            m_hide          TYPE x,
-            m_clear         TYPE flag,
-            m_locals        TYPE x,
-            m_globals       TYPE x,
-            m_syst          TYPE x,
-            m_class_data    TYPE x,
-            m_ldb           TYPE x,
-            m_locals_key    TYPE salv_de_node_key,
-            m_globals_key   TYPE salv_de_node_key,
-            m_class_key     TYPE salv_de_node_key,
-            m_syst_key      TYPE salv_de_node_key,
-            m_ldb_key       TYPE salv_de_node_key,
-            m_icon          TYPE salv_de_tree_image,
-            mt_vars         TYPE STANDARD TABLE OF lcl_ace_appl=>var_table,
-            mt_classes_leaf TYPE TABLE OF t_classes_leaf,
-            m_prg_info      TYPE tpda_scr_prg_info,
-            mo_viewer       TYPE REF TO lcl_ace,
-            mo_tree         TYPE REF TO cl_salv_tree.
+      DATA: main_node_key TYPE salv_de_node_key,
+            m_prg_info    TYPE tpda_scr_prg_info,
+            mo_viewer     TYPE REF TO lcl_ace,
+            mo_tree       TYPE REF TO cl_salv_tree.
 
       METHODS constructor IMPORTING i_header   TYPE clike DEFAULT 'View'
                                     i_type     TYPE boolean OPTIONAL
                                     i_cont     TYPE REF TO cl_gui_container OPTIONAL
                                     i_debugger TYPE REF TO lcl_ace OPTIONAL.
-
-      METHODS del_variable IMPORTING  i_full_name TYPE string i_state TYPE boolean OPTIONAL.
 
       METHODS clear.
 
@@ -858,67 +831,12 @@
                   i_name         TYPE string
                   i_rel          TYPE salv_de_node_key OPTIONAL
                   i_icon         TYPE salv_de_tree_image OPTIONAL
+                  i_tree         TYPE lcl_ace_appl=>ts_tree OPTIONAL
         RETURNING VALUE(rv_node) TYPE salv_de_node_key.
-
-      METHODS add_obj_nodes
-        IMPORTING
-                  i_var             TYPE lcl_ace_appl=>var_table
-        RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
 
       METHODS delete_node IMPORTING i_key TYPE salv_de_node_key.
       METHODS display IMPORTING io_debugger TYPE REF TO lcl_ace OPTIONAL.
 
-      METHODS traverse
-        IMPORTING
-                  io_type_descr     TYPE REF TO cl_abap_typedescr
-                  i_parent_key      TYPE salv_de_node_key
-                  i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_ace_appl=>var_table
-                  ir_up             TYPE REF TO data OPTIONAL
-                  i_parent_name     TYPE string OPTIONAL
-                  i_struc_name      TYPE string OPTIONAL
-        RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
-
-      METHODS traverse_struct
-        IMPORTING
-                  io_type_descr     TYPE REF TO cl_abap_typedescr
-                  i_parent_key      TYPE salv_de_node_key
-                  i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_ace_appl=>var_table
-                  ir_up             TYPE REF TO data OPTIONAL
-                  i_parent_name     TYPE string OPTIONAL
-                  i_struc_name      TYPE string OPTIONAL
-        RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
-
-      METHODS traverse_elem
-        IMPORTING
-                  io_type_descr     TYPE REF TO cl_abap_typedescr
-                  i_parent_key      TYPE salv_de_node_key
-                  i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_ace_appl=>var_table
-                  i_value           TYPE any OPTIONAL
-                  i_parent_name     TYPE string OPTIONAL
-        RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
-
-      METHODS traverse_obj
-        IMPORTING
-                  i_parent_key      TYPE salv_de_node_key
-                  i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_ace_appl=>var_table
-                  i_value           TYPE any OPTIONAL
-                  ir_up             TYPE REF TO data OPTIONAL
-                  i_parent_name     TYPE string OPTIONAL
-        RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
-
-      METHODS traverse_table
-        IMPORTING
-                  io_type_descr     TYPE REF TO cl_abap_typedescr
-                  i_parent_key      TYPE salv_de_node_key
-                  i_rel             TYPE salv_de_node_relation
-                  i_var             TYPE lcl_ace_appl=>var_table
-                  ir_up             TYPE REF TO data OPTIONAL
-                  i_parent_name     TYPE string OPTIONAL
-        RETURNING VALUE(e_root_key) TYPE salv_de_node_key.
 
     PRIVATE SECTION.
       CONSTANTS: BEGIN OF c_kind,
@@ -1199,7 +1117,7 @@
                source_tab TYPE sci_include,
                scan       TYPE REF TO cl_ci_scan,
                t_keywords TYPE tt_kword,
-               t_events   type tt_events,
+               t_events   TYPE tt_events,
                selected   TYPE boolean,
              END OF ts_prog,
              tt_progs TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
@@ -1392,6 +1310,10 @@
     ENDMETHOD.
 
     METHOD show.
+
+      DATA: tree TYPE lcl_ace_appl=>ts_tree.
+      SORT mo_window->ms_sources-tt_calls_line.
+
       IF  mo_window->m_prg-include IS INITIAL.
         mo_window->m_prg-program =  mo_window->m_prg-include = mv_prog.
       ENDIF.
@@ -1402,22 +1324,29 @@
       ENDIF.
       mo_window->set_program_line( mo_window->m_prg-line ).
 
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY program = mo_window->m_prg-program INTO DATA(prog).
+
       mo_window->show_stack( ).
       mo_tree_local->clear( ).
       mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mv_prog ) i_icon = CONV #( icon_folder ) ).
 
       mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
       mo_tree_local->add_node( i_name = 'Global Fields' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
-      mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_oo_event ) i_rel = mo_tree_local->main_node_key ).
+
+      DATA(events_rel) = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+      LOOP AT prog-t_events INTO DATA(event).
+        tree-value = event-line.
+        mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
+      ENDLOOP.
+
       DATA(forms_rel) = mo_tree_local->add_node( i_name = 'Subroutines' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
       mo_tree_local->add_node( i_name = 'Code Flow' i_icon = CONV #( icon_enhanced_bo ) i_rel = mo_tree_local->main_node_key ).
 
-      LOOP AT mo_window->ms_sources-t_params INTO DATA(subs) WHERE event = 'FORM' .
-        DATA(form_name) = subs-name.
-        AT NEW name.
-          mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel ).
-
-        ENDAT.
+      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE eventtype = 'FORM'.
+        read table prog-t_keywords with key index = subs-index into data(keyword).
+        DATA(form_name) = subs-eventname.
+        tree-value = keyword-line.
+          mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
       ENDLOOP.
 
       mo_tree_local->display( ).
@@ -1923,9 +1852,6 @@
       IF sy-subrc = 0.
 
         <prog>-selected = abap_true.
-*      IF m_prg-line IS INITIAL.
-*        m_prg-line = <prog>-t_keywords[ 1 ]-line.
-*      ENDIF.
         mo_code_viewer->set_text( table = <prog>-source_tab ).
       ENDIF.
     ENDMETHOD.
@@ -1938,6 +1864,7 @@
 
       mo_code_viewer->remove_all_marker( 2 ).
       mo_code_viewer->remove_all_marker( 4 ).
+      mo_code_viewer->remove_all_marker( 7 ).
 
 *    "session breakpoints
       CALL METHOD cl_abap_debugger=>read_breakpoints
@@ -4068,11 +3995,8 @@
       DATA(o_columns) = mo_tree->get_columns( ).
       o_columns->set_optimize( abap_true ).
 
-      o_columns->get_column( 'VALUE' )->set_short_text( 'Value' ).
-      o_columns->get_column( 'FULLNAME' )->set_visible( abap_false ).
-      o_columns->get_column( 'PATH' )->set_visible( abap_false ).
-      o_columns->get_column( 'TYPENAME' )->set_short_text( 'Type' ).
-      o_columns->get_column( 'TYPENAME' )->set_medium_text( 'Absolute Type' ).
+      o_columns->get_column( 'VALUE' )->set_visible( abap_false ).
+      o_columns->get_column( 'INCLUDE' )->set_visible( abap_false ).
 
       add_buttons( i_type ).
 
@@ -4080,7 +4004,6 @@
       SET HANDLER hndl_double_click
                   hndl_user_command FOR o_event.
 
-      m_globals = '01'.
       mo_tree->display( ).
 
     ENDMETHOD.
@@ -4109,551 +4032,8 @@
 
       mo_tree->get_nodes( )->delete_all( ).
 
-      CLEAR: m_globals_key,
-             m_locals_key,
-             m_syst_key,
-             m_ldb_key,
-             m_class_key,
-             mt_vars,
-             mt_classes_leaf.
-
     ENDMETHOD.
 
-    METHOD traverse.
-
-      ASSIGN ir_up->* TO FIELD-SYMBOL(<new>).
-      IF <new> IS INITIAL AND m_hide IS NOT INITIAL.
-        me->del_variable( CONV #( i_var-name )  ).
-        RETURN.
-      ENDIF.
-
-      CASE io_type_descr->kind.
-        WHEN c_kind-struct.
-          IF i_struc_name IS SUPPLIED.
-            e_root_key = traverse_struct( io_type_descr  = io_type_descr
-                                          i_parent_key  = i_parent_key
-                                          i_rel         = i_rel
-                                          i_var         = i_var
-                                          ir_up          = ir_up
-                                          i_parent_name = i_parent_name
-                                          i_struc_name  = i_struc_name ).
-          ELSE.
-            e_root_key = traverse_struct( io_type_descr  = io_type_descr
-                                          i_parent_key  = i_parent_key
-                                          i_rel         = i_rel
-                                          i_var         = i_var
-                                          ir_up          = ir_up
-                                          i_parent_name = i_parent_name ).
-          ENDIF.
-
-        WHEN c_kind-table.
-          e_root_key = traverse_table( io_type_descr  = io_type_descr
-                                       i_parent_key  = i_parent_key
-                                       i_rel         = i_rel
-                                       i_var         = i_var
-                                       ir_up          = ir_up
-                                       i_parent_name = i_parent_name ).
-        WHEN c_kind-elem.
-          e_root_key = traverse_elem( io_type_descr  = io_type_descr
-                                      i_parent_key  = i_parent_key
-                                      i_rel         = i_rel
-                                      i_var         = i_var
-                                      i_parent_name = i_parent_name ).
-
-      ENDCASE.
-
-    ENDMETHOD.
-
-    METHOD traverse_struct.
-
-      DATA: component      TYPE abap_component_tab,
-            o_struct_descr TYPE REF TO cl_abap_structdescr,
-            tree           TYPE ts_table,
-            text           TYPE lvc_value,
-            l_key          TYPE salv_de_node_key,
-            l_rel          TYPE salv_de_node_relation,
-            icon           TYPE salv_de_tree_image.
-
-      ASSIGN i_var-ref->* TO FIELD-SYMBOL(<new_value>).
-      l_rel = i_rel.
-      o_struct_descr ?= io_type_descr.
-      tree-ref =  ir_up.
-      IF i_var-instance NE '{A:initial}'.
-        tree-typename = o_struct_descr->absolute_name.
-        REPLACE FIRST OCCURRENCE OF '\TYPE=' IN tree-typename+0(6) WITH ''.
-        IF tree-typename+0(1) = '%'.
-          tree-typename = |{ o_struct_descr->type_kind }({ o_struct_descr->length / 2 })|.
-        ENDIF.
-      ENDIF.
-
-      tree-kind = o_struct_descr->type_kind.
-
-      IF m_icon IS INITIAL.
-        icon = icon_structure.
-      ELSE.
-        icon = m_icon.
-      ENDIF.
-
-      text = i_var-short.
-      tree-fullname = i_var-name.
-      tree-path = i_var-path.
-
-      "own new method
-      IF i_var-cl_leaf IS NOT INITIAL.
-
-        add_obj_nodes( EXPORTING i_var = i_var ).
-
-        READ TABLE mt_classes_leaf WITH KEY name = i_var-parent type = i_var-cl_leaf INTO DATA(leaf).
-        IF sy-subrc = 0.
-          l_key = leaf-key.
-        ENDIF.
-      ELSE.
-        l_key = i_parent_key.
-      ENDIF.
-
-      IF l_key IS INITIAL.
-        l_key = i_parent_key.
-        l_rel = i_rel.
-      ENDIF.
-
-      IF  ( i_struc_name IS SUPPLIED AND i_struc_name IS NOT INITIAL ) OR i_struc_name IS NOT SUPPLIED.
-        IF  text IS NOT INITIAL.
-
-
-          DATA(all_nodes) = mo_tree->get_nodes( )->get_all_nodes( ).
-          LOOP AT all_nodes INTO DATA(nodes).
-            DATA(lr_row) = nodes-node->get_data_row( ).
-            DATA row TYPE ts_table.
-            FIELD-SYMBOLS <ls_row> TYPE ts_table.
-            ASSIGN lr_row->* TO <ls_row>.
-            IF <ls_row>-fullname = i_var-name.
-              DATA(l_node) = nodes-node.
-              EXIT.
-            ENDIF.
-          ENDLOOP.
-
-          IF l_node IS NOT INITIAL.
-            READ TABLE mt_vars WITH KEY name = i_var-name INTO DATA(l_var).
-            IF sy-subrc = 0.
-              IF l_node IS NOT INITIAL.
-                TRY.
-                    FIELD-SYMBOLS: <old_value> TYPE any.
-                    ASSIGN l_var-ref->* TO <old_value>.
-                    IF sy-subrc = 0.
-                      IF i_var-type = l_var-type.
-                        RETURN.
-                      ELSE.
-                        l_key = l_var-key.
-                        l_rel = if_salv_c_node_relation=>next_sibling.
-                        DELETE mt_vars WHERE name = i_var-name.
-                      ENDIF.
-                    ENDIF.
-                  CATCH cx_root.
-                    DELETE mt_vars WHERE name = i_var-name.
-                ENDTRY.
-
-              ENDIF.
-            ENDIF.
-            "RETURN.
-          ENDIF.
-        ENDIF.
-
-        e_root_key = mo_tree->get_nodes( )->add_node(
-               related_node   = l_key
-               relationship   = l_rel
-               data_row       = tree
-               collapsed_icon =  icon
-               expanded_icon  =  icon
-               text           =  text
-               folder         = abap_false )->get_key( ).
-
-        APPEND INITIAL LINE TO mt_vars ASSIGNING FIELD-SYMBOL(<vars>).
-        <vars>-key = e_root_key.
-        <vars>-stack = mo_viewer->mo_window->mt_stack[ 1 ]-stacklevel.
-        <vars>-step  = mo_viewer->m_step - mo_viewer->m_step_delta.
-        <vars>-program   = mo_viewer->mo_window->m_prg-program.
-        <vars>-eventtype = mo_viewer->mo_window->m_prg-eventtype.
-        <vars>-eventname = mo_viewer->mo_window->m_prg-eventname.
-        <vars>-leaf  = m_leaf.
-        <vars>-name  = i_var-name.
-        <vars>-short = i_var-short.
-        <vars>-ref  = ir_up.
-        <vars>-cl_leaf = i_var-cl_leaf.
-        <vars>-type = o_struct_descr->absolute_name.
-        <vars>-path = i_var-path.
-      ENDIF.
-
-      IF l_rel = if_salv_c_node_relation=>next_sibling AND l_node IS NOT INITIAL.
-        IF l_node IS NOT INITIAL.
-
-          l_node->delete( ).
-        ENDIF.
-      ENDIF.
-
-    ENDMETHOD.
-
-    METHOD traverse_elem.
-
-      DATA: o_elem_descr TYPE REF TO cl_abap_elemdescr,
-            tree         TYPE ts_table,
-            text         TYPE lvc_value,
-            icon         TYPE salv_de_tree_image,
-            l_key        TYPE salv_de_node_key,
-            l_rel        TYPE salv_de_node_relation.
-
-      o_elem_descr ?= io_type_descr.
-      tree-ref = i_var-ref.
-      l_rel = i_rel.
-
-      IF i_var-instance NE '{A:initial}'.
-        tree-typename = o_elem_descr->absolute_name.
-        REPLACE FIRST OCCURRENCE OF '\TYPE=' IN tree-typename WITH ''.
-        IF tree-typename+0(1) = '%'.
-          tree-typename = |{ o_elem_descr->type_kind }({ o_elem_descr->length / 2 })|.
-        ENDIF.
-      ENDIF.
-
-      tree-kind = o_elem_descr->type_kind.
-
-      ASSIGN i_var-ref->* TO FIELD-SYMBOL(<new_value>).
-      IF i_value IS SUPPLIED.
-        tree-value = i_value.
-      ELSE.
-        IF <new_value> IS NOT INITIAL.
-          tree-value = <new_value>.
-        ENDIF.
-      ENDIF.
-
-      CASE o_elem_descr->type_kind.
-        WHEN 'D'.
-          icon = icon_date.
-        WHEN 'T'.
-          icon = icon_bw_time_sap.
-        WHEN 'C'.
-          icon = icon_wd_input_field.
-        WHEN 'P'.
-          icon = icon_increase_decimal.
-        WHEN 'g'.
-          icon = icon_text_act.
-        WHEN 'N' OR 'I'.
-          icon = icon_pm_order.
-        WHEN OTHERS.
-          icon = icon_element.
-      ENDCASE.
-
-      text = i_var-short.
-      tree-fullname = i_var-name."i_var-path.
-      tree-path = i_var-path.
-
-      "own new method
-      IF i_var-cl_leaf IS NOT INITIAL.
-
-        add_obj_nodes( EXPORTING i_var = i_var ).
-
-        READ TABLE mt_classes_leaf WITH KEY name = i_var-parent type = i_var-cl_leaf INTO DATA(leaf).
-        IF sy-subrc = 0.
-          l_key = leaf-key.
-        ENDIF.
-      ELSE.
-        l_key = i_parent_key.
-      ENDIF.
-
-      IF l_key IS INITIAL.
-        l_key = i_parent_key.
-        l_rel = i_rel.
-      ENDIF.
-
-      DATA(all_nodes) = mo_tree->get_nodes( )->get_all_nodes( ).
-      LOOP AT all_nodes INTO DATA(nodes).
-        DATA(name) = nodes-node->get_text( ).
-        DATA(lr_row) = nodes-node->get_data_row( ).
-        FIELD-SYMBOLS <ls_row> TYPE ts_table.
-        ASSIGN lr_row->* TO <ls_row>.
-        IF <ls_row>-fullname = i_var-name.
-          DATA(l_node) = nodes-node.
-          EXIT.
-        ENDIF.
-      ENDLOOP.
-
-
-      IF l_node IS NOT INITIAL.
-        READ TABLE mt_vars WITH KEY name = i_var-name INTO DATA(l_var).
-        IF sy-subrc = 0.
-          TRY.
-              FIELD-SYMBOLS: <old_value> TYPE any.
-              ASSIGN l_var-ref->* TO <old_value>.
-              IF sy-subrc = 0.
-                IF i_var-type = l_var-type.
-                  IF <old_value> NE <new_value>.
-                    l_key = l_var-key.
-                    l_rel = if_salv_c_node_relation=>next_sibling.
-                    DELETE mt_vars WHERE name = i_var-name.
-                  ELSE.
-                    IF ( <new_value> IS INITIAL AND m_hide IS NOT INITIAL ).
-                    ELSE.
-                      RETURN.
-                    ENDIF.
-                  ENDIF.
-                ELSE.
-                  l_key = l_var-key.
-                  l_rel = if_salv_c_node_relation=>next_sibling.
-                  DELETE mt_vars WHERE name = i_var-name.
-                ENDIF.
-              ENDIF.
-            CATCH cx_root.
-              DELETE mt_vars WHERE name = i_var-name.
-          ENDTRY.
-        ENDIF.
-      ENDIF.
-
-      DATA(o_nodes) = mo_tree->get_nodes( ).
-
-      TRY.
-          CALL METHOD o_nodes->add_node
-            EXPORTING
-              related_node   = l_key
-              relationship   = l_rel
-              data_row       = tree
-              collapsed_icon = icon
-              expanded_icon  = icon
-              text           = text
-              folder         = abap_false
-            RECEIVING
-              node           = DATA(o_node).
-
-          IF sy-subrc = 0.
-            e_root_key = o_node->get_key( ).
-
-            APPEND INITIAL LINE TO mt_vars ASSIGNING FIELD-SYMBOL(<vars>).
-            <vars>-stack = mo_viewer->mo_window->mt_stack[ 1 ]-stacklevel.
-            <vars>-step = mo_viewer->m_step - mo_viewer->m_step_delta.
-            <vars>-program = mo_viewer->mo_window->m_prg-program.
-            <vars>-eventtype = mo_viewer->mo_window->m_prg-eventtype.
-            <vars>-eventname = mo_viewer->mo_window->m_prg-eventname.
-            <vars>-leaf = m_leaf.
-            <vars>-name = i_var-name.
-            <vars>-short = i_var-short.
-            <vars>-key = e_root_key.
-            <vars>-ref = i_var-ref.
-            <vars>-cl_leaf = i_var-cl_leaf.
-            <vars>-type = o_elem_descr->absolute_name.
-            <vars>-path = i_var-path.
-
-            IF l_rel = if_salv_c_node_relation=>next_sibling AND l_node IS NOT INITIAL.
-              IF l_node IS NOT INITIAL.
-                l_node->delete( ).
-              ENDIF.
-            ENDIF.
-          ENDIF.
-        CATCH cx_salv_msg.
-      ENDTRY.
-
-    ENDMETHOD.
-
-    METHOD traverse_obj.
-
-      DATA: tree  TYPE ts_table,
-            text  TYPE lvc_value,
-            icon  TYPE salv_de_tree_image,
-            l_key TYPE salv_de_node_key,
-            l_rel TYPE salv_de_node_relation.
-
-      READ TABLE mt_vars WITH KEY name = i_var-name INTO DATA(l_var).
-
-      IF sy-subrc = 0.
-        DATA(o_nodes) = mo_tree->get_nodes( ).
-        DATA(l_node) =  o_nodes->get_node( l_var-key ).
-
-        IF l_var-ref = ir_up.
-          RETURN.
-        ENDIF.
-
-      ELSE.
-        l_rel = i_rel.
-      ENDIF.
-
-
-      icon = icon_oo_object.
-      text = i_var-short.
-      tree-fullname = i_var-name.
-      tree-path = i_var-path.
-
-      "own new method
-      IF i_var-cl_leaf IS NOT INITIAL.
-
-        add_obj_nodes( EXPORTING i_var = i_var ).
-
-        READ TABLE mt_classes_leaf WITH KEY name = i_var-parent type = i_var-cl_leaf INTO DATA(leaf).
-        IF sy-subrc = 0.
-          l_key = leaf-key.
-        ENDIF.
-      ENDIF.
-
-      IF l_key IS INITIAL.
-        l_key = i_parent_key.
-        l_rel = i_rel.
-      ENDIF.
-
-      e_root_key = mo_tree->get_nodes( )->add_node(
-       related_node   = l_key
-       relationship   = l_rel
-       data_row       = tree
-       collapsed_icon =  icon
-       expanded_icon  =  icon
-       text           =  text
-       folder         = abap_false )->get_key( ).
-
-      APPEND INITIAL LINE TO mt_vars ASSIGNING FIELD-SYMBOL(<vars>).
-      <vars>-stack = mo_viewer->mo_window->mt_stack[ 1 ]-stacklevel.
-      <vars>-step = mo_viewer->m_step - mo_viewer->m_step_delta.
-      <vars>-program = mo_viewer->mo_window->m_prg-program.
-      <vars>-eventtype = mo_viewer->mo_window->m_prg-eventtype.
-      <vars>-eventname = mo_viewer->mo_window->m_prg-eventname.
-      <vars>-leaf = m_leaf.
-      <vars>-name = i_var-name.
-      <vars>-short = i_var-short.
-      <vars>-key = e_root_key.
-      <vars>-cl_leaf = i_var-cl_leaf.
-      <vars>-path = i_var-path.
-
-      IF l_node IS NOT INITIAL.
-        l_node->delete( ).
-      ENDIF.
-
-    ENDMETHOD.
-
-    METHOD traverse_table.
-
-      DATA: o_table_descr TYPE REF TO cl_abap_tabledescr,
-            tree          TYPE ts_table,
-            text          TYPE lvc_value,
-            icon          TYPE salv_de_tree_image,
-            l_key         TYPE salv_de_node_key,
-            l_rel         TYPE salv_de_node_relation.
-
-      FIELD-SYMBOLS: <tab> TYPE ANY TABLE.
-
-      ASSIGN ir_up->* TO <tab>.
-      DATA(lines) = lines( <tab> ).
-      tree-ref = ir_up.
-      l_key = i_parent_key.
-
-      o_table_descr ?= io_type_descr.
-
-      tree-fullname = |{ i_var-short } ({ lines })|.
-      tree-kind = o_table_descr->type_kind.
-      IF i_var-instance NE '{A:initial}'.
-
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = mo_viewer->ms_stack-include INTO DATA(prog).
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_tabs WITH KEY name = i_var-short INTO DATA(tab).
-        IF sy-subrc <> 0.
-          tree-typename = replace( val = o_table_descr->absolute_name sub = '\TYPE=' with = '' ).
-        ELSE.
-          tree-typename = tab-type.
-        ENDIF.
-      ENDIF.
-      icon = icon_view_table.
-
-      IF i_var-name IS NOT INITIAL.
-        text = tree-fullname.
-      ELSE.
-        text = tree-typename.
-      ENDIF.
-
-      l_rel = i_rel.
-      ASSIGN ir_up->* TO FIELD-SYMBOL(<new_value>).
-
-      READ TABLE mt_vars WITH KEY name = i_var-name INTO DATA(l_var).
-      DATA(all_nodes) = mo_tree->get_nodes( )->get_all_nodes( ).
-      LOOP AT all_nodes INTO DATA(nodes).
-        DATA(lr_row) = nodes-node->get_data_row( ).
-        FIELD-SYMBOLS <ls_row> TYPE ts_table.
-        ASSIGN lr_row->* TO <ls_row>.
-        IF <ls_row>-fullname = i_var-name.
-          DATA(l_node) = nodes-node.
-          EXIT.
-        ENDIF.
-      ENDLOOP.
-
-      IF l_node IS NOT INITIAL.
-        TRY.
-            FIELD-SYMBOLS: <old_value> TYPE any.
-            ASSIGN l_var-ref->* TO <old_value>.
-            IF sy-subrc = 0.
-              IF <old_value> NE <new_value>.
-                l_key = l_var-key.
-                l_rel = if_salv_c_node_relation=>next_sibling.
-                DELETE mt_vars WHERE name = i_var-name.
-              ELSE.
-                IF ( <new_value> IS INITIAL AND m_hide IS NOT INITIAL ).
-                  me->del_variable( CONV #( i_var-name )  ).
-                ENDIF.
-              ENDIF.
-            ENDIF.
-
-            IF <new_value> IS INITIAL AND m_hide IS NOT INITIAL.
-              me->del_variable( CONV #( i_var-name ) ).
-              RETURN.
-            ENDIF.
-          CATCH cx_root.
-            me->del_variable( CONV #( i_var-name )  ).
-        ENDTRY.
-      ELSE.
-
-        IF <new_value> IS INITIAL AND m_hide IS NOT INITIAL.
-          RETURN.
-        ENDIF.
-      ENDIF.
-
-      IF i_var-cl_leaf IS NOT INITIAL.
-
-        add_obj_nodes( EXPORTING i_var = i_var ).
-
-        READ TABLE mt_classes_leaf WITH KEY name = i_var-parent type = i_var-cl_leaf INTO DATA(leaf).
-        IF sy-subrc = 0.
-          l_key = leaf-key.
-        ENDIF.
-      ELSE.
-        l_key = i_parent_key.
-      ENDIF.
-
-      READ TABLE mt_vars WITH KEY name = i_parent_name TRANSPORTING NO FIELDS.
-      IF sy-subrc NE 0.
-
-        tree-fullname = i_var-name.
-        e_root_key =
-          mo_tree->get_nodes( )->add_node(
-            related_node   = l_key
-            relationship   = i_rel
-            collapsed_icon =  icon
-            expanded_icon  =  icon
-            data_row       = tree
-            text           =  text
-            folder         = abap_true
-          )->get_key( ).
-
-        APPEND INITIAL LINE TO mt_vars ASSIGNING FIELD-SYMBOL(<vars>).
-        <vars>-stack = mo_viewer->mo_window->mt_stack[ 1 ]-stacklevel.
-        <vars>-leaf = m_leaf.
-        <vars>-name = i_var-name.
-        <vars>-program = mo_viewer->mo_window->m_prg-program.
-        <vars>-eventtype = mo_viewer->mo_window->m_prg-eventtype.
-        <vars>-eventname = mo_viewer->mo_window->m_prg-eventname.
-        <vars>-short = i_var-short.
-        <vars>-key = e_root_key.
-        <vars>-ref = ir_up.
-        <vars>-step = mo_viewer->m_step - mo_viewer->m_step_delta.
-        <vars>-cl_leaf = i_var-cl_leaf.
-        <vars>-path = i_var-path.
-
-        IF l_rel = if_salv_c_node_relation=>next_sibling AND l_node IS NOT INITIAL.
-          IF l_node IS NOT INITIAL.
-            l_node->delete( ).
-          ENDIF.
-        ENDIF.
-      ENDIF.
-
-    ENDMETHOD.
 
     METHOD add_node.
 
@@ -4663,56 +4043,11 @@
               collapsed_icon = i_icon
               expanded_icon = i_icon
               relationship   = if_salv_c_node_relation=>last_child
+              data_row       = i_tree
               row_style = if_salv_c_tree_style=>intensified
               text           = CONV #( i_name )
               folder         = abap_true
             )->get_key( ).
-
-    ENDMETHOD.
-
-    METHOD add_obj_nodes.
-
-      DATA match TYPE match_result_tab.
-      FIND ALL OCCURRENCES OF  '-' IN i_var-name RESULTS match. "Only first level of instance should be here
-      IF lines( match ) > 1.
-        RETURN.
-      ENDIF.
-
-      DATA  text TYPE lvc_value.
-      DATA  node_key TYPE salv_de_node_key.
-      DATA  icon TYPE salv_de_tree_image.
-
-      CASE i_var-cl_leaf.
-        WHEN 1.
-          icon = icon_led_green.
-          text = 'Public'.
-        WHEN 2.
-          icon = icon_led_red.
-          text = 'Private'.
-        WHEN 3.
-          icon = icon_led_yellow.
-          text = 'Protected'.
-      ENDCASE.
-
-      READ TABLE mt_classes_leaf WITH KEY name = i_var-parent type = i_var-cl_leaf ASSIGNING FIELD-SYMBOL(<class>).
-      IF sy-subrc NE 0.
-
-        READ TABLE mt_vars WITH KEY path = i_var-parent INTO DATA(var).
-        node_key =
-         mo_tree->get_nodes( )->add_node(
-           related_node   = var-key
-           relationship   = if_salv_c_node_relation=>last_child
-           collapsed_icon =  icon
-           expanded_icon  =  icon
-           text           =  text
-           folder         = abap_true
-         )->get_key( ).
-
-        APPEND INITIAL LINE TO mt_classes_leaf ASSIGNING <class>.
-        <class>-name = i_var-parent.
-        <class>-key =  node_key.
-        <class>-type = i_var-cl_leaf.
-      ENDIF.
 
     ENDMETHOD.
 
@@ -4758,8 +4093,6 @@
       CASE e_salv_function.
 
         WHEN 'REFRESH'."
-          m_refresh = abap_true.
-          "mo_viewer->run_script_hist( mo_viewer->m_hist_step ).
           mo_viewer->mo_tree_local->display( ).
           RETURN.
 
@@ -4776,74 +4109,10 @@
 
       r_row = l_node->get_data_row( ).
       ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
-      ASSIGN COMPONENT 'REF' OF STRUCTURE <row> TO FIELD-SYMBOL(<ref>).
       ASSIGN COMPONENT 'KIND' OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
-      ASSIGN COMPONENT 'FULLNAME' OF STRUCTURE <row> TO FIELD-SYMBOL(<fullname>).
-      ASSIGN COMPONENT 'PATH' OF STRUCTURE <row> TO FIELD-SYMBOL(<path>).
+      ASSIGN COMPONENT 'VALUE' OF STRUCTURE <row> TO FIELD-SYMBOL(<value>).
 
-      IF <fullname> IS NOT INITIAL.
-        READ TABLE mo_viewer->mt_selected_var WITH KEY name =  <fullname> TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
-          DELETE mo_viewer->mt_selected_var WHERE name = <fullname>.
-          l_node->set_row_style( if_salv_c_tree_style=>default ).
-        ELSE.
-          l_node->set_row_style( if_salv_c_tree_style=>emphasized_b ).
-          APPEND INITIAL LINE TO mo_viewer->mt_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
-          <sel>-name = <fullname>.
-          <sel>-i_sel = abap_true.
-        ENDIF.
-
-        CASE <kind>.
-          WHEN cl_abap_datadescr=>typekind_table.
-            lcl_ace_appl=>open_int_table( i_name = <fullname> it_ref = <ref> io_window = mo_viewer->mo_window ).
-          WHEN cl_abap_datadescr=>typekind_string.
-            NEW lcl_ace_text_viewer( <ref> ).
-        ENDCASE.
-      ENDIF.
-
-    ENDMETHOD.
-
-    METHOD del_variable.
-
-      DATA(vars_hist) = mo_viewer->mt_vars_hist.
-      SORT vars_hist BY step DESCENDING.
-      LOOP AT vars_hist INTO DATA(hist) WHERE name = i_full_name.
-        IF hist-del IS INITIAL.
-          CLEAR: hist-ref, hist-first.
-          hist-del = abap_true.
-          hist-step = mo_viewer->m_hist_step - 1.
-          INSERT hist INTO mo_viewer->mt_vars_hist INDEX 1.
-        ENDIF.
-      ENDLOOP.
-
-      DATA(o_nodes) = mo_tree->get_nodes( ).
-      READ TABLE mo_viewer->mt_state WITH KEY name = i_full_name ASSIGNING FIELD-SYMBOL(<var>).
-      IF sy-subrc = 0.
-
-        TRY.
-            DATA(l_node) =  o_nodes->get_node( <var>-key ).
-          CATCH cx_salv_msg.
-        ENDTRY.
-
-        DELETE mt_vars WHERE name = i_full_name.
-        DELETE mt_classes_leaf WHERE name = i_full_name.
-        IF i_state = abap_true.
-          DELETE mo_viewer->mt_state WHERE name = i_full_name.
-        ENDIF.
-
-        DATA(l_nam) = i_full_name && '-'.
-        DELETE mt_vars WHERE name CS l_nam.
-        DELETE mt_classes_leaf WHERE name  CS l_nam.
-        IF i_state = abap_true.
-          DELETE mo_viewer->mt_state WHERE name CS l_nam.
-        ENDIF.
-        TRY.
-            IF l_node IS NOT INITIAL.
-              l_node->delete( ).
-            ENDIF.
-          CATCH cx_salv_msg.
-        ENDTRY.
-      ENDIF.
+      mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
 
     ENDMETHOD.
 
@@ -5707,7 +4976,7 @@
         IF str-type = 'E'.
           "get event name.
           READ TABLE <prog>-scan->statements INDEX str-stmnt_from INTO DATA(command).
-          clear event.
+          CLEAR event.
           LOOP AT <prog>-scan->tokens FROM command-from TO command-to INTO DATA(word).
             IF event IS INITIAL.
               event = word-str.
