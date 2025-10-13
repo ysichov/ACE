@@ -1325,7 +1325,8 @@
             forms_rel   TYPE salv_de_node_key,
             classes_rel TYPE salv_de_node_key,
             events_rel  TYPE salv_de_node_key,
-            splits      TYPE TABLE OF string.
+            splits_prg  TYPE TABLE OF string,
+            splits_incl TYPE TABLE OF string.
 
       IF  mo_window->m_prg-include IS INITIAL.
         mo_window->m_prg-program =  mo_window->m_prg-include = mv_prog.
@@ -1341,8 +1342,8 @@
 
       mo_window->show_stack( ).
       mo_tree_local->clear( ).
-      SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits.
-      IF lines( splits ) = 1.
+      SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
+      IF lines( splits_prg ) = 1.
         mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-program ) i_icon = CONV #( icon_folder ) ).
       ENDIF.
 
@@ -1369,14 +1370,15 @@
       "mo_tree_local->add_node( i_name = 'Code Flow' i_icon = CONV #( icon_enhanced_bo ) i_rel = mo_tree_local->main_node_key ).
 
       SORT mo_window->ms_sources-tt_calls_line BY program class eventtype meth_type eventname .
-      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs).
+      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE include IS NOT INITIAL.
+        SPLIT subs-include AT '=' INTO TABLE splits_incl.
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
         READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
         DATA(form_name) = subs-eventname.
         tree-value = keyword-line.
 
         IF subs-eventtype = 'FORM'.
-          IF subs-program = splits[ 1 ].
+          IF subs-program = splits_prg[ 1 ].
             IF forms_rel IS INITIAL.
               forms_rel = mo_tree_local->add_node( i_name = 'Subroutines' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
             ENDIF.
@@ -1385,12 +1387,17 @@
           ENDIF.
         ELSEIF subs-eventtype = 'METHOD'.
 
-          IF subs-class = splits[ 1 ] OR subs-program = splits[ 1 ].
-            IF subs-class = splits[ 1 ].
+          IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
+            IF subs-class = splits_prg[ 1 ].
+
+              DATA(last) = splits_incl[ lines( splits_incl ) ].
+              IF last+0(2) <> 'CM'.
+                CONTINUE.
+              ENDIF.
               tree-include = subs-include.
             ENDIF.
             IF classes_rel IS INITIAL.
-              IF subs-class = splits[ 1 ].
+              IF subs-class = splits_prg[ 1 ].
               ELSE.
                 classes_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
               ENDIF.
