@@ -208,13 +208,19 @@
                kind(1),
                value   TYPE string,
                include TYPE program,
-             END OF ts_tree.
-      .
+             END OF ts_tree,
+
+             BEGIN OF ts_method,
+               class  TYPE string,
+               method TYPE string,
+             END OF ts_method.
+
 
       CLASS-DATA: m_option_icons   TYPE TABLE OF sign_option_icon_s,
                   mt_lang          TYPE TABLE OF t_lang,
                   mt_obj           TYPE TABLE OF t_obj, "main object table
                   mt_popups        TYPE TABLE OF t_popup, "dependents popups
+                  mt_method_calls  TYPE TABLE OF ts_method,
                   mo_dragdropalv   TYPE REF TO cl_dragdrop,
                   i_mermaid_active TYPE boolean.
 
@@ -1880,6 +1886,7 @@
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
        ( function = 'CODEMIX' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
        ( function = 'CODE' icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
+       ( function = 'DEPTH' icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
        "( function = 'COVERAGE' icon = CONV #( icon_wizard ) quickinfo = 'Coverage ' text = 'Coverage' )
        ( butn_type = 3  )
        ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
@@ -2325,6 +2332,21 @@
             SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN.
           ENDIF.
 
+        WHEN 'DEPTH'.
+          IF m_hist_depth < 9.
+            ADD 1 TO m_hist_depth.
+          ELSE.
+            m_hist_depth = 1.
+          ENDIF.
+
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_stack, lcl_ace_appl=>mt_method_calls.
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
+          lcl_ace_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+          mo_viewer->mo_window->show_coverage( ).
+          mo_viewer->mo_window->show_stack( ).
+
+          mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
+
         WHEN 'CALLS'.
           DATA(o_mermaid) = NEW lcl_ace_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
 
@@ -2338,8 +2360,8 @@
 
         WHEN 'CODE'.
           m_zcode = m_zcode BIT-XOR c_mask.
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step.
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lcl_ace_appl=>mt_method_calls.
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
           lcl_ace_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
           IF m_zcode IS INITIAL.
             mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
@@ -5022,7 +5044,7 @@
       ENDIF.
 
       stack =  i_stack + 1.
-      "CHECK  stack < 20.
+      CHECK  stack <=  io_debugger->mo_window->m_hist_depth.
 
       lcl_ace_source_parser=>parse_tokens( i_program = i_program i_include = i_include io_debugger = io_debugger ).
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog>).
@@ -5162,6 +5184,15 @@
         RETURN.
       ENDIF.
 
+      READ TABLE lcl_ace_appl=>mt_method_calls WITH KEY class  = i_class method = i_e_name TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        EXIT.
+      ELSE.
+        APPEND INITIAL LINE TO lcl_ace_appl=>mt_method_calls ASSIGNING FIELD-SYMBOL(<method_call>).
+        <method_call>-class = i_class.
+        <method_call>-method = i_e_name.
+      ENDIF.
+
       DATA: cl_key        TYPE seoclskey,
             meth_includes TYPE seop_methods_w_include.
       cl_key = i_class.
@@ -5181,7 +5212,7 @@
       ENDIF.
 
       stack = i_stack + 1.
-      "CHECK  stack < 20.
+      CHECK  stack <= io_debugger->mo_window->m_hist_depth.
       IF i_include IS NOT INITIAL.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
       ELSE.
