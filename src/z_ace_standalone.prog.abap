@@ -210,17 +210,17 @@
                include TYPE program,
              END OF ts_tree,
 
-             BEGIN OF ts_method,
-               class  TYPE string,
-               method TYPE string,
-             END OF ts_method.
+             BEGIN OF ts_call,
+               include TYPE string,
+               ev_name TYPE string,
+             END OF ts_call.
 
 
       CLASS-DATA: m_option_icons   TYPE TABLE OF sign_option_icon_s,
                   mt_lang          TYPE TABLE OF t_lang,
                   mt_obj           TYPE TABLE OF t_obj, "main object table
                   mt_popups        TYPE TABLE OF t_popup, "dependents popups
-                  mt_method_calls  TYPE TABLE OF ts_method,
+                  mt_calls         TYPE TABLE OF ts_call,
                   mo_dragdropalv   TYPE REF TO cl_dragdrop,
                   i_mermaid_active TYPE boolean.
 
@@ -2339,7 +2339,7 @@
             m_hist_depth = 1.
           ENDIF.
 
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_stack, lcl_ace_appl=>mt_method_calls.
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_stack, lcl_ace_appl=>mt_calls.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
           lcl_ace_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
           mo_viewer->mo_window->show_coverage( ).
@@ -2360,7 +2360,7 @@
 
         WHEN 'CODE'.
           m_zcode = m_zcode BIT-XOR c_mask.
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lcl_ace_appl=>mt_method_calls.
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lcl_ace_appl=>mt_calls.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
           lcl_ace_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
           IF m_zcode IS INITIAL.
@@ -5192,13 +5192,13 @@
         RETURN.
       ENDIF.
 
-      READ TABLE lcl_ace_appl=>mt_method_calls WITH KEY class  = i_class method = i_e_name TRANSPORTING NO FIELDS.
+      READ TABLE lcl_ace_appl=>mt_calls WITH KEY include  = i_include ev_name = i_e_name TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         EXIT.
       ELSE.
-        APPEND INITIAL LINE TO lcl_ace_appl=>mt_method_calls ASSIGNING FIELD-SYMBOL(<method_call>).
-        <method_call>-class = i_class.
-        <method_call>-method = i_e_name.
+        APPEND INITIAL LINE TO lcl_ace_appl=>mt_calls ASSIGNING FIELD-SYMBOL(<method_call>).
+        <method_call>-include = i_include.
+        <method_call>-ev_name = i_e_name.
       ENDIF.
 
       DATA: cl_key        TYPE seoclskey,
