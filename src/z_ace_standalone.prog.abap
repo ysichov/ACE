@@ -4516,6 +4516,14 @@
                 call-name =  token-to_evname = 'CONSTRUCTOR'.
               ENDIF.
               IF  new = abap_true.
+
+                call_line-class = call-class.
+                call_line-eventname = call-name.
+                call_line-eventtype = 'METHOD'.
+                "call_line-meth_type = method_type.
+                APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
+
+
                 READ TABLE calculated_vars WITH KEY line = l_token-row program = i_include INTO DATA(calc).
                 IF sy-subrc = 0.
                   APPEND INITIAL LINE TO  io_debugger->mo_window->ms_sources-tt_refvar ASSIGNING FIELD-SYMBOL(<refvar>).
