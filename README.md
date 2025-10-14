@@ -1,6 +1,6 @@
 # ACE: ABAP Code Explorer
 
-New Idea. I don't need debug to analyse code flow ). So it moves from ABAP Script to the usual program )
+New Idea. I don't need debug to analyse code flow ). So it moves from [ABAP Script](https://github.com/ysichov/Smart-Debugger/blob/master/src/z_smart_debugger.prog.abap) to the usual program )
 
 [Standalone version is here](https://github.com/ysichov/ACE/blob/main/src/z_ace_standalone.prog.abap)
 
