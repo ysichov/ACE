@@ -6,7 +6,7 @@ New Idea. I don't need debug to analyse code flow ). So it moves from [ABAP Scri
 
  [Short video demo](https://www.loom.com/share/250574c07071496c8c9b064062bb44dc?sid=dee80fda-5f6d-4384-8457-c53ab97d09e8)
 
-# Mermaid installed is obligatory - https://github.com/WegnerDan/abapMermaid  to draw diagrams
+ [ABAP Mermaid](https://github.com/WegnerDan/abapMermaid) should be installed to draw diagrams 
 
 <img width="892" height="897" alt="image" src="https://github.com/user-attachments/assets/de40d1f4-221d-4a0c-955d-61967522a318" />
 
