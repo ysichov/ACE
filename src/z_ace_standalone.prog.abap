@@ -1791,7 +1791,7 @@
       mo_window->m_prg-include = 'Code_Flow_Mix'.
       mo_window->set_mixprog_line( ).
       mo_window->show_stack( ).
-
+      mo_window->mo_box->set_caption( |Code Mix: { lines( lines ) } statements| ).
     ENDMETHOD.
 
   ENDCLASS.                    "lcl_ace IMPLEMENTATION
@@ -2233,6 +2233,7 @@
 
       show_coverage( ).
       mo_viewer->show( ).
+      mo_viewer->mo_window->mo_box->set_caption( |{ stack-program } : { stack-eventname }| ).
 
     ENDMETHOD.
 
@@ -2403,7 +2404,6 @@
             mo_viewer->mo_window->show_stack( ).
           ENDIF.
 
-
         WHEN 'INFO'.
           DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
           CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
@@ -2411,14 +2411,11 @@
           l_url = 'https://github.com/ysichov/Smart-Debugger'.
           CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
 
-
         WHEN 'STEPS'.
 
           lcl_ace_appl=>open_int_table( i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
-
       ENDCASE.
-
 
     ENDMETHOD.
 
