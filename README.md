@@ -4,7 +4,7 @@ New Idea. I don't need debug to analyse code flow ). So it moves from ABAP Scrip
 
 Standalone version is here - https://github.com/ysichov/ACE/blob/main/src/z_ace_standalone.prog.abap
 
-Short video demo - https://www.loom.com/share/250574c07071496c8c9b064062bb44dc?sid=dee80fda-5f6d-4384-8457-c53ab97d09e8
+[Short video demo]([https://example.com](https://www.loom.com/share/250574c07071496c8c9b064062bb44dc?sid=dee80fda-5f6d-4384-8457-c53ab97d09e8))
 
 # Mermaid installed is obligatory - https://github.com/WegnerDan/abapMermaid  to draw diagrams
 
