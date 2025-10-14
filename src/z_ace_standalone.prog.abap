@@ -220,7 +220,7 @@
                   mt_lang          TYPE TABLE OF t_lang,
                   mt_obj           TYPE TABLE OF t_obj, "main object table
                   mt_popups        TYPE TABLE OF t_popup, "dependents popups
-                  mt_calls         TYPE TABLE OF ts_call,
+
                   mo_dragdropalv   TYPE REF TO cl_dragdrop,
                   i_mermaid_active TYPE boolean.
 
@@ -236,7 +236,6 @@
                                  io_window TYPE REF TO lcl_ace_window.
 
   ENDCLASS.
-
   CLASS lcl_ace_popup DEFINITION.
 
     PUBLIC SECTION.
@@ -246,7 +245,8 @@
             mo_splitter            TYPE REF TO cl_gui_splitter_container,
             mo_splitter_imp_exp    TYPE REF TO cl_gui_splitter_container,
             mo_variables_container TYPE REF TO cl_gui_container,
-            mo_tables_container    TYPE REF TO cl_gui_container.
+            mo_tables_container    TYPE REF TO cl_gui_container,
+            mo_mermaid             TYPE REF TO lcl_ace_mermaid.
 
       METHODS: constructor IMPORTING i_additional_name TYPE string OPTIONAL,
         create IMPORTING i_width       TYPE i
@@ -305,6 +305,8 @@
       ENDIF.
       DELETE lcl_ace_appl=>mt_popups WHERE child IS INITIAL.
       sender->free( ).
+      CLEAR mo_box.
+
 
     ENDMETHOD.
 
@@ -598,7 +600,8 @@
         magic_search IMPORTING i_direction TYPE ui_func OPTIONAL,
         add_toolbar_buttons,
         hnd_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode,
-        open_mermaid IMPORTING i_mm_string TYPE string.
+        open_mermaid IMPORTING i_mm_string TYPE string,
+        refresh  .
 
   ENDCLASS.
 
@@ -1207,6 +1210,7 @@
             mt_breaks              TYPE tpda_bp_persistent_it,
             mt_watch               TYPE tt_watch,
             mt_coverage            TYPE tt_watch,
+            mt_calls               TYPE TABLE OF lcl_ace_appl=>ts_call,
             m_hist_depth           TYPE i,
             m_start_stack          TYPE i,
             mt_source              TYPE STANDARD  TABLE OF ts_source,
@@ -1261,59 +1265,55 @@
 
     ENDMETHOD.
 
-
-
-
-
     METHOD hndl_script_buttons.
 
-      IF m_i_find = abap_true.
-        rv_stop = abap_true.
-        CLEAR m_i_find.
-        RETURN.
-      ENDIF.
-
-      IF mo_window->m_debug_button = 'F5'.
-        rv_stop = abap_true.
-
-      ELSEIF mo_window->m_debug_button = 'F6'.
-        IF m_f6_level IS NOT INITIAL AND m_f6_level = ms_stack-stacklevel OR mo_window->m_history IS INITIAL.
-          CLEAR m_f6_level.
-          rv_stop = abap_true.
-        ENDIF.
-
-      ELSEIF mo_window->m_debug_button = 'F6END'.
-        IF mo_window->m_prg-flag_eoev IS NOT INITIAL AND m_target_stack = ms_stack-stacklevel.
-          rv_stop = abap_true.
-        ENDIF.
-      ELSEIF mo_window->m_debug_button = 'F7'.
-
-        IF m_target_stack = ms_stack-stacklevel.
-          CLEAR m_target_stack.
-          rv_stop = abap_true.
-        ENDIF.
-
-      ELSEIF mo_window->m_debug_button IS NOT INITIAL.
-        READ TABLE mo_window->mt_breaks WITH KEY inclnamesrc = mo_window->m_prg-include linesrc = mo_window->m_prg-line INTO DATA(gs_break).
-        IF sy-subrc = 0.
-          rv_stop = abap_true.
-        ELSE.
-
-          IF mo_window->m_debug_button = 'F6BEG' AND m_target_stack = ms_stack-stacklevel.
-            rv_stop = abap_true.
-          ELSE.
-            IF mo_window->m_history IS NOT INITIAL.
-              IF ms_stack-stacklevel = mo_window->m_hist_depth +  mo_window->m_start_stack.
-                "f6( )."to refactor
-              ELSE.
-                "f5( )."to refactor
-              ENDIF.
-            ENDIF.
-          ENDIF.
-        ENDIF.
-      ELSE.
-        rv_stop = abap_true.
-      ENDIF.
+*      IF m_i_find = abap_true.
+*        rv_stop = abap_true.
+*        CLEAR m_i_find.
+*        RETURN.
+*      ENDIF.
+*
+*      IF mo_window->m_debug_button = 'F5'.
+*        rv_stop = abap_true.
+*
+*      ELSEIF mo_window->m_debug_button = 'F6'.
+*        IF m_f6_level IS NOT INITIAL AND m_f6_level = ms_stack-stacklevel OR mo_window->m_history IS INITIAL.
+*          CLEAR m_f6_level.
+*          rv_stop = abap_true.
+*        ENDIF.
+*
+*      ELSEIF mo_window->m_debug_button = 'F6END'.
+*        IF mo_window->m_prg-flag_eoev IS NOT INITIAL AND m_target_stack = ms_stack-stacklevel.
+*          rv_stop = abap_true.
+*        ENDIF.
+*      ELSEIF mo_window->m_debug_button = 'F7'.
+*
+*        IF m_target_stack = ms_stack-stacklevel.
+*          CLEAR m_target_stack.
+*          rv_stop = abap_true.
+*        ENDIF.
+*
+*      ELSEIF mo_window->m_debug_button IS NOT INITIAL.
+*        READ TABLE mo_window->mt_breaks WITH KEY inclnamesrc = mo_window->m_prg-include linesrc = mo_window->m_prg-line INTO DATA(gs_break).
+*        IF sy-subrc = 0.
+*          rv_stop = abap_true.
+*        ELSE.
+*
+*          IF mo_window->m_debug_button = 'F6BEG' AND m_target_stack = ms_stack-stacklevel.
+*            rv_stop = abap_true.
+*          ELSE.
+*            IF mo_window->m_history IS NOT INITIAL.
+*              IF ms_stack-stacklevel = mo_window->m_hist_depth +  mo_window->m_start_stack.
+*                "f6( )."to refactor
+*              ELSE.
+*                "f5( )."to refactor
+*              ENDIF.
+*            ENDIF.
+*          ENDIF.
+*        ENDIF.
+*      ELSE.
+*        rv_stop = abap_true.
+*      ENDIF.
 
     ENDMETHOD.
 
@@ -1643,7 +1643,7 @@
 
         ENDIF.
 
-        IF <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE'.
+        IF ( <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE' ) AND <if> IS ASSIGNED. "to refactor
           <if>-end_ind = <line>-ind.
           SUBTRACT 1 FROM if_depth.
           LOOP AT mt_if  ASSIGNING <if> WHERE end_ind = 0.
@@ -1767,12 +1767,13 @@
         DATA(from_row) = prog-scan->tokens[ keyword-from ]-row.
         DATA(to_row) = prog-scan->tokens[ keyword-to ]-row.
         DATA(spaces) = repeat( val = | | occ = ( line-stack - 1 ) * 3 ).
+        DATA(dashes) = repeat( val = |-| occ = ( line-stack ) ).
         IF form <> line-ev_name. "new event
           SPLIT line-include AT '=' INTO TABLE splits.
 
           APPEND INITIAL LINE TO flow_lines ASSIGNING FIELD-SYMBOL(<flow>).
           ind  = sy-tabix.
-          <flow> =  | "{ line-ev_type } { line-ev_name } in { splits[ 1 ] }|.
+          <flow> =  |"{ dashes } { line-ev_type } { line-ev_name } in { splits[ 1 ] }|.
         ENDIF.
 
         <keyword_mix>-v_line = ind + 1.
@@ -2346,20 +2347,36 @@
             m_hist_depth = 1.
           ENDIF.
 
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_stack, lcl_ace_appl=>mt_calls.
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
           lcl_ace_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
           mo_viewer->mo_window->show_coverage( ).
           mo_viewer->mo_window->show_stack( ).
+          IF mo_mermaid IS NOT INITIAL.
+            mo_mermaid->refresh( ).
+          ENDIF.
 
           mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
 
+          IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'. "refresh this
+            mo_viewer->get_code_mix( ).
+            mo_viewer->mo_window->show_stack( ).
+          ENDIF.
+
         WHEN 'CALLS'.
-          DATA(o_mermaid) = NEW lcl_ace_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
+          IF mo_mermaid IS INITIAL.
+            mo_mermaid = NEW lcl_ace_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
+          ELSE.
+            IF mo_mermaid->mo_box IS INITIAL.
+              mo_mermaid = NEW lcl_ace_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
+            ENDIF.
+          ENDIF.
 
         WHEN 'CODEMIX'.
 
           mo_viewer->get_code_mix( ).
+          mo_viewer->mo_window->show_stack( ).
+
 
 *      WHEN 'COVERAGE'.
 *        show_coverage( ).
@@ -2367,7 +2384,7 @@
 
         WHEN 'CODE'.
           m_zcode = m_zcode BIT-XOR c_mask.
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lcl_ace_appl=>mt_calls.
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
           lcl_ace_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
           IF m_zcode IS INITIAL.
@@ -2375,6 +2392,17 @@
           ELSE.
             mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Only Z code' ).
           ENDIF.
+          mo_viewer->mo_window->show_coverage( ).
+          mo_viewer->mo_window->show_stack( ).
+          IF mo_mermaid IS NOT INITIAL.
+            mo_mermaid->refresh( ).
+          ENDIF.
+
+          IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'. "refresh this
+            mo_viewer->get_code_mix( ).
+            mo_viewer->mo_window->show_stack( ).
+          ENDIF.
+
 
         WHEN 'INFO'.
           DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
@@ -5199,11 +5227,11 @@
         RETURN.
       ENDIF.
 
-      READ TABLE lcl_ace_appl=>mt_calls WITH KEY include  = i_include ev_name = i_e_name TRANSPORTING NO FIELDS.
+      READ TABLE io_debugger->mo_window->mt_calls WITH KEY include  = i_include ev_name = i_e_name TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         EXIT.
       ELSE.
-        APPEND INITIAL LINE TO lcl_ace_appl=>mt_calls ASSIGNING FIELD-SYMBOL(<method_call>).
+        APPEND INITIAL LINE TO io_debugger->mo_window->mt_calls ASSIGNING FIELD-SYMBOL(<method_call>).
         <method_call>-include = i_include.
         <method_call>-ev_name = i_e_name.
       ENDIF.
@@ -5694,7 +5722,7 @@
 
         pre_stack = line.
 
-        IF line-cond = 'ENDIF' OR line-cond = 'ENDCASE'.
+        IF line-cond = 'ENDIF' OR line-cond = 'ENDCASE' AND if_ind <> 0.
           DELETE mo_viewer->mt_if INDEX if_ind.
           SUBTRACT 1 FROM if_ind.
           READ TABLE mo_viewer->mt_if INDEX if_ind INTO mo_viewer->ms_if.
@@ -5752,13 +5780,9 @@
         mv_type = fcode.
       ENDIF.
 
-      CASE mv_type.
-        WHEN 'CALLS'.
-          steps_flow( mv_direction ).
-        WHEN 'FLOW'.
-          magic_search( mv_direction ).
+      refresh( ).
 
-      ENDCASE.
+
 
     ENDMETHOD.
 
@@ -5776,6 +5800,17 @@
         CATCH cx_root INTO DATA(error).
           MESSAGE error TYPE 'E'.
       ENDTRY.
+
+    ENDMETHOD.
+
+    METHOD refresh.
+
+      CASE mv_type.
+        WHEN 'CALLS'.
+          steps_flow( mv_direction ).
+        WHEN 'FLOW'.
+          magic_search( mv_direction ).
+      ENDCASE.
 
     ENDMETHOD.
 
