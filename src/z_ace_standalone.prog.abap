@@ -1497,12 +1497,12 @@ DATA(steps) = mt_steps.
       LOOP AT keyword-tt_calls INTO DATA(call).
 
         READ TABLE lt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
+        IF sy-subrc = 0 or lt_selected_var is INITIAL.
           yes = abap_true.
         ENDIF.
 
         READ TABLE lt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
+        IF sy-subrc = 0 or lt_selected_var is INITIAL.
           yes = abap_true.
         ENDIF.
       ENDLOOP.
