@@ -15,6 +15,30 @@
      <ENTRY>The Ace: ABAP Code Explorer</ENTRY>
      <LENGTH>27</LENGTH>
     </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_APIKEY</KEY>
+     <ENTRY>AI Api Key</ENTRY>
+     <LENGTH>18</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_DEST</KEY>
+     <ENTRY>Destination name (from SM 59)</ENTRY>
+     <LENGTH>37</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_MODEL</KEY>
+     <ENTRY>AI model</ENTRY>
+     <LENGTH>16</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_PROG</KEY>
+     <ENTRY>Program</ENTRY>
+     <LENGTH>15</LENGTH>
+    </item>
    </TPOOL>
   </asx:values>
  </asx:abap>
