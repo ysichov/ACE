@@ -4555,7 +4555,6 @@
                 "call_line-meth_type = method_type.
                 APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
 
-
                 READ TABLE calculated_vars WITH KEY line = l_token-row program = i_include INTO DATA(calc).
                 IF sy-subrc = 0.
                   APPEND INITIAL LINE TO  io_debugger->mo_window->ms_sources-tt_refvar ASSIGNING FIELD-SYMBOL(<refvar>).
@@ -4597,7 +4596,8 @@
               MOVE-CORRESPONDING tab TO call_line.
               call_line-index = o_procedure->statement_index + 1.
               "methods in definition should be overwritten by Implementation section
-              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
+              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+               WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
               IF sy-subrc = 0.
                 <call_line>-index = call_line-index.
                 <call_line>-include = i_include.
