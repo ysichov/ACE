@@ -1353,15 +1353,19 @@
       READ TABLE mo_window->mo_viewer->mt_steps INDEX 1 INTO DATA(step).
       IF step-line IS NOT INITIAL AND step-program = mo_window->m_prg-program.
         IF events_rel IS INITIAL.
-          events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+          tree-kind = 'F'.
+          events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
         ENDIF.
         tree-value = step-line.
+        tree-kind = 'E'.
         mo_tree_local->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
       ENDIF.
 
+
       LOOP AT prog-t_events INTO DATA(event).
         IF events_rel IS INITIAL.
-          events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+          tree-kind = 'F'.
+          events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
         ENDIF.
         tree-value = event-line.
         mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
@@ -1378,15 +1382,30 @@
         tree-value = keyword-line.
 
         IF subs-eventtype = 'FORM'.
+          tree-kind = 'F'.
           IF subs-program = splits_prg[ 1 ].
             IF forms_rel IS INITIAL.
-              forms_rel = mo_tree_local->add_node( i_name = 'Subroutines' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+              tree-kind = 'F'.
+              forms_rel = mo_tree_local->add_node( i_name = 'Subroutines' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
             ENDIF.
 
-            mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
+            DATA(event_node) = mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
           ENDIF.
-        ELSEIF subs-eventtype = 'METHOD'.
 
+          "clear tree-kind.
+          LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE event = 'FORM' AND name = subs-eventname  AND param IS NOT INITIAL.
+
+            CASE param-type.
+              WHEN 'I'.
+                icon = icon_parameter_import.
+              WHEN 'E'.
+                icon = icon_parameter_export.
+            ENDCASE.
+            mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node ).
+
+          ENDLOOP.
+
+        ELSEIF subs-eventtype = 'METHOD'.
           IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
             IF subs-class = splits_prg[ 1 ].
 
@@ -1399,11 +1418,13 @@
             IF classes_rel IS INITIAL.
               IF subs-class = splits_prg[ 1 ].
               ELSE.
-                classes_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key ).
+                tree-kind = 'F'.
+                classes_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
               ENDIF.
             ENDIF.
             IF cl_name <> subs-class.
-              DATA(class_rel) = mo_tree_local->add_node( i_name = subs-class i_icon = CONV #( icon_folder ) i_rel = classes_rel ).
+              tree-kind = 'F'.
+              DATA(class_rel) = mo_tree_local->add_node( i_name = subs-class i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
               cl_name = subs-class.
             ENDIF.
             CASE subs-meth_type.
@@ -1415,9 +1436,27 @@
                 icon = icon_led_red.
 
             ENDCASE.
-            mo_tree_local->add_node( i_name =  form_name i_icon = icon i_rel =  class_rel i_tree = tree ).
+            tree-kind = 'M'.
+            event_node = mo_tree_local->add_node( i_name =  form_name i_icon = icon i_rel =  class_rel i_tree = tree ).
+            "clear tree-kind.
+            LOOP AT mo_window->ms_sources-t_params INTO param WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
+
+              CASE param-type.
+                WHEN 'I'.
+                  icon = icon_parameter_import.
+                WHEN 'E'.
+                  icon = icon_parameter_export.
+              ENDCASE.
+              mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node ).
+
+            ENDLOOP.
+
           ENDIF.
+
+
         ENDIF.
+
+
 
       ENDLOOP.
 
@@ -4157,7 +4196,7 @@
               expanded_icon = i_icon
               relationship   = if_salv_c_node_relation=>last_child
               data_row       = i_tree
-              row_style = if_salv_c_tree_style=>intensified
+              "row_style = if_salv_c_tree_style=>intensified
               text           = CONV #( i_name )
               folder         = abap_true
             )->get_key( ).
@@ -4183,11 +4222,20 @@
       DATA(o_nodes) = mo_tree->get_nodes( ).
       DATA(nodes) =  o_nodes->get_all_nodes( ).
 
-
       DATA sub TYPE salv_t_nodes.
+
       LOOP AT nodes INTO DATA(l_node).
-        READ TABLE sub WITH KEY node = l_node-node TRANSPORTING NO FIELDS. "expanding only first level nodes.
-        IF sy-subrc NE 0.
+        "READ TABLE sub WITH KEY node = l_node-node TRANSPORTING NO FIELDS. "expanding only first level nodes.
+
+        DATA r_row TYPE REF TO data.
+
+        r_row = l_node-node->get_data_row( ).
+        ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
+        ASSIGN COMPONENT 'KIND' OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
+
+        "if sy-subrc <> 0.
+        IF <kind> = 'F'.
+
           TRY.
               l_node-node->expand( ).
               sub = l_node-node->get_subtree( ).
