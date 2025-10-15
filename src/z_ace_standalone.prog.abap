@@ -207,6 +207,7 @@
              BEGIN OF ts_tree,
                kind(1),
                value   TYPE string,
+               param   TYPE string,
                include TYPE program,
              END OF ts_tree,
 
@@ -1361,7 +1362,6 @@
         mo_tree_local->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
       ENDIF.
 
-
       LOOP AT prog-t_events INTO DATA(event).
         IF events_rel IS INITIAL.
           tree-kind = 'F'.
@@ -1374,25 +1374,24 @@
       "mo_tree_local->add_node( i_name = 'Code Flow' i_icon = CONV #( icon_enhanced_bo ) i_rel = mo_tree_local->main_node_key ).
 
       SORT mo_window->ms_sources-tt_calls_line BY program class eventtype meth_type eventname .
-      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE include IS NOT INITIAL.
+      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs). "WHERE include IS NOT INITIAL.
         SPLIT subs-include AT '=' INTO TABLE splits_incl.
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
         READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
         DATA(form_name) = subs-eventname.
-        tree-value = keyword-line.
 
         IF subs-eventtype = 'FORM'.
-          tree-kind = 'F'.
           IF subs-program = splits_prg[ 1 ].
             IF forms_rel IS INITIAL.
               tree-kind = 'F'.
               forms_rel = mo_tree_local->add_node( i_name = 'Subroutines' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
             ENDIF.
-
+            CLEAR tree.
+            tree-value = keyword-line.
             DATA(event_node) = mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
           ENDIF.
 
-          "clear tree-kind.
+          CLEAR tree.
           LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE event = 'FORM' AND name = subs-eventname  AND param IS NOT INITIAL.
 
             CASE param-type.
@@ -1401,11 +1400,14 @@
               WHEN 'E'.
                 icon = icon_parameter_export.
             ENDCASE.
-            mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node ).
+            tree-param = param-param.
+            mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
 
           ENDLOOP.
+          CLEAR tree.
 
         ELSEIF subs-eventtype = 'METHOD'.
+          CHECK subs-include IS NOT INITIAL.
           IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
             IF subs-class = splits_prg[ 1 ].
 
@@ -1436,9 +1438,11 @@
                 icon = icon_led_red.
 
             ENDCASE.
+            CLEAR tree.
             tree-kind = 'M'.
+            tree-value = keyword-line.
             event_node = mo_tree_local->add_node( i_name =  form_name i_icon = icon i_rel =  class_rel i_tree = tree ).
-            "clear tree-kind.
+            CLEAR tree-value.
             LOOP AT mo_window->ms_sources-t_params INTO param WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
 
               CASE param-type.
@@ -1447,10 +1451,11 @@
                 WHEN 'E'.
                   icon = icon_parameter_export.
               ENDCASE.
-              mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node ).
+              tree-param = param-param.
 
+              mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
             ENDLOOP.
-
+            CLEAR tree.
           ENDIF.
 
 
@@ -1467,12 +1472,9 @@
     METHOD get_code_flow.
 
       DATA: add         TYPE boolean,
-            mm_string   TYPE string,
             sub         TYPE string,
             form        TYPE string,
             direction   TYPE string,
-            box_s       TYPE string,
-            box_e       TYPE string,
             ind2        TYPE i,
             start       TYPE i,
             end         TYPE i,
@@ -1485,294 +1487,313 @@
             opened    TYPE i.
 
       READ TABLE mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(prog).
+      DATA(lt_selected_var) = mt_selected_var.
 
-      LOOP AT mt_steps INTO DATA(step).
-        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
-        READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(keyword).
-        LOOP AT keyword-tt_calls INTO DATA(call).
+DATA(steps) = mt_steps.
+      DATA: yes TYPE xfeld.
+    LOOP AT steps INTO DATA(step).
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
+      READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(keyword).
+      LOOP AT keyword-tt_calls INTO DATA(call).
 
-          READ TABLE mt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
+        READ TABLE lt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          yes = abap_true.
+        ENDIF.
+
+        READ TABLE lt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          yes = abap_true.
+        ENDIF.
+      ENDLOOP.
+      IF yes = abap_true.
+        LOOP AT keyword-tt_calls INTO call.
+          READ TABLE lt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO  mt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
+            APPEND INITIAL LINE TO  lt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
             <selected>-name = call-outer.
           ENDIF.
 
-          READ TABLE mt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
+          READ TABLE lt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO  mt_selected_var ASSIGNING <selected>.
+            APPEND INITIAL LINE TO  lt_selected_var ASSIGNING <selected>.
             <selected>-name = call-inner.
           ENDIF.
         ENDLOOP.
-      ENDLOOP.
+      ENDIF.
+    ENDLOOP.
 
-      DATA(steps) = mt_steps.
+    "deleting empty cycles.
+    DATA: prev    LIKE LINE OF mt_steps,
+          pre_key TYPE string.
 
-      SORT steps BY step DESCENDING.
+    READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
 
-      "collecting dependents variables
-      LOOP AT steps INTO step.
+    LOOP AT steps ASSIGNING FIELD-SYMBOL(<step>).
+      DATA(ind) = sy-tabix.
+      READ TABLE prog-t_keywords WITH KEY line = <step>-line INTO DATA(key).
+      IF prev IS NOT INITIAL.
+        IF ( key-name = 'ENDDO' OR key-name = 'ENDWHILE' OR key-name = 'ENDLOOP' OR key-name = 'ENDIF' )  AND
+           ( pre_key = 'DO' OR pre_key = 'LOOP'  OR pre_key = 'WHILE'  OR pre_key = 'IF' ).
+          <step>-first = 'D'."to delete
+          READ TABLE mt_steps INDEX ind - 1 ASSIGNING FIELD-SYMBOL(<step_prev>).
+          <step_prev>-first = 'D'.
+        ENDIF.
+      ENDIF.
+      prev = <step>.
+      pre_key = key-name.
+    ENDLOOP.
 
-        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
+    DELETE steps WHERE first = 'D'.
 
-        LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calculated_var) WHERE line = step-line AND program = prog-include.
-          READ TABLE mt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
-          IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO mt_selected_var ASSIGNING <selected>.
-            <selected>-name = calculated_var-name.
-          ENDIF.
-          LOOP AT mo_window->ms_sources-t_composed INTO DATA(composed_var) WHERE line = step-line AND program = prog-include.
-            READ TABLE mt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
+    SORT steps BY step DESCENDING.
+
+    "collecting dependents variables
+    LOOP AT steps INTO step.
+
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
+
+      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calculated_var) WHERE line = step-line.
+        READ TABLE lt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+*          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
+*          <selected>-name = calculated_var-name.
+
+          LOOP AT mo_window->ms_sources-t_composed INTO DATA(composed_var) WHERE line = step-line.
+            READ TABLE lt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
-              APPEND INITIAL LINE TO mt_selected_var ASSIGNING <selected>.
+              APPEND INITIAL LINE TO  lt_selected_var ASSIGNING <selected>.
               <selected>-name = composed_var-name.
             ENDIF.
           ENDLOOP.
-          "adding returning values
-          LOOP AT mo_window->ms_sources-t_params INTO DATA(param).
-            READ TABLE mt_selected_var WITH KEY name =  param-param TRANSPORTING NO FIELDS.
-            IF sy-subrc <> 0.
-              APPEND INITIAL LINE TO mt_selected_var ASSIGNING <selected>.
-              <selected>-name =  param-param.
-            ENDIF.
-          ENDLOOP.
-        ENDLOOP.
+        ENDIF.
+        "adding returning values
+*        LOOP AT source-t_params INTO DATA(param).
+*          READ TABLE mo_viewer->mt_selected_var WITH KEY name = param-param TRANSPORTING NO FIELDS.
+*          IF sy-subrc <> 0.
+*            APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
+*            <selected>-name = param-param.
+*          ENDIF.
+*        ENDLOOP.
+      ENDLOOP.
 
-        READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
-        LOOP AT keyword-tt_calls INTO call.
+      READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
+      LOOP AT keyword-tt_calls INTO call.
 
-          READ TABLE mt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
+        READ TABLE lt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          APPEND INITIAL LINE TO  lt_selected_var ASSIGNING <selected>.
+          <selected>-name = call-inner.
+        ENDIF.
+      ENDLOOP.
+
+    ENDLOOP.
+    SORT lt_selected_var.
+    DELETE ADJACENT DUPLICATES FROM lt_selected_var.
+
+    "collecting watchpoints
+    CLEAR mo_window->mt_coverage.
+
+    LOOP AT  steps INTO step.
+
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
+      READ TABLE prog-t_keywords WITH KEY line = step-line INTO key.
+
+      CLEAR line-cond.
+      IF key-name = 'IF' OR key-name = 'ELSE' OR key-name = 'ENDIF' OR key-name = 'ELSEIF' OR
+         key-name = 'CASE' OR key-name = 'WHEN' OR key-name = 'ENDCASE' OR
+          key-name = 'DO' OR key-name = 'ENDDO'  OR key-name = 'LOOP'  OR key-name = 'ENDLOOP' OR key-name = 'WHILE' OR key-name = 'ENDWHILE'.
+        APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
+
+        <watch>-program = step-program.
+        <watch>-line = line-line = step-line.
+
+        INSERT line INTO results INDEX 1 ASSIGNING FIELD-SYMBOL(<line>).
+        <line>-cond = key-name.
+        <line>-ev_name = step-eventname.
+        <line>-stack = step-stacklevel.
+        <line>-include = step-include.
+      ENDIF.
+      CLEAR ind.
+      LOOP AT  mo_window->ms_sources-t_calculated INTO calculated_var WHERE line = step-line.
+        ADD 1 TO ind.
+        LOOP AT mo_window->ms_sources-t_composed INTO composed_var WHERE line = step-line.
+          READ TABLE lt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
           IF sy-subrc = 0.
-            APPEND INITIAL LINE TO  mt_selected_var ASSIGNING <selected>.
-            <selected>-name = call-inner.
+            APPEND INITIAL LINE TO  lt_selected_var ASSIGNING <selected>.
+            <selected>-name = composed_var-name.
           ENDIF.
         ENDLOOP.
 
-      ENDLOOP.
-      SORT mo_window->mo_viewer->mt_selected_var.
-      DELETE ADJACENT DUPLICATES FROM mo_window->mo_viewer->mt_selected_var.
+        READ TABLE lt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
 
-      "collecting watchpoints
-      "CLEAR mo_viewer->mo_window->mt_coverage.
-
-      LOOP AT  steps INTO step.
-
-        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
-        READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(key).
-
-        CLEAR line-cond.
-        IF key-name = 'IF' OR key-name = 'ELSE' OR key-name = 'ENDIF' OR key-name = 'ELSEIF' OR
-           key-name = 'CASE' OR key-name = 'WHEN' OR key-name = 'ENDCASE' OR
-            key-name = 'DO' OR key-name = 'ENDDO'  OR key-name = 'LOOP'  OR key-name = 'ENDLOOP'
-           OR key-name = 'WHILE' OR key-name = 'ENDWHILE'
-           OR key-tt_calls IS NOT INITIAL.
-          APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
+          APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING <watch>.
           <watch>-program = step-program.
           <watch>-line = line-line = step-line.
-          IF key-tt_calls IS INITIAL.
-            line-cond = key-name.
-          ENDIF.
-          line-ev_name = step-eventname.
-          line-ev_type = step-eventtype.
-          line-stack = step-stacklevel.
-          line-program = step-program.
-          line-include = step-include.
-          INSERT line INTO results INDEX 1.
 
-        ENDIF.
-
-        LOOP AT  mo_window->ms_sources-t_calculated INTO calculated_var WHERE line = step-line AND program = prog-include.
-
-          LOOP AT mo_window->ms_sources-t_composed INTO composed_var WHERE line = step-line AND program = prog-include.
-            READ TABLE mt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
-            IF sy-subrc <> 0.
-              APPEND INITIAL LINE TO  mt_selected_var ASSIGNING <selected>.
-              <selected>-name = composed_var-name.
-            ENDIF.
-          ENDLOOP.
-
-          READ TABLE mt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0.
-
-            APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING <watch>.
-            <watch>-program = step-program.
-            <watch>-line = line-line = step-line.
-
-            LOOP AT results ASSIGNING FIELD-SYMBOL(<line>) WHERE line = line-line AND ev_name = step-eventname AND stack = step-stacklevel .
-              <line>-del = abap_true.
-            ENDLOOP.
-
+          "should be commented for Smart debugger
+*          LOOP AT lines ASSIGNING <line> WHERE line = line-line AND event = step-eventname AND stack = step-stacklevel .
+*            <line>-del = abap_true.
+*          ENDLOOP.
+          IF ind = 1.
             line-ev_name = step-eventname.
-            line-ev_type = step-eventtype.
             line-stack = step-stacklevel.
             line-include = step-include.
             INSERT line INTO results INDEX 1.
-
-          ENDIF.
-
-        ENDLOOP.
-
-      ENDLOOP.
-
-      DELETE results WHERE del = abap_true.
-
-      "delete empty blocks
-      LOOP AT results ASSIGNING <line>.
-        IF <line>-cond = 'IF' OR <line>-cond = 'DO' OR <line>-cond = 'LOOP' OR <line>-cond = 'WHILE'.
-          READ TABLE results INDEX sy-tabix + 1 ASSIGNING FIELD-SYMBOL(<line2>).
-          IF <line2>-cond = 'ENDIF' OR <line2>-cond = 'ENDDO' OR <line2>-cond = 'ENDLOOP' OR <line2>-cond = 'ENDWHILE'.
-            <line>-del = <line2>-del = abap_true.
           ENDIF.
         ENDIF.
 
       ENDLOOP.
-      DELETE results WHERE del = abap_true.
 
+    ENDLOOP.
 
-      "getting code texts and calls params
-      LOOP AT results ASSIGNING <line>.
-        DATA(ind) = sy-tabix.
+    DELETE results WHERE del = abap_true.
 
-        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = <line>-include INTO prog.
-        READ TABLE prog-t_keywords WITH KEY line = <line>-line INTO keyword.
-        LOOP AT prog-scan->tokens FROM keyword-from TO keyword-to INTO DATA(token).
-          IF token-str = 'USING' OR token-str = 'EXPORTING' OR token-str = 'IMPORTING' OR token-str = 'CHANGING'.
-            EXIT.
-          ENDIF.
-          IF <line>-code IS INITIAL.
-            <line>-code = token-str.
-          ELSE.
-            <line>-code = |{  <line>-code } { token-str }|.
-          ENDIF.
-        ENDLOOP.
-        REPLACE ALL OCCURRENCES OF '`' IN  <line>-code WITH ''.
-        REPLACE ALL OCCURRENCES OF '"' IN  <line>-code WITH ''.
+    "getting code texts and calls params
+    LOOP AT results ASSIGNING <line>.
+      ind = sy-tabix.
 
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = <line>-include INTO prog.
+      READ TABLE prog-t_keywords WITH KEY line = <line>-line INTO keyword.
+      LOOP AT prog-scan->tokens FROM keyword-from TO keyword-to INTO DATA(token).
+        IF token-str = 'USING' OR token-str = 'EXPORTING' OR token-str = 'IMPORTING' OR token-str = 'CHANGING'.
+          EXIT.
+        ENDIF.
+        IF <line>-code IS INITIAL.
+          <line>-code = token-str.
+        ELSE.
+          <line>-code = |{  <line>-code } { token-str }|.
+        ENDIF.
+      ENDLOOP.
+
+      IF keyword-to_evname IS NOT INITIAL.
         SORT keyword-tt_calls BY outer.
         DELETE ADJACENT DUPLICATES FROM keyword-tt_calls.
-        IF keyword-to_evname IS NOT INITIAL.
-          LOOP AT keyword-tt_calls INTO call. "WHERE type IS NOT INITIAL.
-            IF sy-tabix <> 1.
-              <line>-arrow = |{ <line>-arrow }, |.
-            ENDIF.
-            "<line>-arrow  = |{ <line>-arrow  } { call-outer } { call-type } { call-inner }|.
-            <line>-arrow  = |{ <line>-arrow  } { call-outer } as  { call-inner }|.
-            <line>-subname = call-name.
-          ENDLOOP.
-        ENDIF.
-        REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
-        REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''.
-        REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
-        REPLACE ALL OCCURRENCES OF '(' IN <line>-subname WITH ''.
-        REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
-      ENDLOOP.
-
-      "check subform execution steps existance and if/case structures build
-
-      DATA: if_depth   TYPE i,
-            when_count TYPE i.
-      LOOP AT results ASSIGNING <line> WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE' AND code <> 'LOOP' AND code <> 'ENDLOOP' .
-        <line>-ind = sy-tabix.
-
-        FIELD-SYMBOLS: <if> TYPE ts_if.
-        IF <line>-cond = 'IF' OR  <line>-cond = 'CASE'.
-          ADD 1 TO if_depth.
-          CLEAR when_count.
-          APPEND INITIAL LINE TO mt_if  ASSIGNING <if>.
-          <if>-if_ind = <line>-ind.
-
-        ENDIF.
-
-        IF ( <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE' ) AND <if> IS ASSIGNED. "to refactor
-          <if>-end_ind = <line>-ind.
-          SUBTRACT 1 FROM if_depth.
-          LOOP AT mt_if  ASSIGNING <if> WHERE end_ind = 0.
-          ENDLOOP.
-          "READ TABLE mt_if INDEX if_depth ASSIGNING <if>.
-        ENDIF.
-
-        IF <line>-cond = 'WHEN'.
-          ADD 1 TO when_count.
-        ENDIF.
-
-        IF <line>-cond = 'ELSE' OR <line>-cond = 'ELSEIF'.
-
-          <line>-els_before =  els_before.
-          <line>-els_after = <line>-ind.
-          DATA(counter) = <line>-ind + 1.
-          DO.
-            READ TABLE results INDEX  counter INTO line.
-            IF sy-subrc <> 0.
-              CLEAR <line>-els_after.
-              EXIT.
-            ENDIF.
-
-            IF line-cond = 'ELSE' OR line-cond = 'ELSEIF'.
-              CLEAR <line>-els_after.
-              EXIT.
-            ELSEIF  line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
-              <line>-els_after =  counter.
-              EXIT.
-            ELSE.
-              ADD 1 TO  counter.
-
-            ENDIF.
-          ENDDO.
-          IF when_count = 1.
-            <if>-if_ind =  els_before.
-            CLEAR <line>-els_before.
+        LOOP AT keyword-tt_calls INTO call.
+          IF sy-tabix <> 1.
+            <line>-arrow = |{ <line>-arrow }, |.
           ENDIF.
-        ENDIF.
+          <line>-arrow  = |{ <line>-arrow  } { call-outer } { call-type } { call-inner }|.
+          <line>-subname = call-name.
+          REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
+          REPLACE ALL OCCURRENCES OF '"' IN  <line>-code WITH ''.
+        ENDLOOP.
+      ENDIF.
+      REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
+      REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''.
+      REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
+      REPLACE ALL OCCURRENCES OF '(' IN <line>-subname WITH ''.
+      REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
+    ENDLOOP.
 
-        IF <line>-cond = 'WHEN'.
+    "check subform execution steps existance and if/case structures build
 
-          <line>-els_before =  els_before.
-          <line>-els_after = <line>-ind.
-          counter = <line>-ind + 1.
-          DO.
-            READ TABLE results INDEX  counter INTO line.
-            IF sy-subrc <> 0.
-              CLEAR <line>-els_after.
-              EXIT.
-            ENDIF.
+    DATA: if_depth   TYPE i,
+          when_count TYPE i.
+    LOOP AT results ASSIGNING <line> WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE' AND code <> 'LOOP' AND code <> 'ENDLOOP' .
+      <line>-ind = sy-tabix.
 
-            IF line-cond = 'WHEN'.
-              CLEAR <line>-els_after.
-              EXIT.
-            ELSEIF  line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
-              <line>-els_after =  counter.
-              EXIT.
-            ELSE.
-              ADD 1 TO  counter.
+      FIELD-SYMBOLS: <if> TYPE ts_if.
+      IF <line>-cond = 'IF' OR  <line>-cond = 'CASE'.
+        ADD 1 TO if_depth.
+        CLEAR when_count.
+        APPEND INITIAL LINE TO mt_if  ASSIGNING <if>.
+        <if>-if_ind = <line>-ind.
 
-            ENDIF.
-          ENDDO.
-          IF when_count = 1."to refactor
-*          <if>-if_ind =  els_before.
+      ENDIF.
+
+      IF <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE'.
+        <if>-end_ind = <line>-ind.
+        SUBTRACT 1 FROM if_depth.
+        LOOP AT mt_if  ASSIGNING <if> WHERE end_ind = 0.
+        ENDLOOP.
+      ENDIF.
+
+      IF <line>-cond = 'WHEN'.
+        ADD 1 TO when_count.
+      ENDIF.
+
+      IF <line>-cond = 'ELSE' OR <line>-cond = 'ELSEIF'.
+
+        <line>-els_before = els_before.
+        <line>-els_after = <line>-ind.
+        DATA(counter) = <line>-ind + 1.
+        DO.
+          READ TABLE results INDEX counter INTO line.
+          IF sy-subrc <> 0.
+            CLEAR <line>-els_after.
+            EXIT.
+          ENDIF.
+
+          IF line-cond = 'ELSE' OR line-cond = 'ELSEIF'.
+            CLEAR <line>-els_after.
+            EXIT.
+          ELSEIF  line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
+            <line>-els_after = counter.
+            EXIT.
+          ELSE.
+            ADD 1 TO counter.
+
+          ENDIF.
+        ENDDO.
+        IF when_count = 1. "to refactor
+*          <if>-if_ind = els_before.
 *          CLEAR <line>-els_before.
+        ENDIF.
+      ENDIF.
+
+      IF <line>-cond = 'WHEN'.
+
+        <line>-els_before = els_before.
+        <line>-els_after = <line>-ind.
+        counter = <line>-ind + 1.
+        DO.
+          READ TABLE results INDEX counter INTO line.
+          IF sy-subrc <> 0.
+            CLEAR <line>-els_after.
+            EXIT.
           ENDIF.
-        ENDIF.
 
-        IF <line>-cond <> 'ELSE' AND <line>-cond <> 'ELSEIF' AND <line>-cond <> 'WHEN'.
-          els_before = <line>-ind.
-        ELSE.
-          CLEAR    els_before.
-        ENDIF.
+          IF line-cond = 'WHEN'.
+            CLEAR <line>-els_after.
+            EXIT.
+          ELSEIF  line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
+            <line>-els_after = counter.
+            EXIT.
+          ELSE.
+            ADD 1 TO counter.
 
-        READ TABLE results WITH KEY ev_name = <line>-subname TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          CLEAR <line>-arrow.
-        ENDIF.
-      ENDLOOP.
-
-      IF mt_if IS INITIAL AND ms_if-if_ind IS NOT INITIAL.
-        INSERT ms_if INTO mt_if INDEX 1.
-      ENDIF.
-
-      IF lines( results ) > 0.
-        IF results[ lines( results ) ]-arrow IS NOT INITIAL.
-          CLEAR results[ lines( results ) ]-arrow .
+          ENDIF.
+        ENDDO.
+        IF when_count = 1.
+          <if>-if_ind = els_before.
+          CLEAR <line>-els_before.
         ENDIF.
       ENDIF.
+
+      IF <line>-cond <> 'ELSE' AND <line>-cond <> 'ELSEIF' AND <line>-cond <> 'WHEN'.
+        els_before = <line>-ind.
+      ELSE.
+        CLEAR   els_before.
+      ENDIF.
+
+      "READ TABLE results WITH KEY ev_type = <line>-subname TRANSPORTING NO FIELDS.
+     " IF sy-subrc <> 0.
+      "  CLEAR <line>-arrow.
+     " ENDIF.
+    ENDLOOP.
+
+    IF mt_if IS INITIAL AND ms_if-if_ind IS NOT INITIAL.
+      INSERT ms_if INTO mt_if INDEX 1.
+    ENDIF.
+
+    IF lines( results ) > 0.
+      IF results[ lines( results ) ]-arrow IS NOT INITIAL.
+        CLEAR results[ lines( results ) ]-arrow .
+      ENDIF.
+    ENDIF.
+
 
     ENDMETHOD.
 
@@ -4148,6 +4169,7 @@
       o_columns->set_optimize( abap_true ).
 
       o_columns->get_column( 'VALUE' )->set_visible( abap_false ).
+      o_columns->get_column( 'PARAM' )->set_visible( abap_false ).
       o_columns->get_column( 'INCLUDE' )->set_visible( abap_false ).
 
       add_buttons( i_type ).
@@ -4189,14 +4211,19 @@
 
     METHOD add_node.
 
+      DATA style TYPE salv_de_constant.
+      IF i_tree-kind = 'F' OR i_tree-value IS NOT INITIAL.
+        style = if_salv_c_tree_style=>intensified.
+      ENDIF.
+
       rv_node =
             mo_tree->get_nodes( )->add_node(
               related_node   = i_rel
               collapsed_icon = i_icon
-              expanded_icon = i_icon
+              expanded_icon  = i_icon
               relationship   = if_salv_c_node_relation=>last_child
               data_row       = i_tree
-              "row_style = if_salv_c_tree_style=>intensified
+              row_style      = style
               text           = CONV #( i_name )
               folder         = abap_true
             )->get_key( ).
@@ -4225,7 +4252,6 @@
       DATA sub TYPE salv_t_nodes.
 
       LOOP AT nodes INTO DATA(l_node).
-        "READ TABLE sub WITH KEY node = l_node-node TRANSPORTING NO FIELDS. "expanding only first level nodes.
 
         DATA r_row TYPE REF TO data.
 
@@ -4233,7 +4259,6 @@
         ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
         ASSIGN COMPONENT 'KIND' OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
 
-        "if sy-subrc <> 0.
         IF <kind> = 'F'.
 
           TRY.
@@ -4265,13 +4290,14 @@
     METHOD hndl_double_click.
 
       DATA(o_nodes) = mo_tree->get_nodes( ).
-      DATA(l_node) =  o_nodes->get_node( node_key ).
+      DATA(o_node) =  o_nodes->get_node( node_key ).
       DATA r_row TYPE REF TO data.
 
-      r_row = l_node->get_data_row( ).
+      r_row = o_node->get_data_row( ).
       ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
       ASSIGN COMPONENT 'KIND' OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
       ASSIGN COMPONENT 'VALUE' OF STRUCTURE <row> TO FIELD-SYMBOL(<value>).
+      ASSIGN COMPONENT 'PARAM' OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
       ASSIGN COMPONENT 'INCLUDE' OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
 
       IF <include> IS NOT INITIAL.
@@ -4279,6 +4305,19 @@
       ENDIF.
 
       mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
+
+      IF <param> IS NOT INITIAL.
+        READ TABLE mo_viewer->mt_selected_var WITH KEY name =  <param> TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          DELETE mo_viewer->mt_selected_var WHERE name = <param>.
+          o_node->set_row_style( if_salv_c_tree_style=>default ).
+        ELSE.
+          o_node->set_row_style( if_salv_c_tree_style=>emphasized_b ).
+          APPEND INITIAL LINE TO mo_viewer->mt_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
+          <sel>-name = <param>.
+          <sel>-i_sel = abap_true.
+        ENDIF.
+      ENDIF.
 
     ENDMETHOD.
 
@@ -5774,6 +5813,8 @@
         ENDIF.
 
       ENDLOOP.
+
+
 
       open_mermaid(  mm_string ).
 
