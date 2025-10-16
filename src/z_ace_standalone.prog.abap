@@ -1344,12 +1344,14 @@
       mo_window->show_stack( ).
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
+      tree-kind = 'F'.
+
       CASE mo_window->m_prg-eventtype.
         WHEN 'FUNCTION'.
-          tree-kind = 'F'.
+
           mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-eventname ) i_icon = CONV #( icon_folder ) i_tree = tree ).
         WHEN OTHERS.
-          mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( splits_prg[ 1 ] ) i_icon = CONV #( icon_folder ) ).
+          mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( splits_prg[ 1 ] ) i_icon = CONV #( icon_folder )  i_tree = tree ).
       ENDCASE.
 
       "mo_tree_local->add_node( i_name = 'Global Fields' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
@@ -1411,7 +1413,6 @@
 
           ENDIF.
 
-
         ELSEIF subs-eventtype = 'METHOD'.
           CHECK subs-include IS NOT INITIAL.
           IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
@@ -1432,7 +1433,11 @@
             ENDIF.
             IF cl_name <> subs-class.
               tree-kind = 'F'.
-              DATA(class_rel) = mo_tree_local->add_node( i_name = subs-class i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
+              IF classes_rel IS NOT INITIAL.
+                DATA(class_rel) = mo_tree_local->add_node( i_name = subs-class i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
+              ELSE.
+                class_rel = mo_tree_local->main_node_key.
+              ENDIF.
               cl_name = subs-class.
             ENDIF.
             CASE subs-meth_type.
@@ -1442,7 +1447,10 @@
                 icon = icon_led_yellow.
               WHEN 3.
                 icon = icon_led_red.
-
+              WHEN OTHERS.
+                IF subs-eventname = 'CONSTRUCTOR'.
+                  icon = icon_tools.
+                ENDIF.
             ENDCASE.
             CLEAR tree.
             tree-kind = 'M'.
@@ -2299,7 +2307,7 @@
 
       DATA: split TYPE TABLE OF string.
       CLEAR: mt_watch, mt_coverage. "mt_stack.
-      CHECK mt_stack IS INITIAL.
+      "CHECK mt_stack IS INITIAL.
       LOOP AT mo_viewer->mt_steps INTO DATA(step).
 
         READ TABLE mt_stack WITH KEY include = step-include TRANSPORTING NO FIELDS.
@@ -2339,8 +2347,12 @@
 
       show_coverage( ).
       mo_viewer->show( ).
-      mo_viewer->mo_window->mo_box->set_caption( |{ stack-program } : { stack-eventname }| ).
-
+      CASE stack-eventtype.
+        WHEN 'FUNCTION'.
+          mo_viewer->mo_window->mo_box->set_caption( |FM: { stack-eventname }| ).
+        WHEN OTHERS.
+          mo_viewer->mo_window->mo_box->set_caption( |{ stack-program } : { stack-eventname }| ).
+      ENDCASE.
     ENDMETHOD.
 
     METHOD on_editor_double_click.
