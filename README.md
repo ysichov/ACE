@@ -24,6 +24,22 @@ Type in program, press enter - new window will be opened.
 
 Update: Ask AI button added to chat with any AI model (Settings on the selection screen )
 
+Update2: Programs/forms/functions/classes/methods and its parameters were added for navigation. 
+ Double-click on a variable name is acting like set/unset watchpoint for Code Flow Smart Mixer. And for simple cases we don't need a debugger or Smart Debugger at all to catch the value origin of selected variable(s).
+
+Watchpoints without debug!!! In programming theory it is called Data Dependency Analysis or Backward Program Slicing which builds a data dependency graph. Some programming languages have such Tools. And ABAP now also has )
+
+Below on the screenshot variable EV_SAL(1) was choosen and CodeMix button generated code flow:
+2 - EV_SAL need lv_income and lv_deduct to calc
+3 - ev_deduct calculation
+4 - lv_income calculation
+5 - income need field 'rate' from the table zempl_rates.
+
+Should resolve any depth and all that internal variables renaming like iv_ to ev_ and vice versa.
+
+<img width="1910" height="918" alt="image" src="https://github.com/user-attachments/assets/1b2b5985-5ed0-49fc-845f-de46dccc2f5e" />
+
+
 
 
 
