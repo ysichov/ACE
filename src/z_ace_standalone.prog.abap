@@ -1344,9 +1344,13 @@
       mo_window->show_stack( ).
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
-      IF lines( splits_prg ) = 1.
-        mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-program ) i_icon = CONV #( icon_folder ) ).
-      ENDIF.
+      CASE mo_window->m_prg-eventtype.
+        WHEN 'FUNCTION'.
+          tree-kind = 'F'.
+          mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-eventname ) i_icon = CONV #( icon_folder ) i_tree = tree ).
+        WHEN OTHERS.
+          mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( splits_prg[ 1 ] ) i_icon = CONV #( icon_folder ) ).
+      ENDCASE.
 
       "mo_tree_local->add_node( i_name = 'Global Fields' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
 
@@ -1460,10 +1464,50 @@
             CLEAR tree.
           ENDIF.
 
+        ELSEIF subs-eventtype = 'FUNCTION'.
+          DATA: fname              TYPE rs38l_fnam,
+                exception_list     TYPE TABLE OF  rsexc,
+                export_parameter   TYPE TABLE OF  rsexp,
+                import_parameter   TYPE TABLE OF  rsimp,
+                changing_parameter TYPE TABLE OF    rscha,
+                tables_parameter   TYPE TABLE OF    rstbl.
 
+*          CLEAR tree.
+*          tree-kind = 'F'.
+*          DATA(func_rel) = mo_tree_local->add_node( i_name = subs-eventname i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
+*          CLEAR tree.
+
+          fname = ms_stack-eventname.
+          CALL FUNCTION 'FUNCTION_IMPORT_INTERFACE'
+            EXPORTING
+              funcname           = fname
+            TABLES
+              exception_list     = exception_list
+              export_parameter   = export_parameter
+              import_parameter   = import_parameter
+              changing_parameter = changing_parameter
+              tables_parameter   = tables_parameter
+            EXCEPTIONS
+              error_message      = 1
+              function_not_found = 2
+              invalid_name       = 3
+              OTHERS             = 4.
+          IF sy-subrc = 0.
+            LOOP AT import_parameter INTO DATA(imp).
+              mo_tree_local->add_node( i_name =  CONV #( imp-parameter ) i_icon = CONV #( icon_parameter_import ) i_rel =  mo_tree_local->main_node_key  i_tree = tree ).
+            ENDLOOP.
+
+            LOOP AT export_parameter INTO DATA(exp).
+              mo_tree_local->add_node( i_name =  CONV #( exp-parameter ) i_icon = CONV #( icon_parameter_export ) i_rel =  mo_tree_local->main_node_key  i_tree = tree ).
+            ENDLOOP.
+            LOOP AT changing_parameter INTO DATA(change).
+              mo_tree_local->add_node( i_name =  CONV #( change-parameter ) i_icon = CONV #( icon_parameter_changing ) i_rel =  mo_tree_local->main_node_key  i_tree = tree ).
+            ENDLOOP.
+            LOOP AT tables_parameter INTO DATA(table).
+              mo_tree_local->add_node( i_name =  CONV #( table-parameter ) i_icon = CONV #( icon_parameter_table ) i_rel =  mo_tree_local->main_node_key  i_tree = tree ).
+            ENDLOOP.
+          ENDIF.
         ENDIF.
-
-
 
       ENDLOOP.
 
@@ -4868,9 +4912,16 @@
                       export.
 
                 IF  prev = 'FUNCTION' AND kw = 'CALL'.
-                  token-to_evtype =   call-event = 'FUNCTION'.
-                  token-to_evname =  call-name = word.
+                  call_line-eventtype = token-to_evtype =   call-event = 'FUNCTION'.
+                  call_line-eventname = token-to_evname =  call-name = word.
                   REPLACE ALL OCCURRENCES OF '''' IN  token-to_evname WITH ''.
+                  REPLACE ALL OCCURRENCES OF '''' IN  call_line-eventname WITH ''.
+
+                  READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventtype = call_line-eventtype eventname = call_line-eventname TRANSPORTING NO FIELDS.
+                  IF sy-subrc <> 0.
+                    APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
+                  ENDIF.
+
                 ENDIF.
 
                 IF word = 'EXPORTING' OR word = 'CHANGING' OR word = 'TABLES'.
