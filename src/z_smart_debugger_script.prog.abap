@@ -7482,6 +7482,7 @@ CLASS lcl_mermaid IMPLEMENTATION.
       ENDIF.
       step = step2.
     ENDLOOP.
+    mm_string = |{  mm_string }\n|.
 
     open_mermaid( mm_string ).
 
@@ -7997,8 +7998,9 @@ CLASS lcl_mermaid IMPLEMENTATION.
       ENDIF.
 
     ENDLOOP.
-
+    mm_string = |{  mm_string }\n|.
     open_mermaid( mm_string ).
+
   ENDMETHOD.
 
   METHOD parse_call.
