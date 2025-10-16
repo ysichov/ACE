@@ -22,9 +22,9 @@ Type in program, press enter - new window will be opened.
  
 <img width="1852" height="901" alt="image" src="https://github.com/user-attachments/assets/76270fab-3b75-4e1d-bec5-c525acca761b" />
 
-Update: Ask AI button added to chat with any AI model (Settings on the selection screen )
+**Update1:** Ask AI button added to chat with any AI model (Settings on the selection screen )
 
-Update2: Programs/forms/functions/classes/methods and its parameters were added for navigation. 
+**Update2:** Programs/forms/functions/classes/methods and its parameters were added for navigation. 
  Double-click on a variable name is acting like set/unset watchpoint for Code Flow Smart Mixer. And for simple cases we don't need a debugger or Smart Debugger at all to catch the value origin of selected variable(s).
 
 Watchpoints without debug!!! In programming theory it is called Data Dependency Analysis or Backward Program Slicing which builds a data dependency graph. Some programming languages have such Tools. And ABAP now also has )
