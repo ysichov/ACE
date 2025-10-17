@@ -1333,7 +1333,9 @@
         mo_window->m_prg-program =  mo_window->m_prg-include = mv_prog.
       ENDIF.
       mo_window->set_program( CONV #( mo_window->m_prg-include ) ).
-      mo_window->show_coverage( ).
+      IF mo_window->m_prg-include <> 'Code_Flow_Mix'.
+        mo_window->show_coverage( ).
+      ENDIF.
       IF  mo_window->m_prg-line IS INITIAL.
         mo_window->m_prg-line = mo_window->mt_stack[ 1 ]-line.
       ENDIF.
@@ -1344,6 +1346,7 @@
       mo_window->show_stack( ).
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
+      check splits_prg is not INITIAL.
       tree-kind = 'F'.
 
       CASE mo_window->m_prg-eventtype.
@@ -1861,8 +1864,10 @@
       CLEAR form.
 
       DATA(lines) = get_code_flow( ).
-
-      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' ASSIGNING FIELD-SYMBOL(<prog_mix>).
+      LOOP AT mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_mix>).
+        clear <prog_mix>-selected.
+      ENDLOOP.
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' ASSIGNING <prog_mix>.
       IF sy-subrc <> 0.
         APPEND INITIAL LINE TO mo_window->ms_sources-tt_progs ASSIGNING <prog_mix>.
         INSERT INITIAL LINE INTO mo_window->mt_stack INDEX 1 ASSIGNING FIELD-SYMBOL(<stack_mix>).
@@ -1902,6 +1907,7 @@
 
       mo_window->mo_code_viewer->set_text( table = flow_lines ).
       <prog_mix>-source_tab = flow_lines.
+      <prog_mix>-selected = abap_true.
       mo_window->m_prg-include = 'Code_Flow_Mix'.
       mo_window->set_mixprog_line( ).
       mo_window->show_stack( ).
@@ -2345,7 +2351,7 @@
 
       mo_viewer->mo_window->m_prg-program = stack-prg.
 
-      show_coverage( ).
+      "show_coverage( ).
       mo_viewer->show( ).
       CASE stack-eventtype.
         WHEN 'FUNCTION'.
