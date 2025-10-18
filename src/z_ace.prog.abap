@@ -1346,7 +1346,7 @@
       mo_window->show_stack( ).
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
-      check splits_prg is not INITIAL.
+      CHECK splits_prg IS NOT INITIAL.
       tree-kind = 'F'.
 
       CASE mo_window->m_prg-eventtype.
@@ -1865,7 +1865,7 @@
 
       DATA(lines) = get_code_flow( ).
       LOOP AT mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_mix>).
-        clear <prog_mix>-selected.
+        CLEAR <prog_mix>-selected.
       ENDLOOP.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' ASSIGNING <prog_mix>.
       IF sy-subrc <> 0.
@@ -5484,7 +5484,13 @@
               code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
             ENDIF.
           ELSE. "METHOD CALL
-            parse_class( i_include = i_include i_stack = stack io_debugger = io_debugger key = key ).
+            DATA inlude TYPE program.
+            IF i_include IS INITIAL.
+              include = i_program.
+            ELSE.
+              include = i_include.
+            ENDIF.
+            parse_class( i_include = include i_stack = stack io_debugger = io_debugger key = key ).
           ENDIF.
 
         ENDIF.
