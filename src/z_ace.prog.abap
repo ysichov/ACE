@@ -5958,7 +5958,7 @@
 
       TRY.
           IF mo_diagram IS INITIAL.
-            CREATE OBJECT mo_diagram TYPE ('ZCL_WD_GUI_MERMAID_JS_DIAGRAM') EXPORTING parent = mo_mm_container.
+            CREATE OBJECT mo_diagram TYPE ('ZCL_WD_GUI_MERMAID_JS_DIAGRAM') EXPORTING parent = mo_mm_container hide_scrollbars = abap_false.
           ENDIF.
           CALL METHOD mo_diagram->('SET_SOURCE_CODE_STRING') EXPORTING source_code = i_mm_string.
           CALL METHOD mo_diagram->('DISPLAY').
