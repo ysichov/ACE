@@ -4,17 +4,13 @@
   <asx:values>
    <PROGDIR>
     <NAME>Z_SMART_DEBUGGER_SCRIPT</NAME>
+    <DBAPL>S</DBAPL>
     <SUBC>S</SUBC>
-    <RLOAD>E</RLOAD>
+    <APPL>X</APPL>
     <FIXPT>X</FIXPT>
+    <LDBNAME>D$S</LDBNAME>
     <UCCHECK>X</UCCHECK>
    </PROGDIR>
-   <TPOOL>
-    <item>
-     <ID>R</ID>
-     <LENGTH>33</LENGTH>
-    </item>
-   </TPOOL>
   </asx:values>
  </asx:abap>
 </abapGit>
