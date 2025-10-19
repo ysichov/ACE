@@ -1374,11 +1374,12 @@
 
       "global variable.
       CLEAR tree.
-      tree-param = 'G'.
       LOOP AT prog-t_vars INTO DATA(var) WHERE eventtype IS INITIAL .
         IF sy-tabix = 1.
           DATA(globals_rel) = mo_tree_local->add_node( i_name = 'Global Vars' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
         ENDIF.
+         tree-value = var-line.
+         tree-param = var-name.
         mo_tree_local->add_node( i_name = var-name i_icon = var-icon i_rel = globals_rel i_tree = tree ).
       ENDLOOP.
 
