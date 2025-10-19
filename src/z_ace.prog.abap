@@ -2474,6 +2474,7 @@
 
 
           READ REPORT lv_prog INTO lt_source.
+          delete lt_source index 2.
           IF sy-subrc = 0.
             CALL FUNCTION 'CLPB_EXPORT'
               TABLES

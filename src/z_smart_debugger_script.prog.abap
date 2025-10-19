@@ -1,4 +1,4 @@
-*<SCRIPT:PERSISTENT>
+*<SCRIPT:PERSISTANT>
 REPORT  rstpda_script_template.
 
 *<SCRIPT:HEADER>
