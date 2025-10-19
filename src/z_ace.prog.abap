@@ -1086,10 +1086,23 @@
              END OF ts_calls_line,
              tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
 
+             BEGIN OF ts_vars,
+               program   TYPE string,
+               include   TYPE string,
+               eventtype TYPE string,
+               eventname TYPE string,
+               line      TYPE i,
+               name      TYPE string,
+               type      TYPE string,
+               icon      TYPE salv_de_tree_image,
+             END OF ts_vars,
+
              BEGIN OF ts_var,
                program TYPE string,
+               include TYPE string,
                line    TYPE i,
                name    TYPE string,
+               type    TYPE string,
              END OF ts_var,
 
              BEGIN OF ts_refvar,
@@ -1099,6 +1112,7 @@
              END OF ts_refvar,
 
              tt_kword      TYPE STANDARD TABLE OF lcl_ace_appl=>ts_kword WITH EMPTY KEY,
+             tt_vars       TYPE STANDARD TABLE OF ts_vars WITH EMPTY KEY,
              tt_calculated TYPE STANDARD TABLE OF ts_var WITH EMPTY KEY,
              tt_composed   TYPE STANDARD TABLE OF ts_var WITH EMPTY KEY,
              tt_events     TYPE STANDARD TABLE OF ts_var WITH EMPTY KEY,
@@ -1130,6 +1144,7 @@
                scan       TYPE REF TO cl_ci_scan,
                t_keywords TYPE tt_kword,
                t_events   TYPE tt_events,
+               t_vars     TYPE tt_vars,
                selected   TYPE boolean,
              END OF ts_prog,
              tt_progs TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
@@ -1357,7 +1372,15 @@
           mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( splits_prg[ 1 ] ) i_icon = CONV #( icon_folder )  i_tree = tree ).
       ENDCASE.
 
-      "mo_tree_local->add_node( i_name = 'Global Fields' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
+      "global variable.
+      CLEAR tree.
+      tree-param = 'G'.
+      LOOP AT prog-t_vars INTO DATA(var) WHERE eventtype IS INITIAL .
+        IF sy-tabix = 1.
+          DATA(globals_rel) = mo_tree_local->add_node( i_name = 'Global Vars' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
+        ENDIF.
+        mo_tree_local->add_node( i_name = var-name i_icon = var-icon i_rel = globals_rel i_tree = tree ).
+      ENDLOOP.
 
       "Virtual Start event - first executable step
       READ TABLE mo_window->mo_viewer->mt_steps INDEX 1 INTO DATA(step).
@@ -4555,6 +4578,7 @@
             call_line       TYPE lcl_ace_window=>ts_calls_line,
             tab             TYPE lcl_ace_window=>ts_int_tabs,
             tabs            TYPE lcl_ace_window=>tt_tabs,
+            variable        TYPE lcl_ace_window=>ts_vars,
             eventtype       TYPE string,
             eventname       TYPE string,
             param           TYPE lcl_ace_window=>ts_params,
@@ -4629,7 +4653,7 @@
           ENDIF.
 
           IF kw = 'FORM' OR kw = 'METHOD' OR kw = 'METHODS' OR kw = 'CLASS-METHODS'.
-            tab-eventtype =  eventtype = param-event =  kw.
+            variable-eventtype = tab-eventtype =  eventtype = param-event =  kw.
 
             CLEAR  eventname.
             IF kw = 'FORM'.
@@ -4643,7 +4667,7 @@
             call_line-class = param-class = ''.
           ENDIF.
           IF kw = 'ENDFORM' OR kw = 'ENDMETHOD'.
-            CLEAR:  eventtype,  eventname, tabs.
+            CLEAR:  eventtype,  eventname, tabs, variable.
             IF param-param IS INITIAL. "No params - save empty row if no params
               READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = param-event name = param-name TRANSPORTING NO FIELDS.
               IF sy-subrc <> 0.
@@ -4728,8 +4752,8 @@
             ENDIF.
 
             IF sy-index = 2 AND ( kw = 'DATA' OR kw = 'PARAMETERS' ).
-              WRITE: 'var =', word.
               tab-name = word.
+
             ENDIF.
 
             IF sy-index = 2 AND kw = 'PERFORM'.
@@ -4742,7 +4766,7 @@
             ENDIF.
 
             IF sy-index = 2 AND  eventtype IS NOT INITIAL AND  eventname IS INITIAL.
-              tab-eventname =  eventname = param-name = word.
+              variable-eventname = tab-eventname =  eventname = param-name = word.
 
               MOVE-CORRESPONDING tab TO call_line.
               call_line-index = o_procedure->statement_index + 1.
@@ -4882,6 +4906,37 @@
                 IF (   prev = 'OF' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
                   tab-type =  temp.
                   APPEND tab TO tabs.
+
+                  variable-name = tab-name.
+                  variable-type = tab-type.
+                  variable-line = l_token-row.
+                  variable-icon = icon_table_settings.
+                  APPEND variable TO prog-t_vars.
+                ENDIF.
+
+                IF (   prev = 'TYPE' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
+                  variable-name = tab-name.
+                  variable-type = temp.
+                  variable-line = l_token-row.
+
+                  CASE variable-type.
+                    WHEN 'D'.
+                      variable-icon = icon_date.
+                    WHEN 'T'.
+                      variable-icon = icon_bw_time_sap.
+                    WHEN 'C'.
+                      variable-icon = icon_wd_input_field.
+                    WHEN 'P'.
+                      variable-icon = icon_increase_decimal.
+                    WHEN 'STRING'.
+                      variable-icon = icon_text_act.
+                    WHEN 'N' OR 'I'.
+                      variable-icon = icon_pm_order.
+                    WHEN OTHERS.
+                      variable-icon = icon_element.
+                  ENDCASE.
+                  APPEND variable TO prog-t_vars.
+
                 ENDIF.
 
               WHEN 'COMPUTE'.
@@ -5262,7 +5317,7 @@
         SORT structures BY stmnt_type ASCENDING.
       ELSE.
         CLEAR  max.
-        LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'P' AND type <> 'C' .
+        LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'P' AND type <> 'C' AND type <> 'S' .
           IF  max < str-stmnt_to.
             max = str-stmnt_to.
             APPEND str TO structures.
