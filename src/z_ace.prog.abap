@@ -1378,8 +1378,8 @@
         IF sy-tabix = 1.
           DATA(globals_rel) = mo_tree_local->add_node( i_name = 'Global Vars' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
         ENDIF.
-         tree-value = var-line.
-         tree-param = var-name.
+        tree-value = var-line.
+        tree-param = var-name.
         mo_tree_local->add_node( i_name = var-name i_icon = var-icon i_rel = globals_rel i_tree = tree ).
       ENDLOOP.
 
@@ -4645,6 +4645,9 @@
 
           READ TABLE o_scan->tokens INDEX statement-from INTO DATA(l_token).
           token-line = calculated-line = composed-line = l_token-row.
+          token-program = i_program.
+          READ TABLE o_scan->levels  index statement-level INTO DATA(level).
+          token-include = level-name.
           calculated-program = composed-program = i_include.
 
           DATA  new TYPE boolean.
@@ -5376,12 +5379,7 @@
           ENDIF.
           <step>-stacklevel =  stack.
           <step>-program = i_program.
-
-          IF i_include IS NOT INITIAL.
-            <step>-include = i_include.
-          ELSE.
-            <step>-include = i_program.
-          ENDIF.
+          <step>-include = key-include.
 
           IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
 
@@ -5498,11 +5496,7 @@
         <step>-eventtype = i_e_type.
         <step>-stacklevel =  stack.
         <step>-program = i_program.
-        IF i_include IS NOT INITIAL.
-          <step>-include = i_include.
-        ELSE.
-          <step>-include = i_program.
-        ENDIF.
+        <step>-include = key-include.
 
         IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
           .
