@@ -18,6 +18,7 @@
               p_model  TYPE text255 MEMORY ID model,
               p_apikey TYPE text255 MEMORY ID api.
 
+
   CLASS lcl_ace_ai DEFINITION DEFERRED.
   CLASS lcl_ace_data_receiver DEFINITION DEFERRED.
   CLASS lcl_ace_data_transmitter DEFINITION DEFERRED.
