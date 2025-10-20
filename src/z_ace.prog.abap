@@ -5638,7 +5638,7 @@
             scr_code TYPE STANDARD TABLE OF d022s,
             prog     TYPE progname,
             num(4)   TYPE n,
-            fmnum    type sychar04,
+            fmnum    TYPE sychar04,
             code_str TYPE string,
             pbo      TYPE boolean,
             pai      TYPE boolean,
@@ -5871,6 +5871,10 @@
 
         ELSEIF <copy>-eventtype = 'FUNCTION'.
           <copy>-eventname = entity-name = |"{ <copy>-eventtype }:{ <copy>-eventname }"|.
+        ELSEIF <copy>-eventtype = 'SCREEN'.
+          <copy>-eventname = entity-name = |"CALL SCREEN { <copy>-eventname }"|.
+        ELSEIF <copy>-eventtype = 'MODULE'.
+          <copy>-eventname = entity-name = |"MODULE { <copy>-eventname }"|.
         ELSE.
           <copy>-eventname = entity-name = |"{ <copy>-program }:{ <copy>-eventname }"|.
         ENDIF.
