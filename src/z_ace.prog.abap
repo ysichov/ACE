@@ -5637,7 +5637,8 @@
             ftab     TYPE STANDARD TABLE OF d021s,
             scr_code TYPE STANDARD TABLE OF d022s,
             prog     TYPE progname,
-            num      TYPE sychar04,
+            num(4)   TYPE n,
+            fmnum    type sychar04,
             code_str TYPE string,
             pbo      TYPE boolean,
             pai      TYPE boolean,
@@ -5645,12 +5646,12 @@
 
       stack = i_stack + 1.
       prog = key-program.
-      num = key-to_evname.
+      fmnum = num = key-to_evname.
 
       CALL FUNCTION 'RS_IMPORT_DYNPRO'
         EXPORTING
           dyname = prog
-          dynumb = num
+          dynumb = fmnum
         TABLES
           ftab   = ftab
           pltab  = scr_code
