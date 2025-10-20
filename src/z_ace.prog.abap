@@ -1,7 +1,7 @@
   REPORT z_ace. " ACE - Abap Code Explorer
   " & Multi-windows program for ABAP code analysis
   " &----------------------------------------------------------------------
-  " & version: beta 0.3
+  " & version: beta 0.5
   " & Git https://github.com/ysichov/ACE
 
   " & Written by Yurii Sychov
@@ -4789,7 +4789,8 @@
                 <call_line>-include = i_include.
               ELSE.
                 IF i_class IS INITIAL.
-                  call_line-program = i_include.
+                  call_line-program = i_program.
+                  call_line-include = i_include.
                 ELSE.
                   call_line-include = i_include.
                 ENDIF.
@@ -5713,8 +5714,8 @@
           lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                 i_e_name = call_line-eventname
                                 i_e_type = call_line-eventtype
-                                i_program =  CONV #( key-program )
-                                i_include =  CONV #( key-include )
+                                i_program =  CONV #( call_line-program )
+                                i_include =  CONV #( call_line-include )
                                 i_stack   =  stack
                                 io_debugger = io_debugger ).
         ENDIF.
@@ -5755,8 +5756,8 @@
           lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                 i_e_name = call_line-eventname
                                 i_e_type = call_line-eventtype
-                                i_program =  CONV #( key-program )
-                                i_include =  CONV #( key-include )
+                                i_program =  CONV #( call_line-program )
+                                i_include =  CONV #( call_line-include )
                                 i_stack   =  stack
                                 io_debugger = io_debugger ).
         ENDIF.
