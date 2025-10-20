@@ -18,7 +18,6 @@
               p_model  TYPE text255 MEMORY ID model,
               p_apikey TYPE text255 MEMORY ID api.
 
-
   CLASS lcl_ace_ai DEFINITION DEFERRED.
   CLASS lcl_ace_data_receiver DEFINITION DEFERRED.
   CLASS lcl_ace_data_transmitter DEFINITION DEFERRED.
@@ -465,6 +464,10 @@
                               i_include TYPE program
                               i_stack   TYPE i
                               io_debugger TYPE REF TO lcl_ace,
+
+        parse_screen IMPORTING key TYPE lcl_ace_appl=>ts_kword
+                               i_stack   TYPE i
+                               io_debugger TYPE REF TO lcl_ace,
 
         code_execution_scanner IMPORTING i_program TYPE program
                                          i_include TYPE program
@@ -2472,9 +2475,8 @@
           DATA: lt_source TYPE STANDARD TABLE OF text255,
                 lv_prog   TYPE progname VALUE 'Z_SMART_DEBUGGER_SCRIPT'.
 
-
           READ REPORT lv_prog INTO lt_source.
-          delete lt_source index 2.
+          DELETE lt_source INDEX 2.
           IF sy-subrc = 0.
             CALL FUNCTION 'CLPB_EXPORT'
               TABLES
@@ -4648,7 +4650,7 @@
           READ TABLE o_scan->tokens INDEX statement-from INTO DATA(l_token).
           token-line = calculated-line = composed-line = l_token-row.
           token-program = i_program.
-          READ TABLE o_scan->levels  index statement-level INTO DATA(level).
+          READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
           token-include = level-name.
           calculated-program = composed-program = i_include.
 
@@ -4658,12 +4660,15 @@
             class = abap_true.
           ENDIF.
 
-          IF kw = 'FORM' OR kw = 'METHOD' OR kw = 'METHODS' OR kw = 'CLASS-METHODS'.
+          IF kw = 'FORM' OR kw = 'METHOD' OR kw = 'METHODS' OR kw = 'CLASS-METHODS' OR kw = 'MODULE'.
             variable-eventtype = tab-eventtype =  eventtype = param-event =  kw.
 
             CLEAR  eventname.
             IF kw = 'FORM'.
               CLEAR:  class, param-class.
+            ELSEIF kw = 'MODULE'.
+              CLEAR:  class, param-class.
+              tab-eventtype =  eventtype = param-event =  'MODULE'.
             ELSE.
               tab-eventtype =  eventtype = param-event =  'METHOD'.
             ENDIF.
@@ -4672,7 +4677,7 @@
           IF kw = 'ENDCLASS'.
             call_line-class = param-class = ''.
           ENDIF.
-          IF kw = 'ENDFORM' OR kw = 'ENDMETHOD'.
+          IF kw = 'ENDFORM' OR kw = 'ENDMETHOD' OR kw = 'ENDMODULE'.
             CLEAR:  eventtype,  eventname, tabs, variable.
             IF param-param IS INITIAL. "No params - save empty row if no params
               READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = param-event name = param-name TRANSPORTING NO FIELDS.
@@ -5003,6 +5008,12 @@
 
                 ENDIF.
 
+                IF  prev = 'SCREEN' AND kw = 'CALL'.
+                  token-to_evtype = 'SCREEN'.
+                  token-to_evname = temp.
+                  token-program = i_program.
+                ENDIF.
+
                 IF word = 'EXPORTING' OR word = 'CHANGING' OR word = 'TABLES'.
                   export = abap_true.
                   CLEAR  import.
@@ -5323,7 +5334,10 @@
         SORT structures BY stmnt_type ASCENDING.
       ELSE.
         CLEAR  max.
-        LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'P' AND type <> 'C' AND type <> 'S' .
+        LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'C' AND type <> 'R'.
+          IF str-type = 'P' AND  str-stmnt_type = '?'.
+            CONTINUE.
+          ENDIF.
           IF  max < str-stmnt_to.
             max = str-stmnt_to.
             APPEND str TO structures.
@@ -5363,7 +5377,8 @@
         WHILE  statement <= str-stmnt_to.
           READ TABLE <prog>-t_keywords WITH KEY index =   statement INTO key.
 
-          IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS'  OR key-name = 'PARAMETERS' OR key-name IS INITIAL OR sy-subrc <> 0.
+          IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS'
+            OR key-name = 'PARAMETERS' OR key-name = 'INCLUDE' OR key-name IS INITIAL OR sy-subrc <> 0.
             ADD 1 TO  statement.
             CONTINUE.
           ENDIF.
@@ -5416,8 +5431,10 @@
 
                 code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
               ENDIF.
-            ELSE. "Method call
+            ELSEIF key-to_evtype = 'METHOD'. "Method call
               parse_class( i_include = i_include i_stack = stack io_debugger = io_debugger key = key ).
+            ELSEIF key-to_evtype = 'SCREEN'. "Method call
+              parse_screen( i_stack = stack io_debugger = io_debugger key = key ).
             ENDIF.
           ENDIF.
 
@@ -5547,7 +5564,7 @@
 
         ENDIF.
 
-        IF key-name = 'ENDFORM' OR key-name = 'ENDMETHOD'.
+        IF key-name = 'ENDFORM' OR key-name = 'ENDMETHOD' OR key-name = 'ENDMODULE'.
           RETURN.
         ENDIF.
 
@@ -5610,6 +5627,141 @@
         ENDIF.
       ENDIF.
 
+
+    ENDMETHOD.
+
+    METHOD parse_screen.
+
+      DATA: stack    TYPE i,
+            ftab     TYPE STANDARD TABLE OF d021s,
+            scr_code TYPE STANDARD TABLE OF d022s,
+            prog     TYPE progname,
+            num      TYPE sychar04,
+            code_str TYPE string,
+            pbo      TYPE boolean,
+            pai      TYPE boolean,
+            split    TYPE TABLE OF string.
+
+      stack = i_stack + 1.
+      prog = key-program.
+      num = key-to_evname.
+
+      CALL FUNCTION 'RS_IMPORT_DYNPRO'
+        EXPORTING
+          dyname = prog
+          dynumb = num
+        TABLES
+          ftab   = ftab
+          pltab  = scr_code
+        EXCEPTIONS
+          OTHERS = 19.
+      IF sy-subrc <> 0.
+        RETURN.
+      ENDIF.
+
+      LOOP AT scr_code ASSIGNING FIELD-SYMBOL(<code>).
+        CONDENSE <code>.
+        FIND '"' IN <code> MATCH OFFSET DATA(pos).
+
+        IF pos <> 0.
+          <code> = <code>+0(pos).  " обрезаем до кавычки
+        ENDIF.
+      ENDLOOP.
+
+      DELETE scr_code WHERE line+0(1) = '*' OR line+0(1) = '"' OR line IS INITIAL.
+
+      LOOP AT scr_code INTO DATA(code).
+        IF code_str IS INITIAL.
+          code_str = code-line.
+        ELSE.
+          code_str = |{ code_str } { code-line }|.
+        ENDIF.
+      ENDLOOP.
+
+      SPLIT code_str AT '.' INTO TABLE scr_code.
+
+      "PBO
+      LOOP AT scr_code INTO code.
+        CONDENSE code-line.
+        IF code-line = 'PROCESS BEFORE OUTPUT'.
+          pbo = abap_true.
+          CLEAR pai.
+          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+
+          <step>-step = io_debugger->m_step.
+          <step>-line = key-line.
+          <step>-eventname = key-to_evname.
+          <step>-eventtype = key-to_evtype.
+          <step>-stacklevel =  stack.
+          <step>-program = key-program.
+          <step>-include = key-include.
+
+          CONTINUE.
+        ENDIF.
+        IF code-line = 'PROCESS AFTER INPUT'.
+          pai = abap_true.
+          CLEAR pbo.
+          CONTINUE.
+        ENDIF.
+
+        CHECK pbo IS NOT INITIAL.
+        SPLIT code-line AT | | INTO TABLE split.
+        CHECK split[ 1 ] = 'MODULE'.
+
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY program = key-program eventtype = 'MODULE' eventname = split[ 2 ] INTO DATA(call_line).
+        IF sy-subrc = 0.
+          lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                                i_e_name = call_line-eventname
+                                i_e_type = call_line-eventtype
+                                i_program =  CONV #( key-program )
+                                i_include =  CONV #( key-include )
+                                i_stack   =  stack
+                                io_debugger = io_debugger ).
+        ENDIF.
+
+      ENDLOOP.
+
+
+      "PAI
+      LOOP AT scr_code INTO code.
+        CONDENSE code-line.
+        IF code-line = 'PROCESS AFTER INPUT'.
+          CLEAR pbo.
+          pai = abap_true.
+          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING <step>.
+
+          <step>-step = io_debugger->m_step.
+          <step>-line = key-line.
+          <step>-eventname = key-to_evname.
+          <step>-eventtype = key-to_evtype.
+          <step>-stacklevel =  stack.
+          <step>-program = key-program.
+          <step>-include = key-include.
+
+          CONTINUE.
+        ENDIF.
+        IF code-line = 'PROCESS BEFORE OUTPUT'.
+          pbo = abap_true.
+          CLEAR pai.
+          CONTINUE.
+        ENDIF.
+
+        CHECK pai IS NOT INITIAL.
+        SPLIT code-line AT | | INTO TABLE split.
+        CHECK split[ 1 ] = 'MODULE'.
+
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY program = key-program eventtype = 'MODULE' eventname = split[ 2 ] INTO call_line.
+        IF sy-subrc = 0.
+          lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                                i_e_name = call_line-eventname
+                                i_e_type = call_line-eventtype
+                                i_program =  CONV #( key-program )
+                                i_include =  CONV #( key-include )
+                                i_stack   =  stack
+                                io_debugger = io_debugger ).
+        ENDIF.
+
+      ENDLOOP.
 
     ENDMETHOD.
 

@@ -4,15 +4,15 @@
   <asx:values>
    <PROGDIR>
     <NAME>Z_SMART_DEBUGGER_SCRIPT</NAME>
-    <SUBC>1</SUBC>
+    <SUBC>S</SUBC>
     <RLOAD>E</RLOAD>
+    <FIXPT>X</FIXPT>
     <UCCHECK>X</UCCHECK>
    </PROGDIR>
    <TPOOL>
     <item>
      <ID>R</ID>
-     <ENTRY>Smart debugger Script</ENTRY>
-     <LENGTH>21</LENGTH>
+     <LENGTH>33</LENGTH>
     </item>
    </TPOOL>
   </asx:values>
