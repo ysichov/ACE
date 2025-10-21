@@ -2,7 +2,7 @@
 
 New Idea. I don't need debug to analyse code flow ). So it moves from [ABAP Script](https://github.com/ysichov/Smart-Debugger/blob/master/src/z_smart_debugger.prog.abap) to the usual program )
 
-[Standalone version is here](https://github.com/ysichov/ACE/blob/main/src/z_ace_standalone.prog.abap)
+[Standalone version is here](https://github.com/ysichov/ACE/blob/main/src/z_ace.prog.abap)
 
  [Short video demo](https://www.loom.com/share/250574c07071496c8c9b064062bb44dc?sid=dee80fda-5f6d-4384-8457-c53ab97d09e8)
 
