@@ -1445,7 +1445,7 @@
           ENDIF.
 
         ELSEIF subs-eventtype = 'METHOD'.
-           CHECK subs-include IS NOT INITIAL.
+          CHECK subs-include IS NOT INITIAL.
           IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
             IF subs-class = splits_prg[ 1 ].
 
@@ -4761,7 +4761,7 @@
             ENDIF.
 
             IF word = '#('.
-              clear new.
+              CLEAR new.
             ENDIF.
 
             IF sy-index = 1 AND token-name = word.
@@ -5559,7 +5559,9 @@
 
               code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
             ENDIF.
-          ELSE. "METHOD CALL
+
+          ELSEIF key-to_evtype = 'METHOD'. "Method call
+
             DATA inlude TYPE program.
             IF i_include IS INITIAL.
               include = i_program.
@@ -5567,6 +5569,9 @@
               include = i_include.
             ENDIF.
             parse_class( i_include = include i_stack = stack io_debugger = io_debugger key = key ).
+          ELSEIF key-to_evtype = 'SCREEN'. "Method call
+            parse_screen( i_stack = stack io_debugger = io_debugger key = key ).
+
           ENDIF.
 
         ENDIF.
@@ -5644,7 +5649,7 @@
             scr_code TYPE STANDARD TABLE OF d022s,
             prog     TYPE progname,
             num(4)   TYPE n,
-            fmnum    type sychar04,
+            fmnum    TYPE sychar04,
             code_str TYPE string,
             pbo      TYPE boolean,
             pai      TYPE boolean,
