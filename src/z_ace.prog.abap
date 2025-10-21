@@ -168,9 +168,10 @@
              BEGIN OF t_step_counter,
                step       TYPE i,
                stacklevel TYPE tpda_stack_level,
-               line       TYPE tpda_sc_line,
+                line       TYPE tpda_sc_line,
                eventtype  TYPE tpda_event_type,
                eventname  TYPE tpda_event,
+
                first      TYPE boolean,
                last       TYPE boolean,
                program    TYPE tpda_program,
@@ -526,7 +527,7 @@
             mt_globals        TYPE tpda_scr_globals_it,
             mt_ret_exp        TYPE tpda_scr_locals_it,
             m_counter         TYPE i,
-            mt_steps          TYPE  TABLE OF lcl_ace_appl=>t_step_counter, "source code steps
+            mt_steps          TYPE  TABLE OF lcl_ace_appl=>t_step_counter with NON-UNIQUE KEY line eventtype eventname, "source code steps
             mt_var_step       TYPE  TABLE OF lcl_ace_appl=>var_table_h,
             m_step            TYPE i,
             m_i_find          TYPE boolean,
@@ -1577,6 +1578,9 @@
       DATA(lt_selected_var) = mt_selected_var.
 
       DATA(steps) = mt_steps.
+       sort steps by line eventtype eventname.
+      DELETE ADJACENT DUPLICATES FROM steps.
+      sort steps by step.
       DATA: yes TYPE xfeld.
       LOOP AT steps INTO DATA(step).
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
@@ -1701,6 +1705,7 @@
           <line>-stack = step-stacklevel.
           <line>-include = step-include.
         ENDIF.
+
         CLEAR ind.
         LOOP AT  mo_window->ms_sources-t_calculated INTO calculated_var WHERE line = step-line.
           ADD 1 TO ind.
@@ -1732,6 +1737,21 @@
           ENDIF.
 
         ENDLOOP.
+        "if no variable - whole CodeMix flow
+        IF sy-subrc <> 0 AND mt_selected_var IS INITIAL.
+          IF key-name <> 'ENDMETHOD' AND key-name <> 'ENDMODULE' AND  key-name <> 'ENDFORM'.
+
+            READ TABLE results WITH KEY line = step-line include = line-include ev_type = line-ev_type ev_name = line-ev_name TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              line-line = step-line.
+              line-ev_name = step-eventname.
+              line-stack = step-stacklevel.
+              line-include = step-include.
+              line-ev_type = step-eventtype.
+              INSERT line INTO results INDEX 1.
+            ENDIF.
+          ENDIF.
+        ENDIF.
 
       ENDLOOP.
 
@@ -1919,6 +1939,7 @@
         DATA(dashes) = repeat( val = |-| occ = ( line-stack ) ).
         IF form <> line-ev_name. "new event
           SPLIT line-include AT '=' INTO TABLE splits.
+
 
           APPEND INITIAL LINE TO flow_lines ASSIGNING FIELD-SYMBOL(<flow>).
           ind  = sy-tabix.
@@ -5390,21 +5411,24 @@
             CONTINUE.
           ENDIF.
           ADD 1 TO io_debugger->m_step.
-          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
 
-          <step>-step = io_debugger->m_step.
-          <step>-line = key-line.
-          IF i_evtype IS INITIAL.
-            <step>-eventtype = 'EVENT'.
-            <step>-eventname =  event.
-          ELSE.
-            <step>-eventtype = i_evtype.
-            <step>-eventname = i_evname.
+          READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = i_program include = key-include TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+
+            <step>-step = io_debugger->m_step.
+            <step>-line = key-line.
+            IF i_evtype IS INITIAL.
+              <step>-eventtype = 'EVENT'.
+              <step>-eventname =  event.
+            ELSE.
+              <step>-eventtype = i_evtype.
+              <step>-eventname = i_evname.
+            ENDIF.
+            <step>-stacklevel =  stack.
+            <step>-program = i_program.
+            <step>-include = key-include.
           ENDIF.
-          <step>-stacklevel =  stack.
-          <step>-program = i_program.
-          <step>-include = key-include.
-
           IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
 
             IF key-to_evtype = 'FORM'.
@@ -5513,17 +5537,19 @@
           ADD 1 TO  statement.
           CONTINUE.
         ENDIF.
-        ADD 1 TO io_debugger->m_step.
-        APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+        READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = i_program include = key-include TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          ADD 1 TO io_debugger->m_step.
+          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
 
-        <step>-step = io_debugger->m_step.
-        <step>-line = key-line.
-        <step>-eventname = i_e_name.
-        <step>-eventtype = i_e_type.
-        <step>-stacklevel =  stack.
-        <step>-program = i_program.
-        <step>-include = key-include.
-
+          <step>-step = io_debugger->m_step.
+          <step>-line = key-line.
+          <step>-eventname = i_e_name.
+          <step>-eventtype = i_e_type.
+          <step>-stacklevel =  stack.
+          <step>-program = i_program.
+          <step>-include = key-include.
+        ENDIF.
         IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
           .
           IF key-to_evtype = 'FORM'.
@@ -5700,7 +5726,7 @@
           pbo = abap_true.
           CLEAR pai.
           APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
-
+          ADD 1 TO  io_debugger->m_step.
           <step>-step = io_debugger->m_step.
           <step>-line = key-line.
           <step>-eventname = key-to_evname.
@@ -5734,15 +5760,16 @@
 
       ENDLOOP.
 
-
       "PAI
       LOOP AT scr_code INTO code.
         CONDENSE code-line.
         IF code-line = 'PROCESS AFTER INPUT'.
           CLEAR pbo.
           pai = abap_true.
+          "READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = key-program include = key-include TRANSPORTING NO FIELDS.
+          "IF sy-subrc <> 0.
           APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING <step>.
-
+          ADD 1 TO  io_debugger->m_step.
           <step>-step = io_debugger->m_step.
           <step>-line = key-line.
           <step>-eventname = key-to_evname.
@@ -5750,7 +5777,7 @@
           <step>-stacklevel =  stack.
           <step>-program = key-program.
           <step>-include = key-include.
-
+          "ENDIF.
           CONTINUE.
         ENDIF.
         IF code-line = 'PROCESS BEFORE OUTPUT'.
@@ -5877,7 +5904,7 @@
       LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
         IF <copy>-eventtype = 'METHOD'.
           "SPLIT <copy>-program AT '=' INTO TABLE parts.
-          read table MO_VIEWER->MO_WINDOW->MS_SOURCES-TT_CALLS_LINE with key include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname into data(call_line).
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line WITH KEY include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname INTO DATA(call_line).
           <copy>-eventname = entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
           entity-event = <copy>-eventtype.
 
