@@ -4701,7 +4701,7 @@
             CLEAR  change.
             word = o_procedure->get_token( offset = sy-index ).
 
-            IF ( word CS '(' AND ( NOT word CS ')' ) ) OR word CS '->' OR word CS '=>'."can be method call
+            IF ( word CS '(' AND ( NOT word CS ')' ) AND word <> '#(' )  OR word CS '->' OR word CS '=>'."can be method call
               call-name = word.
               call-event = 'METHOD'.
               REPLACE ALL OCCURRENCES OF '(' IN call-name WITH ''.
@@ -4756,6 +4756,10 @@
               ENDIF.
 
               token-to_class = call-class.
+            ENDIF.
+
+            IF word = '#('.
+              clear new.
             ENDIF.
 
             IF sy-index = 1 AND token-name = word.
@@ -5638,7 +5642,7 @@
             scr_code TYPE STANDARD TABLE OF d022s,
             prog     TYPE progname,
             num(4)   TYPE n,
-            fmnum    TYPE sychar04,
+            fmnum    type sychar04,
             code_str TYPE string,
             pbo      TYPE boolean,
             pai      TYPE boolean,
@@ -5871,10 +5875,6 @@
 
         ELSEIF <copy>-eventtype = 'FUNCTION'.
           <copy>-eventname = entity-name = |"{ <copy>-eventtype }:{ <copy>-eventname }"|.
-        ELSEIF <copy>-eventtype = 'SCREEN'.
-          <copy>-eventname = entity-name = |"CALL SCREEN { <copy>-eventname }"|.
-        ELSEIF <copy>-eventtype = 'MODULE'.
-          <copy>-eventname = entity-name = |"MODULE { <copy>-eventname }"|.
         ELSE.
           <copy>-eventname = entity-name = |"{ <copy>-program }:{ <copy>-eventname }"|.
         ENDIF.
