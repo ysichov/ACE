@@ -4837,7 +4837,7 @@
 
               param-type = 'E'.
               CLEAR:  type,  par.
-            ELSEIF word = 'OPTIONAL' OR word = 'PREFERRED'.
+            ELSEIF word = 'OPTIONAL' OR word = 'PREFERRED' OR word = 'REF' OR word = 'TO'.
               CONTINUE.
             ELSEIF word = 'PARAMETER'.
               preferred = abap_true.
