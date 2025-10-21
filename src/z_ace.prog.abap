@@ -1445,7 +1445,7 @@
           ENDIF.
 
         ELSEIF subs-eventtype = 'METHOD'.
-          CHECK subs-include IS NOT INITIAL.
+           CHECK subs-include IS NOT INITIAL.
           IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
             IF subs-class = splits_prg[ 1 ].
 
@@ -1453,7 +1453,7 @@
               IF last+0(2) <> 'CM'.
                 CONTINUE.
               ENDIF.
-              tree-include = subs-include.
+
             ENDIF.
             IF classes_rel IS INITIAL.
               IF subs-class = splits_prg[ 1 ].
@@ -1486,6 +1486,8 @@
             CLEAR tree.
             tree-kind = 'M'.
             tree-value = keyword-line.
+            tree-include = subs-include.
+
             event_node = mo_tree_local->add_node( i_name =  form_name i_icon = icon i_rel =  class_rel i_tree = tree ).
             CLEAR tree-value.
             LOOP AT mo_window->ms_sources-t_params INTO param WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
@@ -4739,7 +4741,7 @@
                 call_line-eventname = call-name.
                 call_line-eventtype = 'METHOD'.
                 "call_line-meth_type = method_type.
-                APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
+                "APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
 
                 READ TABLE calculated_vars WITH KEY line = l_token-row program = i_include INTO DATA(calc).
                 IF sy-subrc = 0.
@@ -4790,13 +4792,13 @@
                WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
               IF sy-subrc = 0.
                 <call_line>-index = call_line-index.
-                <call_line>-include = i_include.
+                <call_line>-include = token-include.
               ELSE.
                 IF i_class IS INITIAL.
                   call_line-program = i_program.
-                  call_line-include = i_include.
+                  call_line-include = token-include.
                 ELSE.
-                  call_line-include = i_include.
+                  call_line-include = token-include.
                 ENDIF.
                 call_line-meth_type = method_type.
                 APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
