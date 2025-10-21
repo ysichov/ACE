@@ -5876,12 +5876,20 @@
 
       LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
         IF <copy>-eventtype = 'METHOD'.
-          SPLIT <copy>-program AT '=' INTO TABLE parts.
-          <copy>-eventname = entity-name = |"{ parts[ 1 ] }->{ <copy>-eventname }"|.
+          "SPLIT <copy>-program AT '=' INTO TABLE parts.
+          read table MO_VIEWER->MO_WINDOW->MS_SOURCES-TT_CALLS_LINE with key include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname into data(call_line).
+          <copy>-eventname = entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
           entity-event = <copy>-eventtype.
 
         ELSEIF <copy>-eventtype = 'FUNCTION'.
           <copy>-eventname = entity-name = |"{ <copy>-eventtype }:{ <copy>-eventname }"|.
+        ELSEIF <copy>-eventtype = 'SCREEN'.
+          <copy>-eventname = entity-name = |"CALL SCREEN { <copy>-eventname }"|.
+        ELSEIF <copy>-eventtype = 'MODULE'.
+          <copy>-eventname = entity-name = |"MODULE { <copy>-eventname }"|.
+        ELSEIF <copy>-eventtype = 'FORM'.
+          <copy>-eventname = entity-name = |"FORM { <copy>-eventname }"|.
+
         ELSE.
           <copy>-eventname = entity-name = |"{ <copy>-program }:{ <copy>-eventname }"|.
         ENDIF.
