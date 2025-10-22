@@ -1738,20 +1738,20 @@
 
         ENDLOOP.
         "if no variable - whole CodeMix flow
-        IF sy-subrc <> 0 AND mt_selected_var IS INITIAL.
-          IF key-name <> 'ENDMETHOD' AND key-name <> 'ENDMODULE' AND  key-name <> 'ENDFORM'.
-
-            READ TABLE results WITH KEY line = step-line include = line-include ev_type = line-ev_type ev_name = line-ev_name TRANSPORTING NO FIELDS.
-            IF sy-subrc <> 0.
-              line-line = step-line.
-              line-ev_name = step-eventname.
-              line-stack = step-stacklevel.
-              line-include = step-include.
-              line-ev_type = step-eventtype.
-              INSERT line INTO results INDEX 1.
-            ENDIF.
-          ENDIF.
-        ENDIF.
+*        IF sy-subrc <> 0 AND mt_selected_var IS INITIAL.
+*          IF key-name <> 'ENDMETHOD' AND key-name <> 'ENDMODULE' AND  key-name <> 'ENDFORM'.
+*
+*            READ TABLE results WITH KEY line = step-line include = line-include ev_type = line-ev_type ev_name = line-ev_name TRANSPORTING NO FIELDS.
+*            IF sy-subrc <> 0.
+*              line-line = step-line.
+*              line-ev_name = step-eventname.
+*              line-stack = step-stacklevel.
+*              line-include = step-include.
+*              line-ev_type = step-eventtype.
+*              INSERT line INTO results INDEX 1.
+*            ENDIF.
+*          ENDIF.
+*        ENDIF.
 
       ENDLOOP.
 
@@ -5376,6 +5376,7 @@
       LOOP AT structures INTO str.
 
         READ TABLE <prog>-t_keywords WITH KEY index =  str-stmnt_from INTO DATA(key).
+        lcl_ace_source_parser=>parse_tokens( i_program = conv #( key-program ) i_include = conv #( key-include ) io_debugger = io_debugger ).
 
         IF str-type = 'E'.
           "get event name.
@@ -5537,6 +5538,8 @@
           ADD 1 TO  statement.
           CONTINUE.
         ENDIF.
+                lcl_ace_source_parser=>parse_tokens( i_program = conv #( key-program ) i_include = conv #( key-include ) io_debugger = io_debugger ).
+
         READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = i_program include = key-include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           ADD 1 TO io_debugger->m_step.

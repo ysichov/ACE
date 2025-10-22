@@ -4,7 +4,7 @@
   <asx:values>
    <PROGDIR>
     <NAME>Z_SMART_DEBUGGER_SCRIPT</NAME>
-    <SUBC>1</SUBC>
+    <SUBC>S</SUBC>
     <RLOAD>E</RLOAD>
     <FIXPT>X</FIXPT>
     <UCCHECK>X</UCCHECK>
