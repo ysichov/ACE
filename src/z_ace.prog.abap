@@ -1401,7 +1401,7 @@
         mo_tree_local->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
       ENDIF.
 
-      clear tree.
+      CLEAR tree.
       LOOP AT prog-t_events INTO DATA(event).
         IF events_rel IS INITIAL.
           tree-kind = 'F'.
@@ -5366,15 +5366,17 @@
 
       DATA: structures LIKE <prog>-scan->structures.
 
+      LOOP AT <prog>-scan->structures into data(structure) where type = 'E' AND ( stmnt_type = '1' OR stmnt_type = '2' OR stmnt_type = '3' ) .
+      ENDLOOP.
       "READ TABLE <prog>-scan->structures WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
-*      IF sy-subrc = 0.
-*        structures = <prog>-scan->structures.
-*        DELETE structures WHERE type <> 'E'.
-*        LOOP AT structures  ASSIGNING FIELD-SYMBOL(<structure>) WHERE stmnt_type = 'g'.
-*          CLEAR <structure>-stmnt_type.
-*        ENDLOOP.
-*        SORT structures BY stmnt_type ASCENDING.
-*      ELSE.
+      IF sy-subrc = 0.
+        structures = <prog>-scan->structures.
+        DELETE structures WHERE type <> 'E'.
+        LOOP AT structures  ASSIGNING FIELD-SYMBOL(<structure>) WHERE stmnt_type = 'g'.
+          CLEAR <structure>-stmnt_type.
+        ENDLOOP.
+        SORT structures BY stmnt_type ASCENDING.
+      ELSE.
         CLEAR  max.
         LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'C' AND type <> 'R'.
           IF str-type = 'P' AND  str-stmnt_type = '?'.
@@ -5385,7 +5387,7 @@
             APPEND str TO structures.
           ENDIF.
         ENDLOOP.
-      "ENDIF.
+      ENDIF.
 
       LOOP AT structures INTO str.
 
@@ -5395,6 +5397,7 @@
         IF str-type = 'E'.
           "get event name.
           READ TABLE <prog>-scan->statements INDEX str-stmnt_from INTO DATA(command).
+          READ TABLE <prog>-scan->levels INDEX command-level INTO DATA(level).
           CLEAR event.
           LOOP AT <prog>-scan->tokens FROM command-from TO command-to INTO DATA(word).
             IF event IS INITIAL.
@@ -5407,7 +5410,7 @@
           IF sy-subrc <> 0.
             APPEND INITIAL LINE TO <prog>-t_events ASSIGNING FIELD-SYMBOL(<event>).
             <event>-program = <prog>-program.
-            <event>-include = <prog>-include.
+            <event>-include = level-name.
             <event>-name = event.
             <event>-line = word-row.
           ENDIF.
@@ -5453,8 +5456,8 @@
                 lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                                  i_e_name = call_line-eventname
                                                  i_e_type = call_line-eventtype
-                                                 i_program = conv #( call_line-program )
-                                                 i_include = conv #( call_line-include )
+                                                 i_program = CONV #( call_line-program )
+                                                 i_include = CONV #( call_line-include )
                                                  i_stack   =  stack
                                                  io_debugger = io_debugger ).
               ENDIF.
@@ -5536,8 +5539,19 @@
       CHECK  stack <= io_debugger->mo_window->m_hist_depth.
       IF i_include IS NOT INITIAL.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
+        IF sy-subrc <> 0.
+          lcl_ace_source_parser=>parse_tokens( i_program = i_program i_include = i_include io_debugger = io_debugger ).
+          READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO prog.
+
+        ENDIF.
+
+
       ELSE.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_program INTO prog.
+        IF sy-subrc <> 0.
+          lcl_ace_source_parser=>parse_tokens( i_program = i_program i_include = i_program io_debugger = io_debugger ).
+          READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_program INTO prog.
+        ENDIF.
       ENDIF.
       DATA(max) = lines( prog-scan->statements ).
       DO.
