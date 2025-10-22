@@ -169,8 +169,8 @@
                step       TYPE i,
                stacklevel TYPE tpda_stack_level,
                line       TYPE tpda_sc_line,
-               eventtype  TYPE tpda_event_type,
-               eventname  TYPE tpda_event,
+               eventtype  TYPE string,
+               eventname  TYPE string,
 
                first      TYPE boolean,
                last       TYPE boolean,
@@ -1400,11 +1400,13 @@
         mo_tree_local->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
       ENDIF.
 
+      clear tree.
       LOOP AT prog-t_events INTO DATA(event).
         IF events_rel IS INITIAL.
           tree-kind = 'F'.
           events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
         ENDIF.
+        tree-include = event-include.
         tree-value = event-line.
         mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
       ENDLOOP.
@@ -1730,13 +1732,13 @@
 *          ENDLOOP.
             IF ind = 1.
 
-                IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND key-name <> 'FORM' AND
-                  key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'ENDMETHOD' AND key-name <> 'MODULE' .
-                  line-ev_name = step-eventname.
-                  line-stack = step-stacklevel.
-                  line-include = step-include.
-                  INSERT line INTO results INDEX 1.
-                ENDIF.
+              IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND key-name <> 'FORM' AND
+                key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'ENDMETHOD' AND key-name <> 'MODULE' .
+                line-ev_name = step-eventname.
+                line-stack = step-stacklevel.
+                line-include = step-include.
+                INSERT line INTO results INDEX 1.
+              ENDIF.
 
             ENDIF.
           ENDIF.
@@ -4732,7 +4734,7 @@
             CLEAR  change.
             word = o_procedure->get_token( offset = sy-index ).
 
-            IF ( word CS '(' AND ( NOT word CS ')' ) AND word <> '#(' )  OR word CS '->' OR word CS '=>'."can be method call
+            IF ( word CS '(' AND ( NOT word CS ')' ) AND word <> '#(' AND word <> '=>' )  OR word CS '->'."can be method call
               call-name = word.
               call-event = 'METHOD'.
               REPLACE ALL OCCURRENCES OF '(' IN call-name WITH ''.
@@ -5360,15 +5362,15 @@
 
       DATA: structures LIKE <prog>-scan->structures.
 
-      READ TABLE <prog>-scan->structures WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
-      IF sy-subrc = 0.
-        structures = <prog>-scan->structures.
-        DELETE structures WHERE type <> 'E'.
-        LOOP AT structures  ASSIGNING FIELD-SYMBOL(<structure>) WHERE stmnt_type = 'g'.
-          CLEAR <structure>-stmnt_type.
-        ENDLOOP.
-        SORT structures BY stmnt_type ASCENDING.
-      ELSE.
+      "READ TABLE <prog>-scan->structures WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
+*      IF sy-subrc = 0.
+*        structures = <prog>-scan->structures.
+*        DELETE structures WHERE type <> 'E'.
+*        LOOP AT structures  ASSIGNING FIELD-SYMBOL(<structure>) WHERE stmnt_type = 'g'.
+*          CLEAR <structure>-stmnt_type.
+*        ENDLOOP.
+*        SORT structures BY stmnt_type ASCENDING.
+*      ELSE.
         CLEAR  max.
         LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'C' AND type <> 'R'.
           IF str-type = 'P' AND  str-stmnt_type = '?'.
@@ -5379,7 +5381,7 @@
             APPEND str TO structures.
           ENDIF.
         ENDLOOP.
-      ENDIF.
+      "ENDIF.
 
       LOOP AT structures INTO str.
 
@@ -5401,6 +5403,7 @@
           IF sy-subrc <> 0.
             APPEND INITIAL LINE TO <prog>-t_events ASSIGNING FIELD-SYMBOL(<event>).
             <event>-program = <prog>-program.
+            <event>-include = <prog>-include.
             <event>-name = event.
             <event>-line = word-row.
           ENDIF.
