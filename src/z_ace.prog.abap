@@ -168,7 +168,7 @@
              BEGIN OF t_step_counter,
                step       TYPE i,
                stacklevel TYPE tpda_stack_level,
-                line       TYPE tpda_sc_line,
+               line       TYPE tpda_sc_line,
                eventtype  TYPE tpda_event_type,
                eventname  TYPE tpda_event,
 
@@ -527,7 +527,7 @@
             mt_globals        TYPE tpda_scr_globals_it,
             mt_ret_exp        TYPE tpda_scr_locals_it,
             m_counter         TYPE i,
-            mt_steps          TYPE  TABLE OF lcl_ace_appl=>t_step_counter with NON-UNIQUE KEY line eventtype eventname, "source code steps
+            mt_steps          TYPE  TABLE OF lcl_ace_appl=>t_step_counter WITH NON-UNIQUE KEY line eventtype eventname, "source code steps
             mt_var_step       TYPE  TABLE OF lcl_ace_appl=>var_table_h,
             m_step            TYPE i,
             m_i_find          TYPE boolean,
@@ -1578,9 +1578,9 @@
       DATA(lt_selected_var) = mt_selected_var.
 
       DATA(steps) = mt_steps.
-       sort steps by line eventtype eventname.
+      SORT steps BY line eventtype eventname.
       DELETE ADJACENT DUPLICATES FROM steps.
-      sort steps by step.
+      SORT steps BY step.
       DATA: yes TYPE xfeld.
       LOOP AT steps INTO DATA(step).
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
@@ -1729,18 +1729,26 @@
 *            <line>-del = abap_true.
 *          ENDLOOP.
             IF ind = 1.
-              line-ev_name = step-eventname.
-              line-stack = step-stacklevel.
-              line-include = step-include.
-              INSERT line INTO results INDEX 1.
+
+                IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND
+                  key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
+                  line-ev_name = step-eventname.
+                  line-stack = step-stacklevel.
+                  line-include = step-include.
+                  INSERT line INTO results INDEX 1.
+                ENDIF.
+
             ENDIF.
           ENDIF.
 
         ENDLOOP.
         "if no variable - whole CodeMix flow
 *        IF sy-subrc <> 0 AND mt_selected_var IS INITIAL.
-*          IF key-name <> 'ENDMETHOD' AND key-name <> 'ENDMODULE' AND  key-name <> 'ENDFORM'.
+**          IF key-name <> 'ENDMETHOD' AND key-name <> 'ENDMODULE' AND  key-name <> 'ENDFORM' AND
+**             key-name <> 'METHOD' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
 *
+*          IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND
+*            key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
 *            READ TABLE results WITH KEY line = step-line include = line-include ev_type = line-ev_type ev_name = line-ev_name TRANSPORTING NO FIELDS.
 *            IF sy-subrc <> 0.
 *              line-line = step-line.
@@ -5376,7 +5384,7 @@
       LOOP AT structures INTO str.
 
         READ TABLE <prog>-t_keywords WITH KEY index =  str-stmnt_from INTO DATA(key).
-        lcl_ace_source_parser=>parse_tokens( i_program = conv #( key-program ) i_include = conv #( key-include ) io_debugger = io_debugger ).
+        lcl_ace_source_parser=>parse_tokens( i_program = CONV #( key-program ) i_include = CONV #( key-include ) io_debugger = io_debugger ).
 
         IF str-type = 'E'.
           "get event name.
@@ -5538,7 +5546,7 @@
           ADD 1 TO  statement.
           CONTINUE.
         ENDIF.
-                lcl_ace_source_parser=>parse_tokens( i_program = conv #( key-program ) i_include = conv #( key-include ) io_debugger = io_debugger ).
+        lcl_ace_source_parser=>parse_tokens( i_program = CONV #( key-program ) i_include = CONV #( key-include ) io_debugger = io_debugger ).
 
         READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = i_program include = key-include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
