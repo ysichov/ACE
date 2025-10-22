@@ -1397,6 +1397,7 @@
         ENDIF.
         tree-value = step-line.
         tree-kind = 'E'.
+        tree-include = step-include.
         mo_tree_local->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
       ENDIF.
 
@@ -1428,6 +1429,7 @@
             ENDIF.
             CLEAR tree.
             tree-value = keyword-line.
+            tree-include = subs-include.
             DATA(event_node) = mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
 
             CLEAR tree.
@@ -5346,6 +5348,8 @@
             stack     TYPE i,
             statement TYPE i.
 
+      SORT io_debugger->mo_window->ms_sources-tt_calls_line.
+
       READ TABLE io_debugger->mt_steps WITH KEY program = i_include eventname = i_evname eventtype = i_evtype TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         RETURN.
@@ -5449,8 +5453,8 @@
                 lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                                  i_e_name = call_line-eventname
                                                  i_e_type = call_line-eventtype
-                                                 i_program = i_program
-                                                 i_include = i_include
+                                                 i_program = conv #( call_line-program )
+                                                 i_include = conv #( call_line-include )
                                                  i_stack   =  stack
                                                  io_debugger = io_debugger ).
               ENDIF.
@@ -5535,7 +5539,7 @@
       ELSE.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_program INTO prog.
       ENDIF.
-      DATA(max) = lines( prog-t_keywords ).
+      DATA(max) = lines( prog-scan->statements ).
       DO.
         IF  statement >  max.
           EXIT.
