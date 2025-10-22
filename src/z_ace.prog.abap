@@ -5422,7 +5422,7 @@
           READ TABLE <prog>-t_keywords WITH KEY index =   statement INTO key.
 
           IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS'
-            OR key-name = 'PARAMETERS' OR key-name = 'INCLUDE' OR key-name IS INITIAL OR sy-subrc <> 0.
+            OR key-name = 'PARAMETERS' OR key-name = 'INCLUDE' OR key-name = 'REPORT' OR key-name IS INITIAL OR sy-subrc <> 0.
             ADD 1 TO  statement.
             CONTINUE.
           ENDIF.
