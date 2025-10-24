@@ -12,9 +12,13 @@
 
   " & External resources
   " & https://github.com/WegnerDan/abapMermaid
-
-  PARAMETERS: p_prog   TYPE progname MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY,
-              p_dest   TYPE text255 MEMORY ID dest,
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT (29) TEXT-002 FOR FIELD p_prog.
+    SELECTION-SCREEN POSITION 35.
+    PARAMETERS: p_prog  TYPE progname MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY.
+    SELECTION-SCREEN COMMENT (70) TEXT-001 FOR FIELD p_prog.
+  SELECTION-SCREEN END OF LINE.
+  PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
               p_model  TYPE text255 MEMORY ID model,
               p_apikey TYPE text255 MEMORY ID api.
 
@@ -5366,7 +5370,7 @@
 
       DATA: structures LIKE <prog>-scan->structures.
 
-      LOOP AT <prog>-scan->structures into data(structure) where type = 'E' AND ( stmnt_type = '1' OR stmnt_type = '2' OR stmnt_type = '3' ) .
+      LOOP AT <prog>-scan->structures INTO DATA(structure) WHERE type = 'E' AND ( stmnt_type = '1' OR stmnt_type = '2' OR stmnt_type = '3' ) .
       ENDLOOP.
       "READ TABLE <prog>-scan->structures WITH KEY type = 'E' TRANSPORTING  NO FIELDS.
       IF sy-subrc = 0.
@@ -6271,6 +6275,15 @@
     lcl_ace_appl=>init_lang( ).
     lcl_ace_appl=>init_icons_table( ).
     WRITE 1.
+
+    DATA itab TYPE TABLE OF sy-ucomm.
+
+    APPEND: 'ONLI' TO itab.
+    CALL FUNCTION 'RS_SET_SELSCREEN_STATUS'
+      EXPORTING
+        p_status  = sy-pfkey
+      TABLES
+        p_exclude = itab.
 
   AT SELECTION-SCREEN.
 

@@ -11,15 +11,21 @@
    </PROGDIR>
    <TPOOL>
     <item>
-     <ID>R</ID>
-     <ENTRY>ACE: ABAP Code Explorer beta v. 0.5</ENTRY>
-     <LENGTH>36</LENGTH>
+     <ID>I</ID>
+     <KEY>001</KEY>
+     <ENTRY>   Press Enter to Run selected program analysis</ENTRY>
+     <LENGTH>88</LENGTH>
     </item>
     <item>
-     <ID>S</ID>
-     <KEY>GV_PROG</KEY>
-     <ENTRY>Program</ENTRY>
-     <LENGTH>15</LENGTH>
+     <ID>I</ID>
+     <KEY>002</KEY>
+     <ENTRY>Program/Include</ENTRY>
+     <LENGTH>25</LENGTH>
+    </item>
+    <item>
+     <ID>R</ID>
+     <ENTRY>ACE: ABAP Code Explorer beta v. 0.5</ENTRY>
+     <LENGTH>35</LENGTH>
     </item>
     <item>
      <ID>S</ID>
