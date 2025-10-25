@@ -27,7 +27,7 @@ Type in program, press enter - new window will be opened.
 **Update2:** Programs/forms/functions/classes/methods and its parameters were added for navigation. 
  Double-click on a variable name is acting like set/unset watchpoint for Code Flow Smart Mixer. And for simple cases we don't need a debugger or Smart Debugger at all to catch the value origin of selected variable(s).
 
-Watchpoints without debug!!! In programming theory it is called Data Dependency Analysis or Backward Program Slicing which builds a data dependency graph. Some programming languages have such Tools. And ABAP now also has )
+Watchpoints without debug! In programming theory it is called Data Dependency Analysis or Backward Program Slicing which builds a data dependency graph. Some programming languages have such Tools. And ABAP now also has )
 
 Below on the screenshot variable EV_SAL(1) was choosen and CodeMix button generated code flow:
 2 - EV_SAL need lv_income and lv_deduct to calc
