@@ -4690,7 +4690,11 @@
           token-line = calculated-line = composed-line = l_token-row.
           token-program = i_program.
           READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
+          IF level-type <> 'D'. "Define Macros
           token-include = level-name.
+          ELSE.
+            token-include = i_include.
+          ENDIF.
           calculated-program = composed-program = i_include.
 
           DATA  new TYPE boolean.
@@ -5507,6 +5511,9 @@
             prefix    TYPE string,
             program   TYPE program.
 
+      stack = i_stack + 1.
+      CHECK  stack <= io_debugger->mo_window->m_hist_depth.
+
       READ TABLE io_debugger->mt_steps WITH KEY program = i_include eventname = i_e_name eventtype = i_e_type TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         RETURN.
@@ -5539,8 +5546,6 @@
         statement = 1.
       ENDIF.
 
-      stack = i_stack + 1.
-      CHECK  stack <= io_debugger->mo_window->m_hist_depth.
       IF i_include IS NOT INITIAL.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
         IF sy-subrc <> 0.
