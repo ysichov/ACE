@@ -1752,23 +1752,23 @@
 
         ENDLOOP.
         "if no variable - whole CodeMix flow
-*        IF sy-subrc <> 0 AND mt_selected_var IS INITIAL.
-**          IF key-name <> 'ENDMETHOD' AND key-name <> 'ENDMODULE' AND  key-name <> 'ENDFORM' AND
-**             key-name <> 'METHOD' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
-*
-*          IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND
-*            key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
-*            READ TABLE results WITH KEY line = step-line include = line-include ev_type = line-ev_type ev_name = line-ev_name TRANSPORTING NO FIELDS.
-*            IF sy-subrc <> 0.
-*              line-line = step-line.
-*              line-ev_name = step-eventname.
-*              line-stack = step-stacklevel.
-*              line-include = step-include.
-*              line-ev_type = step-eventtype.
-*              INSERT line INTO results INDEX 1.
-*            ENDIF.
-*          ENDIF.
-*        ENDIF.
+        IF sy-subrc <> 0 AND mt_selected_var IS INITIAL.
+*          IF key-name <> 'ENDMETHOD' AND key-name <> 'ENDMODULE' AND  key-name <> 'ENDFORM' AND
+*             key-name <> 'METHOD' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
+
+          IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND
+            key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
+            READ TABLE results WITH KEY line = step-line include = line-include ev_type = line-ev_type ev_name = line-ev_name TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              line-line = step-line.
+              line-ev_name = step-eventname.
+              line-stack = step-stacklevel.
+              line-include = step-include.
+              line-ev_type = step-eventtype.
+              INSERT line INTO results INDEX 1.
+            ENDIF.
+          ENDIF.
+        ENDIF.
 
       ENDLOOP.
 
