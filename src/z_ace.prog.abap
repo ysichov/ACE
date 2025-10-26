@@ -1795,11 +1795,13 @@
           SORT keyword-tt_calls BY outer.
           DELETE ADJACENT DUPLICATES FROM keyword-tt_calls.
           LOOP AT keyword-tt_calls INTO call.
+            <line>-subname = call-name.
+            CHECK call-outer IS NOT INITIAL AND call-inner IS NOT INITIAL.
             IF sy-tabix <> 1.
               <line>-arrow = |{ <line>-arrow }, |.
             ENDIF.
             <line>-arrow  = |{ <line>-arrow  } { call-outer } { call-type } { call-inner }|.
-            <line>-subname = call-name.
+
             REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
             REPLACE ALL OCCURRENCES OF '"' IN  <line>-code WITH ''.
           ENDLOOP.
@@ -6079,10 +6081,10 @@
         DATA:  name TYPE string.
         IF    line-cond = 'LOOP' OR line-cond = 'DO' OR line-cond = 'WHILE' OR line-subname IS NOT INITIAL .
 
-          IF line-arrow IS NOT INITIAL.
-            mm_string = |{  mm_string }{  ind }{  box_s }"{ line-code }"{  box_e }\n|.
-            pre_stack = line.
-          ENDIF.
+          "IF line-arrow IS NOT INITIAL.
+          mm_string = |{  mm_string }{  ind }{  box_s }"{ line-code }"{  box_e }\n|.
+          pre_stack = line.
+          "ENDIF.
 
           IF strlen( line-code ) > 50.
             name = line-code+0(50).
@@ -6100,8 +6102,9 @@
             mm_string = |{  mm_string } subgraph S{  ind }["{  name }"]\n  direction {  direction }\n|.
             ADD 1 TO  opened.
             start =  ind.
+            CONTINUE.
           ENDIF.
-          CONTINUE.
+
         ENDIF.
 
         IF line-cond = 'ENDLOOP' OR line-cond = 'ENDDO' OR line-cond = 'ENDWHILE'.
