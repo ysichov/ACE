@@ -199,6 +199,7 @@
                index     TYPE i,
                line      TYPE i,
                v_line    TYPE i, "virtual line in code Mix
+               sub       TYPE boolean, "subcode: class/form...
                name      TYPE string,
                from      TYPE i,
                to        TYPE i,
@@ -4691,7 +4692,7 @@
           token-program = i_program.
           READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
           IF level-type <> 'D'. "Define Macros
-          token-include = level-name.
+            token-include = level-name.
           ELSE.
             token-include = i_include.
           ENDIF.
@@ -4736,6 +4737,10 @@
             DATA(count) = 0.
           ENDIF.
           CLEAR:  new, token-to_evname, token-to_evtype, token-to_class .
+
+          IF eventname IS  NOT INITIAL OR class IS NOT INITIAL.
+            token-sub = abap_true.
+          ENDIF.
 
           WHILE 1 = 1.
             IF kw IS INITIAL.
@@ -5433,7 +5438,9 @@
           READ TABLE <prog>-t_keywords WITH KEY index =   statement INTO key.
 
           IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS'
-            OR key-name = 'PARAMETERS' OR key-name = 'INCLUDE' OR key-name = 'REPORT' OR key-name IS INITIAL OR sy-subrc <> 0.
+            OR key-name = 'PARAMETERS' OR key-name = 'INCLUDE' OR key-name = 'REPORT'
+            OR key-name IS INITIAL OR sy-subrc <> 0 OR key-sub IS NOT INITIAL.
+
             ADD 1 TO  statement.
             CONTINUE.
           ENDIF.
