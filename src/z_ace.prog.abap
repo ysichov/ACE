@@ -5951,7 +5951,6 @@
 
       LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
         IF <copy>-eventtype = 'METHOD'.
-          "SPLIT <copy>-program AT '=' INTO TABLE parts.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line WITH KEY include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname INTO DATA(call_line).
           <copy>-eventname = entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
           entity-event = <copy>-eventtype.
@@ -6078,7 +6077,7 @@
 
         ENDIF.
         DATA:  name TYPE string.
-        IF    line-cond = 'LOOP' OR line-cond = 'DO' OR line-cond = 'WHILE' OR line-arrow IS NOT INITIAL .
+        IF    line-cond = 'LOOP' OR line-cond = 'DO' OR line-cond = 'WHILE' OR line-subname IS NOT INITIAL .
 
           IF line-arrow IS NOT INITIAL.
             mm_string = |{  mm_string }{  ind }{  box_s }"{ line-code }"{  box_e }\n|.
@@ -6096,9 +6095,12 @@
           REPLACE ALL OCCURRENCES OF `-` IN  name WITH `~` IN CHARACTER MODE.
           REPLACE ALL OCCURRENCES OF ` ` IN  name WITH `&nbsp;` IN CHARACTER MODE.
 
-          mm_string = |{  mm_string } subgraph S{  ind }["{  name }"]\n  direction {  direction }\n|.
-          ADD 1 TO  opened.
-          start =  ind.
+          READ TABLE lines INDEX ind + 1 INTO DATA(line2).
+          IF sy-subrc = 0 AND line-stack <> line2-stack.
+            mm_string = |{  mm_string } subgraph S{  ind }["{  name }"]\n  direction {  direction }\n|.
+            ADD 1 TO  opened.
+            start =  ind.
+          ENDIF.
           CONTINUE.
         ENDIF.
 
