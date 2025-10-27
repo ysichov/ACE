@@ -4723,7 +4723,7 @@
           IF kw = 'ENDCLASS'.
             call_line-class = param-class = ''.
           ENDIF.
-          IF kw = 'ENDFORM' OR kw = 'ENDMETHOD' OR kw = 'ENDMODULE'.
+          IF kw = 'ENDFORM' OR kw = 'ENDMETHOD' OR kw = 'ENDMODULE' OR kw = 'END-OF-DEFINITION'.
             CLEAR:  eventtype,  eventname, tabs, variable.
             IF param-param IS INITIAL. "No params - save empty row if no params
               READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = param-event name = param-name TRANSPORTING NO FIELDS.
@@ -4905,7 +4905,7 @@
             ENDIF.
 
             IF word <> 'CHANGING' AND word <> 'EXPORTING' AND word <> 'RETURNING' AND word <> 'IMPORTING' AND word <> 'USING'.
-              IF kw = 'FORM' OR kw = 'METHODS' OR kw = 'CLASS-METHODS'.
+              IF kw = 'FORM' OR kw = 'METHODS' OR kw = 'CLASS-METHODS' OR kw = 'DEFINE'.
                 IF  par = abap_true AND  type IS INITIAL AND word NE 'TYPE'.
 
                   APPEND param TO io_debugger->mo_window->ms_sources-t_params.
