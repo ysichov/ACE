@@ -4236,6 +4236,7 @@
     ENDMETHOD.
 
     METHOD init_lang.
+      ULINE.
 *    SELECT c~spras t~sptxt INTO CORRESPONDING FIELDS OF TABLE mt_lang
 *      FROM t002c AS c
 *      INNER JOIN t002t AS t
@@ -4751,6 +4752,10 @@
             CLEAR  change.
             word = o_procedure->get_token( offset = sy-index ).
 
+            IF word = 'DEFERRED'.
+              CLEAR: class, call_line.
+            ENDIF.
+
             IF ( word CS '(' AND ( NOT word CS ')' ) AND word <> '#(' AND word <> '=>' )  OR word CS '->'."can be method call
               call-name = word.
               call-event = 'METHOD'.
@@ -5204,7 +5209,7 @@
                   ENDIF.
                 ENDIF.
               ELSE.
-                IF NOT  temp  CO '0123456789. ' AND  temp <> '=' AND (  import = abap_true OR  export = abap_true ).
+                IF NOT  temp  CO '0123456789. ' AND  temp <> '=' AND temp <> ')' AND (  import = abap_true OR  export = abap_true ).
                   call-inner =  temp.
                 ENDIF.
               ENDIF.
@@ -5274,9 +5279,11 @@
           ENDIF.
           "check class names
 
-          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line INTO call_line WITH KEY eventname = token-to_evname  eventtype = token-to_evtype .
-          IF sy-subrc = 0.
-            token-to_class = call_line-class.
+          IF token-to_class IS INITIAL AND token-to_evname <> 'CONSTRUCTOR'. "to refactor
+            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line INTO call_line WITH KEY eventname = token-to_evname  eventtype = token-to_evtype .
+            IF sy-subrc = 0.
+              token-to_class = call_line-class.
+            ENDIF.
           ENDIF.
 
           APPEND token TO tokens.
@@ -6292,12 +6299,6 @@
 
   ENDCLASS.
 
-  AT SELECTION-SCREEN.
-
-    SET PARAMETER ID 'API' FIELD p_apikey.
-
-    DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
-
   INITIALIZATION.
 
     lcl_ace_appl=>init_lang( ).
@@ -6312,3 +6313,9 @@
         p_status  = sy-pfkey
       TABLES
         p_exclude = itab.
+
+  AT SELECTION-SCREEN.
+
+    SET PARAMETER ID 'API' FIELD p_apikey.
+
+    DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
