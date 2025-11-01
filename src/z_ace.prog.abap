@@ -4724,7 +4724,7 @@
             call_line-class = param-class = ''.
           ENDIF.
           IF kw = 'ENDFORM' OR kw = 'ENDMETHOD' OR kw = 'ENDMODULE'.
-            CLEAR:  eventtype,  eventname, tabs, variable.
+            CLEAR:  eventtype,  eventname, tabs, variable, token-sub.
             IF param-param IS INITIAL. "No params - save empty row if no params
               READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = param-event name = param-name TRANSPORTING NO FIELDS.
               IF sy-subrc <> 0.
@@ -4740,7 +4740,7 @@
           ENDIF.
           CLEAR:  new, token-to_evname, token-to_evtype, token-to_class .
 
-          IF eventname IS  NOT INITIAL OR class IS NOT INITIAL.
+          IF eventname IS  NOT INITIAL OR class IS NOT INITIAL AND eventtype <> 'EVENT'.
             token-sub = abap_true.
           ENDIF.
 
@@ -5264,6 +5264,8 @@
                 ENDIF.
               ENDIF.
             ENDIF.
+
+
           ENDWHILE.
           token-from = statement-from.
           token-to = statement-to.
@@ -5278,6 +5280,9 @@
           ENDIF.
 
           APPEND token TO tokens.
+          IF kw = 'ENDCLASS'.
+            CLEAR: token-sub, class.
+          ENDIF.
           IF o_procedure->statement_index =  max.
             EXIT.
           ENDIF.
@@ -6287,6 +6292,12 @@
 
   ENDCLASS.
 
+  AT SELECTION-SCREEN.
+
+    SET PARAMETER ID 'API' FIELD p_apikey.
+
+    DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
+
   INITIALIZATION.
 
     lcl_ace_appl=>init_lang( ).
@@ -6301,9 +6312,3 @@
         p_status  = sy-pfkey
       TABLES
         p_exclude = itab.
-
-  AT SELECTION-SCREEN.
-
-    SET PARAMETER ID 'API' FIELD p_apikey.
-
-    DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
