@@ -175,6 +175,7 @@
                line       TYPE tpda_sc_line,
                eventtype  TYPE string,
                eventname  TYPE string,
+               class      TYPE string,
 
                first      TYPE boolean,
                last       TYPE boolean,
@@ -510,6 +511,7 @@
                include    TYPE string,
                line       TYPE i,
                ind        TYPE i,
+               class      TYPE string,
                ev_name    TYPE string,
                ev_type    TYPE string,
                stack      TYPE i,
@@ -1713,6 +1715,7 @@
           <line>-ev_name = step-eventname.
           <line>-stack = step-stacklevel.
           <line>-include = step-include.
+          <line>-class = step-class.
         ENDIF.
 
         CLEAR ind.
@@ -1744,6 +1747,7 @@
                 line-ev_name = step-eventname.
                 line-stack = step-stacklevel.
                 line-include = step-include.
+                line-class = step-class.
                 INSERT line INTO results INDEX 1.
               ENDIF.
 
@@ -1765,6 +1769,7 @@
               line-stack = step-stacklevel.
               line-include = step-include.
               line-ev_type = step-eventtype.
+              line-class = step-class.
               INSERT line INTO results INDEX 1.
             ENDIF.
           ENDIF.
@@ -1927,10 +1932,9 @@
 
       DATA: flow_lines TYPE sci_include,
             splits     TYPE TABLE OF string,
-            form       TYPE string,
-            ind        TYPE i.
 
-      CLEAR form.
+            ind        TYPE i,
+            prev_line  TYPE ts_line.
 
       DATA(lines) = get_code_flow( ).
       LOOP AT mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_mix>).
@@ -1956,13 +1960,16 @@
         DATA(to_row) = prog-scan->tokens[ keyword-to ]-row.
         DATA(spaces) = repeat( val = | | occ = ( line-stack - 1 ) * 3 ).
         DATA(dashes) = repeat( val = |-| occ = ( line-stack ) ).
-        IF form <> line-ev_name. "new event
+        IF prev_line-ev_name <> line-ev_name OR prev_line-ev_type <> line-ev_type. "new event
           SPLIT line-include AT '=' INTO TABLE splits.
-
 
           APPEND INITIAL LINE TO flow_lines ASSIGNING FIELD-SYMBOL(<flow>).
           ind  = sy-tabix.
-          <flow> =  |"{ dashes } { line-ev_type } { line-ev_name } in { splits[ 1 ] }|.
+          IF line-class IS INITIAL.
+            <flow> =  |"{ dashes } { line-ev_type } { line-ev_name } in { splits[ 1 ] }|.
+          ELSE.
+            <flow> =  |"{ dashes } { line-ev_type } { line-ev_name } in { line-class }|.
+          ENDIF.
         ENDIF.
 
         <keyword_mix>-v_line = ind + 1.
@@ -1972,7 +1979,7 @@
           ind = sy-tabix.
           <flow> = |{ spaces }{ source_line }|.
         ENDLOOP.
-        form = line-ev_name.
+        prev_line = line.
       ENDLOOP.
 
       mo_window->mo_code_viewer->set_text( table = flow_lines ).
@@ -2108,9 +2115,9 @@
 
       lcl_ace_source_parser=>parse_tokens( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
 
-        IF mo_viewer->m_step IS INITIAL.
-          lcl_ace_source_parser=>code_execution_scanner( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
-         ENDIF.
+      IF mo_viewer->m_step IS INITIAL.
+        lcl_ace_source_parser=>code_execution_scanner( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+      ENDIF.
 
       LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
         CLEAR <prog>-selected.
@@ -5352,28 +5359,28 @@
         APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
 
         "IF io_debugger->m_step IS INITIAL.
-          "code_execution_scanner( i_program = i_include i_include = i_include io_debugger = io_debugger ).
+        "code_execution_scanner( i_program = i_include i_include = i_include io_debugger = io_debugger ).
 
-          "Fill keyword links for calls
-          LOOP AT io_debugger->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
-            LOOP AT prog-t_keywords ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
+        "Fill keyword links for calls
+        LOOP AT io_debugger->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
+          LOOP AT prog-t_keywords ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
 
-              READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
-              index = 0.
-              LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param WHERE event = call-event AND name = call-name .
-                ADD 1 TO  index.
-                READ TABLE <s_token>-tt_calls INDEX  index ASSIGNING <call>.
-                IF sy-subrc = 0.
-                  <call>-inner = param-param.
-                  IF param-type = 'I'.
-                    <call>-type = '>'.
-                  ELSE.
-                    <call>-type = '<'.
-                  ENDIF.
+            READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
+            index = 0.
+            LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param WHERE event = call-event AND name = call-name .
+              ADD 1 TO  index.
+              READ TABLE <s_token>-tt_calls INDEX  index ASSIGNING <call>.
+              IF sy-subrc = 0.
+                <call>-inner = param-param.
+                IF param-type = 'I'.
+                  <call>-type = '>'.
+                ELSE.
+                  <call>-type = '<'.
                 ENDIF.
-              ENDLOOP.
+              ENDIF.
             ENDLOOP.
           ENDLOOP.
+        ENDLOOP.
 
 
         "ENDIF.
@@ -5496,6 +5503,9 @@
             <step>-stacklevel =  stack.
             <step>-program = i_program.
             <step>-include = key-include.
+            IF  <step>-eventtype = 'METHOD'.
+
+            ENDIF.
           ENDIF.
           IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
 
@@ -5631,6 +5641,7 @@
           <step>-stacklevel =  stack.
           <step>-program = i_program.
           <step>-include = key-include.
+          <step>-class   = i_class.
         ENDIF.
         IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
           .
@@ -5740,9 +5751,9 @@
           lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                 i_e_name = call_line-eventname
                                 i_e_type = call_line-eventtype
-                                i_program =  conv #( call_line-program )
-                                i_include =  conv #( call_line-include )
-                                i_class = key-to_class
+                                i_program =  CONV #( call_line-program )
+                                i_include =  CONV #( call_line-include )
+                                i_class = call_line-class
                                 i_stack   =  i_stack
                                 io_debugger = io_debugger ).
         ENDIF.
