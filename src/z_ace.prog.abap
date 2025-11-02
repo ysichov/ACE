@@ -2108,6 +2108,10 @@
 
       lcl_ace_source_parser=>parse_tokens( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
 
+        IF mo_viewer->m_step IS INITIAL.
+          lcl_ace_source_parser=>code_execution_scanner( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+         ENDIF.
+
       LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
         CLEAR <prog>-selected.
       ENDLOOP.
@@ -5347,8 +5351,8 @@
         prog-program = i_program.
         APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
 
-        IF io_debugger->m_step IS INITIAL.
-          code_execution_scanner( i_program = i_include i_include = i_include io_debugger = io_debugger ).
+        "IF io_debugger->m_step IS INITIAL.
+          "code_execution_scanner( i_program = i_include i_include = i_include io_debugger = io_debugger ).
 
           "Fill keyword links for calls
           LOOP AT io_debugger->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
@@ -5372,7 +5376,7 @@
           ENDLOOP.
 
 
-        ENDIF.
+        "ENDIF.
 
 
 
