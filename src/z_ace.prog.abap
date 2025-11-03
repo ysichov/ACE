@@ -4848,9 +4848,9 @@
 
                 MOVE-CORRESPONDING tab TO call_line.
                 call_line-index = o_procedure->statement_index + 1.
-                IF call_line-class IS INITIAL.
+                "IF call_line-class IS INITIAL.
                   call_line-class = class_name.
-                ENDIF.
+                "ENDIF.
 
                 "methods in definition should be overwritten by Implementation section
                 READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
