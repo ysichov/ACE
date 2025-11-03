@@ -4647,7 +4647,8 @@
             class           TYPE boolean,
             cl_name         TYPE string,
             preferred       TYPE boolean,
-            method_type     TYPE i.
+            method_type     TYPE i,
+            class_name      TYPE string.
 
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
       IF sy-subrc <> 0.
@@ -4834,7 +4835,12 @@
               ENDIF.
 
               IF sy-index = 2 AND  class = abap_true AND param-class IS INITIAL.
-                call_line-class = param-class = word.
+                call_line-class = word.
+                param-class = word.
+              ENDIF.
+
+              IF sy-index = 2 AND  kw = 'CLASS'.
+                class_name = word.
               ENDIF.
 
               IF sy-index = 2 AND  eventtype IS NOT INITIAL AND  eventname IS INITIAL.
@@ -4842,6 +4848,10 @@
 
                 MOVE-CORRESPONDING tab TO call_line.
                 call_line-index = o_procedure->statement_index + 1.
+                IF call_line-class IS INITIAL.
+                  call_line-class = class_name.
+                ENDIF.
+
                 "methods in definition should be overwritten by Implementation section
                 READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
                  WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
@@ -5073,6 +5083,7 @@
 
                     READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventtype = call_line-eventtype eventname = call_line-eventname TRANSPORTING NO FIELDS.
                     IF sy-subrc <> 0.
+                      CLEAR call_line-class.
                       APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
                     ENDIF.
 
@@ -6333,10 +6344,7 @@
 
   INITIALIZATION.
 
-    lcl_ace_appl=>init_lang( ).
-    lcl_ace_appl=>init_icons_table( ).
-    WRITE 1.
-
+    "supressing F8 button
     DATA itab TYPE TABLE OF sy-ucomm.
 
     APPEND: 'ONLI' TO itab.
@@ -6347,7 +6355,5 @@
         p_exclude = itab.
 
   AT SELECTION-SCREEN.
-
-    SET PARAMETER ID 'API' FIELD p_apikey.
 
     DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
