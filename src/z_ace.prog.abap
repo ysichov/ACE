@@ -455,6 +455,7 @@
 
       "CLASS-DATA: mv_step TYPE i.
       CLASS-METHODS: parse_tokens IMPORTING i_program TYPE program
+                                            i_main TYPE boolean OPTIONAL
                                             i_include TYPE program
                                             io_debugger TYPE REF TO lcl_ace
                                             i_class TYPE string OPTIONAL
@@ -1367,7 +1368,7 @@
       IF  mo_window->m_prg-line IS INITIAL.
         mo_window->m_prg-line = mo_window->mt_stack[ 1 ]-line.
       ENDIF.
-      mo_window->set_program_line( mo_window->m_prg-line ).
+      mo_window->set_program_line( 1 ).
 
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY program = mo_window->m_prg-program INTO DATA(prog).
 
@@ -1899,7 +1900,9 @@
             ENDIF.
           ENDDO.
           IF when_count = 1.
-            <if>-if_ind = els_before.
+            IF <if> IS ASSIGNED. "to refactor
+              <if>-if_ind = els_before.
+            ENDIF.
             CLEAR <line>-els_before.
           ENDIF.
         ENDIF.
@@ -4649,9 +4652,16 @@
             cl_name         TYPE string,
             preferred       TYPE boolean,
             method_type     TYPE i,
-            class_name      TYPE string.
+            class_name      TYPE string,
+            main_prog       TYPE program.
 
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
+      IF i_main = abap_true.
+        main_prog = i_program.
+      ELSE.
+        main_prog = i_include.
+      ENDIF.
+
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = main_prog INTO DATA(prog).
       IF sy-subrc <> 0.
 
         DATA(o_source) = cl_ci_source_include=>create( p_name = i_include ).
@@ -4662,7 +4672,6 @@
 
         o_statement = cl_cikzn_scan_iterator_factory=>get_statement_iterator( ciscan = o_scan ).
         o_procedure = cl_cikzn_scan_iterator_factory=>get_procedure_iterator( ciscan = o_scan ).
-
 
         "methods in definition should be overwritten by Implementation section
         IF i_class IS NOT INITIAL.
@@ -4699,12 +4708,14 @@
           token-program = i_program.
           READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
           IF level-type <> 'D'. "Define Macros
+            IF i_include <> level-name. "includes will be processed separately
+              lcl_ace_source_parser=>parse_tokens( i_program = CONV #( token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
+            ENDIF.
+
             token-include = level-name.
+
           ELSE.
             token-include = i_include.
-          ENDIF.
-          IF token-program <> token-include. "includes will be processed separately
-            lcl_ace_source_parser=>parse_tokens( i_program = CONV #( token-include ) i_include = CONV #( token-include ) io_debugger = io_debugger ).
           ENDIF.
           calculated-program = composed-program = i_include.
 
@@ -4770,14 +4781,18 @@
               FIND FIRST OCCURRENCE OF '->' IN  call-name.
               IF sy-subrc = 0.
                 SPLIT call-name  AT '->' INTO TABLE split.
-                call-class = split[ 1 ].
+                IF split[ 1 ] <> ')'."to refactor
+                  call-class = split[ 1 ].
+                ENDIF.
                 call-name = split[ 2 ].
               ENDIF.
 
               FIND FIRST OCCURRENCE OF '=>' IN  call-name.
               IF sy-subrc = 0.
                 SPLIT call-name  AT '=>' INTO TABLE split.
-                call-class = split[ 1 ].
+                IF split[ 1 ] <> ')'."to refactor
+                  call-class = split[ 1 ].
+                ENDIF.
                 call-name = split[ 2 ].
               ENDIF.
 
@@ -5394,11 +5409,6 @@
             ENDLOOP.
           ENDLOOP.
         ENDLOOP.
-
-
-        "ENDIF.
-
-
 
       ENDIF.
 
