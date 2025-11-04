@@ -1379,7 +1379,7 @@
       IF mo_window->m_prg-include <> 'Code_Flow_Mix'.
         mo_window->show_coverage( ).
       ENDIF.
-      IF  mo_window->m_prg-line IS INITIAL.
+      IF  mo_window->m_prg-line IS INITIAL AND mo_window->mt_stack IS NOT INITIAL.
         mo_window->m_prg-line = mo_window->mt_stack[ 1 ]-line.
       ENDIF.
       mo_window->set_program_line( 1 ).
@@ -6421,4 +6421,10 @@
 
   AT SELECTION-SCREEN.
 
-    DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
+    SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
+
+    IF sy-dbcnt <> 0.
+      DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
+    ELSE.
+      MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
+    ENDIF.
