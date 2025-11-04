@@ -195,20 +195,20 @@
              tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer,
 
              BEGIN OF ts_kword,
-               program   TYPE string,
-               include   TYPE string,
-               index     TYPE i,
-               line      TYPE i,
-               v_line    TYPE i, "virtual line in code Mix
-               sub       TYPE boolean, "subcode: class/form...
-               name      TYPE string,
-               from      TYPE i,
-               to        TYPE i,
-               tt_calls  TYPE tt_calls,
-               to_prog   TYPE string,
-               to_class  TYPE string,
-               to_evtype TYPE string,
-               to_evname TYPE string,
+               program  TYPE string,
+               include  TYPE string,
+               index    TYPE i,
+               line     TYPE i,
+               v_line   TYPE i, "virtual line in code Mix
+               sub      TYPE boolean, "subcode: class/form...
+               name     TYPE string,
+               from     TYPE i,
+               to       TYPE i,
+               tt_calls TYPE tt_calls,
+               "to_prog   TYPE string,
+               "to_class  TYPE string,
+               "to_evtype TYPE string,
+               "to_evname TYPE string,
              END OF ts_kword,
 
              BEGIN OF ts_tree,
@@ -470,11 +470,13 @@
 
         parse_class IMPORTING key TYPE lcl_ace_appl=>ts_kword
                               i_include TYPE program
+                              i_call  TYPE lcl_ace_appl=>ts_calls
                               i_stack   TYPE i
                               io_debugger TYPE REF TO lcl_ace,
 
         parse_screen IMPORTING key TYPE lcl_ace_appl=>ts_kword
                                i_stack   TYPE i
+                               i_call  TYPE lcl_ace_appl=>ts_calls
                                io_debugger TYPE REF TO lcl_ace,
 
         code_execution_scanner IMPORTING i_program TYPE program
@@ -1762,6 +1764,7 @@
                 line-stack = step-stacklevel.
                 line-include = step-include.
                 line-class = step-class.
+                line-ev_type = step-eventtype.
                 INSERT line INTO results INDEX 1.
               ENDIF.
 
@@ -1810,7 +1813,7 @@
           ENDIF.
         ENDLOOP.
 
-        IF keyword-to_evname IS NOT INITIAL.
+        IF keyword-tt_calls IS NOT INITIAL.
           SORT keyword-tt_calls BY outer.
           DELETE ADJACENT DUPLICATES FROM keyword-tt_calls.
           LOOP AT keyword-tt_calls INTO call.
@@ -4788,7 +4791,7 @@
             IF kw = 'ASSIGN' OR kw = 'ADD' OR kw = 'SUBTRACT' .
               DATA(count) = 0.
             ENDIF.
-            CLEAR:  new, token-to_evname, token-to_evtype, token-to_class .
+            CLEAR new.
 
             IF eventname IS  NOT INITIAL OR class IS NOT INITIAL AND eventtype <> 'EVENT'.
               token-sub = abap_true.
@@ -4809,7 +4812,7 @@
 
                 IF call-event = 'METHOD' AND call-name IS NOT INITIAL.
                   APPEND call TO token-tt_calls.
-                  CLEAR call.
+                  CLEAR: call-event, call-type, call-name, call-outer, call-inner.
                 ENDIF.
 
                 call-name = word.
@@ -4841,11 +4844,11 @@
                   call-class  =  i_class.
                 ENDIF.
 
-                token-to_evname = call-name.
-                token-to_evtype = call-event = 'METHOD'.
+                "token-to_evname = call-name.
+                call-event = 'METHOD'.
                 IF  new = abap_true.
                   call-class = call-name.
-                  call-name =  token-to_evname = 'CONSTRUCTOR'.
+                  call-name = 'CONSTRUCTOR'.
                 ENDIF.
                 IF  new = abap_true.
 
@@ -4867,7 +4870,7 @@
                   call-class = refvar-class.
                 ENDIF.
 
-                token-to_class = call-class.
+                "token-to_class = call-class.
               ENDIF.
 
               IF word = '#('.
@@ -4884,8 +4887,8 @@
               ENDIF.
 
               IF sy-index = 2 AND kw = 'PERFORM'.
-                token-to_evname = call-name = word.
-                token-to_evtype = call-event = 'FORM'.
+                call-name = word.
+                call-event = 'FORM'.
               ENDIF.
 
               IF sy-index = 2 AND  class = abap_true AND param-class IS INITIAL.
@@ -5131,9 +5134,9 @@
                         export.
 
                   IF  prev = 'FUNCTION' AND kw = 'CALL'.
-                    call_line-eventtype = token-to_evtype =   call-event = 'FUNCTION'.
-                    call_line-eventname = token-to_evname =  call-name = word.
-                    REPLACE ALL OCCURRENCES OF '''' IN  token-to_evname WITH ''.
+                    call_line-eventtype = call-event = 'FUNCTION'.
+                    call_line-eventname = call-name = word.
+                    "REPLACE ALL OCCURRENCES OF '''' IN  token-to_evname WITH ''.
                     REPLACE ALL OCCURRENCES OF '''' IN  call_line-eventname WITH ''.
 
                     READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventtype = call_line-eventtype eventname = call_line-eventname TRANSPORTING NO FIELDS.
@@ -5145,8 +5148,10 @@
                   ENDIF.
 
                   IF  prev = 'SCREEN' AND kw = 'CALL'.
-                    token-to_evtype = 'SCREEN'.
-                    token-to_evname = temp.
+                    APPEND INITIAL LINE TO token-tt_calls ASSIGNING FIELD-SYMBOL(<call>).
+
+                    <call>-event = 'SCREEN'.
+                    <call>-name = temp.
                     token-program = i_program.
                   ENDIF.
 
@@ -5165,9 +5170,9 @@
                   IF  prev = 'OBJECT'.
                     READ TABLE prog-t_vars WITH KEY icon = icon_oo_class name = word INTO DATA(var).
                     IF sy-subrc = 0.
-                      token-to_class = var-type.
-                      token-to_evtype = 'METHOD'.
-                      token-to_evname = 'CONSTRUCTOR'.
+                      "token-to_class = var-type.
+                      "token-to_evtype = 'METHOD'.
+                      "token-to_evname = 'CONSTRUCTOR'.
                     ENDIF.
 
                     "WRITE : 'value',  temp.
@@ -5355,26 +5360,26 @@
             ENDWHILE.
             token-from = statement-from.
             token-to = statement-to.
-            IF i_class IS INITIAL.
-              token-to_prog = i_include.
-            ENDIF.
+*            IF i_class IS INITIAL.
+*              token-to_prog = i_include.
+*            ENDIF.
             "check class names
 
-            IF token-to_class IS INITIAL AND token-to_evname <> 'CONSTRUCTOR'. "to refactor
-              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line INTO call_line WITH KEY eventname = token-to_evname  eventtype = token-to_evtype .
-              IF sy-subrc = 0.
-                token-to_class = call_line-class.
-              ENDIF.
-            ENDIF.
-            IF token-to_class IS NOT INITIAL. "check ref variable
-              READ TABLE prog-t_vars WITH KEY name = token-to_class icon = icon_oo_class INTO var.
-              IF sy-subrc = 0.
-                token-to_class = var-type.
-              ENDIF.
-            ENDIF.
+*            IF token-to_class IS INITIAL AND token-to_evname <> 'CONSTRUCTOR'. "to refactor
+*              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line INTO call_line WITH KEY eventname = token-to_evname  eventtype = token-to_evtype .
+*              IF sy-subrc = 0.
+*                token-to_class = call_line-class.
+*              ENDIF.
+*            ENDIF.
+*            IF token-to_class IS NOT INITIAL. "check ref variable
+*              READ TABLE prog-t_vars WITH KEY name = token-to_class icon = icon_oo_class INTO var.
+*              IF sy-subrc = 0.
+*                token-to_class = var-type.
+*              ENDIF.
+*            ENDIF.
 
-            SORT token-tt_calls.
-            DELETE ADJACENT DUPLICATES FROM token-tt_calls.
+            "SORT token-tt_calls.
+            "DELETE ADJACENT DUPLICATES FROM token-tt_calls.
 
             APPEND token TO tokens.
             IF kw = 'ENDCLASS'.
@@ -5399,7 +5404,7 @@
           DATA(index) = 0.
           LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param WHERE event = call-event AND name = call-name .
             ADD 1 TO  index.
-            READ TABLE <s_token>-tt_calls INDEX  index ASSIGNING FIELD-SYMBOL(<call>).
+            READ TABLE <s_token>-tt_calls INDEX  index ASSIGNING <call>.
             IF sy-subrc = 0.
               <call>-inner = param-param.
               IF param-type = 'I'.
@@ -5540,6 +5545,7 @@
 
         READ TABLE prog-t_keywords WITH KEY index =  str-stmnt_from INTO DATA(key).
         lcl_ace_source_parser=>parse_tokens( i_program = CONV #( key-program ) i_include = CONV #( key-include ) io_debugger = io_debugger ).
+        CHECK sy-subrc = 0.
 
         WHILE  statement <= str-stmnt_to.
           READ TABLE prog-t_keywords WITH KEY index =   statement INTO key.
@@ -5573,45 +5579,48 @@
 
             ENDIF.
           ENDIF.
-          IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
 
-            IF key-to_evtype = 'FORM'.
-              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = key-to_evname eventtype = key-to_evtype INTO call_line.
-              IF sy-subrc = 0.
-                lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                                 i_e_name = call_line-eventname
-                                                 i_e_type = call_line-eventtype
-                                                 i_program = CONV #( call_line-program )
-                                                 i_include = CONV #( call_line-include )
-                                                 i_stack   =  stack
-                                                 io_debugger = io_debugger ).
+          LOOP AT key-tt_calls INTO DATA(call).
+            IF call-name IS NOT INITIAL AND NOT ( call-event = 'METHOD' AND call-class IS INITIAL ).
+
+              IF call-event = 'FORM'.
+                READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = call-name eventtype = call-event INTO call_line.
+                IF sy-subrc = 0.
+                  lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                                                   i_e_name = call_line-eventname
+                                                   i_e_type = call_line-eventtype
+                                                   i_program = CONV #( call_line-program )
+                                                   i_include = CONV #( call_line-include )
+                                                   i_stack   =  stack
+                                                   io_debugger = io_debugger ).
+                ENDIF.
+              ELSEIF call-event = 'FUNCTION'.
+                DATA:  func TYPE rs38l_fnam.
+                func = call-name.
+                IF io_debugger->mo_window->m_zcode IS INITIAL OR
+                 ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND (  func+0(1) = 'Z' OR  func+0(1) = 'Y' ) ) .
+
+                  CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+                    CHANGING
+                      funcname            = func
+                      include             = include
+                    EXCEPTIONS
+                      function_not_exists = 1
+                      include_not_exists  = 2
+                      group_not_exists    = 3
+                      no_selections       = 4
+                      no_function_include = 5
+                      OTHERS              = 6.
+
+                  code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = call-event i_evname = call-name io_debugger = io_debugger ).
+                ENDIF.
+              ELSEIF call-event = 'METHOD'. "Method call
+                parse_class( i_include = i_include i_call = call i_stack = stack io_debugger = io_debugger key = key ).
+              ELSEIF call-event = 'SCREEN'. "Method call
+                parse_screen( i_stack = stack i_call = call io_debugger = io_debugger key = key ).
               ENDIF.
-            ELSEIF key-to_evtype = 'FUNCTION'.
-              DATA:  func TYPE rs38l_fnam.
-              func = key-to_evname.
-              IF io_debugger->mo_window->m_zcode IS INITIAL OR
-               ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND (  func+0(1) = 'Z' OR  func+0(1) = 'Y' ) ) .
-
-                CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
-                  CHANGING
-                    funcname            = func
-                    include             = include
-                  EXCEPTIONS
-                    function_not_exists = 1
-                    include_not_exists  = 2
-                    group_not_exists    = 3
-                    no_selections       = 4
-                    no_function_include = 5
-                    OTHERS              = 6.
-
-                code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
-              ENDIF.
-            ELSEIF key-to_evtype = 'METHOD'. "Method call
-              parse_class( i_include = i_include i_stack = stack io_debugger = io_debugger key = key ).
-            ELSEIF key-to_evtype = 'SCREEN'. "Method call
-              parse_screen( i_stack = stack io_debugger = io_debugger key = key ).
             ENDIF.
-          ENDIF.
+          ENDLOOP.
 
           ADD 1 TO  statement.
         ENDWHILE.
@@ -5709,57 +5718,59 @@
           <step>-include = key-include.
           <step>-class   = i_class.
         ENDIF.
-        IF key-to_evname IS NOT INITIAL AND NOT ( key-to_evtype = 'METHOD' AND key-to_class IS INITIAL ).
-          .
-          IF key-to_evtype = 'FORM'.
+        LOOP AT key-tt_calls INTO DATA(call).
+          IF call-name IS NOT INITIAL AND NOT ( call-event = 'METHOD' AND call-class IS INITIAL ).
+            .
+            IF call-event = 'FORM'.
 
-            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = key-to_evname eventtype = key-to_evtype INTO DATA(call_line).
-            IF sy-subrc = 0.
-              lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                                       i_e_name = call_line-eventname
-                                                       i_e_type = call_line-eventtype
-                                                       i_program = i_include
-                                                       i_include = i_include
-                                                       i_stack   =  stack
-                                                       io_debugger = io_debugger ).
+              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = call-name eventtype = call-event INTO DATA(call_line).
+              IF sy-subrc = 0.
+                lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                                                         i_e_name = call_line-eventname
+                                                         i_e_type = call_line-eventtype
+                                                         i_program = i_include
+                                                         i_include = i_include
+                                                         i_stack   =  stack
+                                                         io_debugger = io_debugger ).
+              ENDIF.
+
+            ELSEIF call-event = 'FUNCTION'.
+              DATA:  func TYPE rs38l_fnam.
+              func = call-name.
+              IF io_debugger->mo_window->m_zcode IS INITIAL OR
+                ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND (  func+0(1) = 'Z' OR  func+0(1) = 'Y' ) ) .
+
+                CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+                  CHANGING
+                    funcname            = func
+                    include             = include
+                  EXCEPTIONS
+                    function_not_exists = 1
+                    include_not_exists  = 2
+                    group_not_exists    = 3
+                    no_selections       = 4
+                    no_function_include = 5
+                    OTHERS              = 6.
+
+                code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = call-event i_evname = call-name io_debugger = io_debugger ).
+              ENDIF.
+
+            ELSEIF call-event = 'METHOD'. "Method call
+
+              DATA inlude TYPE program.
+              IF i_include IS INITIAL.
+                include = i_program.
+              ELSE.
+                include = i_include.
+              ENDIF.
+              parse_class( i_include = include i_call = call i_stack = stack io_debugger = io_debugger key = key ).
+            ELSEIF call-event = 'SCREEN'. "Method call
+              parse_screen( i_stack = stack i_call = call io_debugger = io_debugger key = key ).
+
             ENDIF.
-
-          ELSEIF key-to_evtype = 'FUNCTION'.
-            DATA:  func TYPE rs38l_fnam.
-            func = key-to_evname.
-            IF io_debugger->mo_window->m_zcode IS INITIAL OR
-              ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND (  func+0(1) = 'Z' OR  func+0(1) = 'Y' ) ) .
-
-              CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
-                CHANGING
-                  funcname            = func
-                  include             = include
-                EXCEPTIONS
-                  function_not_exists = 1
-                  include_not_exists  = 2
-                  group_not_exists    = 3
-                  no_selections       = 4
-                  no_function_include = 5
-                  OTHERS              = 6.
-
-              code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = key-to_evtype i_evname = key-to_evname io_debugger = io_debugger ).
-            ENDIF.
-
-          ELSEIF key-to_evtype = 'METHOD'. "Method call
-
-            DATA inlude TYPE program.
-            IF i_include IS INITIAL.
-              include = i_program.
-            ELSE.
-              include = i_include.
-            ENDIF.
-            parse_class( i_include = include i_stack = stack io_debugger = io_debugger key = key ).
-          ELSEIF key-to_evtype = 'SCREEN'. "Method call
-            parse_screen( i_stack = stack io_debugger = io_debugger key = key ).
 
           ENDIF.
-
-        ENDIF.
+        ENDLOOP.
 
         IF key-name = 'ENDFORM' OR key-name = 'ENDMETHOD' OR key-name = 'ENDMODULE'.
           RETURN.
@@ -5777,7 +5788,7 @@
             program       TYPE program,
             include       TYPE progname.
 
-      cl_key = key-to_class.
+      cl_key = i_call-class.
 
       CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
         EXPORTING
@@ -5789,30 +5800,30 @@
           OTHERS                       = 2.
 
       IF io_debugger->mo_window->m_zcode IS INITIAL OR
-       ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( key-to_class+0(1) = 'Z' OR key-to_class+0(1) = 'Y' ) )
+       ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( i_call-class+0(1) = 'Z' OR i_call-class+0(1) = 'Y' ) )
          OR meth_includes IS INITIAL.
 
         IF lines( meth_includes ) > 0.
-          prefix = key-to_class && repeat( val = `=` occ = 30 - strlen( key-to_class ) ).
+          prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
           program = prefix && 'CP'.
           include =  prefix && 'CU'.
-          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
           include =  prefix && 'CI'.
-          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
           include =  prefix && 'CO'.
-          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = key-to_class ).
+          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
-          READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = key-to_evname INTO DATA(incl).                        .
+          READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = i_call-name INTO DATA(incl).                        .
           IF sy-subrc = 0.
             include = incl-incname.
-            lcl_ace_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = key-to_class i_evname = key-to_evname ).
+            lcl_ace_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = i_call-class i_evname = i_call-name ).
           ENDIF.
         ELSE.
           program = i_include.
         ENDIF.
-        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = key-to_evname INTO DATA(call_line).
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
         IF sy-subrc = 0.
           lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                 i_e_name = call_line-eventname
@@ -5843,7 +5854,7 @@
 
       stack = i_stack + 1.
       prog = key-program.
-      fmnum = num = key-to_evname.
+      fmnum = num = i_Call-name.
 
       CALL FUNCTION 'RS_IMPORT_DYNPRO'
         EXPORTING
@@ -5889,8 +5900,8 @@
           ADD 1 TO  io_debugger->m_step.
           <step>-step = io_debugger->m_step.
           <step>-line = key-line.
-          <step>-eventname = key-to_evname.
-          <step>-eventtype = key-to_evtype.
+          <step>-eventname = i_call-name.
+          <step>-eventtype = i_call-event.
           <step>-stacklevel =  stack.
           <step>-program = key-program.
           <step>-include = key-include.
@@ -5913,7 +5924,7 @@
                                 i_e_name = call_line-eventname
                                 i_e_type = call_line-eventtype
                                 i_program =  CONV #( call_line-program )
-                                i_include =  CONV #( call_line-program )
+                                i_include =  CONV #( call_line-include )
                                 i_stack   =  stack
                                 io_debugger = io_debugger ).
         ENDIF.
@@ -5932,9 +5943,8 @@
           ADD 1 TO  io_debugger->m_step.
           <step>-step = io_debugger->m_step.
           <step>-line = key-line.
-          <step>-eventname = key-to_evname.
-          <step>-eventtype = key-to_evtype.
-          <step>-stacklevel =  stack.
+          <step>-eventname = i_call-name.
+          <step>-eventtype = i_call-event. <step>-stacklevel =  stack.
           <step>-program = key-program.
           <step>-include = key-include.
           "ENDIF.
@@ -5956,7 +5966,7 @@
                                 i_e_name = call_line-eventname
                                 i_e_type = call_line-eventtype
                                 i_program =  CONV #( call_line-program )
-                                i_include =  CONV #( call_line-program )
+                                i_include =  CONV #( call_line-include )
                                 i_stack   =  stack
                                 io_debugger = io_debugger ).
         ENDIF.
