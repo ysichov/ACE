@@ -5823,13 +5823,20 @@
         ELSE.
           program = i_include.
         ENDIF.
+        IF include IS INITIAL.
+
+        ENDIF.
+
         READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
         IF sy-subrc = 0.
+          IF include IS INITIAL.
+            include =  call_line-include.
+          ENDIF.
           lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                 i_e_name = call_line-eventname
                                 i_e_type = call_line-eventtype
-                                i_program =  CONV #( call_line-program )
-                                i_include =  CONV #( call_line-include )
+                                i_program =  CONV #( include )
+                                i_include =  CONV #( include )
                                 i_class = call_line-class
                                 i_stack   =  i_stack
                                 io_debugger = io_debugger ).
