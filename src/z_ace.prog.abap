@@ -12,15 +12,23 @@
 
   " & External resources
   " & https://github.com/WegnerDan/abapMermaid
-  SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT (29) TEXT-002 FOR FIELD p_prog.
-    SELECTION-SCREEN POSITION 35.
-    PARAMETERS: p_prog  TYPE progname MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY.
-    SELECTION-SCREEN COMMENT (70) TEXT-001 FOR FIELD p_prog.
-  SELECTION-SCREEN END OF LINE.
-  PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
-              p_model  TYPE text255 MEMORY ID model,
-              p_apikey TYPE text255 MEMORY ID api.
+
+  SELECTION-SCREEN BEGIN OF BLOCK s1 WITH FRAME TITLE TEXT-004.
+    SELECTION-SCREEN BEGIN OF LINE.
+      SELECTION-SCREEN COMMENT (29) TEXT-002 FOR FIELD p_prog.
+      SELECTION-SCREEN POSITION 35.
+      PARAMETERS: p_prog  TYPE progname MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY.
+      SELECTION-SCREEN COMMENT (70) TEXT-001 FOR FIELD p_prog.
+    SELECTION-SCREEN END OF LINE.
+  SELECTION-SCREEN END OF BLOCK s1.
+
+  SELECTION-SCREEN SKIP.
+
+  SELECTION-SCREEN BEGIN OF BLOCK ai WITH FRAME TITLE TEXT-003.
+    PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
+                p_model  TYPE text255 MEMORY ID model,
+                p_apikey TYPE text255 MEMORY ID api.
+  SELECTION-SCREEN END OF BLOCK ai.
 
   CLASS lcl_ace_ai DEFINITION DEFERRED.
   CLASS lcl_ace_data_receiver DEFINITION DEFERRED.
@@ -459,7 +467,8 @@
                                             i_include TYPE program
                                             io_debugger TYPE REF TO lcl_ace
                                             i_class TYPE string OPTIONAL
-                                            i_evname TYPE string OPTIONAL,
+                                            i_evname TYPE string OPTIONAL
+                                            i_stack TYPE i OPTIONAL,
         parse_call IMPORTING i_program TYPE program
                              i_include TYPE program
                              i_index TYPE i i_stack TYPE i
@@ -1164,6 +1173,7 @@
              tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY,
 
              BEGIN OF ts_prog,
+               stack      TYPE i,
                program    TYPE program,
                include    TYPE program,
                source_tab TYPE sci_include,
@@ -2437,6 +2447,61 @@
         "APPEND INITIAL LINE TO mt_coverage ASSIGNING FIELD-SYMBOL(<coverage>).
         "<coverage>-line = step-line.
       ENDLOOP.
+      IF sy-subrc <> 0. "No steps - show all includes.
+        clear mt_Stack.
+        SORT ms_sources-tt_progs BY stack.
+        LOOP AT ms_sources-tt_progs INTO DATA(prog).
+          check prog-t_keywords is not INITIAL.
+          APPEND INITIAL LINE TO mt_stack ASSIGNING <stack>.
+          MOVE-CORRESPONDING prog TO <stack>.
+
+          SPLIT <stack>-program  AT '=' INTO TABLE split.
+          <stack>-prg = <stack>-program.
+          <stack>-program = split[ 1 ].
+          <Stack>-stacklevel = prog-stack.
+
+          DATA(pos) = strlen( <stack>-program ).
+          pos = pos - 2.
+          IF pos > 0.
+            DATA(incl) = <stack>-include+pos(2).
+            SELECT SINGLE funcname INTO @<stack>-eventname FROM tfdir
+             WHERE pname_main = @<stack>-program
+               AND include = @incl.
+
+            IF sy-subrc = 0.
+              <Stack>-eventtype = 'FUNCTION'.
+              CONTINUE.
+            ENDIF.
+          ENDIF.
+
+
+
+          DATA: cl_key        TYPE seoclskey,
+                meth_includes TYPE seop_methods_w_include.
+
+          cl_key = <stack>-program.
+
+          CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+            EXPORTING
+              clskey                       = cl_key
+            IMPORTING
+              includes                     = meth_includes
+            EXCEPTIONS
+              _internal_class_not_existing = 1
+              OTHERS                       = 2.
+
+          IF sy-subrc = 0.
+            READ TABLE meth_includes[] WITH KEY incname = <stack>-include INTO data(include).
+            IF sy-subrc = 0.
+              <Stack>-eventtype = 'METHOD'.
+
+              <stack>-eventname = include-cpdkey-cpdname.
+            ENDIF.
+          ENDIF.
+
+
+        ENDLOOP.
+      ENDIF.
 
       SORT mt_coverage.
       DELETE ADJACENT DUPLICATES FROM mt_coverage.
@@ -4671,7 +4736,8 @@
             preferred       TYPE boolean,
             method_type     TYPE i,
             class_name      TYPE string,
-            main_prog       TYPE program.
+            main_prog       TYPE program,
+            stack           TYPE i.
 
       IF i_main = abap_true.
         main_prog = i_program.
@@ -4682,6 +4748,7 @@
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = main_prog INTO DATA(prog).
       IF sy-subrc <> 0.
 
+        stack = i_stack + 1.
         DATA(o_source) = cl_ci_source_include=>create( p_name = i_include ).
 
         prog-source_tab = o_source->lines.
@@ -4741,7 +4808,7 @@
           READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
           "IF level-type <> 'D'. "Define Macros
           IF i_include <> level-name. "includes will be processed separately
-            lcl_ace_source_parser=>parse_tokens( i_program = CONV #( token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
+            lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = CONV #( token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
             "ENDIF.
 
             token-include = level-name.
@@ -4793,7 +4860,7 @@
             ENDIF.
             CLEAR new.
 
-            IF eventname IS  NOT INITIAL OR class IS NOT INITIAL AND eventtype <> 'EVENT'.
+            IF eventname IS  NOT INITIAL OR class IS NOT INITIAL AND eventtype <> 'EVENT' OR kw = 'INCLUDE' OR kw = 'CLASS-POOL'.
               token-sub = abap_true.
             ENDIF.
 
@@ -5040,12 +5107,15 @@
 
                 WHEN 'PUBLIC'.
                   method_type = 1.
+                  CONTINUE.
 
                 WHEN 'PROTECTED'.
                   method_type = 2.
+                  CONTINUE.
 
                 WHEN 'PRIVATE'.
                   method_type = 3.
+                  CONTINUE.
 
                 WHEN 'DATA' OR 'PARAMETERS'.
                   IF (   prev = 'OF' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
@@ -5360,28 +5430,10 @@
             ENDWHILE.
             token-from = statement-from.
             token-to = statement-to.
-*            IF i_class IS INITIAL.
-*              token-to_prog = i_include.
-*            ENDIF.
-            "check class names
 
-*            IF token-to_class IS INITIAL AND token-to_evname <> 'CONSTRUCTOR'. "to refactor
-*              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line INTO call_line WITH KEY eventname = token-to_evname  eventtype = token-to_evtype .
-*              IF sy-subrc = 0.
-*                token-to_class = call_line-class.
-*              ENDIF.
-*            ENDIF.
-*            IF token-to_class IS NOT INITIAL. "check ref variable
-*              READ TABLE prog-t_vars WITH KEY name = token-to_class icon = icon_oo_class INTO var.
-*              IF sy-subrc = 0.
-*                token-to_class = var-type.
-*              ENDIF.
-*            ENDIF.
-
-            "SORT token-tt_calls.
-            "DELETE ADJACENT DUPLICATES FROM token-tt_calls.
-
-            APPEND token TO tokens.
+            IF token-name <> 'PUBLIC' AND token-name <> 'PRIVATE' AND token-name <> 'PROTECTED' AND token-name IS NOT INITIAL.
+              APPEND token TO tokens.
+            ENDIF.
             IF kw = 'ENDCLASS'.
               CLEAR: token-sub, class.
             ENDIF.
@@ -5427,10 +5479,11 @@
         APPEND LINES OF composed_vars TO io_debugger->mo_window->ms_sources-t_composed.
 
         io_debugger->mo_window->ms_sources-tt_tabs = tabs.
-        DATA line LIKE LINE OF io_debugger->mo_window->ms_sources-tt_progs.
+        "DATA line LIKE LINE OF io_debugger->mo_window->ms_sources-tt_progs.
         prog-scan = o_scan.
         prog-t_keywords = tokens.
         prog-program = i_program.
+        prog-stack = stack.
         APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
 
         "IF io_debugger->m_step IS INITIAL.
@@ -5483,7 +5536,7 @@
       stack =  i_stack + 1.
       CHECK  stack <=  io_debugger->mo_window->m_hist_depth.
 
-      lcl_ace_source_parser=>parse_tokens( i_program = i_program i_include = i_include io_debugger = io_debugger ).
+      lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = i_program i_include = i_include io_debugger = io_debugger ).
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog>).
       IF sy-subrc <> 0.
         RETURN.
@@ -5544,14 +5597,16 @@
         ENDIF.
 
         READ TABLE prog-t_keywords WITH KEY index =  str-stmnt_from INTO DATA(key).
-        lcl_ace_source_parser=>parse_tokens( i_program = CONV #( key-program ) i_include = CONV #( key-include ) io_debugger = io_debugger ).
-        CHECK sy-subrc = 0.
+        IF key IS NOT INITIAL.
+          lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = CONV #( key-program ) i_include = CONV #( key-include ) io_debugger = io_debugger ).
+        ENDIF.
 
         WHILE  statement <= str-stmnt_to.
           READ TABLE prog-t_keywords WITH KEY index =   statement INTO key.
 
           IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS'
             OR key-name = 'PARAMETERS' OR key-name = 'INCLUDE' OR key-name = 'REPORT'
+            OR key-name = 'PUBLIC' OR key-name = 'PROTECTED' OR key-name = 'PRIVATE'
             OR key-name IS INITIAL OR sy-subrc <> 0 OR key-sub IS NOT INITIAL.
 
             ADD 1 TO  statement.
@@ -5675,7 +5730,7 @@
       IF i_include IS NOT INITIAL.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
         IF sy-subrc <> 0.
-          lcl_ace_source_parser=>parse_tokens( i_program = i_program i_include = i_include io_debugger = io_debugger ).
+          lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = i_program i_include = i_include io_debugger = io_debugger ).
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO prog.
 
         ENDIF.
@@ -5684,7 +5739,7 @@
       ELSE.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_program INTO prog.
         IF sy-subrc <> 0.
-          lcl_ace_source_parser=>parse_tokens( i_program = i_program i_include = i_program io_debugger = io_debugger ).
+          lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = i_program i_include = i_program io_debugger = io_debugger ).
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO prog.
         ENDIF.
       ENDIF.
@@ -5702,7 +5757,7 @@
           ADD 1 TO  statement.
           CONTINUE.
         ENDIF.
-        lcl_ace_source_parser=>parse_tokens( i_program = CONV #( key-program ) i_include = CONV #( key-include ) io_debugger = io_debugger ).
+        lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = CONV #( key-program ) i_include = CONV #( key-include ) io_debugger = io_debugger ).
 
         READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = i_program include = key-include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
@@ -5786,9 +5841,11 @@
             meth_includes TYPE seop_methods_w_include,
             prefix        TYPE string,
             program       TYPE program,
-            include       TYPE progname.
+            include       TYPE progname,
+            stack         TYPE i.
 
       cl_key = i_call-class.
+      stack = i_stack." + 1.
 
       CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
         EXPORTING
@@ -5807,24 +5864,21 @@
           prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
           program = prefix && 'CP'.
           include =  prefix && 'CU'.
-          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
+          lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
           include =  prefix && 'CI'.
-          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
+          lcl_ace_source_parser=>parse_tokens(  i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
           include =  prefix && 'CO'.
-          lcl_ace_source_parser=>parse_tokens( i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
+          lcl_ace_source_parser=>parse_tokens(  i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
           READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = i_call-name INTO DATA(incl).                        .
           IF sy-subrc = 0.
             include = incl-incname.
-            lcl_ace_source_parser=>parse_tokens( i_program = program i_include =  include io_debugger = io_debugger i_class = i_call-class i_evname = i_call-name ).
+            lcl_ace_source_parser=>parse_tokens(  i_stack = stack i_program = program i_include =  include io_debugger = io_debugger i_class = i_call-class i_evname = i_call-name ).
           ENDIF.
         ELSE.
           program = i_include.
-        ENDIF.
-        IF include IS INITIAL.
-
         ENDIF.
 
         READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).

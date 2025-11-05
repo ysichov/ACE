@@ -23,9 +23,21 @@
      <LENGTH>25</LENGTH>
     </item>
     <item>
+     <ID>I</ID>
+     <KEY>003</KEY>
+     <ENTRY>AI configuration</ENTRY>
+     <LENGTH>26</LENGTH>
+    </item>
+    <item>
+     <ID>I</ID>
+     <KEY>004</KEY>
+     <ENTRY>Choose Source Code to Explore</ENTRY>
+     <LENGTH>58</LENGTH>
+    </item>
+    <item>
      <ID>R</ID>
      <ENTRY>ACE: ABAP Code Explorer</ENTRY>
-     <LENGTH>35</LENGTH>
+     <LENGTH>23</LENGTH>
     </item>
     <item>
      <ID>S</ID>
