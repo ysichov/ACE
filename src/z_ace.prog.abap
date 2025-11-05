@@ -468,7 +468,8 @@
                                             io_debugger TYPE REF TO lcl_ace
                                             i_class TYPE string OPTIONAL
                                             i_evname TYPE string OPTIONAL
-                                            i_stack TYPE i OPTIONAL,
+                                            i_stack TYPE i OPTIONAL
+                                            i_main_prog TYPE program OPTIONAL, "for interface
         parse_call IMPORTING i_program TYPE program
                              i_include TYPE program
                              i_index TYPE i i_stack TYPE i
@@ -2144,11 +2145,11 @@
 
     METHOD set_program.
 
-      lcl_ace_source_parser=>parse_tokens( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+      lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
       SORT ms_sources-t_params.
       DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
       IF mo_viewer->m_step IS INITIAL.
-        lcl_ace_source_parser=>code_execution_scanner( i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+        lcl_ace_source_parser=>code_execution_scanner(  i_program = i_include i_include = i_include io_debugger = mo_viewer ).
       ENDIF.
 
       LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
@@ -4785,7 +4786,6 @@
 
         DATA(max) = lines( o_scan->statements ).
 
-
         DO.
           CLEAR token-tt_calls.
 
@@ -4808,15 +4808,11 @@
           READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
           "IF level-type <> 'D'. "Define Macros
           IF i_include <> level-name. "includes will be processed separately
-            lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = CONV #( token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
-            "ENDIF.
-
+            lcl_ace_source_parser=>parse_tokens( i_main_prog = i_main_prog i_stack = stack i_program = CONV #( token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
             token-include = level-name.
 
           ELSE.
             token-include = i_include.
-            "ENDIF.
-
 
             calculated-program = composed-program = i_include.
 
@@ -4972,9 +4968,7 @@
 
                 MOVE-CORRESPONDING tab TO call_line.
                 call_line-index = o_procedure->statement_index + 1.
-                "IF call_line-class IS INITIAL.
                 call_line-class = class_name.
-                "ENDIF.
 
                 "check class name
                 SPLIT i_program AT '=' INTO TABLE split.
@@ -4984,22 +4978,26 @@
                  WHERE clsname = class_name.
 
                 "methods in definition should be overwritten by Implementation section
-                IF  call_line-class IS NOT INITIAL.
-                  READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-                   WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
-                ELSE.
-                  READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-                   WITH KEY program = i_program eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
-                ENDIF.
+                "IF i_main_prog IS INITIAL.
+                  IF  call_line-class IS NOT INITIAL.
+                    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+                     WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
+                  ELSE.
+                    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+                     WITH KEY program = i_program eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
+                  ENDIF.
+                "ENDIF.
 
                 IF sy-subrc = 0.
                   <call_line>-index = call_line-index.
                   <call_line>-include = token-include.
                 ELSE.
-                  call_line-program = i_program.
-                  call_line-include = token-include.
-                  call_line-meth_type = method_type.
-                  APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
+                  IF i_main_prog IS INITIAL.
+                    call_line-program = i_program.
+                    call_line-include = token-include.
+                    call_line-meth_type = method_type.
+                    APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
+                  ENDIF.
                 ENDIF.
 
               ENDIF.
@@ -5521,6 +5519,22 @@
 
       ENDIF.
 
+      "Process interfaces
+      IF i_main IS NOT INITIAL.
+        SELECT * FROM seometarel INTO TABLE @DATA(lt_interfaces)
+          WHERE clsname = @class_name.
+        DATA: prefix  TYPE string,
+              program TYPE program,
+              include TYPE program.
+        LOOP AT lt_interfaces INTO DATA(interface).
+          prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
+          include = program = prefix && 'IP'. "Interface Program
+          lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_main_prog = i_program i_class = CONV #( interface-refclsname ) i_stack = stack i_program = program i_include = include io_debugger = io_debugger ).
+        ENDLOOP.
+      ENDIF.
+
+
+
     ENDMETHOD.
 
     METHOD code_execution_scanner.
@@ -5871,7 +5885,7 @@
 
         IF lines( meth_includes ) > 0.
           prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
-          program = prefix && 'CP'."Class Program
+          include = program = prefix && 'CP'."Class Program
 
           lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
@@ -5882,7 +5896,7 @@
           LOOP AT lt_interfaces INTO DATA(interface).
             prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
             include = program = prefix && 'IP'. "Interface Program
-            lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
+            lcl_ace_source_parser=>parse_tokens( i_class = CONV #( interface-refclsname ) i_stack = stack i_program = program i_include = include io_debugger = io_debugger ).
           ENDLOOP.
 
         ELSE.
