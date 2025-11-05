@@ -2448,10 +2448,10 @@
         "<coverage>-line = step-line.
       ENDLOOP.
       IF sy-subrc <> 0. "No steps - show all includes.
-        clear mt_Stack.
+        CLEAR mt_Stack.
         SORT ms_sources-tt_progs BY stack.
         LOOP AT ms_sources-tt_progs INTO DATA(prog).
-          check prog-t_keywords is not INITIAL.
+          CHECK prog-t_keywords IS NOT INITIAL.
           APPEND INITIAL LINE TO mt_stack ASSIGNING <stack>.
           MOVE-CORRESPONDING prog TO <stack>.
 
@@ -2491,7 +2491,7 @@
               OTHERS                       = 2.
 
           IF sy-subrc = 0.
-            READ TABLE meth_includes[] WITH KEY incname = <stack>-include INTO data(include).
+            READ TABLE meth_includes[] WITH KEY incname = <stack>-include INTO DATA(include).
             IF sy-subrc = 0.
               <Stack>-eventtype = 'METHOD'.
 
@@ -4976,19 +4976,28 @@
                 call_line-class = class_name.
                 "ENDIF.
 
+                "check class name
+                SPLIT i_program AT '=' INTO TABLE split.
+                class_name = split[ 1 ].
+                SELECT SINGLE clsname INTO call_line-class
+                  FROM seoclass
+                 WHERE clsname = class_name.
+
                 "methods in definition should be overwritten by Implementation section
-                READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-                 WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
+                IF  call_line-class IS NOT INITIAL.
+                  READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+                   WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
+                ELSE.
+                  READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+                   WITH KEY program = i_program eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
+                ENDIF.
+
                 IF sy-subrc = 0.
                   <call_line>-index = call_line-index.
                   <call_line>-include = token-include.
                 ELSE.
-                  IF i_class IS INITIAL.
-                    call_line-program = i_program.
-                    call_line-include = token-include.
-                  ELSE.
-                    call_line-include = token-include.
-                  ENDIF.
+                  call_line-program = i_program.
+                  call_line-include = token-include.
                   call_line-meth_type = method_type.
                   APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
                 ENDIF.
@@ -5862,21 +5871,20 @@
 
         IF lines( meth_includes ) > 0.
           prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
-          program = prefix && 'CP'.
-          include =  prefix && 'CU'.
+          program = prefix && 'CP'."Class Program
+
           lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
-          include =  prefix && 'CI'.
-          lcl_ace_source_parser=>parse_tokens(  i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
+          "Process interfaces
+          SELECT * FROM seometarel INTO TABLE @DATA(lt_interfaces)
+            WHERE clsname = @i_call-name.
 
-          include =  prefix && 'CO'.
-          lcl_ace_source_parser=>parse_tokens(  i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
+          LOOP AT lt_interfaces INTO DATA(interface).
+            prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
+            include = program = prefix && 'IP'. "Interface Program
+            lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
+          ENDLOOP.
 
-          READ TABLE meth_includes[] WITH KEY cpdkey-cpdname = i_call-name INTO DATA(incl).                        .
-          IF sy-subrc = 0.
-            include = incl-incname.
-            lcl_ace_source_parser=>parse_tokens(  i_stack = stack i_program = program i_include =  include io_debugger = io_debugger i_class = i_call-class i_evname = i_call-name ).
-          ENDIF.
         ELSE.
           program = i_include.
         ENDIF.
