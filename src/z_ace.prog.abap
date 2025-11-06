@@ -469,7 +469,8 @@
                                             i_class TYPE string OPTIONAL
                                             i_evname TYPE string OPTIONAL
                                             i_stack TYPE i OPTIONAL
-                                            i_main_prog TYPE program OPTIONAL, "for interface
+                                            i_main_prog TYPE program OPTIONAL "for interface
+                                            i_reltype type SEORELTYPE OPTIONAL,
         parse_call IMPORTING i_program TYPE program
                              i_include TYPE program
                              i_index TYPE i i_stack TYPE i
@@ -4816,7 +4817,7 @@
           READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
           "IF level-type <> 'D'. "Define Macros
           IF i_include <> level-name. "includes will be processed separately
-            lcl_ace_source_parser=>parse_tokens( i_class = i_class i_main_prog = i_main_prog i_stack = stack i_program = CONV #( token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
+            lcl_ace_source_parser=>parse_tokens( i_class = i_class i_reltype = i_reltype i_main_prog = i_main_prog i_stack = stack i_program = CONV #( token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
             token-include = level-name.
 
           ELSE.
@@ -4980,7 +4981,7 @@
 
 
               IF sy-index = 2 AND  eventtype IS NOT INITIAL AND  eventname IS INITIAL.
-                IF i_main_prog IS NOT INITIAL.
+                IF i_main_prog IS NOT INITIAL and i_reltype = '1'.
                   word = |{ class_name }~{ word }|.
                 ENDIF.
                 variable-eventname = tab-eventname =  eventname = param-name = word.
@@ -5532,6 +5533,7 @@
     ENDIF.
 
     "Process interfaces
+    data: suffix type string.
     IF i_main IS NOT INITIAL.
       SELECT * FROM seometarel INTO TABLE @DATA(lt_interfaces)
         WHERE clsname = @class_name.
@@ -5540,12 +5542,18 @@
               include TYPE program.
         LOOP AT lt_interfaces INTO DATA(interface).
           prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
-          include = program = prefix && 'IP'. "Interface Program
-          lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_main_prog = i_program i_class = CONV #( interface-refclsname ) i_stack = stack i_program = program i_include = include io_debugger = io_debugger ).
+          CASE interface-reltype.
+            WHEN '1'."Interface
+              suffix = 'IP'.
+            WHEN '2'. "Ingeritance
+              suffix = 'CP'.
+            WHEN OTHERS.
+              data(a) = 1 / 0. "to catch dump to implement logic
+          ENDCASE.
+          include = program = prefix && suffix. "Interface Program
+          lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_reltype = interface-reltype i_main_prog = i_program i_class = CONV #( interface-refclsname ) i_stack = stack i_program = program i_include = include io_debugger = io_debugger ).
         ENDLOOP.
       ENDIF.
-
-
 
     ENDMETHOD.
 
