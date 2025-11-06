@@ -470,7 +470,7 @@
                                             i_evname TYPE string OPTIONAL
                                             i_stack TYPE i OPTIONAL
                                             i_main_prog TYPE program OPTIONAL "for interface
-                                            i_reltype type SEORELTYPE OPTIONAL,
+                                            i_reltype TYPE seoreltype OPTIONAL,
         parse_call IMPORTING i_program TYPE program
                              i_include TYPE program
                              i_index TYPE i i_stack TYPE i
@@ -1396,6 +1396,8 @@
       ENDIF.
       mo_window->set_program_line( 1 ).
 
+      SORT mo_window->ms_sources-tt_progs BY stack.
+      DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY program = mo_window->m_prg-program INTO DATA(prog).
 
       mo_window->show_stack( ).
@@ -4981,225 +4983,368 @@
 
 
               IF sy-index = 2 AND  eventtype IS NOT INITIAL AND  eventname IS INITIAL.
-                IF i_main_prog IS NOT INITIAL and i_reltype = '1'.
+                IF i_main_prog IS NOT INITIAL AND i_reltype = '1'.
                   word = |{ class_name }~{ word }|.
                 ENDIF.
                 variable-eventname = tab-eventname =  eventname = param-name = word.
 
-              MOVE-CORRESPONDING tab TO call_line.
-              call_line-index = o_procedure->statement_index + 1.
-              call_line-class = class_name.
+                MOVE-CORRESPONDING tab TO call_line.
+                call_line-index = o_procedure->statement_index + 1.
+                call_line-class = class_name.
 
 
-              "methods in definition should be overwritten by Implementation section
-              IF  call_line-class IS NOT INITIAL.
-                READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-                 WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
-              ELSE.
-                READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-                 WITH KEY program = i_program eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
-              ENDIF.
-              "ENDIF.
-
-              IF sy-subrc = 0.
-                <call_line>-index = call_line-index.
-                <call_line>-include = token-include.
-              ELSE.
-                IF i_main_prog IS INITIAL.
-                  call_line-program = i_program.
-                  call_line-include = token-include.
-                  call_line-meth_type = method_type.
-                  APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
+                "methods in definition should be overwritten by Implementation section
+                IF  call_line-class IS NOT INITIAL.
+                  READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+                   WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
+                ELSE.
+                  READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+                   WITH KEY program = i_program eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
                 ENDIF.
-              ENDIF.
+                "ENDIF.
 
-            ENDIF.
-
-            IF word = ''.
-              IF call IS NOT INITIAL.
-                APPEND call TO token-tt_calls.
-              ENDIF.
-              CLEAR call.
-              CASE kw.
-                WHEN 'COMPUTE'.
-                  IF  NOT  prev CO '0123456789.+-/* '.
-                    composed-name =  prev.
-                    APPEND  composed TO composed_vars.
+                IF sy-subrc = 0.
+                  <call_line>-index = call_line-index.
+                  <call_line>-include = token-include.
+                ELSE.
+                  IF i_main_prog IS INITIAL.
+                    call_line-program = i_program.
+                    call_line-include = token-include.
+                    call_line-meth_type = method_type.
+                    APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
                   ENDIF.
-                WHEN 'CLEAR' OR 'SORT' OR 'CONDENSE'."no logic
-                WHEN 'FORM'.
-                  IF param-name IS NOT INITIAL.
-                    APPEND param TO io_debugger->mo_window->ms_sources-t_params.
-                    CLEAR param.
-                  ENDIF.
-              ENDCASE.
-              EXIT.
-            ENDIF.
+                ENDIF.
 
-            IF word = 'REF'.
-              ref = abap_true.
-            ENDIF.
-
-            IF word = 'USING' OR word = 'IMPORTING'.
-              param-type = 'I'.
-              CLEAR:  type,  par.
-            ELSEIF word = 'CHANGING' OR word = 'EXPORTING' OR word = 'RETURNING'.
-
-              IF param-param IS NOT INITIAL.
-                APPEND param TO io_debugger->mo_window->ms_sources-t_params.
-                CLEAR:  type,  par, param-param.
               ENDIF.
 
-              param-type = 'E'.
-              CLEAR:  type,  par.
-            ELSEIF word = 'OPTIONAL' OR word = 'PREFERRED' OR word = 'REF' OR word = 'TO'.
-              CONTINUE.
-            ELSEIF word = 'PARAMETER'.
-              preferred = abap_true.
-              CONTINUE.
-            ENDIF.
-
-            IF  preferred = abap_true.
-              READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = 'METHOD' name = param-name param = word ASSIGNING FIELD-SYMBOL(<param>).
-              IF sy-subrc = 0.
-                <param>-preferred = abap_true.
+              IF word = ''.
+                IF call IS NOT INITIAL.
+                  APPEND call TO token-tt_calls.
+                ENDIF.
+                CLEAR call.
+                CASE kw.
+                  WHEN 'COMPUTE'.
+                    IF  NOT  prev CO '0123456789.+-/* '.
+                      composed-name =  prev.
+                      APPEND  composed TO composed_vars.
+                    ENDIF.
+                  WHEN 'CLEAR' OR 'SORT' OR 'CONDENSE'."no logic
+                  WHEN 'FORM'.
+                    IF param-name IS NOT INITIAL.
+                      APPEND param TO io_debugger->mo_window->ms_sources-t_params.
+                      CLEAR param.
+                    ENDIF.
+                ENDCASE.
+                EXIT.
               ENDIF.
 
-              CLEAR  preferred.
-              CONTINUE.
-            ENDIF.
+              IF word = 'REF'.
+                ref = abap_true.
+              ENDIF.
 
-            IF word <> 'CHANGING' AND word <> 'EXPORTING' AND word <> 'RETURNING' AND word <> 'IMPORTING' AND word <> 'USING'.
-              IF kw = 'FORM' OR kw = 'METHODS' OR kw = 'CLASS-METHODS'.
-                IF  par = abap_true AND  type IS INITIAL AND word NE 'TYPE'.
+              IF word = 'USING' OR word = 'IMPORTING'.
+                param-type = 'I'.
+                CLEAR:  type,  par.
+              ELSEIF word = 'CHANGING' OR word = 'EXPORTING' OR word = 'RETURNING'.
 
-                  APPEND param TO io_debugger->mo_window->ms_sources-t_params.
-                  CLEAR:  par, param-param.
-                ENDIF.
-
-                IF  par IS INITIAL AND sy-index > 3.
-                  param-param = word.
-                  par = abap_true.
-                  CONTINUE.
-                ENDIF.
-                IF  par = abap_true AND  type IS INITIAL AND word = 'TYPE'.
-                  type = abap_true.
-                  CONTINUE.
-                ENDIF.
-                IF  par = abap_true AND  type = abap_true.
-                  REPLACE ALL OCCURRENCES OF 'VALUE(' IN param-param WITH ''.
-                  REPLACE ALL OCCURRENCES OF ')' IN param-param WITH ''.
+                IF param-param IS NOT INITIAL.
                   APPEND param TO io_debugger->mo_window->ms_sources-t_params.
                   CLEAR:  type,  par, param-param.
                 ENDIF.
+
+                param-type = 'E'.
+                CLEAR:  type,  par.
+              ELSEIF word = 'OPTIONAL' OR word = 'PREFERRED' OR word = 'REF' OR word = 'TO'.
+                CONTINUE.
+              ELSEIF word = 'PARAMETER'.
+                preferred = abap_true.
+                CONTINUE.
               ENDIF.
-            ENDIF.
 
-            DATA  temp TYPE char30.
-            temp = word.
-
-            IF  temp+0(5) = 'DATA('.
-              SHIFT  temp LEFT BY 5 PLACES.
-              REPLACE ALL OCCURRENCES OF ')' IN  temp WITH ''.
-            ENDIF.
-
-            IF  temp+0(6) = '@DATA('.
-              SHIFT  temp LEFT BY 6 PLACES.
-              REPLACE ALL OCCURRENCES OF ')' IN  temp WITH ''.
-            ENDIF.
-
-            IF  temp+0(13) = 'FIELD-SYMBOL('.
-              SHIFT  temp LEFT BY 13 PLACES.
-              REPLACE ALL OCCURRENCES OF ')' IN  temp WITH ''.
-            ENDIF.
-
-            IF word = 'NEW'.
-              new = abap_true.
-
-            ENDIF.
-
-            FIND FIRST OCCURRENCE OF '->' IN word.
-            IF sy-subrc = 0.
-              CLEAR  new.
-            ENDIF.
-
-            CASE kw.
-
-              WHEN 'PUBLIC'.
-                method_type = 1.
-                CONTINUE.
-
-              WHEN 'PROTECTED'.
-                method_type = 2.
-                CONTINUE.
-
-              WHEN 'PRIVATE'.
-                method_type = 3.
-                CONTINUE.
-
-              WHEN 'DATA' OR 'PARAMETERS'.
-                IF (   prev = 'OF' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
-                  tab-type =  temp.
-                  APPEND tab TO tabs.
-
-                  variable-name = tab-name.
-                  variable-type = tab-type.
-                  variable-line = l_token-row.
-                  variable-icon = icon_table_settings.
-                  APPEND variable TO prog-t_vars.
+              IF  preferred = abap_true.
+                READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = 'METHOD' name = param-name param = word ASSIGNING FIELD-SYMBOL(<param>).
+                IF sy-subrc = 0.
+                  <param>-preferred = abap_true.
                 ENDIF.
 
-                IF (   prev = 'TYPE' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
-                  variable-name = tab-name.
-                  variable-type = temp.
-                  variable-line = l_token-row.
+                CLEAR  preferred.
+                CONTINUE.
+              ENDIF.
 
-                  CASE variable-type.
-                    WHEN 'D'.
-                      variable-icon = icon_date.
-                    WHEN 'T'.
-                      variable-icon = icon_bw_time_sap.
-                    WHEN 'C'.
-                      variable-icon = icon_wd_input_field.
-                    WHEN 'P'.
-                      variable-icon = icon_increase_decimal.
-                    WHEN 'STRING'.
-                      variable-icon = icon_text_act.
-                    WHEN 'N' OR 'I'.
-                      variable-icon = icon_pm_order.
-                    WHEN OTHERS.
-                      variable-icon = icon_element.
-                  ENDCASE.
-                  IF ref IS NOT INITIAL.
-                    variable-icon = icon_oo_class.
-                    CLEAR ref.
+              IF word <> 'CHANGING' AND word <> 'EXPORTING' AND word <> 'RETURNING' AND word <> 'IMPORTING' AND word <> 'USING'.
+                IF kw = 'FORM' OR kw = 'METHODS' OR kw = 'CLASS-METHODS'.
+                  IF  par = abap_true AND  type IS INITIAL AND word NE 'TYPE'.
+
+                    APPEND param TO io_debugger->mo_window->ms_sources-t_params.
+                    CLEAR:  par, param-param.
                   ENDIF.
-                  APPEND variable TO prog-t_vars.
 
+                  IF  par IS INITIAL AND sy-index > 3.
+                    param-param = word.
+                    par = abap_true.
+                    CONTINUE.
+                  ENDIF.
+                  IF  par = abap_true AND  type IS INITIAL AND word = 'TYPE'.
+                    type = abap_true.
+                    CONTINUE.
+                  ENDIF.
+                  IF  par = abap_true AND  type = abap_true.
+                    REPLACE ALL OCCURRENCES OF 'VALUE(' IN param-param WITH ''.
+                    REPLACE ALL OCCURRENCES OF ')' IN param-param WITH ''.
+                    APPEND param TO io_debugger->mo_window->ms_sources-t_params.
+                    CLEAR:  type,  par, param-param.
+                  ENDIF.
                 ENDIF.
+              ENDIF.
 
-              WHEN 'COMPUTE'.
-                IF  temp CA '=' AND  new IS INITIAL..
-                  change =  prev.
-                ENDIF.
+              DATA  temp TYPE char30.
+              temp = word.
 
-                IF (  prev = '=' OR  prev CA '+-/*' ) AND  temp <> 'NEW'.
-                  IF NOT  temp  CA '()' .
-                    IF NOT  temp  CO '0123456789. '.
-                      composed-name =  temp.
-                      APPEND  composed TO composed_vars.
-                      IF call IS NOT INITIAL.
+              IF  temp+0(5) = 'DATA('.
+                SHIFT  temp LEFT BY 5 PLACES.
+                REPLACE ALL OCCURRENCES OF ')' IN  temp WITH ''.
+              ENDIF.
+
+              IF  temp+0(6) = '@DATA('.
+                SHIFT  temp LEFT BY 6 PLACES.
+                REPLACE ALL OCCURRENCES OF ')' IN  temp WITH ''.
+              ENDIF.
+
+              IF  temp+0(13) = 'FIELD-SYMBOL('.
+                SHIFT  temp LEFT BY 13 PLACES.
+                REPLACE ALL OCCURRENCES OF ')' IN  temp WITH ''.
+              ENDIF.
+
+              IF word = 'NEW'.
+                new = abap_true.
+
+              ENDIF.
+
+              FIND FIRST OCCURRENCE OF '->' IN word.
+              IF sy-subrc = 0.
+                CLEAR  new.
+              ENDIF.
+
+              CASE kw.
+
+                WHEN 'PUBLIC'.
+                  method_type = 1.
+                  CONTINUE.
+
+                WHEN 'PROTECTED'.
+                  method_type = 2.
+                  CONTINUE.
+
+                WHEN 'PRIVATE'.
+                  method_type = 3.
+                  CONTINUE.
+
+                WHEN 'DATA' OR 'PARAMETERS'.
+                  IF (   prev = 'OF' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
+                    tab-type =  temp.
+                    APPEND tab TO tabs.
+
+                    variable-name = tab-name.
+                    variable-type = tab-type.
+                    variable-line = l_token-row.
+                    variable-icon = icon_table_settings.
+                    APPEND variable TO prog-t_vars.
+                  ENDIF.
+
+                  IF (   prev = 'TYPE' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
+                    variable-name = tab-name.
+                    variable-type = temp.
+                    variable-line = l_token-row.
+
+                    CASE variable-type.
+                      WHEN 'D'.
+                        variable-icon = icon_date.
+                      WHEN 'T'.
+                        variable-icon = icon_bw_time_sap.
+                      WHEN 'C'.
+                        variable-icon = icon_wd_input_field.
+                      WHEN 'P'.
+                        variable-icon = icon_increase_decimal.
+                      WHEN 'STRING'.
+                        variable-icon = icon_text_act.
+                      WHEN 'N' OR 'I'.
+                        variable-icon = icon_pm_order.
+                      WHEN OTHERS.
+                        variable-icon = icon_element.
+                    ENDCASE.
+                    IF ref IS NOT INITIAL.
+                      variable-icon = icon_oo_class.
+                      CLEAR ref.
+                    ENDIF.
+                    APPEND variable TO prog-t_vars.
+
+                  ENDIF.
+
+                WHEN 'COMPUTE'.
+                  IF  temp CA '=' AND  new IS INITIAL..
+                    change =  prev.
+                  ENDIF.
+
+                  IF (  prev = '=' OR  prev CA '+-/*' ) AND  temp <> 'NEW'.
+                    IF NOT  temp  CA '()' .
+                      IF NOT  temp  CO '0123456789. '.
+                        composed-name =  temp.
+                        APPEND  composed TO composed_vars.
+                        IF call IS NOT INITIAL.
+                          call-outer =  temp.
+                          READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
+                          IF sy-subrc <> 0.
+                            APPEND call TO token-tt_calls.
+                          ENDIF.
+                        ENDIF.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+
+                WHEN 'PERFORM' .
+
+                  IF   temp = 'USING' OR  temp = 'CHANGING' .
+                    CLEAR  prev.
+                  ENDIF.
+
+                  IF   prev = 'USING' OR  prev = 'CHANGING' .
+
+                    IF NOT  temp  CA '()' .
+                      IF NOT  temp  CO '0123456789. '.
                         call-outer =  temp.
                         READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
                         IF sy-subrc <> 0.
                           APPEND call TO token-tt_calls.
                         ENDIF.
+                        change =  temp.
                       ENDIF.
                     ENDIF.
                   ENDIF.
-                ENDIF.
 
-              WHEN 'PERFORM' .
+                WHEN 'CREATE' OR 'CALL'.
+                  DATA: import TYPE boolean,
+                        export.
+
+                  IF  prev = 'FUNCTION' AND kw = 'CALL'.
+                    call_line-eventtype = call-event = 'FUNCTION'.
+                    call_line-eventname = call-name = word.
+                    "REPLACE ALL OCCURRENCES OF '''' IN  token-to_evname WITH ''.
+                    REPLACE ALL OCCURRENCES OF '''' IN  call_line-eventname WITH ''.
+
+                    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventtype = call_line-eventtype eventname = call_line-eventname TRANSPORTING NO FIELDS.
+                    IF sy-subrc <> 0.
+                      CLEAR call_line-class.
+                      APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
+                    ENDIF.
+
+                  ENDIF.
+
+                  IF  prev = 'SCREEN' AND kw = 'CALL'.
+                    APPEND INITIAL LINE TO token-tt_calls ASSIGNING FIELD-SYMBOL(<call>).
+
+                    <call>-event = 'SCREEN'.
+                    <call>-name = temp.
+                    token-program = i_program.
+                  ENDIF.
+
+                  IF word = 'EXPORTING' OR word = 'CHANGING' OR word = 'TABLES'.
+                    export = abap_true.
+                    CLEAR  import.
+                    CONTINUE.
+
+                  ELSEIF word = 'IMPORTING'.
+                    import = abap_true.
+                    CLEAR  export.
+                    CONTINUE.
+
+                  ENDIF.
+
+                  IF  prev = 'OBJECT'.
+                    READ TABLE prog-t_vars WITH KEY icon = icon_oo_class name = word INTO DATA(var).
+                    IF sy-subrc = 0.
+                      "token-to_class = var-type.
+                      "token-to_evtype = 'METHOD'.
+                      "token-to_evname = 'CONSTRUCTOR'.
+                    ENDIF.
+
+                    "WRITE : 'value',  temp.
+                  ENDIF.
+
+                  IF   prev = '='.
+                    IF NOT  temp  CA '()'.
+                      IF NOT  temp  CO '0123456789. '.
+                        IF  import = abap_true.
+                          call-outer =  temp.
+                          READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
+                          IF sy-subrc <> 0.
+                            APPEND call TO token-tt_calls.
+                          ENDIF.
+                          calculated-name =  temp.
+                          APPEND  calculated TO calculated_vars.
+                        ELSEIF  export = abap_true.
+                          call-outer =  temp.
+                          READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
+                          IF sy-subrc <> 0.
+                            APPEND call TO token-tt_calls.
+                          ENDIF.
+                          composed-name =  temp.
+                          APPEND  composed TO composed_vars.
+                        ENDIF.
+                      ENDIF.
+                    ENDIF.
+                  ELSE.
+                    IF NOT  temp  CO '0123456789. ' AND  temp <> '=' AND (  import = abap_true OR  export = abap_true ).
+                      call-inner =  temp.
+                    ENDIF.
+                  ENDIF.
+
+                WHEN 'CLEAR' OR 'SORT'.
+                  change =  temp.
+                WHEN  'CONDENSE'.
+
+                  IF  temp <> 'NO-GAPS'.
+                    change =  temp.
+                  ENDIF.
+                WHEN 'ASSIGN' OR 'UNASSIGN'.
+                  ADD 1 TO  count.
+                  IF  count <> 2.
+                    change =  temp.
+                  ENDIF.
+                WHEN 'ADD' OR 'SUBTRACT'.
+                  ADD 1 TO  count.
+                  IF  count = 1.
+                    IF  NOT  temp CO '0123456789.() '.
+                      composed-name =  temp.
+                      APPEND  composed TO composed_vars.
+                    ENDIF.
+                  ENDIF.
+                  IF  count = 3.
+                    change =  temp.
+                  ENDIF.
+                WHEN 'READ'.
+                  IF  prev =  'INTO' OR  prev =  'ASSIGNING'.
+                    change =  temp.
+                  ENDIF.
+
+                WHEN 'SELECT'.
+                  IF  (  prev =  'INTO' OR  prev =  '(' ) AND (  temp <> 'TABLE' AND  temp <> '('  AND  temp <> ')' AND   temp <> ',' ).
+                    change =  temp.
+                  ENDIF.
+
+                WHEN OTHERS.
+
+              ENDCASE.
+              IF call-event = 'METHOD'.
+                IF word = 'EXPORTING' OR word = 'CHANGING' OR word = 'TABLES'.
+                  export = abap_true.
+                  CLEAR  import.
+                  CONTINUE.
+
+                ELSEIF word = 'IMPORTING'.
+                  import = abap_true.
+                  CLEAR  export.
+                  CONTINUE.
+                ENDIF.
 
                 IF   temp = 'USING' OR  temp = 'CHANGING' .
                   CLEAR  prev.
@@ -5219,55 +5364,6 @@
                   ENDIF.
                 ENDIF.
 
-              WHEN 'CREATE' OR 'CALL'.
-                DATA: import TYPE boolean,
-                      export.
-
-                IF  prev = 'FUNCTION' AND kw = 'CALL'.
-                  call_line-eventtype = call-event = 'FUNCTION'.
-                  call_line-eventname = call-name = word.
-                  "REPLACE ALL OCCURRENCES OF '''' IN  token-to_evname WITH ''.
-                  REPLACE ALL OCCURRENCES OF '''' IN  call_line-eventname WITH ''.
-
-                  READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventtype = call_line-eventtype eventname = call_line-eventname TRANSPORTING NO FIELDS.
-                  IF sy-subrc <> 0.
-                    CLEAR call_line-class.
-                    APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
-                  ENDIF.
-
-                ENDIF.
-
-                IF  prev = 'SCREEN' AND kw = 'CALL'.
-                  APPEND INITIAL LINE TO token-tt_calls ASSIGNING FIELD-SYMBOL(<call>).
-
-                  <call>-event = 'SCREEN'.
-                  <call>-name = temp.
-                  token-program = i_program.
-                ENDIF.
-
-                IF word = 'EXPORTING' OR word = 'CHANGING' OR word = 'TABLES'.
-                  export = abap_true.
-                  CLEAR  import.
-                  CONTINUE.
-
-                ELSEIF word = 'IMPORTING'.
-                  import = abap_true.
-                  CLEAR  export.
-                  CONTINUE.
-
-                ENDIF.
-
-                IF  prev = 'OBJECT'.
-                  READ TABLE prog-t_vars WITH KEY icon = icon_oo_class name = word INTO DATA(var).
-                  IF sy-subrc = 0.
-                    "token-to_class = var-type.
-                    "token-to_evtype = 'METHOD'.
-                    "token-to_evname = 'CONSTRUCTOR'.
-                  ENDIF.
-
-                  "WRITE : 'value',  temp.
-                ENDIF.
-
                 IF   prev = '='.
                   IF NOT  temp  CA '()'.
                     IF NOT  temp  CO '0123456789. '.
@@ -5277,6 +5373,7 @@
                         IF sy-subrc <> 0.
                           APPEND call TO token-tt_calls.
                         ENDIF.
+
                         calculated-name =  temp.
                         APPEND  calculated TO calculated_vars.
                       ELSEIF  export = abap_true.
@@ -5291,230 +5388,94 @@
                     ENDIF.
                   ENDIF.
                 ELSE.
-                  IF NOT  temp  CO '0123456789. ' AND  temp <> '=' AND (  import = abap_true OR  export = abap_true ).
+                  IF NOT  temp  CO '0123456789. ' AND  temp <> '=' AND temp <> ')' AND (  import = abap_true OR  export = abap_true ).
                     call-inner =  temp.
                   ENDIF.
                 ENDIF.
 
-              WHEN 'CLEAR' OR 'SORT'.
-                change =  temp.
-              WHEN  'CONDENSE'.
+              ENDIF.
 
-                IF  temp <> 'NO-GAPS'.
-                  change =  temp.
-                ENDIF.
-              WHEN 'ASSIGN' OR 'UNASSIGN'.
-                ADD 1 TO  count.
-                IF  count <> 2.
-                  change =  temp.
-                ENDIF.
-              WHEN 'ADD' OR 'SUBTRACT'.
-                ADD 1 TO  count.
-                IF  count = 1.
-                  IF  NOT  temp CO '0123456789.() '.
-                    composed-name =  temp.
-                    APPEND  composed TO composed_vars.
+              IF  temp = '(' .
+                prev =  temp.
+                CONTINUE.
+              ENDIF.
+
+              IF  NOT  temp  CA '()'.
+                IF  temp <> 'TABLE' AND  temp <> 'NEW'  AND  prev <> '('.
+                  IF  kw <> 'PERFORM'.
+                    prev =  temp.
+                  ELSEIF word = 'USING' OR word = 'CHANGING'.
+                    prev =  temp.
                   ENDIF.
                 ENDIF.
-                IF  count = 3.
-                  change =  temp.
-                ENDIF.
-              WHEN 'READ'.
-                IF  prev =  'INTO' OR  prev =  'ASSIGNING'.
-                  change =  temp.
-                ENDIF.
-
-              WHEN 'SELECT'.
-                IF  (  prev =  'INTO' OR  prev =  '(' ) AND (  temp <> 'TABLE' AND  temp <> '('  AND  temp <> ')' AND   temp <> ',' ).
-                  change =  temp.
-                ENDIF.
-
-              WHEN OTHERS.
-
-            ENDCASE.
-            IF call-event = 'METHOD'.
-              IF word = 'EXPORTING' OR word = 'CHANGING' OR word = 'TABLES'.
-                export = abap_true.
-                CLEAR  import.
-                CONTINUE.
-
-              ELSEIF word = 'IMPORTING'.
-                import = abap_true.
-                CLEAR  export.
-                CONTINUE.
               ENDIF.
 
-              IF   temp = 'USING' OR  temp = 'CHANGING' .
-                CLEAR  prev.
-              ENDIF.
+              IF  change IS NOT INITIAL.
+                calculated-name =  change.
+                APPEND calculated TO calculated_vars.
 
-              IF   prev = 'USING' OR  prev = 'CHANGING' .
+                IF  change+0(1) = '<'.
 
-                IF NOT  temp  CA '()' .
-                  IF NOT  temp  CO '0123456789. '.
-                    call-outer =  temp.
-                    READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
+                  SPLIT  change AT '-' INTO TABLE split.
+                  change = split[ 1 ].
+                  IF  eventtype IS INITIAL. "Global fs
+                    READ TABLE io_debugger->mo_window->mt_globals_set WITH KEY program = i_include ASSIGNING FIELD-SYMBOL(<globals_set>).
                     IF sy-subrc <> 0.
-                      APPEND call TO token-tt_calls.
+                      APPEND INITIAL LINE TO io_debugger->mo_window->mt_globals_set ASSIGNING <globals_set>.
+                      <globals_set>-program = i_include.
                     ENDIF.
-                    change =  temp.
-                  ENDIF.
-                ENDIF.
-              ENDIF.
+                    READ TABLE  <globals_set>-mt_fs WITH KEY name =  change TRANSPORTING NO FIELDS.
+                    IF sy-subrc <> 0.
+                      APPEND INITIAL LINE TO  <globals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<gl_fs>).
+                      <gl_fs>-name =  change.
+                    ENDIF.
 
-              IF   prev = '='.
-                IF NOT  temp  CA '()'.
-                  IF NOT  temp  CO '0123456789. '.
-                    IF  import = abap_true.
-                      call-outer =  temp.
-                      READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
-                      IF sy-subrc <> 0.
-                        APPEND call TO token-tt_calls.
-                      ENDIF.
-
-                      calculated-name =  temp.
-                      APPEND  calculated TO calculated_vars.
-                    ELSEIF  export = abap_true.
-                      call-outer =  temp.
-                      READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
-                      IF sy-subrc <> 0.
-                        APPEND call TO token-tt_calls.
-                      ENDIF.
-                      composed-name =  temp.
-                      APPEND  composed TO composed_vars.
+                  ELSE."local fs
+                    READ TABLE io_debugger->mo_window->mt_locals_set
+                     WITH KEY program = i_include eventtype =  eventtype eventname =  eventname
+                     ASSIGNING FIELD-SYMBOL(<locals_set>).
+                    IF sy-subrc <> 0.
+                      APPEND INITIAL LINE TO io_debugger->mo_window->mt_locals_set ASSIGNING <locals_set>.
+                      <locals_set>-program = i_include.
+                      <locals_set>-eventname =  eventname.
+                      <locals_set>-eventtype =  eventtype.
+                    ENDIF.
+                    READ TABLE <locals_set>-mt_fs WITH KEY name =  change TRANSPORTING NO FIELDS.
+                    IF sy-subrc <> 0.
+                      APPEND INITIAL LINE TO <locals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<loc_fs>).
+                      <loc_fs>-name =  change.
                     ENDIF.
                   ENDIF.
                 ENDIF.
-              ELSE.
-                IF NOT  temp  CO '0123456789. ' AND  temp <> '=' AND temp <> ')' AND (  import = abap_true OR  export = abap_true ).
-                  call-inner =  temp.
-                ENDIF.
               ENDIF.
 
+            ENDWHILE.
+            token-from = statement-from.
+            token-to = statement-to.
+
+            IF token-name <> 'PUBLIC' AND token-name <> 'PRIVATE' AND token-name <> 'PROTECTED' AND token-name IS NOT INITIAL.
+              APPEND token TO tokens.
             ENDIF.
-
-            IF  temp = '(' .
-              prev =  temp.
-              CONTINUE.
+            IF kw = 'ENDCLASS'.
+              CLEAR: token-sub, class.
             ENDIF.
-
-            IF  NOT  temp  CA '()'.
-              IF  temp <> 'TABLE' AND  temp <> 'NEW'  AND  prev <> '('.
-                IF  kw <> 'PERFORM'.
-                  prev =  temp.
-                ELSEIF word = 'USING' OR word = 'CHANGING'.
-                  prev =  temp.
-                ENDIF.
-              ENDIF.
-            ENDIF.
-
-            IF  change IS NOT INITIAL.
-              calculated-name =  change.
-              APPEND calculated TO calculated_vars.
-
-              IF  change+0(1) = '<'.
-
-                SPLIT  change AT '-' INTO TABLE split.
-                change = split[ 1 ].
-                IF  eventtype IS INITIAL. "Global fs
-                  READ TABLE io_debugger->mo_window->mt_globals_set WITH KEY program = i_include ASSIGNING FIELD-SYMBOL(<globals_set>).
-                  IF sy-subrc <> 0.
-                    APPEND INITIAL LINE TO io_debugger->mo_window->mt_globals_set ASSIGNING <globals_set>.
-                    <globals_set>-program = i_include.
-                  ENDIF.
-                  READ TABLE  <globals_set>-mt_fs WITH KEY name =  change TRANSPORTING NO FIELDS.
-                  IF sy-subrc <> 0.
-                    APPEND INITIAL LINE TO  <globals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<gl_fs>).
-                    <gl_fs>-name =  change.
-                  ENDIF.
-
-                ELSE."local fs
-                  READ TABLE io_debugger->mo_window->mt_locals_set
-                   WITH KEY program = i_include eventtype =  eventtype eventname =  eventname
-                   ASSIGNING FIELD-SYMBOL(<locals_set>).
-                  IF sy-subrc <> 0.
-                    APPEND INITIAL LINE TO io_debugger->mo_window->mt_locals_set ASSIGNING <locals_set>.
-                    <locals_set>-program = i_include.
-                    <locals_set>-eventname =  eventname.
-                    <locals_set>-eventtype =  eventtype.
-                  ENDIF.
-                  READ TABLE <locals_set>-mt_fs WITH KEY name =  change TRANSPORTING NO FIELDS.
-                  IF sy-subrc <> 0.
-                    APPEND INITIAL LINE TO <locals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<loc_fs>).
-                    <loc_fs>-name =  change.
-                  ENDIF.
-                ENDIF.
-              ENDIF.
-            ENDIF.
-
-          ENDWHILE.
-          token-from = statement-from.
-          token-to = statement-to.
-
-          IF token-name <> 'PUBLIC' AND token-name <> 'PRIVATE' AND token-name <> 'PROTECTED' AND token-name IS NOT INITIAL.
-            APPEND token TO tokens.
+            "ELSE.
+            "lcl_ace_source_parser=>parse_tokens( i_program = CONV #( token-include ) i_include = CONV #( token-include ) io_debugger = io_debugger ).
+            "ENDIF.
           ENDIF.
-          IF kw = 'ENDCLASS'.
-            CLEAR: token-sub, class.
+
+          IF o_procedure->statement_index =  max.
+            EXIT.
           ENDIF.
-          "ELSE.
-          "lcl_ace_source_parser=>parse_tokens( i_program = CONV #( token-include ) i_include = CONV #( token-include ) io_debugger = io_debugger ).
-          "ENDIF.
-        ENDIF.
 
-        IF o_procedure->statement_index =  max.
-          EXIT.
-        ENDIF.
+        ENDDO.
 
-      ENDDO.
+        "Fill keyword links for calls
 
-      "Fill keyword links for calls
-
-      LOOP AT tokens ASSIGNING FIELD-SYMBOL(<s_token>) WHERE tt_calls IS NOT INITIAL.
-
-        READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
-        DATA(index) = 0.
-        LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param WHERE event = call-event AND name = call-name .
-          ADD 1 TO  index.
-          READ TABLE <s_token>-tt_calls INDEX  index ASSIGNING <call>.
-          IF sy-subrc = 0.
-            <call>-inner = param-param.
-            IF param-type = 'I'.
-              <call>-type = '>'.
-            ELSE.
-              <call>-type = '<'.
-            ENDIF.
-          ENDIF.
-        ENDLOOP.
-
-      ENDLOOP.
-
-      "clear value(var) to var.
-      LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING <param>.
-        REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.
-        REPLACE ALL OCCURRENCES OF ')' IN <param>-param WITH ''.
-      ENDLOOP.
-
-      APPEND LINES OF calculated_vars TO io_debugger->mo_window->ms_sources-t_calculated.
-      APPEND LINES OF composed_vars TO io_debugger->mo_window->ms_sources-t_composed.
-
-      io_debugger->mo_window->ms_sources-tt_tabs = tabs.
-      "DATA line LIKE LINE OF io_debugger->mo_window->ms_sources-tt_progs.
-      prog-scan = o_scan.
-      prog-t_keywords = tokens.
-      prog-program = i_program.
-      prog-stack = stack.
-      APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
-
-      "IF io_debugger->m_step IS INITIAL.
-      "code_execution_scanner( i_program = i_include i_include = i_include io_debugger = io_debugger ).
-
-      "Fill keyword links for calls
-      LOOP AT io_debugger->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
-        LOOP AT prog-t_keywords ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
+        LOOP AT tokens ASSIGNING FIELD-SYMBOL(<s_token>) WHERE tt_calls IS NOT INITIAL.
 
           READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
-          index = 0.
+          DATA(index) = 0.
           LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param WHERE event = call-event AND name = call-name .
             ADD 1 TO  index.
             READ TABLE <s_token>-tt_calls INDEX  index ASSIGNING <call>.
@@ -5527,16 +5488,57 @@
               ENDIF.
             ENDIF.
           ENDLOOP.
+
         ENDLOOP.
-      ENDLOOP.
 
-    ENDIF.
+        "clear value(var) to var.
+        LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING <param>.
+          REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.
+          REPLACE ALL OCCURRENCES OF ')' IN <param>-param WITH ''.
+        ENDLOOP.
 
-    "Process interfaces
-    data: suffix type string.
-    IF i_main IS NOT INITIAL.
-      SELECT * FROM seometarel INTO TABLE @DATA(lt_interfaces)
-        WHERE clsname = @class_name.
+        APPEND LINES OF calculated_vars TO io_debugger->mo_window->ms_sources-t_calculated.
+        APPEND LINES OF composed_vars TO io_debugger->mo_window->ms_sources-t_composed.
+
+        io_debugger->mo_window->ms_sources-tt_tabs = tabs.
+        "DATA line LIKE LINE OF io_debugger->mo_window->ms_sources-tt_progs.
+        prog-scan = o_scan.
+        prog-t_keywords = tokens.
+        prog-program = i_program.
+        prog-stack = stack.
+        APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
+
+        "IF io_debugger->m_step IS INITIAL.
+        "code_execution_scanner( i_program = i_include i_include = i_include io_debugger = io_debugger ).
+
+        "Fill keyword links for calls
+        LOOP AT io_debugger->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
+          LOOP AT prog-t_keywords ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
+
+            READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
+            index = 0.
+            LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param WHERE event = call-event AND name = call-name .
+              ADD 1 TO  index.
+              READ TABLE <s_token>-tt_calls INDEX  index ASSIGNING <call>.
+              IF sy-subrc = 0.
+                <call>-inner = param-param.
+                IF param-type = 'I'.
+                  <call>-type = '>'.
+                ELSE.
+                  <call>-type = '<'.
+                ENDIF.
+              ENDIF.
+            ENDLOOP.
+          ENDLOOP.
+        ENDLOOP.
+
+      ENDIF.
+
+      "Process interfaces
+      DATA: suffix TYPE string.
+      IF i_main IS NOT INITIAL.
+        SELECT * FROM seometarel INTO TABLE @DATA(lt_interfaces)
+          WHERE clsname = @class_name.
         DATA: prefix  TYPE string,
               program TYPE program,
               include TYPE program.
@@ -5548,7 +5550,7 @@
             WHEN '2'. "Ingeritance
               suffix = 'CP'.
             WHEN OTHERS.
-              data(a) = 1 / 0. "to catch dump to implement logic
+              DATA(a) = 1 / 0. "to catch dump to implement logic
           ENDCASE.
           include = program = prefix && suffix. "Interface Program
           lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_reltype = interface-reltype i_main_prog = i_program i_class = CONV #( interface-refclsname ) i_stack = stack i_program = program i_include = include io_debugger = io_debugger ).
@@ -5909,463 +5911,491 @@
 
           lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
-          "Process interfaces
-          SELECT * FROM seometarel INTO TABLE @DATA(lt_interfaces)
-            WHERE clsname = @i_call-name.
-
-            LOOP AT lt_interfaces INTO DATA(interface).
-              prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
-              include = program = prefix && 'IP'. "Interface Program
-              lcl_ace_source_parser=>parse_tokens( i_class = CONV #( interface-refclsname ) i_stack = stack i_program = program i_include = include io_debugger = io_debugger ).
-            ENDLOOP.
-
-          ELSE.
-            program = i_include.
-          ENDIF.
-
-          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
-          IF sy-subrc = 0.
-            IF include IS INITIAL.
-              include =  call_line-include.
-            ENDIF.
-            lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                  i_e_name = call_line-eventname
-                                  i_e_type = call_line-eventtype
-                                  i_program =  CONV #( include )
-                                  i_include =  CONV #( include )
-                                  i_class = call_line-class
-                                  i_stack   =  i_stack
-                                  io_debugger = io_debugger ).
-          ENDIF.
+        ELSE.
+          program = i_include.
         ENDIF.
 
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
+        IF sy-subrc = 0.
+          IF call_line-include IS NOT INITIAL.
+            include =  call_line-include.
+          ENDIF.
+          lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                                i_e_name = call_line-eventname
+                                i_e_type = call_line-eventtype
+                                i_program =  CONV #( include )
+                                i_include =  CONV #( include )
+                                i_class = call_line-class
+                                i_stack   =  i_stack
+                                io_debugger = io_debugger ).
+        ENDIF.
+      ENDIF.
 
-      ENDMETHOD.
 
-      METHOD parse_screen.
+    ENDMETHOD.
 
-        DATA: stack    TYPE i,
-              ftab     TYPE STANDARD TABLE OF d021s,
-              scr_code TYPE STANDARD TABLE OF d022s,
-              prog     TYPE progname,
-              num(4)   TYPE n,
-              fmnum    TYPE sychar04,
-              code_str TYPE string,
-              pbo      TYPE boolean,
-              pai      TYPE boolean,
-              split    TYPE TABLE OF string.
+    METHOD parse_screen.
 
-        stack = i_stack + 1.
-        prog = key-program.
-        fmnum = num = i_Call-name.
+      DATA: stack    TYPE i,
+            ftab     TYPE STANDARD TABLE OF d021s,
+            scr_code TYPE STANDARD TABLE OF d022s,
+            prog     TYPE progname,
+            num(4)   TYPE n,
+            fmnum    TYPE sychar04,
+            code_str TYPE string,
+            pbo      TYPE boolean,
+            pai      TYPE boolean,
+            split    TYPE TABLE OF string.
 
-        CALL FUNCTION 'RS_IMPORT_DYNPRO'
-          EXPORTING
-            dyname = prog
-            dynumb = fmnum
-          TABLES
-            ftab   = ftab
-            pltab  = scr_code
-          EXCEPTIONS
-            OTHERS = 19.
-        IF sy-subrc <> 0.
-          RETURN.
+      stack = i_stack + 1.
+      prog = key-program.
+      fmnum = num = i_Call-name.
+
+      CALL FUNCTION 'RS_IMPORT_DYNPRO'
+        EXPORTING
+          dyname = prog
+          dynumb = fmnum
+        TABLES
+          ftab   = ftab
+          pltab  = scr_code
+        EXCEPTIONS
+          OTHERS = 19.
+      IF sy-subrc <> 0.
+        RETURN.
+      ENDIF.
+
+      LOOP AT scr_code ASSIGNING FIELD-SYMBOL(<code>).
+        CONDENSE <code>.
+        FIND '"' IN <code> MATCH OFFSET DATA(pos).
+
+        IF pos <> 0.
+          <code> = <code>+0(pos).  " обрезаем до кавычки
+        ENDIF.
+      ENDLOOP.
+
+      DELETE scr_code WHERE line+0(1) = '*' OR line+0(1) = '"' OR line IS INITIAL.
+
+      LOOP AT scr_code INTO DATA(code).
+        IF code_str IS INITIAL.
+          code_str = code-line.
+        ELSE.
+          code_str = |{ code_str } { code-line }|.
+        ENDIF.
+      ENDLOOP.
+
+      SPLIT code_str AT '.' INTO TABLE scr_code.
+
+      "PBO
+      LOOP AT scr_code INTO code.
+        CONDENSE code-line.
+        IF code-line = 'PROCESS BEFORE OUTPUT'.
+          pbo = abap_true.
+          CLEAR pai.
+          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+          ADD 1 TO  io_debugger->m_step.
+          <step>-step = io_debugger->m_step.
+          <step>-line = key-line.
+          <step>-eventname = i_call-name.
+          <step>-eventtype = i_call-event.
+          <step>-stacklevel =  stack.
+          <step>-program = key-program.
+          <step>-include = key-include.
+
+          CONTINUE.
+        ENDIF.
+        IF code-line = 'PROCESS AFTER INPUT'.
+          pai = abap_true.
+          CLEAR pbo.
+          CONTINUE.
         ENDIF.
 
-        LOOP AT scr_code ASSIGNING FIELD-SYMBOL(<code>).
-          CONDENSE <code>.
-          FIND '"' IN <code> MATCH OFFSET DATA(pos).
+        CHECK pbo IS NOT INITIAL.
+        SPLIT code-line AT | | INTO TABLE split.
+        CHECK split[ 1 ] = 'MODULE'.
 
-          IF pos <> 0.
-            <code> = <code>+0(pos).  " обрезаем до кавычки
-          ENDIF.
-        ENDLOOP.
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY program = key-program eventtype = 'MODULE' eventname = split[ 2 ] INTO DATA(call_line).
+        IF sy-subrc = 0.
+          lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                                i_e_name = call_line-eventname
+                                i_e_type = call_line-eventtype
+                                i_program =  CONV #( call_line-program )
+                                i_include =  CONV #( call_line-include )
+                                i_stack   =  stack
+                                io_debugger = io_debugger ).
+        ENDIF.
 
-        DELETE scr_code WHERE line+0(1) = '*' OR line+0(1) = '"' OR line IS INITIAL.
+      ENDLOOP.
 
-        LOOP AT scr_code INTO DATA(code).
-          IF code_str IS INITIAL.
-            code_str = code-line.
-          ELSE.
-            code_str = |{ code_str } { code-line }|.
-          ENDIF.
-        ENDLOOP.
+      "PAI
+      LOOP AT scr_code INTO code.
+        CONDENSE code-line.
+        IF code-line = 'PROCESS AFTER INPUT'.
+          CLEAR pbo.
+          pai = abap_true.
+          "READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = key-program include = key-include TRANSPORTING NO FIELDS.
+          "IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING <step>.
+          ADD 1 TO  io_debugger->m_step.
+          <step>-step = io_debugger->m_step.
+          <step>-line = key-line.
+          <step>-eventname = i_call-name.
+          <step>-eventtype = i_call-event. <step>-stacklevel =  stack.
+          <step>-program = key-program.
+          <step>-include = key-include.
+          "ENDIF.
+          CONTINUE.
+        ENDIF.
+        IF code-line = 'PROCESS BEFORE OUTPUT'.
+          pbo = abap_true.
+          CLEAR pai.
+          CONTINUE.
+        ENDIF.
 
-        SPLIT code_str AT '.' INTO TABLE scr_code.
+        CHECK pai IS NOT INITIAL.
+        SPLIT code-line AT | | INTO TABLE split.
+        CHECK split[ 1 ] = 'MODULE'.
 
-        "PBO
-        LOOP AT scr_code INTO code.
-          CONDENSE code-line.
-          IF code-line = 'PROCESS BEFORE OUTPUT'.
-            pbo = abap_true.
-            CLEAR pai.
-            APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
-            ADD 1 TO  io_debugger->m_step.
-            <step>-step = io_debugger->m_step.
-            <step>-line = key-line.
-            <step>-eventname = i_call-name.
-            <step>-eventtype = i_call-event.
-            <step>-stacklevel =  stack.
-            <step>-program = key-program.
-            <step>-include = key-include.
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY program = key-program eventtype = 'MODULE' eventname = split[ 2 ] INTO call_line.
+        IF sy-subrc = 0.
+          lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                                i_e_name = call_line-eventname
+                                i_e_type = call_line-eventtype
+                                i_program =  CONV #( call_line-program )
+                                i_include =  CONV #( call_line-include )
+                                i_stack   =  stack
+                                io_debugger = io_debugger ).
+        ENDIF.
 
-            CONTINUE.
-          ENDIF.
-          IF code-line = 'PROCESS AFTER INPUT'.
-            pai = abap_true.
-            CLEAR pbo.
-            CONTINUE.
-          ENDIF.
+      ENDLOOP.
 
-          CHECK pbo IS NOT INITIAL.
-          SPLIT code-line AT | | INTO TABLE split.
-          CHECK split[ 1 ] = 'MODULE'.
-
-          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY program = key-program eventtype = 'MODULE' eventname = split[ 2 ] INTO DATA(call_line).
-          IF sy-subrc = 0.
-            lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                  i_e_name = call_line-eventname
-                                  i_e_type = call_line-eventtype
-                                  i_program =  CONV #( call_line-program )
-                                  i_include =  CONV #( call_line-include )
-                                  i_stack   =  stack
-                                  io_debugger = io_debugger ).
-          ENDIF.
-
-        ENDLOOP.
-
-        "PAI
-        LOOP AT scr_code INTO code.
-          CONDENSE code-line.
-          IF code-line = 'PROCESS AFTER INPUT'.
-            CLEAR pbo.
-            pai = abap_true.
-            "READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = key-program include = key-include TRANSPORTING NO FIELDS.
-            "IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING <step>.
-            ADD 1 TO  io_debugger->m_step.
-            <step>-step = io_debugger->m_step.
-            <step>-line = key-line.
-            <step>-eventname = i_call-name.
-            <step>-eventtype = i_call-event. <step>-stacklevel =  stack.
-            <step>-program = key-program.
-            <step>-include = key-include.
-            "ENDIF.
-            CONTINUE.
-          ENDIF.
-          IF code-line = 'PROCESS BEFORE OUTPUT'.
-            pbo = abap_true.
-            CLEAR pai.
-            CONTINUE.
-          ENDIF.
-
-          CHECK pai IS NOT INITIAL.
-          SPLIT code-line AT | | INTO TABLE split.
-          CHECK split[ 1 ] = 'MODULE'.
-
-          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY program = key-program eventtype = 'MODULE' eventname = split[ 2 ] INTO call_line.
-          IF sy-subrc = 0.
-            lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                  i_e_name = call_line-eventname
-                                  i_e_type = call_line-eventtype
-                                  i_program =  CONV #( call_line-program )
-                                  i_include =  CONV #( call_line-include )
-                                  i_stack   =  stack
-                                  io_debugger = io_debugger ).
-          ENDIF.
-
-        ENDLOOP.
-
-      ENDMETHOD.
+    ENDMETHOD.
 
   ENDCLASS.
 
   CLASS lcl_ace_mermaid IMPLEMENTATION.
 
-  METHOD constructor.
+    METHOD constructor.
 
-    DATA  text TYPE text100.
+      DATA  text TYPE text100.
 
-    super->constructor( ).
+      super->constructor( ).
 
-    mo_viewer = io_debugger.
-    mv_type = i_type.
+      mo_viewer = io_debugger.
+      mv_type = i_type.
 
-    CHECK lcl_ace_appl=>i_mermaid_active = abap_true.
+      CHECK lcl_ace_appl=>i_mermaid_active = abap_true.
 
-    CASE mv_type.
-      WHEN 'CALLS'.
-        text = 'Calls flow'.
-      WHEN 'FLOW'.
-        text = 'Calculations sequence'.
-    ENDCASE.
+      CASE mv_type.
+        WHEN 'CALLS'.
+          text = 'Calls flow'.
+        WHEN 'FLOW'.
+          text = 'Calculations sequence'.
+      ENDCASE.
 
-    IF mo_box IS INITIAL.
-      mo_box = create( i_name =  text i_width = 1000 i_hight = 300 ).
+      IF mo_box IS INITIAL.
+        mo_box = create( i_name =  text i_width = 1000 i_hight = 300 ).
 
-      "save new popup ref
-      APPEND INITIAL LINE TO lcl_ace_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
-      <popup>-parent = mo_viewer->mo_window->mo_box.
-      <popup>-child = mo_box.
+        "save new popup ref
+        APPEND INITIAL LINE TO lcl_ace_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+        <popup>-parent = mo_viewer->mo_window->mo_box.
+        <popup>-child = mo_box.
 
-      SET HANDLER on_box_close FOR mo_box.
+        SET HANDLER on_box_close FOR mo_box.
 
-      CREATE OBJECT mo_splitter
-        EXPORTING
-          parent  = mo_box
-          rows    = 2
-          columns = 1
-        EXCEPTIONS
-          OTHERS  = 1.
+        CREATE OBJECT mo_splitter
+          EXPORTING
+            parent  = mo_box
+            rows    = 2
+            columns = 1
+          EXCEPTIONS
+            OTHERS  = 1.
 
-      mo_splitter->get_container(
-        EXPORTING
-          row       = 2
-          column    = 1
-        RECEIVING
-          container = mo_mm_container ).
+        mo_splitter->get_container(
+          EXPORTING
+            row       = 2
+            column    = 1
+          RECEIVING
+            container = mo_mm_container ).
 
-      mo_splitter->get_container(
-        EXPORTING
-          row       = 1
-          column    = 1
-        RECEIVING
-          container = mo_mm_toolbar ).
+        mo_splitter->get_container(
+          EXPORTING
+            row       = 1
+            column    = 1
+          RECEIVING
+            container = mo_mm_toolbar ).
 
-      mo_splitter->set_row_height( id = 1 height = '3' ).
-      mo_splitter->set_row_height( id = 2 height = '70' ).
+        mo_splitter->set_row_height( id = 1 height = '3' ).
+        mo_splitter->set_row_height( id = 2 height = '70' ).
 
-      mo_splitter->set_row_sash( id    = 1
-                                 type  = 0
-                                 value = 0 ).
+        mo_splitter->set_row_sash( id    = 1
+                                   type  = 0
+                                   value = 0 ).
 
-      CREATE OBJECT mo_toolbar EXPORTING parent = mo_mm_toolbar.
-      add_toolbar_buttons( ).
-      mo_toolbar->set_visible( 'X' ).
-    ENDIF.
-    CASE mv_type.
-      WHEN 'CALLS'.
-        steps_flow( ).
-      WHEN 'FLOW'.
-        magic_search( ).
-    ENDCASE.
-
-  ENDMETHOD.
-
-  METHOD steps_flow.
-
-    TYPES: BEGIN OF lty_entity,
-             event TYPE string,
-             name  TYPE string,
-           END OF lty_entity,
-           BEGIN OF t_ind,
-             from TYPE i,
-             to   TYPE i,
-           END OF t_ind  .
-
-    DATA: mm_string TYPE string,
-          name      TYPE string,
-          entities  TYPE TABLE OF lty_entity,
-          entity    TYPE lty_entity,
-          parts     TYPE TABLE OF string,
-          step      LIKE LINE OF mo_viewer->mt_steps,
-          ind       TYPE t_ind,
-          indexes   TYPE TABLE OF t_ind.
-
-    DATA(copy) = mo_viewer->mt_steps.
-
-    LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
-      IF <copy>-eventtype = 'METHOD'.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line WITH KEY include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname INTO DATA(call_line).
-        <copy>-eventname = entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
-        entity-event = <copy>-eventtype.
-
-      ELSEIF <copy>-eventtype = 'FUNCTION'.
-        <copy>-eventname = entity-name = |"{ <copy>-eventtype }:{ <copy>-eventname }"|.
-      ELSEIF <copy>-eventtype = 'SCREEN'.
-        <copy>-eventname = entity-name = |"CALL SCREEN { <copy>-eventname }"|.
-      ELSEIF <copy>-eventtype = 'MODULE'.
-        <copy>-eventname = entity-name = |"MODULE { <copy>-eventname }"|.
-      ELSEIF <copy>-eventtype = 'FORM'.
-        <copy>-eventname = entity-name = |"FORM { <copy>-eventname }"|.
-
-      ELSE.
-        <copy>-eventname = entity-name = |"{ <copy>-program }:{ <copy>-eventname }"|.
+        CREATE OBJECT mo_toolbar EXPORTING parent = mo_mm_toolbar.
+        add_toolbar_buttons( ).
+        mo_toolbar->set_visible( 'X' ).
       ENDIF.
+      CASE mv_type.
+        WHEN 'CALLS'.
+          steps_flow( ).
+        WHEN 'FLOW'.
+          magic_search( ).
+      ENDCASE.
 
-      COLLECT entity INTO entities.
-    ENDLOOP.
+    ENDMETHOD.
 
-    CLEAR step.
+    METHOD steps_flow.
 
-    IF i_direction IS INITIAL.
-      mm_string = |graph TD\n |.
-    ELSE.
-      mm_string = |graph { i_direction }\n |.
-    ENDIF.
+      TYPES: BEGIN OF lty_entity,
+               event TYPE string,
+               name  TYPE string,
+             END OF lty_entity,
+             BEGIN OF t_ind,
+               from TYPE i,
+               to   TYPE i,
+             END OF t_ind  .
 
-    LOOP AT copy INTO DATA(step2).
-      IF step IS INITIAL.
-        step = step2.
-        CONTINUE.
-      ENDIF.
-      IF step2-stacklevel > step-stacklevel.
+      DATA: mm_string TYPE string,
+            name      TYPE string,
+            entities  TYPE TABLE OF lty_entity,
+            entity    TYPE lty_entity,
+            parts     TYPE TABLE OF string,
+            step      LIKE LINE OF mo_viewer->mt_steps,
+            ind       TYPE t_ind,
+            indexes   TYPE TABLE OF t_ind.
 
-        READ TABLE entities WITH KEY name = step-eventname TRANSPORTING NO FIELDS.
-        ind-from = sy-tabix.
-        READ TABLE entities WITH KEY name = step2-eventname TRANSPORTING NO FIELDS.
-        ind-to = sy-tabix.
-        READ TABLE indexes WITH KEY from = ind-from to = ind-to TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          "REPLACE ALL OCCURRENCES OF `-` IN step-eventname WITH `~` IN CHARACTER MODE.
-          "REPLACE ALL OCCURRENCES OF `-` IN step2-eventname WITH `~` IN CHARACTER MODE.
-          mm_string = |{  mm_string }{ ind-from }({ step-eventname }) --> { ind-to }({ step2-eventname })\n|.
-          APPEND ind TO indexes.
-        ENDIF.
-      ENDIF.
-      step = step2.
-    ENDLOOP.
-    mm_string = |{  mm_string }\n|.
+      DATA(copy) = mo_viewer->mt_steps.
 
-    open_mermaid(  mm_string ).
+      LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
+        IF <copy>-eventtype = 'METHOD'.
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line WITH KEY include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname INTO DATA(call_line).
+          <copy>-eventname = entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
+          entity-event = <copy>-eventtype.
 
-  ENDMETHOD.
+        ELSEIF <copy>-eventtype = 'FUNCTION'.
+          <copy>-eventname = entity-name = |"{ <copy>-eventtype }:{ <copy>-eventname }"|.
+        ELSEIF <copy>-eventtype = 'SCREEN'.
+          <copy>-eventname = entity-name = |"CALL SCREEN { <copy>-eventname }"|.
+        ELSEIF <copy>-eventtype = 'MODULE'.
+          <copy>-eventname = entity-name = |"MODULE { <copy>-eventname }"|.
+        ELSEIF <copy>-eventtype = 'FORM'.
+          <copy>-eventname = entity-name = |"FORM { <copy>-eventname }"|.
 
-  METHOD magic_search.
-
-    FIELD-SYMBOLS: <if> TYPE mo_viewer->ts_if.
-
-    DATA: add         TYPE boolean,
-          mm_string   TYPE string,
-          sub         TYPE string,
-          form        TYPE string,
-          direction   TYPE string,
-          box_s       TYPE string,
-          box_e       TYPE string,
-          ind2        TYPE i,
-          start       TYPE i,
-          end         TYPE i,
-          bool        TYPE string,
-          block_first TYPE i,
-          els_before  TYPE i.
-
-    DATA: line      TYPE mo_viewer->ts_line,
-          pre_stack TYPE mo_viewer->ts_line,
-          opened    TYPE i.
-
-    DATA(lines) = mo_viewer->get_code_flow( ).
-
-    "creating mermaid code
-    CHECK lines IS NOT INITIAL.
-
-    IF i_direction IS INITIAL.
-      IF lines( lines ) < 100.
-        direction = 'LR'.
-      ELSE.
-        direction = 'TB'.
-      ENDIF.
-    ELSE.
-      direction = i_direction.
-    ENDIF.
-
-    mm_string = |graph {  direction }\n |.
-
-    LOOP AT lines INTO line WHERE cond <> 'ELSE' AND cond <> 'ELSEIF' AND  cond <> 'WHEN'.
-      DATA(ind) = sy-tabix.
-
-      IF line-cond IS INITIAL.
-        box_s = '('.
-        box_e = ')'.
-      ELSE.
-        box_s = '{'.
-        box_e = '}'.
-      ENDIF.
-
-      IF pre_stack IS INITIAL.
-        pre_stack = line.
-      ENDIF.
-
-      IF ( pre_stack-stack > line-stack OR pre_stack-ev_name <> line-ev_name ) AND  opened > 0 AND  sub IS INITIAL.
-        IF pre_stack-stack = line-stack AND pre_stack-ev_name <> line-ev_name.
-          DATA(times) = 1.
         ELSE.
-          times = pre_stack-stack - line-stack.
+          <copy>-eventname = entity-name = |"{ <copy>-program }:{ <copy>-eventname }"|.
         ENDIF.
 
-        DO  times TIMES.
-          mm_string = |{  mm_string } end\n|.
-          SUBTRACT 1 FROM  opened.
-          IF  opened = 0.
-            EXIT.
+        COLLECT entity INTO entities.
+      ENDLOOP.
+
+      CLEAR step.
+
+      IF i_direction IS INITIAL.
+        mm_string = |graph TD\n |.
+      ELSE.
+        mm_string = |graph { i_direction }\n |.
+      ENDIF.
+
+      LOOP AT copy INTO DATA(step2).
+        IF step IS INITIAL.
+          step = step2.
+          CONTINUE.
+        ENDIF.
+        IF step2-stacklevel > step-stacklevel.
+
+          READ TABLE entities WITH KEY name = step-eventname TRANSPORTING NO FIELDS.
+          ind-from = sy-tabix.
+          READ TABLE entities WITH KEY name = step2-eventname TRANSPORTING NO FIELDS.
+          ind-to = sy-tabix.
+          READ TABLE indexes WITH KEY from = ind-from to = ind-to TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            "REPLACE ALL OCCURRENCES OF `-` IN step-eventname WITH `~` IN CHARACTER MODE.
+            "REPLACE ALL OCCURRENCES OF `-` IN step2-eventname WITH `~` IN CHARACTER MODE.
+            mm_string = |{  mm_string }{ ind-from }({ step-eventname }) --> { ind-to }({ step2-eventname })\n|.
+            APPEND ind TO indexes.
           ENDIF.
-        ENDDO.
-
-      ENDIF.
-      DATA:  name TYPE string.
-      IF    line-cond = 'LOOP' OR line-cond = 'DO' OR line-cond = 'WHILE' OR line-subname IS NOT INITIAL .
-
-        "IF line-arrow IS NOT INITIAL.
-        mm_string = |{  mm_string }{  ind }{  box_s }"{ line-code }"{  box_e }\n|.
-        pre_stack = line.
-        "ENDIF.
-
-        IF strlen( line-code ) > 50.
-          name = line-code+0(50).
-        ELSE.
-          name = line-code.
         ENDIF.
-        REPLACE ALL OCCURRENCES OF `PERFORM` IN  name WITH `FORM` IN CHARACTER MODE.
-        REPLACE ALL OCCURRENCES OF `CALL FUNCTION` IN  name WITH `FUNCTION` IN CHARACTER MODE.
-        REPLACE ALL OCCURRENCES OF `CALL METHOD` IN  name WITH `METHOD` IN CHARACTER MODE.
-        REPLACE ALL OCCURRENCES OF `-` IN  name WITH `~` IN CHARACTER MODE.
-        REPLACE ALL OCCURRENCES OF ` ` IN  name WITH `&nbsp;` IN CHARACTER MODE.
+        step = step2.
+      ENDLOOP.
+      mm_string = |{  mm_string }\n|.
 
-        READ TABLE lines INDEX ind + 1 INTO DATA(line2).
-        IF sy-subrc = 0 AND line-stack <> line2-stack.
-          mm_string = |{  mm_string } subgraph S{  ind }["{  name }"]\n  direction {  direction }\n|.
-          ADD 1 TO  opened.
-          start =  ind.
+      open_mermaid(  mm_string ).
+
+    ENDMETHOD.
+
+    METHOD magic_search.
+
+      FIELD-SYMBOLS: <if> TYPE mo_viewer->ts_if.
+
+      DATA: add         TYPE boolean,
+            mm_string   TYPE string,
+            sub         TYPE string,
+            form        TYPE string,
+            direction   TYPE string,
+            box_s       TYPE string,
+            box_e       TYPE string,
+            ind2        TYPE i,
+            start       TYPE i,
+            end         TYPE i,
+            bool        TYPE string,
+            block_first TYPE i,
+            els_before  TYPE i.
+
+      DATA: line      TYPE mo_viewer->ts_line,
+            pre_stack TYPE mo_viewer->ts_line,
+            opened    TYPE i.
+
+      DATA(lines) = mo_viewer->get_code_flow( ).
+
+      "creating mermaid code
+      CHECK lines IS NOT INITIAL.
+
+      IF i_direction IS INITIAL.
+        IF lines( lines ) < 100.
+          direction = 'LR'.
+        ELSE.
+          direction = 'TB'.
+        ENDIF.
+      ELSE.
+        direction = i_direction.
+      ENDIF.
+
+      mm_string = |graph {  direction }\n |.
+
+      LOOP AT lines INTO line WHERE cond <> 'ELSE' AND cond <> 'ELSEIF' AND  cond <> 'WHEN'.
+        DATA(ind) = sy-tabix.
+
+        IF line-cond IS INITIAL.
+          box_s = '('.
+          box_e = ')'.
+        ELSE.
+          box_s = '{'.
+          box_e = '}'.
+        ENDIF.
+
+        IF pre_stack IS INITIAL.
+          pre_stack = line.
+        ENDIF.
+
+        IF ( pre_stack-stack > line-stack OR pre_stack-ev_name <> line-ev_name ) AND  opened > 0 AND  sub IS INITIAL.
+          IF pre_stack-stack = line-stack AND pre_stack-ev_name <> line-ev_name.
+            DATA(times) = 1.
+          ELSE.
+            times = pre_stack-stack - line-stack.
+          ENDIF.
+
+          DO  times TIMES.
+            mm_string = |{  mm_string } end\n|.
+            SUBTRACT 1 FROM  opened.
+            IF  opened = 0.
+              EXIT.
+            ENDIF.
+          ENDDO.
+
+        ENDIF.
+        DATA:  name TYPE string.
+        IF    line-cond = 'LOOP' OR line-cond = 'DO' OR line-cond = 'WHILE' OR line-subname IS NOT INITIAL .
+
+          "IF line-arrow IS NOT INITIAL.
+          mm_string = |{  mm_string }{  ind }{  box_s }"{ line-code }"{  box_e }\n|.
+          pre_stack = line.
+          "ENDIF.
+
+          IF strlen( line-code ) > 50.
+            name = line-code+0(50).
+          ELSE.
+            name = line-code.
+          ENDIF.
+          REPLACE ALL OCCURRENCES OF `PERFORM` IN  name WITH `FORM` IN CHARACTER MODE.
+          REPLACE ALL OCCURRENCES OF `CALL FUNCTION` IN  name WITH `FUNCTION` IN CHARACTER MODE.
+          REPLACE ALL OCCURRENCES OF `CALL METHOD` IN  name WITH `METHOD` IN CHARACTER MODE.
+          REPLACE ALL OCCURRENCES OF `-` IN  name WITH `~` IN CHARACTER MODE.
+          REPLACE ALL OCCURRENCES OF ` ` IN  name WITH `&nbsp;` IN CHARACTER MODE.
+
+          READ TABLE lines INDEX ind + 1 INTO DATA(line2).
+          IF sy-subrc = 0 AND line-stack <> line2-stack.
+            mm_string = |{  mm_string } subgraph S{  ind }["{  name }"]\n  direction {  direction }\n|.
+            ADD 1 TO  opened.
+            start =  ind.
+            CONTINUE.
+          ENDIF.
+
+        ENDIF.
+
+        IF line-cond = 'ENDLOOP' OR line-cond = 'ENDDO' OR line-cond = 'ENDWHILE'.
+          SUBTRACT 1 FROM  opened.
+          mm_string = |{  mm_string } end\n|.
           CONTINUE.
         ENDIF.
 
-      ENDIF.
+        mm_string = |{  mm_string }{  ind }{  box_s }"{ line-code }"{  box_e }\n|.
+        pre_stack = line.
 
-      IF line-cond = 'ENDLOOP' OR line-cond = 'ENDDO' OR line-cond = 'ENDWHILE'.
-        SUBTRACT 1 FROM  opened.
+      ENDLOOP.
+
+      DO  opened TIMES.
         mm_string = |{  mm_string } end\n|.
-        CONTINUE.
-      ENDIF.
-
-      mm_string = |{  mm_string }{  ind }{  box_s }"{ line-code }"{  box_e }\n|.
-      pre_stack = line.
-
-    ENDLOOP.
-
-    DO  opened TIMES.
-      mm_string = |{  mm_string } end\n|.
-      SUBTRACT 1 FROM  opened.
-    ENDDO.
+        SUBTRACT 1 FROM  opened.
+      ENDDO.
 
 
-    DATA: if_ind      TYPE i.
-    CLEAR pre_stack.
-    LOOP AT lines INTO line WHERE cond <> 'LOOP' AND cond <> 'DO' AND cond <> 'WHILE' AND cond <> 'ENDLOOP' AND cond <> 'ENDDO' AND cond <> 'ENDWHILE'.
+      DATA: if_ind      TYPE i.
+      CLEAR pre_stack.
+      LOOP AT lines INTO line WHERE cond <> 'LOOP' AND cond <> 'DO' AND cond <> 'WHILE' AND cond <> 'ENDLOOP' AND cond <> 'ENDDO' AND cond <> 'ENDWHILE'.
 
-      IF line-cond = 'IF' OR line-cond = 'CASE' .
-        ADD 1 TO if_ind.
-        READ TABLE mo_viewer->mt_if INDEX if_ind INTO mo_viewer->ms_if.
-      ENDIF.
+        IF line-cond = 'IF' OR line-cond = 'CASE' .
+          ADD 1 TO if_ind.
+          READ TABLE mo_viewer->mt_if INDEX if_ind INTO mo_viewer->ms_if.
+        ENDIF.
 
 
-      IF pre_stack IS INITIAL.
-        IF line-cond = 'WHEN' OR line-cond = 'ELSE' OR line-cond = 'ELSEIF'.
-          IF <if> IS ASSIGNED.
-            pre_stack = lines[ <if>-if_ind ].
+        IF pre_stack IS INITIAL.
+          IF line-cond = 'WHEN' OR line-cond = 'ELSE' OR line-cond = 'ELSEIF'.
+            IF <if> IS ASSIGNED.
+              pre_stack = lines[ <if>-if_ind ].
+            ELSE.
+              CLEAR pre_stack.
+            ENDIF.
           ELSE.
+            pre_stack = line.
+
+            IF line-arrow IS NOT INITIAL.
+              sub = '|"' && line-arrow && '"|'.
+            ELSE.
+              CLEAR  sub.
+            ENDIF.
+
+            CONTINUE.
+          ENDIF.
+
+        ENDIF.
+
+        IF line-cond = 'ELSE' OR line-cond = 'ELSEIF' OR line-cond = 'WHEN'.
+          bool = '|' && line-code && '|'.
+          IF line-els_after IS NOT INITIAL.
+            mm_string = |{  mm_string }{ mo_viewer->ms_if-if_ind }-->{  bool }{ line-els_after }\n|.
+            DATA(diff) = mo_viewer->ms_if-end_ind - line-els_after.
+            DATA(last_els) = line-els_after.
+*          IF line-cond <> 'WHEN' AND line-cond <> 'ELSEIF'  AND   diff > 1 AND line-els_after <> ms_if-end_ind.
+*             mm_string = |{  mm_string }{  line-els_after }-->{ ms_if-end_ind }\n|.
+*          ENDIF.
+          ELSE.
+            mm_string = |{  mm_string }{ mo_viewer->ms_if-if_ind }-->{  bool }{ mo_viewer->ms_if-end_ind }\n|.
+          ENDIF.
+
+          IF line-els_before IS NOT INITIAL AND line-els_before <> mo_viewer->ms_if-if_ind.
+            mm_string = |{  mm_string }{ line-els_before }-->{ mo_viewer->ms_if-end_ind }\n|.
+          ENDIF.
+
+          IF lines[ line-ind + 1 ]-cond <> 'ENDIF' AND lines[ line-ind + 1 ]-cond <> 'ENDCASE'.
             CLEAR pre_stack.
           ENDIF.
-        ELSE.
-          pre_stack = line.
+          CONTINUE.
+        ENDIF.
+
+        IF   pre_stack-cond NE 'ELSE' AND pre_stack-cond NE 'ELSEIF' AND pre_stack-cond NE 'WHEN' AND NOT (  last_els = line-ind ).
+
+          mm_string = |{  mm_string }{ pre_stack-ind }-->{  sub }{ line-ind }\n|.
 
           IF line-arrow IS NOT INITIAL.
             sub = '|"' && line-arrow && '"|'.
@@ -6373,140 +6403,102 @@
             CLEAR  sub.
           ENDIF.
 
-          CONTINUE.
         ENDIF.
 
-      ENDIF.
+        pre_stack = line.
 
-      IF line-cond = 'ELSE' OR line-cond = 'ELSEIF' OR line-cond = 'WHEN'.
-        bool = '|' && line-code && '|'.
-        IF line-els_after IS NOT INITIAL.
-          mm_string = |{  mm_string }{ mo_viewer->ms_if-if_ind }-->{  bool }{ line-els_after }\n|.
-          DATA(diff) = mo_viewer->ms_if-end_ind - line-els_after.
-          DATA(last_els) = line-els_after.
-*          IF line-cond <> 'WHEN' AND line-cond <> 'ELSEIF'  AND   diff > 1 AND line-els_after <> ms_if-end_ind.
-*             mm_string = |{  mm_string }{  line-els_after }-->{ ms_if-end_ind }\n|.
-*          ENDIF.
-        ELSE.
-          mm_string = |{  mm_string }{ mo_viewer->ms_if-if_ind }-->{  bool }{ mo_viewer->ms_if-end_ind }\n|.
+        IF line-cond = 'ENDIF' OR line-cond = 'ENDCASE' AND if_ind <> 0.
+          DELETE mo_viewer->mt_if INDEX if_ind.
+          SUBTRACT 1 FROM if_ind.
+          READ TABLE mo_viewer->mt_if INDEX if_ind INTO mo_viewer->ms_if.
         ENDIF.
 
-        IF line-els_before IS NOT INITIAL AND line-els_before <> mo_viewer->ms_if-if_ind.
-          mm_string = |{  mm_string }{ line-els_before }-->{ mo_viewer->ms_if-end_ind }\n|.
-        ENDIF.
+      ENDLOOP.
+      mm_string = |{  mm_string }\n|.
 
-        IF lines[ line-ind + 1 ]-cond <> 'ENDIF' AND lines[ line-ind + 1 ]-cond <> 'ENDCASE'.
-          CLEAR pre_stack.
-        ENDIF.
-        CONTINUE.
-      ENDIF.
+      open_mermaid(  mm_string ).
 
-      IF   pre_stack-cond NE 'ELSE' AND pre_stack-cond NE 'ELSEIF' AND pre_stack-cond NE 'WHEN' AND NOT (  last_els = line-ind ).
+    ENDMETHOD.
 
-        mm_string = |{  mm_string }{ pre_stack-ind }-->{  sub }{ line-ind }\n|.
+    METHOD add_toolbar_buttons.
 
-        IF line-arrow IS NOT INITIAL.
-          sub = '|"' && line-arrow && '"|'.
-        ELSE.
-          CLEAR  sub.
-        ENDIF.
+      DATA: button TYPE ttb_button,
+            events TYPE cntl_simple_events,
+            event  LIKE LINE OF events.
 
-      ENDIF.
+      button  = VALUE #(
+       ( function = 'TB' icon = CONV #( icon_view_expand_vertical ) quickinfo = 'Vertical' text = '' )
+       ( function = 'LR' icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
+       ( butn_type = 3  )
+       ( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow' text = 'Calls Flow' )
+       ( function = 'FLOW' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
+       ( butn_type = 3  )
+       ( function = 'TEXT' icon = CONV #( icon_wd_caption ) quickinfo = 'Mermaid Diagram text' text = '' )
+                      ).
 
-      pre_stack = line.
-
-      IF line-cond = 'ENDIF' OR line-cond = 'ENDCASE' AND if_ind <> 0.
-        DELETE mo_viewer->mt_if INDEX if_ind.
-        SUBTRACT 1 FROM if_ind.
-        READ TABLE mo_viewer->mt_if INDEX if_ind INTO mo_viewer->ms_if.
-      ENDIF.
-
-    ENDLOOP.
-    mm_string = |{  mm_string }\n|.
-
-    open_mermaid(  mm_string ).
-
-  ENDMETHOD.
-
-  METHOD add_toolbar_buttons.
-
-    DATA: button TYPE ttb_button,
-          events TYPE cntl_simple_events,
-          event  LIKE LINE OF events.
-
-    button  = VALUE #(
-     ( function = 'TB' icon = CONV #( icon_view_expand_vertical ) quickinfo = 'Vertical' text = '' )
-     ( function = 'LR' icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
-     ( butn_type = 3  )
-     ( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow' text = 'Calls Flow' )
-     ( function = 'FLOW' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
-     ( butn_type = 3  )
-     ( function = 'TEXT' icon = CONV #( icon_wd_caption ) quickinfo = 'Mermaid Diagram text' text = '' )
-                    ).
-
-    mo_toolbar->add_button_group( button ).
+      mo_toolbar->add_button_group( button ).
 
 *   Register events
-    event-eventid = cl_gui_toolbar=>m_id_function_selected.
-    event-appl_event = space.
-    APPEND event TO events.
+      event-eventid = cl_gui_toolbar=>m_id_function_selected.
+      event-appl_event = space.
+      APPEND event TO events.
 
-    mo_toolbar->set_registered_events( events = events ).
-    SET HANDLER me->hnd_toolbar FOR mo_toolbar.
+      mo_toolbar->set_registered_events( events = events ).
+      SET HANDLER me->hnd_toolbar FOR mo_toolbar.
 
-  ENDMETHOD.
+    ENDMETHOD.
 
-  METHOD hnd_toolbar.
+    METHOD hnd_toolbar.
 
-    IF fcode = 'TEXT'.
-      DATA: mm_string TYPE string,
-            ref       TYPE REF TO data.
-      CALL METHOD mo_diagram->('GET_SOURCE_CODE_STRING') RECEIVING result = mm_string.
-      GET REFERENCE OF  mm_string INTO  ref.
-      NEW lcl_ace_text_viewer(  ref ).
+      IF fcode = 'TEXT'.
+        DATA: mm_string TYPE string,
+              ref       TYPE REF TO data.
+        CALL METHOD mo_diagram->('GET_SOURCE_CODE_STRING') RECEIVING result = mm_string.
+        GET REFERENCE OF  mm_string INTO  ref.
+        NEW lcl_ace_text_viewer(  ref ).
 
-      RETURN.
-    ENDIF.
+        RETURN.
+      ENDIF.
 
-    IF fcode =  'LR' OR fcode =  'TB'.
-      mv_direction = fcode.
-    ELSE.
-      mv_type = fcode.
-    ENDIF.
+      IF fcode =  'LR' OR fcode =  'TB'.
+        mv_direction = fcode.
+      ELSE.
+        mv_type = fcode.
+      ENDIF.
 
-    refresh( ).
+      refresh( ).
 
 
 
-  ENDMETHOD.
+    ENDMETHOD.
 
-  METHOD open_mermaid.
+    METHOD open_mermaid.
 
-    CHECK lcl_ace_appl=>i_mermaid_active = abap_true.
+      CHECK lcl_ace_appl=>i_mermaid_active = abap_true.
 
-    TRY.
-        IF mo_diagram IS INITIAL.
-          CREATE OBJECT mo_diagram TYPE ('ZCL_WD_GUI_MERMAID_JS_DIAGRAM') EXPORTING parent = mo_mm_container hide_scrollbars = abap_false.
-        ENDIF.
-        CALL METHOD mo_diagram->('SET_SOURCE_CODE_STRING') EXPORTING source_code = i_mm_string.
-        CALL METHOD mo_diagram->('DISPLAY').
+      TRY.
+          IF mo_diagram IS INITIAL.
+            CREATE OBJECT mo_diagram TYPE ('ZCL_WD_GUI_MERMAID_JS_DIAGRAM') EXPORTING parent = mo_mm_container hide_scrollbars = abap_false.
+          ENDIF.
+          CALL METHOD mo_diagram->('SET_SOURCE_CODE_STRING') EXPORTING source_code = i_mm_string.
+          CALL METHOD mo_diagram->('DISPLAY').
 
-      CATCH cx_root INTO DATA(error).
-        MESSAGE error TYPE 'E'.
-    ENDTRY.
+        CATCH cx_root INTO DATA(error).
+          MESSAGE error TYPE 'E'.
+      ENDTRY.
 
-  ENDMETHOD.
+    ENDMETHOD.
 
-  METHOD refresh.
+    METHOD refresh.
 
-    CASE mv_type.
-      WHEN 'CALLS'.
-        steps_flow( mv_direction ).
-      WHEN 'FLOW'.
-        magic_search( mv_direction ).
-    ENDCASE.
+      CASE mv_type.
+        WHEN 'CALLS'.
+          steps_flow( mv_direction ).
+        WHEN 'FLOW'.
+          magic_search( mv_direction ).
+      ENDCASE.
 
-  ENDMETHOD.
+    ENDMETHOD.
 
   ENDCLASS.
 
@@ -6526,8 +6518,8 @@
 
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
-      IF sy-dbcnt <> 0.
-        DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
-      ELSE.
-        MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
-      ENDIF.
+    IF sy-dbcnt <> 0.
+      DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
+    ELSE.
+      MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
+    ENDIF.
