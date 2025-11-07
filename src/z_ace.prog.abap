@@ -1181,7 +1181,6 @@
                source_tab TYPE sci_include,
                scan       TYPE REF TO cl_ci_scan,
                t_keywords TYPE tt_kword,
-
                t_vars     TYPE tt_vars,
                selected   TYPE boolean,
              END OF ts_prog,
@@ -1396,11 +1395,12 @@
       ENDIF.
       mo_window->set_program_line( 1 ).
 
-      SORT mo_window->ms_sources-tt_progs BY stack.
-      DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
+      SORT mo_window->ms_sources-tt_progs BY stack program.
+      "DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY program = mo_window->m_prg-program INTO DATA(prog).
 
       mo_window->show_stack( ).
+      CHECK mo_tree_local->main_node_key IS INITIAL.
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
       CHECK splits_prg IS NOT INITIAL.
@@ -2406,6 +2406,11 @@
         o_column->set_long_text( 'Program/Class' ).
         o_column->set_medium_text( 'Program/Class' ).
 
+        o_column ?= o_columns->get_column( 'EVENTTYPE' ).
+        o_column->set_output_length( '10' ).
+        o_column->set_long_text( 'Code TYPE' ).
+        o_column->set_medium_text( 'Code TYPE' ).
+
         o_column ?= o_columns->get_column( 'INCLUDE' ).
         o_column->set_output_length( '40' ).
 
@@ -2451,8 +2456,8 @@
         "APPEND INITIAL LINE TO mt_coverage ASSIGNING FIELD-SYMBOL(<coverage>).
         "<coverage>-line = step-line.
       ENDLOOP.
-      IF sy-subrc <> 0. "No steps - show all includes.
-        CLEAR mt_Stack.
+      IF sy-subrc <> 0 AND mt_Stack IS INITIAL . "No steps - show all includes.
+        "CLEAR mt_Stack.
         SORT ms_sources-tt_progs BY stack.
         LOOP AT ms_sources-tt_progs INTO DATA(prog).
           CHECK prog-t_keywords IS NOT INITIAL.
@@ -2478,8 +2483,6 @@
             ENDIF.
           ENDIF.
 
-
-
           DATA: cl_key        TYPE seoclskey,
                 meth_includes TYPE seop_methods_w_include.
 
@@ -2498,11 +2501,29 @@
             READ TABLE meth_includes[] WITH KEY incname = <stack>-include INTO DATA(include).
             IF sy-subrc = 0.
               <Stack>-eventtype = 'METHOD'.
-
               <stack>-eventname = include-cpdkey-cpdname.
+
             ENDIF.
+
           ENDIF.
 
+          SPLIT <stack>-include  AT '=' INTO TABLE split.
+          CASE split[ lines( split ) ].
+            WHEN 'CP'.
+              <stack>-eventtype = 'Class Pool'.
+            WHEN 'CU'.
+              <stack>-eventtype = 'Public Section'.
+            WHEN 'CI'.
+              <stack>-eventtype = 'Private Section'.
+            WHEN 'CO'.
+              <stack>-eventtype = 'Protected Section'.
+            WHEN 'IU'.
+              <stack>-eventtype = 'Interface Public Section'.
+            WHEN 'CCAU'.
+              <stack>-eventtype = 'Unit Test Classes'.
+            WHEN 'CCIMP'.
+              <stack>-eventtype = 'Local helper classes'.
+          ENDCASE.
 
         ENDLOOP.
       ENDIF.
@@ -4867,7 +4888,8 @@
             ENDIF.
             CLEAR new.
 
-            IF eventname IS  NOT INITIAL OR class IS NOT INITIAL AND eventtype <> 'EVENT' OR kw = 'INCLUDE' OR kw = 'CLASS-POOL'.
+
+            IF eventname IS  NOT INITIAL OR class IS NOT INITIAL AND eventtype <> 'EVENT' OR kw = 'INCLUDE' OR kw = 'CLASS-POOL' OR kw = 'INTERFACE-POOL'.
               token-sub = abap_true.
             ENDIF.
 
@@ -5453,7 +5475,8 @@
             token-from = statement-from.
             token-to = statement-to.
 
-            IF token-name <> 'PUBLIC' AND token-name <> 'PRIVATE' AND token-name <> 'PROTECTED' AND token-name IS NOT INITIAL.
+            IF token-name <> 'PUBLIC' AND token-name <> 'PRIVATE' AND token-name <> 'PROTECTED' AND token-name IS NOT INITIAL AND
+               token-name <> 'INCLUDE' AND token-name <> 'CLASS-POOL' AND token-name <> 'INTERFACE-POOL'.
               APPEND token TO tokens.
             ENDIF.
             IF kw = 'ENDCLASS'.
@@ -5546,7 +5569,7 @@
           prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
           CASE interface-reltype.
             WHEN '1'."Interface
-              suffix = 'IP'.
+              suffix = 'IU'."'IP'
             WHEN '2'. "Ingeritance
               suffix = 'CP'.
             WHEN OTHERS.
@@ -5909,7 +5932,7 @@
           prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
           include = program = prefix && 'CP'."Class Program
 
-          lcl_ace_source_parser=>parse_tokens( i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
+          lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
         ELSE.
           program = i_include.
