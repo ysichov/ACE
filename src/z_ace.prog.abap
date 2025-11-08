@@ -1184,7 +1184,8 @@
                t_vars     TYPE tt_vars,
                selected   TYPE boolean,
              END OF ts_prog,
-             tt_progs TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
+             tt_progs   TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
+             tt_classes TYPE STANDARD TABLE OF seometarel WITH EMPTY KEY,
 
              BEGIN OF ts_source,
                tt_progs      TYPE tt_progs,
@@ -1195,6 +1196,7 @@
                tt_tabs       TYPE tt_tabs,
                tt_calls_line TYPE tt_calls_line,
                tt_refvar     TYPE tt_refvar,
+               t_classes     TYPE tt_classes,
              END OF ts_source,
 
              BEGIN OF ts_locals,
@@ -5029,12 +5031,12 @@
                   <call_line>-index = call_line-index.
                   <call_line>-include = token-include.
                 ELSE.
-                  IF i_main_prog IS INITIAL.
-                    call_line-program = i_program.
-                    call_line-include = token-include.
-                    call_line-meth_type = method_type.
-                    APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
-                  ENDIF.
+                  "IF i_main_prog IS INITIAL.
+                  call_line-program = i_program.
+                  call_line-include = token-include.
+                  call_line-meth_type = method_type.
+                  APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
+                  "ENDIF.
                 ENDIF.
 
               ENDIF.
@@ -5557,10 +5559,11 @@
 
       ENDIF.
 
-      "Process interfaces
-      DATA: suffix TYPE string.
+      "Process interfaces and superclasses
+      DATA: suffix        TYPE string,
+            lt_interfaces TYPE STANDARD TABLE OF seometarel.
       IF i_main IS NOT INITIAL.
-        SELECT * FROM seometarel INTO TABLE @DATA(lt_interfaces)
+        SELECT * FROM seometarel INTO TABLE @lt_interfaces
           WHERE clsname = @class_name.
         DATA: prefix  TYPE string,
               program TYPE program,
@@ -5578,6 +5581,8 @@
           include = program = prefix && suffix. "Interface Program
           lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_reltype = interface-reltype i_main_prog = i_program i_class = CONV #( interface-refclsname ) i_stack = stack i_program = program i_include = include io_debugger = io_debugger ).
         ENDLOOP.
+
+        APPEND LINES OF lt_interfaces TO  io_debugger->mo_window->ms_sources-t_classes[].
       ENDIF.
 
     ENDMETHOD.
@@ -5939,7 +5944,24 @@
         ENDIF.
 
         READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
-        IF sy-subrc = 0.
+        "check inherited methods in super classes
+
+        IF sy-subrc <> 0.
+          WHILE call_line IS INITIAL.
+            LOOP AT io_debugger->mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = cl_key .
+              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = ls_class-refclsname eventtype = 'METHOD' eventname = i_call-name INTO call_line.
+              IF sy-subrc = 0.
+                EXIT.
+              ENDIF.
+            ENDLOOP.
+            IF sy-subrc <> 0.
+              EXIT.
+            ENDIF.
+            cl_key = ls_class-refclsname.
+          ENDWHILE.
+        ENDIF.
+
+        IF call_line IS NOT INITIAL.
           IF call_line-include IS NOT INITIAL.
             include =  call_line-include.
           ENDIF.
