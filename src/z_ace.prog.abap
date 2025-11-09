@@ -1795,7 +1795,7 @@
 *          IF key-name <> 'ENDMETHOD' AND key-name <> 'ENDMODULE' AND  key-name <> 'ENDFORM' AND
 *             key-name <> 'METHOD' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
 
-          IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND
+          IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND  key-name <> 'ENDMETHOD' AND
             key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
             READ TABLE results WITH KEY line = step-line include = step-include ev_type = step-eventtype ev_name = step-eventname TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
