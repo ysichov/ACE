@@ -6256,7 +6256,7 @@
           step = step2.
           CONTINUE.
         ENDIF.
-        IF step2-stacklevel >= step-stacklevel and step2-eventname <> step-eventname.
+        IF step2-stacklevel >= step-stacklevel AND step2-eventname <> step-eventname.
 
           READ TABLE entities WITH KEY name = step-eventname TRANSPORTING NO FIELDS.
           ind-from = sy-tabix.
@@ -6351,10 +6351,9 @@
         DATA:  name TYPE string.
         IF    line-cond = 'LOOP' OR line-cond = 'DO' OR line-cond = 'WHILE' OR line-subname IS NOT INITIAL .
 
-          "IF line-arrow IS NOT INITIAL.
+          REPLACE ALL OCCURRENCES OF `-` IN  line-code WITH ` ` IN CHARACTER MODE. "- start new line
           mm_string = |{  mm_string }{  ind }{  box_s }"{ line-code }"{  box_e }\n|.
           pre_stack = line.
-          "ENDIF.
 
           IF strlen( line-code ) > 50.
             name = line-code+0(50).
@@ -6364,7 +6363,7 @@
           REPLACE ALL OCCURRENCES OF `PERFORM` IN  name WITH `FORM` IN CHARACTER MODE.
           REPLACE ALL OCCURRENCES OF `CALL FUNCTION` IN  name WITH `FUNCTION` IN CHARACTER MODE.
           REPLACE ALL OCCURRENCES OF `CALL METHOD` IN  name WITH `METHOD` IN CHARACTER MODE.
-          REPLACE ALL OCCURRENCES OF `-` IN  name WITH `~` IN CHARACTER MODE.
+          REPLACE ALL OCCURRENCES OF `-` IN  name WITH ` ` IN CHARACTER MODE. "- start new line
           REPLACE ALL OCCURRENCES OF ` ` IN  name WITH `&nbsp;` IN CHARACTER MODE.
 
           READ TABLE lines INDEX ind + 1 INTO DATA(line2).
@@ -6383,6 +6382,7 @@
           CONTINUE.
         ENDIF.
 
+        REPLACE ALL OCCURRENCES OF `-` IN  line-code WITH ` ` IN CHARACTER MODE. "- start new line
         mm_string = |{  mm_string }{  ind }{  box_s }"{ line-code }"{  box_e }\n|.
         pre_stack = line.
 
