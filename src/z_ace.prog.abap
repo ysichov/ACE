@@ -199,6 +199,7 @@
                name  TYPE string,
                outer TYPE string,
                inner TYPE string,
+               super TYPE boolean,
              END OF ts_calls,
              tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer,
 
@@ -548,7 +549,7 @@
             mt_globals        TYPE tpda_scr_globals_it,
             mt_ret_exp        TYPE tpda_scr_locals_it,
             m_counter         TYPE i,
-            mt_steps          TYPE  TABLE OF lcl_ace_appl=>t_step_counter WITH NON-UNIQUE KEY line eventtype eventname, "source code steps
+            mt_steps          TYPE  TABLE OF lcl_ace_appl=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname, "source code steps
             mt_var_step       TYPE  TABLE OF lcl_ace_appl=>var_table_h,
             m_step            TYPE i,
             m_i_find          TYPE boolean,
@@ -1098,6 +1099,7 @@
                name  TYPE string,
                outer TYPE string,
                inner TYPE string,
+               super TYPE boolean,
              END OF ts_calls,
              tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer,
 
@@ -1997,7 +1999,7 @@
         DATA(to_row) = prog-scan->tokens[ keyword-to ]-row.
         DATA(spaces) = repeat( val = | | occ = ( line-stack - 1 ) * 3 ).
         DATA(dashes) = repeat( val = |-| occ = ( line-stack ) ).
-        IF prev_line-ev_name <> line-ev_name OR prev_line-ev_type <> line-ev_type. "new event
+        IF prev_line-ev_name <> line-ev_name OR prev_line-ev_type <> line-ev_type OR prev_line-class <> line-class. "new event
           SPLIT line-include AT '=' INTO TABLE splits.
 
           APPEND INITIAL LINE TO flow_lines ASSIGNING FIELD-SYMBOL(<flow>).
@@ -4923,6 +4925,10 @@
                     call-class = split[ 1 ].
                   ENDIF.
                   call-name = split[ 2 ].
+                  IF split[ 1 ] = 'SUPER'.
+                    call-class = class_name.
+                    call-super = abap_true.
+                  ENDIF.
                 ENDIF.
 
                 FIND FIRST OCCURRENCE OF '=>' IN  call-name.
@@ -5943,8 +5949,12 @@
           program = i_include.
         ENDIF.
 
-        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
-        "check inherited methods in super classes
+        IF i_call-super IS INITIAL.
+          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
+          "check inherited methods in super classes
+        ELSE.
+          sy-subrc = 1.
+        ENDIF.
 
         IF sy-subrc <> 0.
           WHILE call_line IS INITIAL.
