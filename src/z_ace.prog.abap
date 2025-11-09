@@ -6256,7 +6256,7 @@
           step = step2.
           CONTINUE.
         ENDIF.
-        IF step2-stacklevel > step-stacklevel.
+        IF step2-stacklevel >= step-stacklevel and step2-eventname <> step-eventname.
 
           READ TABLE entities WITH KEY name = step-eventname TRANSPORTING NO FIELDS.
           ind-from = sy-tabix.
