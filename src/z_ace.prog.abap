@@ -1104,8 +1104,8 @@
              tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer,
 
              BEGIN OF ts_calls_line,
-               program     TYPE string,
-               include     TYPE string,
+               program     TYPE program,
+               include     TYPE program,
                class       TYPE string,
                eventtype   TYPE string,
                meth_type   TYPE i,
@@ -1116,8 +1116,8 @@
              tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
 
              BEGIN OF ts_vars,
-               program   TYPE string,
-               include   TYPE string,
+               program   TYPE program,
+               include   TYPE program,
                eventtype TYPE string,
                eventname TYPE string,
                line      TYPE i,
@@ -1484,7 +1484,7 @@
         CLEAR tree.
         class_rel = mo_tree_local->add_node( i_name = CONV #( cl_name ) i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
 
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = cl_name AND eventtype = 'METHOD' and implemented = abap_true.
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = cl_name AND eventtype = 'METHOD' and include+30(2) = 'CM'.
           SPLIT subs-include AT '=' INTO TABLE splits_incl.
           READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
           READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
