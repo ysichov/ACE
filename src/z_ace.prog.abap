@@ -1104,13 +1104,14 @@
              tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer,
 
              BEGIN OF ts_calls_line,
-               program   TYPE string,
-               include   TYPE string,
-               class     TYPE string,
-               eventtype TYPE string,
-               meth_type TYPE i,
-               eventname TYPE string,
-               index     TYPE i,
+               program     TYPE string,
+               include     TYPE string,
+               class       TYPE string,
+               eventtype   TYPE string,
+               meth_type   TYPE i,
+               eventname   TYPE string,
+               index       TYPE i,
+               implemented TYPE boolean,
              END OF ts_calls_line,
              tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
 
@@ -1166,6 +1167,13 @@
                type      TYPE char1,
                preferred TYPE char1,
              END OF ts_params,
+
+             BEGIN OF ts_meta,
+               clsname    TYPE seoclsname,
+               refclsname TYPE seoclsname,
+               reltype    TYPE seoreltype,
+               node       TYPE salv_de_node_key,
+             END OF ts_meta,
              tt_params TYPE STANDARD TABLE OF ts_params WITH KEY class event name param,
 
              BEGIN OF ts_int_tabs,
@@ -1187,7 +1195,7 @@
                selected   TYPE boolean,
              END OF ts_prog,
              tt_progs   TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
-             tt_classes TYPE STANDARD TABLE OF seometarel WITH EMPTY KEY,
+             tt_classes TYPE STANDARD TABLE OF ts_meta WITH EMPTY KEY,
 
              BEGIN OF ts_source,
                tt_progs      TYPE tt_progs,
@@ -1382,6 +1390,7 @@
             icon        TYPE salv_de_tree_image,
             forms_rel   TYPE salv_de_node_key,
             classes_rel TYPE salv_de_node_key,
+            class_rel   TYPE salv_de_node_key,
             events_rel  TYPE salv_de_node_key,
             globals_rel TYPE salv_de_node_key,
             splits_prg  TYPE TABLE OF string,
@@ -1455,11 +1464,80 @@
 
       "mo_tree_local->add_node( i_name = 'Code Flow' i_icon = CONV #( icon_enhanced_bo ) i_rel = mo_tree_local->main_node_key ).
 
+      IF class_rel IS INITIAL.
+        classes_rel = class_rel = mo_tree_local->main_node_key.
+      ENDIF.
+
       SORT mo_window->ms_sources-tt_calls_line BY program class eventtype meth_type eventname .
-      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs). "WHERE include IS NOT INITIAL.
+
+      cl_name = splits_prg[ 1 ]."let's find hierarchy start
+
+      DO.
+        READ TABLE mo_window->ms_sources-t_classes WITH KEY clsname = cl_name reltype = '2' INTO DATA(ls_class).
+        IF sy-subrc <> 0.
+          EXIT.
+        ENDIF.
+        cl_name = ls_class-refclsname.
+      ENDDO.
+
+      DO.
+        CLEAR tree.
+        class_rel = mo_tree_local->add_node( i_name = CONV #( cl_name ) i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
+
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = cl_name AND eventtype = 'METHOD' and implemented = abap_true.
+          SPLIT subs-include AT '=' INTO TABLE splits_incl.
+          READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
+          READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
+
+          CASE subs-meth_type.
+            WHEN 1.
+              icon = icon_led_green.
+            WHEN 2.
+              icon = icon_led_yellow.
+            WHEN 3.
+              icon = icon_led_red.
+            WHEN OTHERS.
+              IF subs-eventname = 'CONSTRUCTOR'.
+                icon = icon_tools.
+              ENDIF.
+          ENDCASE.
+          CLEAR tree.
+          tree-kind = 'M'.
+          tree-value = keyword-line.
+          tree-include = subs-include.
+
+          DATA(event_node) = mo_tree_local->add_node( i_name =  subs-eventname i_icon = icon i_rel =  class_rel i_tree = tree ).
+          CLEAR tree-value.
+          LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
+
+            CASE param-type.
+              WHEN 'I'.
+                icon = icon_parameter_import.
+              WHEN 'E'.
+                icon = icon_parameter_export.
+            ENDCASE.
+            tree-param = param-param.
+
+            mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
+          ENDLOOP.
+          CLEAR tree.
+
+        ENDLOOP.
+
+        READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2' INTO ls_class.
+        IF sy-subrc <> 0.
+          EXIT.
+        ENDIF.
+        cl_name = ls_class-clsname.
+
+      ENDDO.
+
+      classes_rel = class_rel = mo_tree_local->main_node_key.
+
+      LOOP AT mo_window->ms_sources-tt_calls_line INTO subs. "WHERE include IS NOT INITIAL.
         SPLIT subs-include AT '=' INTO TABLE splits_incl.
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
-        READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
+        READ TABLE prog-t_keywords WITH KEY index = subs-index INTO keyword.
         DATA(form_name) = subs-eventname.
 
         IF subs-eventtype = 'FORM'.
@@ -1471,10 +1549,10 @@
             CLEAR tree.
             tree-value = keyword-line.
             tree-include = subs-include.
-            DATA(event_node) = mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
+            event_node = mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
 
             CLEAR tree.
-            LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE event = 'FORM' AND name = subs-eventname  AND param IS NOT INITIAL.
+            LOOP AT mo_window->ms_sources-t_params INTO param WHERE event = 'FORM' AND name = subs-eventname  AND param IS NOT INITIAL.
 
               CASE param-type.
                 WHEN 'I'.
@@ -1490,66 +1568,67 @@
 
           ENDIF.
 
-        ELSEIF subs-eventtype = 'METHOD'.
-          CHECK subs-include IS NOT INITIAL.
-          IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
-            IF subs-class = splits_prg[ 1 ].
-
-              DATA(last) = splits_incl[ lines( splits_incl ) ].
-              IF last+0(2) <> 'CM'.
-                CONTINUE.
-              ENDIF.
-
-            ENDIF.
-            IF classes_rel IS INITIAL.
-              IF subs-class = splits_prg[ 1 ].
-              ELSE.
-                tree-kind = 'F'.
-                classes_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
-              ENDIF.
-            ENDIF.
-            IF cl_name <> subs-class.
-              tree-kind = 'F'.
-              IF classes_rel IS NOT INITIAL.
-                DATA(class_rel) = mo_tree_local->add_node( i_name = subs-class i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
-              ELSE.
-                class_rel = mo_tree_local->main_node_key.
-              ENDIF.
-              cl_name = subs-class.
-            ENDIF.
-            CASE subs-meth_type.
-              WHEN 1.
-                icon = icon_led_green.
-              WHEN 2.
-                icon = icon_led_yellow.
-              WHEN 3.
-                icon = icon_led_red.
-              WHEN OTHERS.
-                IF subs-eventname = 'CONSTRUCTOR'.
-                  icon = icon_tools.
-                ENDIF.
-            ENDCASE.
-            CLEAR tree.
-            tree-kind = 'M'.
-            tree-value = keyword-line.
-            tree-include = subs-include.
-
-            event_node = mo_tree_local->add_node( i_name =  form_name i_icon = icon i_rel =  class_rel i_tree = tree ).
-            CLEAR tree-value.
-            LOOP AT mo_window->ms_sources-t_params INTO param WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
-
-              CASE param-type.
-                WHEN 'I'.
-                  icon = icon_parameter_import.
-                WHEN 'E'.
-                  icon = icon_parameter_export.
-              ENDCASE.
-              tree-param = param-param.
-
-              mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
-            ENDLOOP.
-            CLEAR tree.
-          ENDIF.
+*        ELSEIF subs-eventtype = 'METHOD'.
+*          CHECK subs-include IS NOT INITIAL.
+*          IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
+*            IF subs-class = splits_prg[ 1 ].
+*
+*              DATA(last) = splits_incl[ lines( splits_incl ) ].
+*              IF last+0(2) <> 'CM'.
+*                CONTINUE.
+*              ENDIF.
+*
+*            ENDIF.
+*            IF classes_rel IS INITIAL.
+*              IF subs-class = splits_prg[ 1 ].
+*                classes_rel = mo_tree_local->main_node_key.
+*              ELSE.
+*                tree-kind = 'F'.
+*                classes_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
+*              ENDIF.
+*            ENDIF.
+*            IF cl_name <> subs-class.
+*              tree-kind = 'F'.
+*              IF classes_rel IS NOT INITIAL.
+*                class_rel = mo_tree_local->add_node( i_name = subs-class i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
+*              ELSE.
+*                class_rel = mo_tree_local->main_node_key.
+*              ENDIF.
+*              cl_name = subs-class.
+*            ENDIF.
+*            CASE subs-meth_type.
+*              WHEN 1.
+*                icon = icon_led_green.
+*              WHEN 2.
+*                icon = icon_led_yellow.
+*              WHEN 3.
+*                icon = icon_led_red.
+*              WHEN OTHERS.
+*                IF subs-eventname = 'CONSTRUCTOR'.
+*                  icon = icon_tools.
+*                ENDIF.
+*            ENDCASE.
+*            CLEAR tree.
+*            tree-kind = 'M'.
+*            tree-value = keyword-line.
+*            tree-include = subs-include.
+*
+*            event_node = mo_tree_local->add_node( i_name =  form_name i_icon = icon i_rel =  class_rel i_tree = tree ).
+*            CLEAR tree-value.
+*            LOOP AT mo_window->ms_sources-t_params INTO param WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
+*
+*              CASE param-type.
+*                WHEN 'I'.
+*                  icon = icon_parameter_import.
+*                WHEN 'E'.
+*                  icon = icon_parameter_export.
+*              ENDCASE.
+*              tree-param = param-param.
+*
+*              mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
+*            ENDLOOP.
+*            CLEAR tree.
+*          ENDIF.
 
         ELSEIF subs-eventtype = 'FUNCTION'.
           DATA: fname              TYPE rs38l_fnam,
@@ -1595,8 +1674,9 @@
             ENDLOOP.
           ENDIF.
         ENDIF.
-
+        cl_name = splits_prg[ 1 ].
       ENDLOOP.
+
 
       mo_tree_local->display( ).
 
@@ -5031,11 +5111,11 @@
                   READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
                    WITH KEY program = i_program eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
                 ENDIF.
-                "ENDIF.
 
                 IF sy-subrc = 0.
                   <call_line>-index = call_line-index.
                   <call_line>-include = token-include.
+                  <call_line>-implemented = abap_true.
                 ELSE.
                   "IF i_main_prog IS INITIAL.
                   call_line-program = i_program.
@@ -5566,18 +5646,18 @@
       ENDIF.
 
       "Process interfaces and superclasses
-      DATA: suffix        TYPE string,
-            lt_interfaces TYPE STANDARD TABLE OF seometarel.
+      DATA: suffix     TYPE string,
+            lt_classes TYPE STANDARD TABLE OF lcl_ace_window=>ts_meta.
       IF i_main IS NOT INITIAL.
-        SELECT * FROM seometarel INTO TABLE @lt_interfaces
+        SELECT clsname, refCLSNAME, reltype FROM seometarel APPENDING TABLE @lt_classes
           WHERE clsname = @class_name.
         DATA: prefix  TYPE string,
               program TYPE program,
               include TYPE program.
-        LOOP AT lt_interfaces INTO DATA(interface).
+        LOOP AT lt_classes INTO DATA(interface).
           prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
           CASE interface-reltype.
-            WHEN '1'."Interface
+            WHEN '0' OR '1'."Interface
               suffix = 'IU'."'IP'
             WHEN '2'. "Ingeritance
               suffix = 'CP'.
@@ -5588,7 +5668,7 @@
           lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_reltype = interface-reltype i_main_prog = i_program i_class = CONV #( interface-refclsname ) i_stack = stack i_program = program i_include = include io_debugger = io_debugger ).
         ENDLOOP.
 
-        APPEND LINES OF lt_interfaces TO  io_debugger->mo_window->ms_sources-t_classes[].
+        APPEND LINES OF lt_classes TO  io_debugger->mo_window->ms_sources-t_classes[].
       ENDIF.
 
     ENDMETHOD.
