@@ -1111,7 +1111,6 @@
                meth_type   TYPE i,
                eventname   TYPE string,
                index       TYPE i,
-               implemented TYPE boolean,
              END OF ts_calls_line,
              tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
 
@@ -1484,13 +1483,49 @@
         CLEAR tree.
         class_rel = mo_tree_local->add_node( i_name = CONV #( cl_name ) i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
 
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = cl_name AND eventtype = 'METHOD' and include+30(2) = 'CM'.
+        "interfaces
+        LOOP at mo_window->ms_sources-t_classes into ls_class where clsname = cl_name and reltype = '1'.
+          data(inf_rel) = mo_tree_local->add_node( i_name = CONV #( ls_class-refclsname ) i_icon = CONV #( icon_oo_connection ) i_rel = class_rel i_tree = tree ).
+
+        "to refactor in new method
+
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class =  ls_class-refclsname AND eventtype = 'METHOD'. "and include+30(2) = 'CM'.
           SPLIT subs-include AT '=' INTO TABLE splits_incl.
           READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
           READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
 
+          CLEAR tree.
+          tree-kind = 'M'.
+          tree-value = keyword-line.
+          tree-include = subs-include.
+
+          DATA(event_node) = mo_tree_local->add_node( i_name =  subs-eventname i_icon = conv #( icon_oo_inst_method ) i_rel =  inf_rel i_tree = tree ).
+          CLEAR tree-value.
+          LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
+
+            CASE param-type.
+              WHEN 'I'.
+                icon = icon_parameter_import.
+              WHEN 'E'.
+                icon = icon_parameter_export.
+            ENDCASE.
+            tree-param = param-param.
+
+            mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
+          ENDLOOP.
+          CLEAR tree.
+
+        ENDLOOP.
+"to refactor
+        ENDLOOP.
+
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE class = cl_name AND eventtype = 'METHOD' and include+30(2) = 'CM'.
+          SPLIT subs-include AT '=' INTO TABLE splits_incl.
+          READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
+          READ TABLE prog-t_keywords WITH KEY index = subs-index INTO keyword.
+
           CASE subs-meth_type.
-            WHEN 1.
+            WHEN 0 or 1.
               icon = icon_led_green.
             WHEN 2.
               icon = icon_led_yellow.
@@ -1506,9 +1541,9 @@
           tree-value = keyword-line.
           tree-include = subs-include.
 
-          DATA(event_node) = mo_tree_local->add_node( i_name =  subs-eventname i_icon = icon i_rel =  class_rel i_tree = tree ).
+          event_node = mo_tree_local->add_node( i_name =  subs-eventname i_icon = icon i_rel =  class_rel i_tree = tree ).
           CLEAR tree-value.
-          LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
+          LOOP AT mo_window->ms_sources-t_params INTO param WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
 
             CASE param-type.
               WHEN 'I'.
@@ -4864,10 +4899,10 @@
         o_scan = NEW cl_ci_scan( p_include = o_source ).
 
         "check main class name
-        IF i_main_prog IS NOT INITIAL.
-          SPLIT i_main_prog AT '=' INTO TABLE split.
-          param-class = class_name = split[ 1 ].
-        ENDIF.
+*        IF i_main_prog IS NOT INITIAL.
+*          SPLIT i_main_prog AT '=' INTO TABLE split.
+*          param-class = class_name = split[ 1 ].
+*        ENDIF.
 
         "get_events.
         LOOP AT o_scan->structures INTO DATA(struc) WHERE type = 'E'.
@@ -5094,7 +5129,7 @@
 
               IF sy-index = 2 AND  eventtype IS NOT INITIAL AND  eventname IS INITIAL.
                 IF i_main_prog IS NOT INITIAL AND i_reltype = '1'.
-                  word = |{ class_name }~{ word }|.
+                  "word = |{ class_name }~{ word }|.
                 ENDIF.
                 variable-eventname = tab-eventname =  eventname = param-name = word.
 
@@ -5115,7 +5150,6 @@
                 IF sy-subrc = 0.
                   <call_line>-index = call_line-index.
                   <call_line>-include = token-include.
-                  <call_line>-implemented = abap_true.
                 ELSE.
                   "IF i_main_prog IS INITIAL.
                   call_line-program = i_program.
