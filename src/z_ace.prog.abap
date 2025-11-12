@@ -40,12 +40,12 @@
 
   CLASS lcl_ace_appl DEFINITION.
 
-    PUBLIC SECTION.
+    PUBLIC SECTION. "public section
 
       TYPES:
         BEGIN OF selection_display_s,
           ind         TYPE i,
-          field_label TYPE lvc_fname,
+          field_label TYPE lvc_fname,"label
           int_type(1),
           inherited   TYPE aqadh_type_of_icon,
           emitter     TYPE aqadh_type_of_icon,
