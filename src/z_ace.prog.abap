@@ -1104,13 +1104,15 @@
              tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer,
 
              BEGIN OF ts_calls_line,
-               program     TYPE program,
-               include     TYPE program,
-               class       TYPE string,
-               eventtype   TYPE string,
-               meth_type   TYPE i,
-               eventname   TYPE string,
-               index       TYPE i,
+               program   TYPE program,
+               include   TYPE program,
+               class     TYPE string,
+               eventtype TYPE string,
+               meth_type TYPE i,
+               eventname TYPE string,
+               redefined TYPE boolean,
+               index     TYPE i,
+
              END OF ts_calls_line,
              tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
 
@@ -1393,7 +1395,8 @@
             events_rel  TYPE salv_de_node_key,
             globals_rel TYPE salv_de_node_key,
             splits_prg  TYPE TABLE OF string,
-            splits_incl TYPE TABLE OF string.
+            splits_incl TYPE TABLE OF string,
+            splits_intf TYPE TABLE OF string.
 
       IF  mo_window->m_prg-include IS INITIAL.
         mo_window->m_prg-program =  mo_window->m_prg-include = mv_prog.
@@ -1408,7 +1411,7 @@
       mo_window->set_program_line( 1 ).
 
       SORT mo_window->ms_sources-tt_progs BY stack program.
-      "DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
+      DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY program = mo_window->m_prg-program INTO DATA(prog).
 
       mo_window->show_stack( ).
@@ -1485,49 +1488,49 @@
         CLEAR tree.
 
         "interfaces
-        LOOP at mo_window->ms_sources-t_classes into ls_class where clsname = cl_name and reltype = '1'.
+        LOOP AT mo_window->ms_sources-t_classes INTO ls_class WHERE clsname = cl_name AND reltype = '1'.
 
-          data(inf_rel) = mo_tree_local->add_node( i_name = CONV #( ls_class-refclsname ) i_icon = CONV #( icon_oo_connection ) i_rel = class_rel i_tree = tree ).
+          DATA(inf_rel) = mo_tree_local->add_node( i_name = CONV #( ls_class-refclsname ) i_icon = CONV #( icon_oo_connection ) i_rel = class_rel i_tree = tree ).
 
-        "to refactor in new method
+          "to refactor in new method
 
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class =  ls_class-refclsname AND eventtype = 'METHOD'. "and include+30(2) = 'CM'.
-          SPLIT subs-include AT '=' INTO TABLE splits_incl.
-          READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
-          READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
+          LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class =  ls_class-refclsname AND eventtype = 'METHOD'. "and include+30(2) = 'CM'.
+            SPLIT subs-include AT '=' INTO TABLE splits_incl.
+            READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
+            READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
 
-          CLEAR tree.
-          tree-kind = 'M'.
-          tree-value = keyword-line.
-          tree-include = subs-include.
+            CLEAR tree.
+            tree-kind = 'M'.
+            tree-value = keyword-line.
+            tree-include = subs-include.
 
-          DATA(event_node) = mo_tree_local->add_node( i_name =  subs-eventname i_icon = conv #( icon_oo_inst_method ) i_rel =  inf_rel i_tree = tree ).
-          CLEAR tree-value.
-          LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
+            DATA(event_node) = mo_tree_local->add_node( i_name =  subs-eventname i_icon = CONV #( icon_oo_inst_method ) i_rel =  inf_rel i_tree = tree ).
+            CLEAR tree-value.
+            LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
 
-            CASE param-type.
-              WHEN 'I'.
-                icon = icon_parameter_import.
-              WHEN 'E'.
-                icon = icon_parameter_export.
-            ENDCASE.
-            tree-param = param-param.
+              CASE param-type.
+                WHEN 'I'.
+                  icon = icon_parameter_import.
+                WHEN 'E'.
+                  icon = icon_parameter_export.
+              ENDCASE.
+              tree-param = param-param.
 
-            mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
+              mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
+            ENDLOOP.
+            CLEAR tree.
+
           ENDLOOP.
-          CLEAR tree.
-
-        ENDLOOP.
-"to refactor
+          "to refactor
         ENDLOOP.
 
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE class = cl_name AND eventtype = 'METHOD' and include+30(2) = 'CM'.
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE class = cl_name AND eventtype = 'METHOD' AND include+30(2) = 'CM'.
           SPLIT subs-include AT '=' INTO TABLE splits_incl.
           READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
           READ TABLE prog-t_keywords WITH KEY index = subs-index INTO keyword.
 
           CASE subs-meth_type.
-            WHEN 0 or 1.
+            WHEN 0 OR 1.
               icon = icon_led_green.
             WHEN 2.
               icon = icon_led_yellow.
@@ -1543,8 +1546,17 @@
           tree-value = keyword-line.
           tree-include = subs-include.
 
-          event_node = mo_tree_local->add_node( i_name =  subs-eventname i_icon = icon i_rel =  class_rel i_tree = tree ).
+          IF subs-redefined = abap_true.
+            icon = icon_oo_overwrite.
+          ENDIF.
+          event_node = mo_tree_local->add_node( i_name = subs-eventname i_icon = icon i_rel =  class_rel i_tree = tree ).
           CLEAR tree-value.
+
+          SPLIT subs-eventname AT '~' INTO TABLE splits_intf.
+          IF lines( splits_intf ) > 1.
+            subs-class  = splits_intf[ 1 ].
+            subs-eventname = splits_intf[ 2 ].
+          ENDIF.
           LOOP AT mo_window->ms_sources-t_params INTO param WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
 
             CASE param-type.
@@ -4940,7 +4952,7 @@
         DATA(max) = lines( o_scan->statements ).
 
         DO.
-          CLEAR token-tt_calls.
+          CLEAR: token-tt_calls, call_line-redefined.
 
           TRY.
               o_procedure->next( ).
@@ -5023,6 +5035,12 @@
 
               IF word = 'DEFERRED'.
                 CLEAR: class, call_line.
+              ENDIF.
+
+              IF word = 'REDEFINITION'.
+                READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+                      WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
+                <call_line>-redefined = abap_true.
               ENDIF.
 
               IF ( word CS '(' AND ( NOT word CS ')' ) AND word <> '#(' AND word <> '=>' )  OR word CS '->'."can be method call
@@ -5143,7 +5161,7 @@
                 "methods in definition should be overwritten by Implementation section
                 IF  call_line-class IS NOT INITIAL.
                   READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-                   WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING FIELD-SYMBOL(<call_line>).
+                   WITH KEY class = call_line-class eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
                 ELSE.
                   READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
                    WITH KEY program = i_program eventname = call_line-eventname eventtype = call_line-eventtype ASSIGNING <call_line>.
