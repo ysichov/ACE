@@ -1164,8 +1164,9 @@
                class     TYPE string,
                event     TYPE string,
                name      TYPE string,
-               param     TYPE string,
                type      TYPE char1,
+               param     TYPE string,
+
                preferred TYPE char1,
              END OF ts_params,
 
@@ -1175,7 +1176,7 @@
                reltype    TYPE seoreltype,
                node       TYPE salv_de_node_key,
              END OF ts_meta,
-             tt_params TYPE STANDARD TABLE OF ts_params WITH KEY class event name param,
+             tt_params TYPE STANDARD TABLE OF ts_params WITH KEY class event name type param,
 
              BEGIN OF ts_int_tabs,
                eventtype TYPE string,
@@ -1410,6 +1411,7 @@
       ENDIF.
       mo_window->set_program_line( 1 ).
 
+      SORT mo_window->ms_sources-t_params by class event type DESCENDING param ASCENDING.
       SORT mo_window->ms_sources-tt_progs BY stack program.
       DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY program = mo_window->m_prg-program INTO DATA(prog).
@@ -4895,7 +4897,8 @@
             method_type     TYPE i,
             class_name      TYPE string,
             main_prog       TYPE program,
-            stack           TYPE i.
+            stack           TYPE i,
+            lv_default      TYPE boolean.
 
       IF i_main = abap_true.
         main_prog = i_program.
@@ -5035,6 +5038,18 @@
 
               IF word = 'DEFERRED'.
                 CLEAR: class, call_line.
+              ENDIF.
+
+              IF lv_default = abap_true.
+                CLEAR lv_default.
+                CONTINUE.
+              ENDIF.
+
+
+
+              IF word = 'DEFAULT'.
+                lv_default = abap_true.
+                CONTINUE.
               ENDIF.
 
               IF word = 'REDEFINITION'.
