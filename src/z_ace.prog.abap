@@ -1416,7 +1416,7 @@
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
       CHECK splits_prg IS NOT INITIAL.
-      tree-kind = 'F'.
+      tree-kind = 'F'. "Folder - pre expanded
 
       CASE mo_window->m_prg-eventtype.
         WHEN 'FUNCTION'.
@@ -1480,11 +1480,13 @@
       ENDDO.
 
       DO.
-        CLEAR tree.
+        tree-kind = 'F'.
         class_rel = mo_tree_local->add_node( i_name = CONV #( cl_name ) i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
+        CLEAR tree.
 
         "interfaces
         LOOP at mo_window->ms_sources-t_classes into ls_class where clsname = cl_name and reltype = '1'.
+
           data(inf_rel) = mo_tree_local->add_node( i_name = CONV #( ls_class-refclsname ) i_icon = CONV #( icon_oo_connection ) i_rel = class_rel i_tree = tree ).
 
         "to refactor in new method
