@@ -1411,7 +1411,7 @@
       ENDIF.
       mo_window->set_program_line( 1 ).
 
-      SORT mo_window->ms_sources-t_params by class event type DESCENDING param ASCENDING.
+      SORT mo_window->ms_sources-t_params BY class event type DESCENDING param ASCENDING.
       SORT mo_window->ms_sources-tt_progs BY stack program.
       DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY program = mo_window->m_prg-program INTO DATA(prog).
@@ -5045,7 +5045,9 @@
                 CONTINUE.
               ENDIF.
 
-
+              IF word = 'EXCEPTIONS'.
+                EXIT.
+              ENDIF.
 
               IF word = 'DEFAULT'.
                 lv_default = abap_true.
@@ -5169,7 +5171,7 @@
                 variable-eventname = tab-eventname =  eventname = param-name = word.
 
                 MOVE-CORRESPONDING tab TO call_line.
-                call_line-index = o_procedure->statement_index + 1.
+                call_line-index = o_procedure->statement_index. " + 1.
                 call_line-class = class_name.
 
 
