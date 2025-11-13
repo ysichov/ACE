@@ -6091,7 +6091,8 @@
             prefix        TYPE string,
             program       TYPE program,
             include       TYPE progname,
-            stack         TYPE i.
+            stack         TYPE i,
+            class_call    type lcl_ace_appl=>ts_calls.
 
       cl_key = i_call-class.
       stack = i_stack." + 1.
@@ -6117,6 +6118,12 @@
 
         ELSE.
           program = i_include.
+        ENDIF.
+
+        IF i_call-name = 'CONSTRUCTOR'.
+          class_call = i_call.
+          class_call-name = 'CLASS_CONSTRUCTOR'.
+          parse_class( i_include = i_include i_call = class_call i_stack = stack io_debugger = io_debugger key = key ).
         ENDIF.
 
         IF i_call-super IS INITIAL.
