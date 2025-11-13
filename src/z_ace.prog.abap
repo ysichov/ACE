@@ -45,7 +45,7 @@
       TYPES:
         BEGIN OF selection_display_s,
           ind         TYPE i,
-          field_label TYPE lvc_fname,"label
+          field_label TYPE lvc_fname, "label
           int_type(1),
           inherited   TYPE aqadh_type_of_icon,
           emitter     TYPE aqadh_type_of_icon,
@@ -5074,7 +5074,12 @@
                 IF sy-subrc = 0.
                   SPLIT call-name  AT '->' INTO TABLE split.
                   IF split[ 1 ] <> ')'."to refactor
-                    call-class = split[ 1 ].
+                    READ TABLE prog-t_vars WITH KEY name =  split[ 1 ] INTO DATA(vars).
+                    IF sy-subrc <> 0.
+                      call-class = split[ 1 ].
+                    ELSE.
+                      call-class = vars-type.
+                    ENDIF.
                   ENDIF.
                   call-name = split[ 2 ].
                   IF split[ 1 ] = 'SUPER'.
@@ -5158,10 +5163,12 @@
 
               "check class name
               SPLIT i_program AT '=' INTO TABLE split.
-              class_name = split[ 1 ].
-              SELECT SINGLE clsname INTO call_line-class
-                FROM seoclass
-               WHERE clsname = class_name.
+              IF lines( split ) > 1.
+                class_name = split[ 1 ].
+                SELECT SINGLE clsname INTO call_line-class
+                  FROM seoclass
+                 WHERE clsname = class_name.
+              ENDIF.
 
 
               IF sy-index = 2 AND  eventtype IS NOT INITIAL AND  eventname IS INITIAL.
@@ -5443,9 +5450,10 @@
                   IF  prev = 'OBJECT'.
                     READ TABLE prog-t_vars WITH KEY icon = icon_oo_class name = word INTO DATA(var).
                     IF sy-subrc = 0.
-                      "token-to_class = var-type.
-                      "token-to_evtype = 'METHOD'.
-                      "token-to_evname = 'CONSTRUCTOR'.
+                      call-class = var-type.
+                      call-event = 'METHOD'.
+                      call-name = 'CONSTRUCTOR'.
+
                     ENDIF.
 
                     "WRITE : 'value',  temp.
@@ -6122,20 +6130,32 @@
           ENDWHILE.
         ENDIF.
 
-        IF call_line IS NOT INITIAL.
+        IF call_line IS INITIAL.
+          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO call_line.
+        ENDIF.
+        IF sy-subrc = 0.
+
           IF call_line-include IS NOT INITIAL.
             include =  call_line-include.
           ENDIF.
           lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                i_e_name = call_line-eventname
-                                i_e_type = call_line-eventtype
-                                i_program =  CONV #( include )
-                                i_include =  CONV #( include )
-                                i_class = call_line-class
-                                i_stack   =  i_stack
-                                io_debugger = io_debugger ).
+                                   i_e_name = call_line-eventname
+                                   i_e_type = call_line-eventtype
+                                   i_program =  CONV #( include )
+                                   i_include =  CONV #( include )
+                                   i_class = call_line-class
+                                   i_stack   =  i_stack
+                                   io_debugger = io_debugger ).
+
+
+
+
         ENDIF.
+
+
+
       ENDIF.
+
 
 
     ENDMETHOD.
