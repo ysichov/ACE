@@ -5029,6 +5029,10 @@
               token-sub = abap_true.
             ENDIF.
 
+            IF kw = 'START-OF-SELECTION' or kw = 'INITIALISATION' or kw = 'END-OF-SELECTION'.
+              clear token-sub.
+            ENDIF.
+
             WHILE 1 = 1.
               IF kw IS INITIAL.
                 EXIT.
@@ -5095,6 +5099,10 @@
                     call-class = split[ 1 ].
                   ENDIF.
                   call-name = split[ 2 ].
+                ENDIF.
+
+                IF call-class is INITIAL.
+                  call-class = 'ME'.
                 ENDIF.
 
                 IF call-class = 'ME' AND i_class IS NOT INITIAL.
@@ -6055,6 +6063,9 @@
                 include = i_program.
               ELSE.
                 include = i_include.
+              ENDIF.
+              IF call-class = 'ME' or call-class is INITIAL.
+                call-class = i_class.
               ENDIF.
               parse_class( i_include = include i_call = call i_stack = stack io_debugger = io_debugger key = key ).
             ELSEIF call-event = 'SCREEN'. "Method call
