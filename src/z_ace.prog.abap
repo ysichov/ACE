@@ -592,7 +592,7 @@
         hndl_script_buttons IMPORTING i_stack_changed TYPE boolean
                             RETURNING VALUE(rv_stop)  TYPE boolean,
         show,
-        add_class IMPORTING i_class TYPE string i_refnode TYPE salv_de_node_key no_locals TYPE boolean OPTIONAL i_tree TYPE lcl_ace_appl=>ts_tree OPTIONAL,
+        add_class IMPORTING i_class TYPE string i_refnode TYPE salv_de_node_key no_locals TYPE boolean OPTIONAL i_tree TYPE lcl_ace_appl=>ts_tree OPTIONAL i_type TYPE flag OPTIONAL,
         get_code_flow RETURNING VALUE(results) TYPE tt_line,
         get_code_mix.
 
@@ -1667,23 +1667,32 @@
             splits_incl TYPE TABLE OF string,
             icon        TYPE salv_de_tree_image,
             locals_rel  TYPE salv_de_node_key,
+            test_rel    TYPE salv_de_node_key,
             class_rel   TYPE salv_de_node_key,
             include     TYPE string,
             prefix      TYPE string.
 
+      IF i_type = 'I'."interface
+        icon = icon_oo_connection.
+      ELSEIF i_type = 'T'. "test class
+        icon = icon_test.
+      ELSE.
+        icon = icon_folder.
+      ENDIF.
+
       "interfaces
       LOOP AT mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = i_class AND reltype = '1'.
         IF class_rel IS INITIAL.
-          class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon = CONV #( icon_folder ) i_rel = i_refnode i_tree = i_tree ).
+          class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon =  icon i_rel = i_refnode i_tree = i_tree ).
         ENDIF.
 
-        add_class( i_class = CONV #( ls_class-refclsname ) i_refnode = class_rel no_locals = abap_true ).
+        add_class( i_class = CONV #( ls_class-refclsname ) i_refnode = class_rel no_locals = abap_true i_type = 'I' ).
       ENDLOOP.
 
       LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class =  i_class AND eventtype = 'METHOD'.
 
         IF class_rel IS INITIAL.
-          class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon = CONV #( icon_folder ) i_rel = i_refnode i_tree = i_tree ).
+          class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon = CONV #( icon ) i_rel = i_refnode i_tree = i_tree ).
         ENDIF.
 
         SPLIT subs-include AT '=' INTO TABLE splits_incl.
@@ -1695,7 +1704,9 @@
         tree-value = keyword-line.
         tree-include = subs-include.
 
-        IF subs-redefined = abap_false.
+        IF i_type = 'I'.
+          icon = icon_oo_inst_method.
+        ELSEIF subs-redefined = abap_false.
 
           CASE subs-meth_type.
             WHEN 0 OR 1.
@@ -1731,10 +1742,11 @@
 
       ENDLOOP.
 
-      prefix = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
-      include =  prefix && 'CCIMP'."local classes
 
       IF no_locals = abap_false.
+        prefix = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
+        include =  prefix && 'CCIMP'."local classes
+
         DATA: local TYPE string.
         LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE include =  include AND eventtype = 'METHOD'.
           IF local <> subs-class.
@@ -1746,6 +1758,17 @@
           ENDIF.
           local = subs-class.
         ENDLOOP.
+
+        include =  prefix && 'CCAU'."test classes
+
+        CLEAR local .
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE include =  include AND eventtype = 'METHOD'.
+          IF local <> subs-class.
+            add_class( i_class = CONV #( subs-class ) i_refnode = class_rel  no_locals = abap_true i_type = 'T' ).
+          ENDIF.
+          local = subs-class.
+        ENDLOOP.
+
       ENDIF.
 
     ENDMETHOD.
