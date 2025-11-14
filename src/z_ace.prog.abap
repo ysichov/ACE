@@ -592,6 +592,7 @@
         hndl_script_buttons IMPORTING i_stack_changed TYPE boolean
                             RETURNING VALUE(rv_stop)  TYPE boolean,
         show,
+        add_class IMPORTING i_class TYPE string i_refnode TYPE salv_de_node_key no_locals TYPE boolean OPTIONAL i_tree TYPE lcl_ace_appl=>ts_tree OPTIONAL,
         get_code_flow RETURNING VALUE(results) TYPE tt_line,
         get_code_mix.
 
@@ -1425,10 +1426,9 @@
 
       CASE mo_window->m_prg-eventtype.
         WHEN 'FUNCTION'.
-
           mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-eventname ) i_icon = CONV #( icon_folder ) i_tree = tree ).
         WHEN OTHERS.
-          mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( splits_prg[ 1 ] ) i_icon = CONV #( icon_folder )  i_tree = tree ).
+          mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-program ) i_icon = CONV #( icon_folder )  i_tree = tree ).
       ENDCASE.
 
       "global variable.
@@ -1468,6 +1468,22 @@
 
       "mo_tree_local->add_node( i_name = 'Code Flow' i_icon = CONV #( icon_enhanced_bo ) i_rel = mo_tree_local->main_node_key ).
 
+      IF lines( splits_prg ) = 1.
+        DATA: local      TYPE string,
+              locals_rel TYPE salv_de_node_key.
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE program = mv_prog AND eventtype = 'METHOD'.
+          IF local <> subs-class.
+            IF locals_rel IS INITIAL.
+              tree-kind = 'F'.
+              locals_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = class_rel i_tree = tree ).
+            ENDIF.
+            add_class( i_class = CONV #( subs-class ) i_refnode = locals_rel  no_locals = abap_true ).
+          ENDIF.
+          local = subs-class.
+        ENDLOOP.
+      ENDIF.
+
+
       IF class_rel IS INITIAL.
         classes_rel = class_rel = mo_tree_local->main_node_key.
       ENDIF.
@@ -1486,94 +1502,8 @@
 
       DO.
         tree-kind = 'F'.
-        class_rel = mo_tree_local->add_node( i_name = CONV #( cl_name ) i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
+        add_class( i_class = CONV #( cl_name ) i_refnode = classes_rel i_tree = tree ).
         CLEAR tree.
-
-        "interfaces
-        LOOP AT mo_window->ms_sources-t_classes INTO ls_class WHERE clsname = cl_name AND reltype = '1'.
-
-          DATA(inf_rel) = mo_tree_local->add_node( i_name = CONV #( ls_class-refclsname ) i_icon = CONV #( icon_oo_connection ) i_rel = class_rel i_tree = tree ).
-
-          "to refactor in new method
-
-          LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class =  ls_class-refclsname AND eventtype = 'METHOD'. "and include+30(2) = 'CM'.
-            SPLIT subs-include AT '=' INTO TABLE splits_incl.
-            READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
-            READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
-
-            CLEAR tree.
-            tree-kind = 'M'.
-            tree-value = keyword-line.
-            tree-include = subs-include.
-
-            DATA(event_node) = mo_tree_local->add_node( i_name =  subs-eventname i_icon = CONV #( icon_oo_inst_method ) i_rel =  inf_rel i_tree = tree ).
-            CLEAR tree-value.
-            LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
-
-              CASE param-type.
-                WHEN 'I'.
-                  icon = icon_parameter_import.
-                WHEN 'E'.
-                  icon = icon_parameter_export.
-              ENDCASE.
-              tree-param = param-param.
-
-              mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
-            ENDLOOP.
-            CLEAR tree.
-
-          ENDLOOP.
-          "to refactor
-        ENDLOOP.
-
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE class = cl_name AND eventtype = 'METHOD' AND include+30(2) = 'CM'.
-          SPLIT subs-include AT '=' INTO TABLE splits_incl.
-          READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
-          READ TABLE prog-t_keywords WITH KEY index = subs-index INTO keyword.
-
-          CASE subs-meth_type.
-            WHEN 0 OR 1.
-              icon = icon_led_green.
-            WHEN 2.
-              icon = icon_led_yellow.
-            WHEN 3.
-              icon = icon_led_red.
-            WHEN OTHERS.
-              IF subs-eventname = 'CONSTRUCTOR'.
-                icon = icon_tools.
-              ENDIF.
-          ENDCASE.
-          CLEAR tree.
-          tree-kind = 'M'.
-          tree-value = keyword-line.
-          tree-include = subs-include.
-
-          IF subs-redefined = abap_true.
-            icon = icon_oo_overwrite.
-          ENDIF.
-          event_node = mo_tree_local->add_node( i_name = subs-eventname i_icon = icon i_rel =  class_rel i_tree = tree ).
-          CLEAR tree-value.
-
-          SPLIT subs-eventname AT '~' INTO TABLE splits_intf.
-          IF lines( splits_intf ) > 1.
-            subs-class  = splits_intf[ 1 ].
-            subs-eventname = splits_intf[ 2 ].
-          ENDIF.
-          LOOP AT mo_window->ms_sources-t_params INTO param WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
-
-            CASE param-type.
-              WHEN 'I'.
-                icon = icon_parameter_import.
-              WHEN 'E'.
-                icon = icon_parameter_export.
-            ENDCASE.
-            tree-param = param-param.
-
-            mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
-          ENDLOOP.
-          CLEAR tree.
-
-        ENDLOOP.
 
         READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2' INTO ls_class.
         IF sy-subrc <> 0.
@@ -1588,7 +1518,7 @@
       LOOP AT mo_window->ms_sources-tt_calls_line INTO subs. "WHERE include IS NOT INITIAL.
         SPLIT subs-include AT '=' INTO TABLE splits_incl.
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO prog.
-        READ TABLE prog-t_keywords WITH KEY index = subs-index INTO keyword.
+        READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
         DATA(form_name) = subs-eventname.
 
         IF subs-eventtype = 'FORM'.
@@ -1600,10 +1530,10 @@
             CLEAR tree.
             tree-value = keyword-line.
             tree-include = subs-include.
-            event_node = mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
+            DATA(event_node) = mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
 
             CLEAR tree.
-            LOOP AT mo_window->ms_sources-t_params INTO param WHERE event = 'FORM' AND name = subs-eventname  AND param IS NOT INITIAL.
+            LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE event = 'FORM' AND name = subs-eventname  AND param IS NOT INITIAL.
 
               CASE param-type.
                 WHEN 'I'.
@@ -1619,17 +1549,16 @@
 
           ENDIF.
 
-*        ELSEIF subs-eventtype = 'METHOD'.
+*        ELSEIF subs-eventtype = 'METHOD'. "local methods
 *          CHECK subs-include IS NOT INITIAL.
 *          IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
-*            IF subs-class = splits_prg[ 1 ].
 *
-*              DATA(last) = splits_incl[ lines( splits_incl ) ].
-*              IF last+0(2) <> 'CM'.
-*                CONTINUE.
-*              ENDIF.
-*
-*            ENDIF.
+**            IF subs-class = splits_prg[ 1 ].
+**              DATA(last) = splits_incl[ lines( splits_incl ) ].
+**              IF last+0(2) <> 'CM'.
+**                CONTINUE.
+**              ENDIF.
+**            ENDIF.
 *            IF classes_rel IS INITIAL.
 *              IF subs-class = splits_prg[ 1 ].
 *                classes_rel = mo_tree_local->main_node_key.
@@ -1730,6 +1659,94 @@
 
 
       mo_tree_local->display( ).
+
+    ENDMETHOD.
+
+    METHOD add_class.
+      DATA: tree        TYPE lcl_ace_appl=>ts_tree,
+            splits_incl TYPE TABLE OF string,
+            icon        TYPE salv_de_tree_image,
+            locals_rel  TYPE salv_de_node_key,
+            class_rel   TYPE salv_de_node_key,
+            include     TYPE string,
+            prefix      TYPE string.
+
+      "interfaces
+      LOOP AT mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = i_class AND reltype = '1'.
+        IF class_rel IS INITIAL.
+          class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon = CONV #( icon_folder ) i_rel = i_refnode i_tree = i_tree ).
+        ENDIF.
+
+        add_class( i_class = CONV #( ls_class-refclsname ) i_refnode = class_rel no_locals = abap_true ).
+      ENDLOOP.
+
+      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class =  i_class AND eventtype = 'METHOD'.
+
+        IF class_rel IS INITIAL.
+          class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon = CONV #( icon_folder ) i_rel = i_refnode i_tree = i_tree ).
+        ENDIF.
+
+        SPLIT subs-include AT '=' INTO TABLE splits_incl.
+        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO DATA(prog).
+        READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
+
+        CLEAR tree.
+        tree-kind = 'M'.
+        tree-value = keyword-line.
+        tree-include = subs-include.
+
+        IF subs-redefined = abap_false.
+
+          CASE subs-meth_type.
+            WHEN 0 OR 1.
+              icon = icon_led_green.
+            WHEN 2.
+              icon = icon_led_yellow.
+            WHEN 3.
+              icon = icon_led_red.
+            WHEN OTHERS.
+              IF subs-eventname = 'CONSTRUCTOR'.
+                icon = icon_tools.
+              ENDIF.
+          ENDCASE.
+        ELSE.
+          icon = icon_oo_overwrite.
+        ENDIF.
+
+        DATA(event_node) = mo_tree_local->add_node( i_name =  subs-eventname i_icon = icon i_rel =  class_rel i_tree = tree ).
+        CLEAR tree-value.
+        LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
+
+          CASE param-type.
+            WHEN 'I'.
+              icon = icon_parameter_import.
+            WHEN 'E'.
+              icon = icon_parameter_export.
+          ENDCASE.
+          tree-param = param-param.
+
+          mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
+        ENDLOOP.
+        CLEAR tree.
+
+      ENDLOOP.
+
+      prefix = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
+      include =  prefix && 'CCIMP'."local classes
+
+      IF no_locals = abap_false.
+        DATA: local TYPE string.
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE include =  include AND eventtype = 'METHOD'.
+          IF local <> subs-class.
+            IF locals_rel IS INITIAL.
+              tree-kind = 'F'.
+              locals_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = class_rel i_tree = tree ).
+            ENDIF.
+            add_class( i_class = CONV #( subs-class ) i_refnode = locals_rel  no_locals = abap_true ).
+          ENDIF.
+          local = subs-class.
+        ENDLOOP.
+      ENDIF.
 
     ENDMETHOD.
 
@@ -4605,7 +4622,7 @@
     METHOD add_node.
 
       DATA style TYPE salv_de_constant.
-      IF i_tree-kind = 'F' OR i_tree-value IS NOT INITIAL.
+      IF i_tree-kind = 'F'." OR i_tree-value IS NOT INITIAL.
         style = if_salv_c_tree_style=>intensified.
       ENDIF.
 
@@ -5029,8 +5046,8 @@
               token-sub = abap_true.
             ENDIF.
 
-            IF kw = 'START-OF-SELECTION' or kw = 'INITIALISATION' or kw = 'END-OF-SELECTION'.
-              clear token-sub.
+            IF kw = 'START-OF-SELECTION' OR kw = 'INITIALISATION' OR kw = 'END-OF-SELECTION'.
+              CLEAR token-sub.
             ENDIF.
 
             WHILE 1 = 1.
@@ -5074,6 +5091,8 @@
                 call-name = word.
                 call-event = 'METHOD'.
                 REPLACE ALL OCCURRENCES OF '(' IN call-name WITH ''.
+                REPLACE ALL OCCURRENCES OF 'ME->' IN call-name WITH ''.
+
                 FIND FIRST OCCURRENCE OF '->' IN  call-name.
                 IF sy-subrc = 0.
                   SPLIT call-name  AT '->' INTO TABLE split.
@@ -5101,11 +5120,7 @@
                   call-name = split[ 2 ].
                 ENDIF.
 
-                IF call-class is INITIAL.
-                  call-class = 'ME'.
-                ENDIF.
-
-                IF call-class = 'ME' AND i_class IS NOT INITIAL.
+                IF call-class IS INITIAL AND i_class IS NOT INITIAL.
                   call-class  =  i_class.
                 ENDIF.
 
@@ -5170,12 +5185,14 @@
               ENDIF.
 
               "check class name
-              SPLIT i_program AT '=' INTO TABLE split.
-              IF lines( split ) > 1.
-                class_name = split[ 1 ].
-                SELECT SINGLE clsname INTO call_line-class
-                  FROM seoclass
-                 WHERE clsname = class_name.
+              IF  class_name IS INITIAL.
+                SPLIT i_program AT '=' INTO TABLE split.
+                IF lines( split ) > 1.
+                  class_name = split[ 1 ].
+                  SELECT SINGLE clsname INTO call_line-class
+                    FROM seoclass
+                   WHERE clsname = class_name.
+                ENDIF.
               ENDIF.
 
 
@@ -6064,7 +6081,7 @@
               ELSE.
                 include = i_include.
               ENDIF.
-              IF call-class = 'ME' or call-class is INITIAL.
+              IF call-class = 'ME' OR call-class IS INITIAL.
                 call-class = i_class.
               ENDIF.
               parse_class( i_include = include i_call = call i_stack = stack io_debugger = io_debugger key = key ).
@@ -6092,7 +6109,7 @@
             program       TYPE program,
             include       TYPE progname,
             stack         TYPE i,
-            class_call    type lcl_ace_appl=>ts_calls.
+            class_call    TYPE lcl_ace_appl=>ts_calls.
 
       cl_key = i_call-class.
       stack = i_stack." + 1.
