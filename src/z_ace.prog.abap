@@ -1163,13 +1163,15 @@
              tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY,
 
              BEGIN OF ts_params,
+               program   type program,
+               include   type program,
                class     TYPE string,
                event     TYPE string,
                name      TYPE string,
                type      TYPE char1,
                param     TYPE string,
-
                preferred TYPE char1,
+               line      TYPE i,
              END OF ts_params,
 
              BEGIN OF ts_meta,
@@ -1467,8 +1469,6 @@
         mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
       ENDLOOP.
 
-      "mo_tree_local->add_node( i_name = 'Code Flow' i_icon = CONV #( icon_enhanced_bo ) i_rel = mo_tree_local->main_node_key ).
-
       IF lines( splits_prg ) = 1.
         DATA: local      TYPE string,
               locals_rel TYPE salv_de_node_key.
@@ -1483,7 +1483,6 @@
           local = subs-class.
         ENDLOOP.
       ENDIF.
-
 
       IF class_rel IS INITIAL.
         classes_rel = class_rel = mo_tree_local->main_node_key.
@@ -1543,6 +1542,7 @@
                   icon = icon_parameter_export.
               ENDCASE.
               tree-param = param-param.
+
               mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
 
             ENDLOOP.
@@ -1550,66 +1550,6 @@
 
           ENDIF.
 
-*        ELSEIF subs-eventtype = 'METHOD'. "local methods
-*          CHECK subs-include IS NOT INITIAL.
-*          IF subs-class = splits_prg[ 1 ] OR subs-program = splits_prg[ 1 ].
-*
-**            IF subs-class = splits_prg[ 1 ].
-**              DATA(last) = splits_incl[ lines( splits_incl ) ].
-**              IF last+0(2) <> 'CM'.
-**                CONTINUE.
-**              ENDIF.
-**            ENDIF.
-*            IF classes_rel IS INITIAL.
-*              IF subs-class = splits_prg[ 1 ].
-*                classes_rel = mo_tree_local->main_node_key.
-*              ELSE.
-*                tree-kind = 'F'.
-*                classes_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
-*              ENDIF.
-*            ENDIF.
-*            IF cl_name <> subs-class.
-*              tree-kind = 'F'.
-*              IF classes_rel IS NOT INITIAL.
-*                class_rel = mo_tree_local->add_node( i_name = subs-class i_icon = CONV #( icon_folder ) i_rel = classes_rel i_tree = tree ).
-*              ELSE.
-*                class_rel = mo_tree_local->main_node_key.
-*              ENDIF.
-*              cl_name = subs-class.
-*            ENDIF.
-*            CASE subs-meth_type.
-*              WHEN 1.
-*                icon = icon_led_green.
-*              WHEN 2.
-*                icon = icon_led_yellow.
-*              WHEN 3.
-*                icon = icon_led_red.
-*              WHEN OTHERS.
-*                IF subs-eventname = 'CONSTRUCTOR'.
-*                  icon = icon_tools.
-*                ENDIF.
-*            ENDCASE.
-*            CLEAR tree.
-*            tree-kind = 'M'.
-*            tree-value = keyword-line.
-*            tree-include = subs-include.
-*
-*            event_node = mo_tree_local->add_node( i_name =  form_name i_icon = icon i_rel =  class_rel i_tree = tree ).
-*            CLEAR tree-value.
-*            LOOP AT mo_window->ms_sources-t_params INTO param WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
-*
-*              CASE param-type.
-*                WHEN 'I'.
-*                  icon = icon_parameter_import.
-*                WHEN 'E'.
-*                  icon = icon_parameter_export.
-*              ENDCASE.
-*              tree-param = param-param.
-*
-*              mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
-*            ENDLOOP.
-*            CLEAR tree.
-*          ENDIF.
 
         ELSEIF subs-eventtype = 'FUNCTION'.
           DATA: fname              TYPE rs38l_fnam,
@@ -1618,11 +1558,6 @@
                 import_parameter   TYPE TABLE OF  rsimp,
                 changing_parameter TYPE TABLE OF    rscha,
                 tables_parameter   TYPE TABLE OF    rstbl.
-
-*          CLEAR tree.
-*          tree-kind = 'F'.
-*          DATA(func_rel) = mo_tree_local->add_node( i_name = subs-eventname i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
-*          CLEAR tree.
 
           fname = ms_stack-eventname.
           CALL FUNCTION 'FUNCTION_IMPORT_INTERFACE'
@@ -1696,6 +1631,7 @@
 
         IF class_rel IS INITIAL.
           class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon = CONV #( icon ) i_rel = i_refnode i_tree = i_tree ).
+
           "Attributes
           CLEAR tree.
           LOOP AT mo_window->ms_sources-t_vars INTO DATA(var) WHERE program = subs-program AND class = subs-class AND eventname IS INITIAL.
@@ -1703,14 +1639,10 @@
               attr_rel = mo_tree_local->add_node( i_name =  'Attributes' i_icon = CONV #( icon_folder ) i_rel =  class_rel i_tree = tree ).
             ENDIF.
             tree-value = var-line.
-            tree-param = var-name.
+            tree-include = var-include.
             mo_tree_local->add_node( i_name = var-name i_icon = var-icon i_rel =  attr_rel i_tree = tree ).
           ENDLOOP.
         ENDIF.
-
-
-
-
 
         SPLIT subs-include AT '=' INTO TABLE splits_incl.
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO DATA(prog).
@@ -1751,7 +1683,7 @@
             var_rel = mo_tree_local->add_node( i_name =  'Local vars' i_icon = CONV #( icon_folder ) i_rel =  event_node i_tree = tree ).
           ENDIF.
           tree-value = var-line.
-          tree-param = var-name.
+          tree-include = var-include.
           mo_tree_local->add_node( i_name = var-name i_icon = var-icon i_rel =  var_rel i_tree = tree ).
         ENDLOOP.
 
@@ -1764,7 +1696,10 @@
             WHEN 'E'.
               icon = icon_parameter_export.
           ENDCASE.
-          tree-param = param-param.
+          "tree-param = param-param.
+
+            tree-value = param-line.
+            tree-include = param-include.
 
           mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
         ENDLOOP.
@@ -4985,12 +4920,6 @@
         prog-source_tab = o_source->lines.
         o_scan = NEW cl_ci_scan( p_include = o_source ).
 
-        "check main class name
-*        IF i_main_prog IS NOT INITIAL.
-*          SPLIT i_main_prog AT '=' INTO TABLE split.
-*          param-class = class_name = split[ 1 ].
-*        ENDIF.
-
         "get_events.
         LOOP AT o_scan->structures INTO DATA(struc) WHERE type = 'E'.
           READ TABLE io_debugger->mo_window->ms_sources-t_events WITH KEY program = i_program stmnt_type = struc-stmnt_type ASSIGNING FIELD-SYMBOL(<event>).
@@ -5062,7 +4991,9 @@
 
             IF kw = 'FORM' OR kw = 'METHOD' OR kw = 'METHODS' OR kw = 'CLASS-METHODS' OR kw = 'MODULE'.
               variable-eventtype = tab-eventtype =  eventtype = param-event =  kw.
-
+              param-program = i_program.
+              param-include = i_include.
+              param-class = class_name.
               CLEAR  eventname.
               IF kw = 'FORM'.
                 CLEAR:  class, param-class.
@@ -5077,13 +5008,14 @@
             IF kw = 'ENDCLASS'.
               call_line-class = param-class = ''.
             ENDIF.
+
             IF kw = 'ENDFORM' OR kw = 'ENDMETHOD' OR kw = 'ENDMODULE'.
               CLEAR:  eventtype,  eventname, tabs, variable, token-sub.
               IF param-param IS INITIAL. "No params - save empty row if no params
                 READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = param-event name = param-name TRANSPORTING NO FIELDS.
                 IF sy-subrc <> 0.
                   CLEAR param-type.
-                  APPEND param TO io_debugger->mo_window->ms_sources-t_params.
+                  "APPEND param TO io_debugger->mo_window->ms_sources-t_params.
                 ENDIF.
               ENDIF.
             ENDIF.
@@ -5254,6 +5186,7 @@
                   "word = |{ class_name }~{ word }|.
                 ENDIF.
                 variable-eventname = tab-eventname =  eventname = param-name = word.
+                param-line = l_token-row.
 
                 MOVE-CORRESPONDING tab TO call_line.
                 call_line-index = o_procedure->statement_index. " + 1.
