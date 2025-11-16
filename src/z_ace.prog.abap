@@ -1120,6 +1120,7 @@
              BEGIN OF ts_vars,
                program   TYPE program,
                include   TYPE program,
+               class     TYPE string,
                eventtype TYPE string,
                eventname TYPE string,
                line      TYPE i,
@@ -1194,7 +1195,6 @@
                source_tab TYPE sci_include,
                scan       TYPE REF TO cl_ci_scan,
                t_keywords TYPE tt_kword,
-               t_vars     TYPE tt_vars,
                selected   TYPE boolean,
              END OF ts_prog,
              tt_progs   TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
@@ -1208,6 +1208,7 @@
                t_params      TYPE tt_params,
                tt_tabs       TYPE tt_tabs,
                tt_calls_line TYPE tt_calls_line,
+               t_vars        TYPE tt_vars,
                tt_refvar     TYPE tt_refvar,
                t_classes     TYPE tt_classes,
              END OF ts_source,
@@ -1433,7 +1434,7 @@
 
       "global variable.
       CLEAR tree.
-      LOOP AT prog-t_vars INTO DATA(var) WHERE eventtype IS INITIAL .
+      LOOP AT  mo_window->ms_sources-t_vars INTO DATA(var) WHERE program = mo_window->m_prg-program AND eventtype IS INITIAL AND class IS INITIAL.
         IF globals_rel IS INITIAL.
           globals_rel = mo_tree_local->add_node( i_name = 'Global Vars' i_icon = CONV #( icon_header ) i_rel = mo_tree_local->main_node_key ).
         ENDIF.
@@ -1669,6 +1670,8 @@
             locals_rel  TYPE salv_de_node_key,
             test_rel    TYPE salv_de_node_key,
             class_rel   TYPE salv_de_node_key,
+            var_rel     TYPE salv_de_node_key,
+            attr_rel    TYPE salv_de_node_key,
             include     TYPE string,
             prefix      TYPE string.
 
@@ -1693,7 +1696,21 @@
 
         IF class_rel IS INITIAL.
           class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon = CONV #( icon ) i_rel = i_refnode i_tree = i_tree ).
+          "Attributes
+          CLEAR tree.
+          LOOP AT mo_window->ms_sources-t_vars INTO DATA(var) WHERE program = subs-program AND class = subs-class AND eventname IS INITIAL.
+            IF attr_rel IS INITIAL.
+              attr_rel = mo_tree_local->add_node( i_name =  'Attributes' i_icon = CONV #( icon_folder ) i_rel =  class_rel i_tree = tree ).
+            ENDIF.
+            tree-value = var-line.
+            tree-param = var-name.
+            mo_tree_local->add_node( i_name = var-name i_icon = var-icon i_rel =  attr_rel i_tree = tree ).
+          ENDLOOP.
         ENDIF.
+
+
+
+
 
         SPLIT subs-include AT '=' INTO TABLE splits_incl.
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO DATA(prog).
@@ -1724,7 +1741,20 @@
           icon = icon_oo_overwrite.
         ENDIF.
 
-        DATA(event_node) = mo_tree_local->add_node( i_name =  subs-eventname i_icon = icon i_rel =  class_rel i_tree = tree ).
+        DATA(event_node) = mo_tree_local->add_node( i_name =  subs-eventname i_icon = icon i_rel =  class_rel i_tree = tree )."method name
+
+        "local vars
+        CLEAR var_rel.
+        CLEAR tree.
+        LOOP AT mo_window->ms_sources-t_vars INTO var WHERE program = subs-program AND class = subs-class AND eventname = subs-eventname .
+          IF var_rel IS INITIAL.
+            var_rel = mo_tree_local->add_node( i_name =  'Local vars' i_icon = CONV #( icon_folder ) i_rel =  event_node i_tree = tree ).
+          ENDIF.
+          tree-value = var-line.
+          tree-param = var-name.
+          mo_tree_local->add_node( i_name = var-name i_icon = var-icon i_rel =  var_rel i_tree = tree ).
+        ENDLOOP.
+
         CLEAR tree-value.
         LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname  AND param IS NOT INITIAL.
 
@@ -5120,7 +5150,7 @@
                 IF sy-subrc = 0.
                   SPLIT call-name  AT '->' INTO TABLE split.
                   IF split[ 1 ] <> ')'."to refactor
-                    READ TABLE prog-t_vars WITH KEY name =  split[ 1 ] INTO DATA(vars).
+                    READ TABLE io_debugger->mo_window->ms_sources-t_vars WITH KEY program = i_program name =  split[ 1 ] INTO DATA(vars).
                     IF sy-subrc <> 0.
                       call-class = split[ 1 ].
                     ELSE.
@@ -5243,12 +5273,10 @@
                   <call_line>-index = call_line-index.
                   <call_line>-include = token-include.
                 ELSE.
-                  "IF i_main_prog IS INITIAL.
                   call_line-program = i_program.
                   call_line-include = token-include.
                   call_line-meth_type = method_type.
                   APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
-                  "ENDIF.
                 ENDIF.
 
               ENDIF.
@@ -5384,7 +5412,7 @@
                     variable-type = tab-type.
                     variable-line = l_token-row.
                     variable-icon = icon_table_settings.
-                    APPEND variable TO prog-t_vars.
+                    APPEND variable TO io_debugger->mo_window->ms_sources-t_vars.
                   ENDIF.
 
                   IF (   prev = 'TYPE' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
@@ -5412,7 +5440,10 @@
                       variable-icon = icon_oo_class.
                       CLEAR ref.
                     ENDIF.
-                    APPEND variable TO prog-t_vars.
+                    variable-program = i_program.
+                    variable-include = i_include.
+                    variable-class = class_name.
+                    APPEND variable TO io_debugger->mo_window->ms_sources-t_vars.
 
                   ENDIF.
 
@@ -5496,7 +5527,7 @@
                   ENDIF.
 
                   IF  prev = 'OBJECT'.
-                    READ TABLE prog-t_vars WITH KEY icon = icon_oo_class name = word INTO DATA(var).
+                    READ TABLE io_debugger->mo_window->ms_sources-t_vars WITH KEY program = i_program icon = icon_oo_class name = word INTO DATA(var).
                     IF sy-subrc = 0.
                       call-class = var-type.
                       call-event = 'METHOD'.
@@ -5697,9 +5728,6 @@
             IF kw = 'ENDCLASS'.
               CLEAR: token-sub, class.
             ENDIF.
-            "ELSE.
-            "lcl_ace_source_parser=>parse_tokens( i_program = CONV #( token-include ) i_include = CONV #( token-include ) io_debugger = io_debugger ).
-            "ENDIF.
           ENDIF.
 
           IF o_procedure->statement_index =  max.
@@ -5709,7 +5737,6 @@
         ENDDO.
 
         "Fill keyword links for calls
-
         LOOP AT tokens ASSIGNING FIELD-SYMBOL(<s_token>) WHERE tt_calls IS NOT INITIAL.
 
           READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
