@@ -20,7 +20,8 @@
       PARAMETERS: p_prog  TYPE progname MATCHCODE OBJECT progname MODIF ID prg.
       SELECTION-SCREEN COMMENT (70) TEXT-001 FOR FIELD p_prog.
     SELECTION-SCREEN END OF LINE.
-    PARAMETERS: p_class TYPE seoclsname MATCHCODE OBJECT sfbeclname.
+    PARAMETERS: p_class  TYPE seoclsname MATCHCODE OBJECT sfbeclname.
+    PARAMETERS: p_func  TYPE seoclsname MATCHCODE OBJECT cacs_function.
   SELECTION-SCREEN END OF BLOCK s1.
 
   SELECTION-SCREEN SKIP.
@@ -6777,10 +6778,24 @@
 
     ENDIF.
 
-    SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
+    IF p_func IS NOT INITIAL.
+      SELECT single pname, include INTO ( @DATA(func_incl), @data(incl_num) )
+        FROM tfdir
+       WHERE funcname = @p_func.
 
-    IF sy-dbcnt <> 0.
-      DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
-    ELSE.
-      MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
-    ENDIF.
+        IF sy-subrc = 0.
+          SHIFT func_incl LEFT by 3 PLACES.
+          p_prog = func_incl && 'U' && incl_num.
+        ENDIF.
+
+      ENDIF.
+
+
+
+      SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
+
+        IF sy-dbcnt <> 0.
+          DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
+        ELSE.
+          MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
+        ENDIF.

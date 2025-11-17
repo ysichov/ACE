@@ -59,6 +59,12 @@
     </item>
     <item>
      <ID>S</ID>
+     <KEY>P_FUNC</KEY>
+     <ENTRY>Function Module</ENTRY>
+     <LENGTH>23</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
      <KEY>P_MODEL</KEY>
      <ENTRY>AI model name</ENTRY>
      <LENGTH>21</LENGTH>
