@@ -47,6 +47,12 @@
     </item>
     <item>
      <ID>S</ID>
+     <KEY>P_CLASS</KEY>
+     <ENTRY>Class/Interface</ENTRY>
+     <LENGTH>23</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
      <KEY>P_DEST</KEY>
      <ENTRY>Destination name (from SM 59)</ENTRY>
      <LENGTH>37</LENGTH>

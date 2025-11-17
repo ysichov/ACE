@@ -16,10 +16,11 @@
   SELECTION-SCREEN BEGIN OF BLOCK s1 WITH FRAME TITLE TEXT-004.
     SELECTION-SCREEN BEGIN OF LINE.
       SELECTION-SCREEN COMMENT (29) TEXT-002 FOR FIELD p_prog.
-      SELECTION-SCREEN POSITION 35.
-      PARAMETERS: p_prog  TYPE progname MATCHCODE OBJECT progname MODIF ID prg OBLIGATORY.
+      SELECTION-SCREEN POSITION 33.
+      PARAMETERS: p_prog  TYPE progname MATCHCODE OBJECT progname MODIF ID prg.
       SELECTION-SCREEN COMMENT (70) TEXT-001 FOR FIELD p_prog.
     SELECTION-SCREEN END OF LINE.
+    PARAMETERS: p_class TYPE seoclsname MATCHCODE OBJECT sfbeclname.
   SELECTION-SCREEN END OF BLOCK s1.
 
   SELECTION-SCREEN SKIP.
@@ -1163,8 +1164,8 @@
              tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY,
 
              BEGIN OF ts_params,
-               program   type program,
-               include   type program,
+               program   TYPE program,
+               include   TYPE program,
                class     TYPE string,
                event     TYPE string,
                name      TYPE string,
@@ -1698,8 +1699,8 @@
           ENDCASE.
           "tree-param = param-param.
 
-            tree-value = param-line.
-            tree-include = param-include.
+          tree-value = param-line.
+          tree-include = param-include.
 
           mo_tree_local->add_node( i_name =  param-param i_icon = icon i_rel =  event_node i_tree = tree ).
         ENDLOOP.
@@ -6759,6 +6760,22 @@
         p_exclude = itab.
 
   AT SELECTION-SCREEN.
+
+    IF p_class IS NOT INITIAL.
+      SELECT SINGLE clstype INTO @DATA(clstype)
+        FROM seoclass
+       WHERE clsname = @p_class.
+      IF sy-subrc = 0.
+
+        p_prog = p_class && repeat( val = `=` occ = 30 - strlen( p_class ) ).
+        IF clstype = '1'.
+          p_prog = p_prog && 'IP'.
+        ELSE.
+          p_prog = p_prog && 'CP'.
+        ENDIF.
+      ENDIF.
+
+    ENDIF.
 
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
