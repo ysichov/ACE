@@ -1534,7 +1534,7 @@
       IF lines( splits_prg ) = 1.
         DATA: local      TYPE string,
               locals_rel TYPE salv_de_node_key.
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE program = mv_prog AND eventtype = 'METHOD'.
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE program = mv_prog AND eventtype = 'METHOD' and class  <> splits_prg[ 1 ].
           IF local <> subs-class.
             IF locals_rel IS INITIAL.
               tree-kind = 'F'.
@@ -1732,26 +1732,16 @@
 
       IF no_locals = abap_false.
         prefix = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
-        include =  prefix && 'CCIMP'."local classes
+        include =  prefix && 'CP'."local classes
 
         DATA: local TYPE string.
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE include =  include AND eventtype = 'METHOD'.
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE program = include and class <>  i_class AND eventtype = 'METHOD'.
           IF local <> subs-class.
             IF locals_rel IS INITIAL.
               tree-kind = 'F'.
               locals_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = class_rel i_tree = tree ).
             ENDIF.
             add_class( i_class = CONV #( subs-class ) i_refnode = locals_rel  no_locals = abap_true ).
-          ENDIF.
-          local = subs-class.
-        ENDLOOP.
-
-        include =  prefix && 'CCAU'."test classes
-
-        CLEAR local .
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE include =  include AND eventtype = 'METHOD'.
-          IF local <> subs-class.
-            add_class( i_class = CONV #( subs-class ) i_refnode = class_rel  no_locals = abap_true i_type = 'T' ).
           ENDIF.
           local = subs-class.
         ENDLOOP.
