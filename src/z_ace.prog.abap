@@ -1397,6 +1397,8 @@
             cl_name     TYPE string,
             icon        TYPE salv_de_tree_image,
             forms_rel   TYPE salv_de_node_key,
+            f_modules   TYPE salv_de_node_key,
+            func_rel    TYPE salv_de_node_key,
             classes_rel TYPE salv_de_node_key,
             class_rel   TYPE salv_de_node_key,
             events_rel  TYPE salv_de_node_key,
@@ -1429,12 +1431,7 @@
       CHECK splits_prg IS NOT INITIAL.
       tree-kind = 'F'. "Folder - pre expanded
 
-      CASE mo_window->m_prg-eventtype.
-        WHEN 'FUNCTION'.
-          mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-eventname ) i_icon = CONV #( icon_folder ) i_tree = tree ).
-        WHEN OTHERS.
-          mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-program ) i_icon = CONV #( icon_folder )  i_tree = tree ).
-      ENDCASE.
+      mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-program ) i_icon = CONV #( icon_folder )  i_tree = tree ).
 
       "global variable.
       CLEAR tree.
@@ -1469,6 +1466,69 @@
         tree-include = event-include.
         tree-value = event-line.
         mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel i_tree = tree ).
+      ENDLOOP.
+
+      "FUNCTIONS
+      LOOP AT mo_window->ms_sources-tt_progs INTO prog WHERE program+0(4) = 'SAPL'  .
+
+        DATA: fname              TYPE rs38l_fnam,
+              exception_list     TYPE TABLE OF  rsexc,
+              export_parameter   TYPE TABLE OF  rsexp,
+              import_parameter   TYPE TABLE OF  rsimp,
+              changing_parameter TYPE TABLE OF    rscha,
+              tables_parameter   TYPE TABLE OF    rstbl,
+              search_name        TYPE string,
+              incl_nr            TYPE includenr.
+
+        DATA(len) = strlen( prog-include ).
+        len = len - 2.
+        incl_nr = prog-include+len(2).
+
+        SELECT SINGLE funcname INTO @DATA(funcname)
+          FROM tfdir
+         WHERE pname = @prog-program
+           AND include = @incl_nr.
+
+        CHECK sy-subrc = 0.
+        IF f_modules IS INITIAL.
+          tree-kind = 'F'.
+          f_modules = mo_tree_local->add_node( i_name =  'Function Modules' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key  i_tree = tree ).
+        ENDIF.
+        CLEAR tree.
+        func_rel =  mo_tree_local->add_node( i_name =  CONV #( funcname ) i_icon = CONV #( icon_folder ) i_rel = f_modules  i_tree = tree ).
+
+        fname = funcname.
+        CALL FUNCTION 'FUNCTION_IMPORT_INTERFACE'
+          EXPORTING
+            funcname           = fname
+          TABLES
+            exception_list     = exception_list
+            export_parameter   = export_parameter
+            import_parameter   = import_parameter
+            changing_parameter = changing_parameter
+            tables_parameter   = tables_parameter
+          EXCEPTIONS
+            error_message      = 1
+            function_not_found = 2
+            invalid_name       = 3
+            OTHERS             = 4.
+        IF sy-subrc = 0.
+
+          LOOP AT import_parameter INTO DATA(imp).
+            mo_tree_local->add_node( i_name =  CONV #( imp-parameter ) i_icon = CONV #( icon_parameter_import ) i_rel = func_rel  i_tree = tree ).
+          ENDLOOP.
+
+          LOOP AT export_parameter INTO DATA(exp).
+            mo_tree_local->add_node( i_name =  CONV #( exp-parameter ) i_icon = CONV #( icon_parameter_export ) i_rel = func_rel  i_tree = tree ).
+          ENDLOOP.
+          LOOP AT changing_parameter INTO DATA(change).
+            mo_tree_local->add_node( i_name =  CONV #( change-parameter ) i_icon = CONV #( icon_parameter_changing ) i_rel = func_rel  i_tree = tree ).
+          ENDLOOP.
+          LOOP AT tables_parameter INTO DATA(table).
+            mo_tree_local->add_node( i_name =  CONV #( table-parameter ) i_icon = CONV #( icon_parameter_table ) i_rel = func_rel  i_tree = tree ).
+          ENDLOOP.
+        ENDIF.
+
       ENDLOOP.
 
       IF lines( splits_prg ) = 1.
@@ -1551,50 +1611,10 @@
             CLEAR tree.
 
           ENDIF.
-
-
-        ELSEIF subs-eventtype = 'FUNCTION'.
-          DATA: fname              TYPE rs38l_fnam,
-                exception_list     TYPE TABLE OF  rsexc,
-                export_parameter   TYPE TABLE OF  rsexp,
-                import_parameter   TYPE TABLE OF  rsimp,
-                changing_parameter TYPE TABLE OF    rscha,
-                tables_parameter   TYPE TABLE OF    rstbl.
-
-          fname = ms_stack-eventname.
-          CALL FUNCTION 'FUNCTION_IMPORT_INTERFACE'
-            EXPORTING
-              funcname           = fname
-            TABLES
-              exception_list     = exception_list
-              export_parameter   = export_parameter
-              import_parameter   = import_parameter
-              changing_parameter = changing_parameter
-              tables_parameter   = tables_parameter
-            EXCEPTIONS
-              error_message      = 1
-              function_not_found = 2
-              invalid_name       = 3
-              OTHERS             = 4.
-          IF sy-subrc = 0.
-            LOOP AT import_parameter INTO DATA(imp).
-              mo_tree_local->add_node( i_name =  CONV #( imp-parameter ) i_icon = CONV #( icon_parameter_import ) i_rel =  mo_tree_local->main_node_key  i_tree = tree ).
-            ENDLOOP.
-
-            LOOP AT export_parameter INTO DATA(exp).
-              mo_tree_local->add_node( i_name =  CONV #( exp-parameter ) i_icon = CONV #( icon_parameter_export ) i_rel =  mo_tree_local->main_node_key  i_tree = tree ).
-            ENDLOOP.
-            LOOP AT changing_parameter INTO DATA(change).
-              mo_tree_local->add_node( i_name =  CONV #( change-parameter ) i_icon = CONV #( icon_parameter_changing ) i_rel =  mo_tree_local->main_node_key  i_tree = tree ).
-            ENDLOOP.
-            LOOP AT tables_parameter INTO DATA(table).
-              mo_tree_local->add_node( i_name =  CONV #( table-parameter ) i_icon = CONV #( icon_parameter_table ) i_rel =  mo_tree_local->main_node_key  i_tree = tree ).
-            ENDLOOP.
-          ENDIF.
+.
         ENDIF.
         cl_name = splits_prg[ 1 ].
       ENDLOOP.
-
 
       mo_tree_local->display( ).
 
@@ -6779,23 +6799,23 @@
     ENDIF.
 
     IF p_func IS NOT INITIAL.
-      SELECT single pname, include INTO ( @DATA(func_incl), @data(incl_num) )
+      SELECT SINGLE pname, include INTO ( @DATA(func_incl), @DATA(incl_num) )
         FROM tfdir
        WHERE funcname = @p_func.
 
-        IF sy-subrc = 0.
-          SHIFT func_incl LEFT by 3 PLACES.
-          p_prog = func_incl && 'U' && incl_num.
-        ENDIF.
-
+      IF sy-subrc = 0.
+        SHIFT func_incl LEFT BY 3 PLACES.
+        p_prog = func_incl && 'U' && incl_num.
       ENDIF.
 
+    ENDIF.
 
 
-      SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
-        IF sy-dbcnt <> 0.
-          DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
-        ELSE.
-          MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
-        ENDIF.
+    SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
+
+    IF sy-dbcnt <> 0.
+      DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
+    ELSE.
+      MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
+    ENDIF.
