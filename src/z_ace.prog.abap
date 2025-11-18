@@ -5449,9 +5449,8 @@
 
                   IF  prev = 'FUNCTION' AND kw = 'CALL'.
                     call_line-eventtype = call-event = 'FUNCTION'.
+                    REPLACE ALL OCCURRENCES OF '''' IN  word WITH ''.
                     call_line-eventname = call-name = word.
-                    "REPLACE ALL OCCURRENCES OF '''' IN  token-to_evname WITH ''.
-                    REPLACE ALL OCCURRENCES OF '''' IN  call_line-eventname WITH ''.
 
                     READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventtype = call_line-eventtype eventname = call_line-eventname TRANSPORTING NO FIELDS.
                     IF sy-subrc <> 0.
@@ -6060,6 +6059,7 @@
             ELSEIF call-event = 'FUNCTION'.
               DATA:  func TYPE rs38l_fnam.
               func = call-name.
+              REPLACE ALL OCCURRENCES OF '''' in func WITH ''.
               IF io_debugger->mo_window->m_zcode IS INITIAL OR
                 ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND (  func+0(1) = 'Z' OR  func+0(1) = 'Y' ) ) .
 
