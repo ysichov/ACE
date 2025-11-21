@@ -22,6 +22,7 @@
     SELECTION-SCREEN END OF LINE.
     PARAMETERS: p_class  TYPE seoclsname MATCHCODE OBJECT sfbeclname.
     PARAMETERS: p_func  TYPE seoclsname MATCHCODE OBJECT cacs_function.
+    PARAMETERS: p_wdc  TYPE string.
   SELECTION-SCREEN END OF BLOCK s1.
 
   SELECTION-SCREEN SKIP.
@@ -6772,6 +6773,10 @@
 
   AT SELECTION-SCREEN.
 
+ IF p_wdc is not INITIAL.
+   p_class = cl_wdy_wb_naming_service=>get_classname_for_component( p_component = conv #( p_wdc ) ).
+ ENDIF.
+
     IF p_class IS NOT INITIAL.
       SELECT SINGLE clstype INTO @DATA(clstype)
         FROM seoclass
@@ -6800,8 +6805,6 @@
 
     ENDIF.
 
-
-
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
     IF sy-dbcnt <> 0.
@@ -6809,3 +6812,22 @@
     ELSE.
       MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
     ENDIF.
+
+    AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_wdc.
+
+data: gt_tab type table of RSEUI_F4.
+      CALL FUNCTION 'REPOSITORY_INFO_SYSTEM_F4'
+        EXPORTING
+          object_type                     = 'YC'
+          OBJECT_NAME                     = 'Z*'
+       TABLES
+          OBJECTS_SELECTED                = gt_tab
+       EXCEPTIONS
+         CANCEL                          = 1
+         WRONG_TYPE                      = 2
+         OTHERS                          = 3.
+
+      IF sy-subrc = 0.
+       p_wdc = gt_tab[ 1 ]-obj_name.
+
+      ENDIF.
