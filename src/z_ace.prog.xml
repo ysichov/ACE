@@ -69,6 +69,18 @@
      <ENTRY>AI model name</ENTRY>
      <LENGTH>21</LENGTH>
     </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_ODATA</KEY>
+     <ENTRY>Odata Service</ENTRY>
+     <LENGTH>21</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_WDC</KEY>
+     <ENTRY>Web Dynpro Component</ENTRY>
+     <LENGTH>28</LENGTH>
+    </item>
    </TPOOL>
   </asx:values>
  </asx:abap>
