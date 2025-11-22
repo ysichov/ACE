@@ -22,6 +22,7 @@
     SELECTION-SCREEN END OF LINE.
     PARAMETERS: p_class  TYPE seoclsname MATCHCODE OBJECT sfbeclname.
     PARAMETERS: p_func  TYPE seoclsname MATCHCODE OBJECT cacs_function.
+    PARAMETERS: p_odata  TYPE seoclsname MATCHCODE OBJECT /iwbep/sh_sbdm_project.
     PARAMETERS: p_wdc  TYPE string.
   SELECTION-SCREEN END OF BLOCK s1.
 
@@ -1535,7 +1536,7 @@
       IF lines( splits_prg ) = 1.
         DATA: local      TYPE string,
               locals_rel TYPE salv_de_node_key.
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE program = mv_prog AND eventtype = 'METHOD' and class  <> splits_prg[ 1 ].
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE program = mv_prog AND eventtype = 'METHOD' AND class  <> splits_prg[ 1 ].
           IF local <> subs-class.
             IF locals_rel IS INITIAL.
               tree-kind = 'F'.
@@ -1612,7 +1613,7 @@
             CLEAR tree.
 
           ENDIF.
-.
+          .
         ENDIF.
         cl_name = splits_prg[ 1 ].
       ENDLOOP.
@@ -1736,7 +1737,7 @@
         include =  prefix && 'CP'."local classes
 
         DATA: local TYPE string.
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE program = include and class <>  i_class AND eventtype = 'METHOD'.
+        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs WHERE program = include AND class <>  i_class AND eventtype = 'METHOD'.
           IF local <> subs-class.
             IF locals_rel IS INITIAL.
               tree-kind = 'F'.
@@ -6050,7 +6051,7 @@
             ELSEIF call-event = 'FUNCTION'.
               DATA:  func TYPE rs38l_fnam.
               func = call-name.
-              REPLACE ALL OCCURRENCES OF '''' in func WITH ''.
+              REPLACE ALL OCCURRENCES OF '''' IN func WITH ''.
               IF io_debugger->mo_window->m_zcode IS INITIAL OR
                 ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND (  func+0(1) = 'Z' OR  func+0(1) = 'Y' ) ) .
 
@@ -6773,9 +6774,18 @@
 
   AT SELECTION-SCREEN.
 
- IF p_wdc is not INITIAL.
-   p_class = cl_wdy_wb_naming_service=>get_classname_for_component( p_component = conv #( p_wdc ) ).
- ENDIF.
+    IF p_odata IS NOT INITIAL.
+      DATA(serv) = p_odata && '_SRV'.
+
+      SELECT SINGLE class_name INTO p_class
+        FROM /iwbep/i_mgw_srh WHERE technical_name = serv.
+    ENDIF.
+
+
+
+    IF p_wdc IS NOT INITIAL.
+      p_class = cl_wdy_wb_naming_service=>get_classname_for_component( p_component = CONV #( p_wdc ) ).
+    ENDIF.
 
     IF p_class IS NOT INITIAL.
       SELECT SINGLE clstype INTO @DATA(clstype)
@@ -6813,21 +6823,21 @@
       MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
     ENDIF.
 
-    AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_wdc.
+  AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_wdc.
 
-data: gt_tab type table of RSEUI_F4.
-      CALL FUNCTION 'REPOSITORY_INFO_SYSTEM_F4'
-        EXPORTING
-          object_type                     = 'YC'
-          OBJECT_NAME                     = 'Z*'
-       TABLES
-          OBJECTS_SELECTED                = gt_tab
-       EXCEPTIONS
-         CANCEL                          = 1
-         WRONG_TYPE                      = 2
-         OTHERS                          = 3.
+    DATA: gt_tab TYPE TABLE OF rseui_f4.
+    CALL FUNCTION 'REPOSITORY_INFO_SYSTEM_F4'
+      EXPORTING
+        object_type      = 'YC'
+        object_name      = 'Z*'
+      TABLES
+        objects_selected = gt_tab
+      EXCEPTIONS
+        cancel           = 1
+        wrong_type       = 2
+        OTHERS           = 3.
 
-      IF sy-subrc = 0.
-       p_wdc = gt_tab[ 1 ]-obj_name.
+    IF sy-subrc = 0.
+      p_wdc = gt_tab[ 1 ]-obj_name.
 
-      ENDIF.
+    ENDIF.
