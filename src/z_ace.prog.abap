@@ -1565,7 +1565,7 @@
       ENDDO.
 
       DO.
-        tree-kind = 'F'.
+        "tree-kind = 'F'.
         add_class( i_class = CONV #( cl_name ) i_refnode = classes_rel i_tree = tree ).
         CLEAR tree.
 
@@ -4656,7 +4656,7 @@
     METHOD display.
 
       DATA(o_columns) = mo_tree->get_columns( ).
-      o_columns->get_column( 'KIND' )->set_visible( abap_false ).
+      "o_columns->get_column( 'KIND' )->set_visible( abap_false ).
 
       DATA(o_nodes) = mo_tree->get_nodes( ).
       DATA(nodes) =  o_nodes->get_all_nodes( ).
@@ -4678,8 +4678,11 @@
               sub = l_node-node->get_subtree( ).
             CATCH cx_root.
           ENDTRY.
+        ELSEIF <kind> IS INITIAL.
+          l_node-node->collapse( ).
         ENDIF.
       ENDLOOP.
+
       mo_tree->display( ).
 
     ENDMETHOD.
@@ -4695,7 +4698,6 @@
           RETURN.
 
       ENDCASE.
-
 
     ENDMETHOD.
 
@@ -5119,12 +5121,13 @@
                   call-name = split[ 2 ].
                 ENDIF.
 
-                IF call-class IS INITIAL AND i_class IS NOT INITIAL.
-                  call-class  =  i_class.
-                ENDIF.
-
-                IF call-class IS INITIAL AND i_class IS NOT INITIAL.
-                  call-class  =  i_class.
+                IF call-class IS INITIAL.
+                  IF i_class IS NOT INITIAL.
+                    call_line-class = call-class  =  i_class.
+                  ENDIF.
+                  IF class_name IS NOT INITIAL.
+                    call_line-class = call-class  =  class_name.
+                  ENDIF.
                 ENDIF.
 
                 "token-to_evname = call-name.
