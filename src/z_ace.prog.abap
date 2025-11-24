@@ -1145,11 +1145,11 @@
              END OF ts_event,
 
              BEGIN OF ts_var,
-               program TYPE string,
-               include TYPE string,
-               line    TYPE i,
-               name    TYPE string,
-               type    TYPE string,
+               program  TYPE string,
+               include  TYPE string,
+               line     TYPE i,
+               name(100) TYPE c,
+               type     TYPE string,
              END OF ts_var,
 
              BEGIN OF ts_refvar,
@@ -1160,8 +1160,8 @@
 
              tt_kword      TYPE STANDARD TABLE OF lcl_ace_appl=>ts_kword WITH EMPTY KEY,
              tt_vars       TYPE STANDARD TABLE OF ts_vars WITH EMPTY KEY,
-             tt_calculated TYPE STANDARD TABLE OF ts_var WITH EMPTY KEY,
-             tt_composed   TYPE STANDARD TABLE OF ts_var WITH EMPTY KEY,
+             tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program  include line name,
+             tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program  include line name,
              tt_events     TYPE STANDARD TABLE OF ts_event WITH EMPTY KEY,
 
              tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY,
@@ -1768,6 +1768,20 @@
       DATA: line      TYPE ts_line,
             pre_stack TYPE ts_line,
             opened    TYPE i.
+
+      DELETE mo_window->ms_sources-t_calculated WHERE name+0(1) = ''''.
+      DELETE mo_window->ms_sources-t_composed WHERE name+0(1) = ''''.
+
+      DELETE mo_window->ms_sources-t_calculated WHERE name+0(1) = '='.
+      DELETE mo_window->ms_sources-t_composed WHERE name+0(1) = '='.
+
+
+      SORT mo_window->ms_sources-t_calculated.
+      DELETE ADJACENT DUPLICATES FROM mo_window->ms_sources-t_calculated.
+
+      SORT mo_window->ms_sources-t_composed.
+      DELETE ADJACENT DUPLICATES FROM mo_window->ms_sources-t_composed.
+
 
       READ TABLE mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(prog).
       DATA(lt_selected_var) = mt_selected_var.
@@ -5132,11 +5146,11 @@
 
                 "token-to_evname = call-name.
                 call-event = 'METHOD'.
+
                 IF  new = abap_true.
+
                   call-class = call-name.
                   call-name = 'CONSTRUCTOR'.
-                ENDIF.
-                IF  new = abap_true.
 
                   call_line-class = call-class.
                   call_line-eventname = call-name.
@@ -5161,6 +5175,12 @@
 
               IF word = '#('.
                 CLEAR new.
+                READ TABLE io_debugger->mo_window->ms_sources-t_vars WITH KEY name = calculated-name INTO DATA(ls_var).
+                IF sy-subrc = 0.
+                  call_line-class = call-class = ls_var-type.
+                  call_line-eventtype =  call-event = 'METHOD'.
+                  call_line-eventname = call-name = 'CONSTRUCTOR'.
+                ENDIF.
               ENDIF.
 
               IF sy-index = 1 AND token-name = word.
@@ -5331,7 +5351,6 @@
 
               IF word = 'NEW'.
                 new = abap_true.
-
               ENDIF.
 
               FIND FIRST OCCURRENCE OF '->' IN word.
@@ -5715,15 +5734,11 @@
         APPEND LINES OF composed_vars TO io_debugger->mo_window->ms_sources-t_composed.
 
         io_debugger->mo_window->ms_sources-tt_tabs = tabs.
-        "DATA line LIKE LINE OF io_debugger->mo_window->ms_sources-tt_progs.
         prog-scan = o_scan.
         prog-t_keywords = tokens.
         prog-program = i_program.
         prog-stack = stack.
         APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
-
-        "IF io_debugger->m_step IS INITIAL.
-        "code_execution_scanner( i_program = i_include i_include = i_include io_debugger = io_debugger ).
 
         "Fill keyword links for calls
         LOOP AT io_debugger->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
