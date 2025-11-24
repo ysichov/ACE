@@ -4656,7 +4656,7 @@
     METHOD display.
 
       DATA(o_columns) = mo_tree->get_columns( ).
-      "o_columns->get_column( 'KIND' )->set_visible( abap_false ).
+      o_columns->get_column( 'KIND' )->set_visible( abap_false ).
 
       DATA(o_nodes) = mo_tree->get_nodes( ).
       DATA(nodes) =  o_nodes->get_all_nodes( ).
