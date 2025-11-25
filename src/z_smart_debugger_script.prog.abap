@@ -1,5 +1,5 @@
 *<SCRIPT:PERSISTENT>
-REPORT  Z_SMART_DEBUGGER_SCRIPT.
+"REPORT  Z_SMART_DEBUGGER_SCRIPT.
 
 *<SCRIPT:HEADER>
 *<SCRIPTNAME>Z_SMART_DEBUGGER_SCRIPT</SCRIPTNAME>
@@ -1555,16 +1555,18 @@ CLASS lcl_debugger_script IMPLEMENTATION.
 
     FIELD-SYMBOLS: <f>         TYPE ANY TABLE,
                    <new_table> TYPE ANY TABLE.
-
+   BREAK-POINT.
     ASSIGN c_obj->* TO <new_table>.
     o_tabl ?= cl_abap_typedescr=>describe_by_data( <new_table> ).
-    o_struc ?= o_tabl->get_table_line_type( ).
+
+    try.
+      o_struc ?= o_tabl->get_table_line_type( ).
+
 
     CREATE DATA r_data TYPE HANDLE o_struc.
     ASSIGN r_data->* TO FIELD-SYMBOL(<new_line>).
 
     o_table_descr ?= cl_tpda_script_data_descr=>factory( i_name ).
-    TRY.
         table_clone = o_table_descr->elem_clone( ).
         ASSIGN table_clone->* TO <f>.
         DATA: count TYPE i.
@@ -1596,12 +1598,12 @@ CLASS lcl_debugger_script IMPLEMENTATION.
           INSERT <new_line> INTO TABLE <new_table>.
         ENDLOOP.
       CATCH cx_root.
-        DATA(cnt) = o_table_descr->linecnt( ).
-        DO cnt TIMES.
-          r_struc = create_struc( i_name = |{ i_name }[{ sy-index }]| ).
-          ASSIGN r_struc->* TO <new_line>.
-          INSERT <new_line> INTO TABLE <new_table>.
-        ENDDO.
+        "DATA(cnt) = o_table_descr->linecnt( ).
+        "DO cnt TIMES.
+        "  r_struc = create_struc( i_name = |{ i_name }[{ sy-index }]| ).
+        "  ASSIGN r_struc->* TO <new_line>.
+        "  INSERT <new_line> INTO TABLE <new_table>.
+        "ENDDO.
     ENDTRY.
 
   ENDMETHOD.
@@ -2347,6 +2349,7 @@ CLASS lcl_debugger_script IMPLEMENTATION.
           IF sy-subrc = 0 AND local_set-loc_fill = abap_true.
             mt_locals = local_set-locals_tab.
           ELSE.
+
             CALL METHOD cl_tpda_script_data_descr=>locals RECEIVING p_locals_it = mt_locals.
 
             IF ms_stack-eventtype = 'METHOD'.
