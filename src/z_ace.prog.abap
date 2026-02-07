@@ -592,9 +592,6 @@
                               i_model  TYPE text255
                               i_apikey TYPE text255,
 
-
-        hndl_script_buttons IMPORTING i_stack_changed TYPE boolean
-                            RETURNING VALUE(rv_stop)  TYPE boolean,
         show,
         add_class IMPORTING i_class TYPE string i_refnode TYPE salv_de_node_key no_locals TYPE boolean OPTIONAL i_tree TYPE lcl_ace_appl=>ts_tree OPTIONAL i_type TYPE flag OPTIONAL,
         get_code_flow RETURNING VALUE(results) TYPE tt_line,
@@ -610,7 +607,6 @@
                    intf   LIKE cl_abap_typedescr=>kind_intf VALUE cl_abap_typedescr=>kind_intf,
                    ref    LIKE cl_abap_typedescr=>kind_ref VALUE cl_abap_typedescr=>kind_ref,
                  END OF c_kind.
-
 
   ENDCLASS.
 
@@ -1341,57 +1337,6 @@
 
     ENDMETHOD.
 
-    METHOD hndl_script_buttons.
-
-*      IF m_i_find = abap_true.
-*        rv_stop = abap_true.
-*        CLEAR m_i_find.
-*        RETURN.
-*      ENDIF.
-*
-*      IF mo_window->m_debug_button = 'F5'.
-*        rv_stop = abap_true.
-*
-*      ELSEIF mo_window->m_debug_button = 'F6'.
-*        IF m_f6_level IS NOT INITIAL AND m_f6_level = ms_stack-stacklevel OR mo_window->m_history IS INITIAL.
-*          CLEAR m_f6_level.
-*          rv_stop = abap_true.
-*        ENDIF.
-*
-*      ELSEIF mo_window->m_debug_button = 'F6END'.
-*        IF mo_window->m_prg-flag_eoev IS NOT INITIAL AND m_target_stack = ms_stack-stacklevel.
-*          rv_stop = abap_true.
-*        ENDIF.
-*      ELSEIF mo_window->m_debug_button = 'F7'.
-*
-*        IF m_target_stack = ms_stack-stacklevel.
-*          CLEAR m_target_stack.
-*          rv_stop = abap_true.
-*        ENDIF.
-*
-*      ELSEIF mo_window->m_debug_button IS NOT INITIAL.
-*        READ TABLE mo_window->mt_breaks WITH KEY inclnamesrc = mo_window->m_prg-include linesrc = mo_window->m_prg-line INTO DATA(gs_break).
-*        IF sy-subrc = 0.
-*          rv_stop = abap_true.
-*        ELSE.
-*
-*          IF mo_window->m_debug_button = 'F6BEG' AND m_target_stack = ms_stack-stacklevel.
-*            rv_stop = abap_true.
-*          ELSE.
-*            IF mo_window->m_history IS NOT INITIAL.
-*              IF ms_stack-stacklevel = mo_window->m_hist_depth +  mo_window->m_start_stack.
-*                "f6( )."to refactor
-*              ELSE.
-*                "f5( )."to refactor
-*              ENDIF.
-*            ENDIF.
-*          ENDIF.
-*        ENDIF.
-*      ELSE.
-*        rv_stop = abap_true.
-*      ENDIF.
-
-    ENDMETHOD.
 
     METHOD show.
 
@@ -4952,11 +4897,11 @@
 
         "get_events.
         LOOP AT o_scan->structures INTO DATA(struc) WHERE type = 'E'.
-          READ TABLE io_debugger->mo_window->ms_sources-t_events WITH KEY program = i_program stmnt_type = struc-stmnt_type ASSIGNING FIELD-SYMBOL(<event>).
-          IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO io_debugger->mo_window->ms_sources-t_events ASSIGNING <event>.
+          "READ TABLE io_debugger->mo_window->ms_sources-t_events WITH KEY program = i_program stmnt_type = struc-stmnt_type ASSIGNING FIELD-SYMBOL(<event>).
+          "IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO io_debugger->mo_window->ms_sources-t_events ASSIGNING FIELD-SYMBOL(<event>).
             <event>-program = i_program.
-          ENDIF.
+          "ENDIF.
           MOVE-CORRESPONDING struc TO <event>.
           <event>-include = i_include.
         ENDLOOP.
@@ -5848,7 +5793,7 @@
 
         IF str-type = 'E'.
           "get event name.
-          READ TABLE io_debugger->mo_window->ms_sources-t_events WITH KEY program = i_program stmnt_type = str-stmnt_type ASSIGNING FIELD-SYMBOL(<event>).
+          READ TABLE io_debugger->mo_window->ms_sources-t_events WITH KEY program = i_program stmnt_type = str-stmnt_type  stmnt_from = str-stmnt_from ASSIGNING FIELD-SYMBOL(<event>).
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = <event>-include INTO prog.
 
           READ TABLE prog-scan->statements INDEX <event>-stmnt_from INTO DATA(command).
@@ -6188,6 +6133,7 @@
           IF call_line-include IS NOT INITIAL.
             include =  call_line-include.
           ENDIF.
+
           lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
                                    i_e_name = call_line-eventname
                                    i_e_type = call_line-eventtype
@@ -6197,16 +6143,8 @@
                                    i_stack   =  i_stack
                                    io_debugger = io_debugger ).
 
-
-
-
         ENDIF.
-
-
-
       ENDIF.
-
-
 
     ENDMETHOD.
 
@@ -6798,8 +6736,6 @@
       SELECT SINGLE class_name INTO p_class
         FROM /iwbep/i_mgw_srh WHERE technical_name = serv.
     ENDIF.
-
-
 
     IF p_wdc IS NOT INITIAL.
       p_class = cl_wdy_wb_naming_service=>get_classname_for_component( p_component = CONV #( p_wdc ) ).
