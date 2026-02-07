@@ -228,7 +228,10 @@
                kind(1),
                value   TYPE string,
                param   TYPE string,
+               program TYPE program,
                include TYPE program,
+               ev_type TYPE string,
+               ev_name TYPE string,
              END OF ts_tree,
 
              BEGIN OF ts_call,
@@ -476,9 +479,11 @@
                                             i_stack TYPE i OPTIONAL
                                             i_main_prog TYPE program OPTIONAL "for interface
                                             i_reltype TYPE seoreltype OPTIONAL,
+
         parse_call IMPORTING i_program TYPE program
                              i_include TYPE program
-                             i_index TYPE i i_stack TYPE i
+                             i_index TYPE i
+                             i_stack TYPE i
                              i_e_name TYPE string
                              i_e_type TYPE string
                              i_class TYPE string OPTIONAL
@@ -497,7 +502,8 @@
 
         code_execution_scanner IMPORTING i_program TYPE program
                                          i_include TYPE program
-                                         i_evname TYPE string OPTIONAL i_evtype TYPE string OPTIONAL
+                                         i_evname TYPE string OPTIONAL
+                                         i_evtype TYPE string OPTIONAL
           i_stack TYPE i OPTIONAL io_debugger TYPE REF TO lcl_ace.
 
 
@@ -1141,11 +1147,11 @@
              END OF ts_event,
 
              BEGIN OF ts_var,
-               program  TYPE string,
-               include  TYPE string,
-               line     TYPE i,
+               program   TYPE string,
+               include   TYPE string,
+               line      TYPE i,
                name(100) TYPE c,
-               type     TYPE string,
+               type      TYPE string,
              END OF ts_var,
 
              BEGIN OF ts_refvar,
@@ -1289,7 +1295,8 @@
             ms_sources             TYPE ts_source,
             mt_params              TYPE STANDARD  TABLE OF ts_params,
             mt_locals_set          TYPE STANDARD TABLE OF ts_locals,
-            mt_globals_set         TYPE STANDARD TABLE OF ts_globals.
+            mt_globals_set         TYPE STANDARD TABLE OF ts_globals,
+            ms_sel_call            TYPE ts_calls_line.
 
       METHODS: constructor IMPORTING i_debugger TYPE REF TO lcl_ace i_additional_name TYPE string OPTIONAL,
         add_toolbar_buttons,
@@ -1597,7 +1604,6 @@
       ENDLOOP.
 
       LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class =  i_class AND eventtype = 'METHOD'.
-
         IF class_rel IS INITIAL.
           class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon = CONV #( icon ) i_rel = i_refnode i_tree = i_tree ).
 
@@ -1621,6 +1627,9 @@
         tree-kind = 'M'.
         tree-value = keyword-line.
         tree-include = subs-include.
+        tree-program = subs-program.
+        tree-ev_type = subs-eventtype.
+        tree-ev_name = subs-eventname.
 
         IF i_type = 'I'.
           icon = icon_oo_inst_method.
@@ -1727,9 +1736,19 @@
       SORT mo_window->ms_sources-t_composed.
       DELETE ADJACENT DUPLICATES FROM mo_window->ms_sources-t_composed.
 
-
       READ TABLE mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(prog).
       DATA(lt_selected_var) = mt_selected_var.
+
+      IF mo_window->ms_sel_call is not INITIAL.
+        clear: mt_steps, mo_window->mt_calls.
+         lcl_ace_source_parser=>parse_call( EXPORTING i_index = mo_window->ms_sel_call-index
+                                                   i_e_name = mo_window->ms_sel_call-eventname
+                                                   i_e_type = mo_window->ms_sel_call-eventtype
+                                                   i_program = CONV #( mo_window->ms_sel_call-program )
+                                                   i_include = CONV #( mo_window->ms_sel_call-include )
+                                                   i_stack   =  0
+                                                   io_debugger = mo_window->mo_viewer ).
+      ENDIF.
 
       DATA(steps) = mt_steps.
       SORT steps BY line eventtype eventname.
@@ -4671,7 +4690,14 @@
       ASSIGN COMPONENT 'KIND' OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
       ASSIGN COMPONENT 'VALUE' OF STRUCTURE <row> TO FIELD-SYMBOL(<value>).
       ASSIGN COMPONENT 'PARAM' OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
+      ASSIGN COMPONENT 'PROGRAM' OF STRUCTURE <row> TO FIELD-SYMBOL(<program>).
       ASSIGN COMPONENT 'INCLUDE' OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
+      ASSIGN COMPONENT 'EV_TYPE' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_type>).
+      ASSIGN COMPONENT 'EV_NAME' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
+
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+        WITH KEY program = <program> include = <include> eventname = <ev_name> eventtype = <ev_type>
+        INTO mo_viewer->mo_window->ms_sel_call.
 
       IF <include> IS NOT INITIAL.
         mo_viewer->mo_window->set_program( CONV #( <include> ) ).
@@ -4899,8 +4925,8 @@
         LOOP AT o_scan->structures INTO DATA(struc) WHERE type = 'E'.
           "READ TABLE io_debugger->mo_window->ms_sources-t_events WITH KEY program = i_program stmnt_type = struc-stmnt_type ASSIGNING FIELD-SYMBOL(<event>).
           "IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO io_debugger->mo_window->ms_sources-t_events ASSIGNING FIELD-SYMBOL(<event>).
-            <event>-program = i_program.
+          APPEND INITIAL LINE TO io_debugger->mo_window->ms_sources-t_events ASSIGNING FIELD-SYMBOL(<event>).
+          <event>-program = i_program.
           "ENDIF.
           MOVE-CORRESPONDING struc TO <event>.
           <event>-include = i_include.
@@ -5824,7 +5850,7 @@
         ENDIF.
 
         WHILE  statement <= str-stmnt_to.
-          READ TABLE prog-t_keywords WITH KEY index =   statement INTO key.
+          READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
 
           IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS'
             OR key-name = 'PARAMETERS' OR key-name = 'INCLUDE' OR key-name = 'REPORT'
@@ -5905,7 +5931,6 @@
       ENDLOOP.
 
     ENDMETHOD.
-
 
     METHOD parse_call.
       DATA: statement TYPE i,
