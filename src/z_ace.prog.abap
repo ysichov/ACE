@@ -252,6 +252,7 @@
 
       CLASS-METHODS:
         init_icons_table,
+        init_lang,
         check_mermaid,
         open_int_table IMPORTING it_tab    TYPE ANY TABLE OPTIONAL
                                  it_ref    TYPE REF TO data OPTIONAL
@@ -1327,6 +1328,7 @@
 
       i_step = abap_on.
       lcl_ace_appl=>check_mermaid( ).
+      lcl_ace_appl=>init_lang( ).
       lcl_ace_appl=>init_icons_table( ).
 
       mo_window = NEW lcl_ace_window( me ).
@@ -2812,13 +2814,13 @@
           ENDIF.
 
         WHEN 'CALLS'.
-          "IF mo_mermaid IS INITIAL.
+          IF mo_mermaid IS INITIAL.
             mo_mermaid = NEW lcl_ace_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
-          "ELSE.
-          "  IF mo_mermaid->mo_box IS INITIAL.
-          "    mo_mermaid = NEW lcl_ace_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
-          "  ENDIF.
-          "ENDIF.
+          ELSE.
+            IF mo_mermaid->mo_box IS INITIAL.
+              mo_mermaid = NEW lcl_ace_mermaid( io_debugger = mo_viewer i_type =  'CALLS' ).
+            ENDIF.
+          ENDIF.
 
         WHEN 'CODEMIX'.
 
@@ -4486,6 +4488,16 @@
        ( sign = 'E'   option = 'BT'   icon_name = icon_interval_include_red )
        ( sign = 'E'   option = 'NB'   icon_name = icon_interval_exclude_red ) ).
 
+    ENDMETHOD.
+
+    METHOD init_lang.
+      ULINE.
+*    SELECT c~spras t~sptxt INTO CORRESPONDING FIELDS OF TABLE mt_lang
+*      FROM t002c AS c
+*      INNER JOIN t002t AS t
+*      ON c~spras = t~sprsl
+*      WHERE t~spras = sy-langu
+*      ORDER BY c~ladatum DESCENDING c~lauzeit DESCENDING.
     ENDMETHOD.
 
     METHOD check_mermaid.
