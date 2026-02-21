@@ -1,4 +1,4 @@
-  REPORT z_ace. " ACE - Abap Code Explorer
+  REPORT Z_ACE_REF. " ACE - Abap Code Explorer
   " & Multi-windows program for ABAP code analysis
   " &----------------------------------------------------------------------
   " & version: beta 0.5
@@ -223,6 +223,63 @@
                "to_evtype TYPE string,
                "to_evname TYPE string,
              END OF ts_kword,
+
+             tt_kword TYPE STANDARD TABLE OF ts_kword WITH NON-UNIQUE DEFAULT KEY,
+
+             BEGIN OF ts_calls_line,
+               program   TYPE program,
+               include   TYPE program,
+               class     TYPE string,
+               eventtype TYPE string,
+               meth_type TYPE i,
+               eventname TYPE string,
+               redefined TYPE boolean,
+               index     TYPE i,
+             END OF ts_calls_line,
+             tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY,
+
+             BEGIN OF ts_vars,
+               program   TYPE program,
+               include   TYPE program,
+               class     TYPE string,
+               eventtype TYPE string,
+               eventname TYPE string,
+               line      TYPE i,
+               name      TYPE string,
+               type      TYPE string,
+               icon      TYPE salv_de_tree_image,
+             END OF ts_vars,
+
+             BEGIN OF ts_var,
+               program   TYPE string,
+               include   TYPE string,
+               line      TYPE i,
+               name(100) TYPE c,
+               type      TYPE string,
+             END OF ts_var,
+
+             tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name,
+             tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name,
+
+             BEGIN OF ts_int_tabs,
+               eventtype TYPE string,
+               eventname TYPE string,
+               name      TYPE string,
+               type      TYPE string,
+             END OF ts_int_tabs,
+             tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY,
+
+             BEGIN OF ts_params,
+               program   TYPE program,
+               include   TYPE program,
+               class     TYPE string,
+               event     TYPE string,
+               name      TYPE string,
+               type      TYPE char1,
+               param     TYPE string,
+               preferred TYPE char1,
+               line      TYPE i,
+             END OF ts_params,
 
              BEGIN OF ts_tree,
                kind(1),
@@ -504,7 +561,60 @@
                                          i_include TYPE program
                                          i_evname TYPE string OPTIONAL
                                          i_evtype TYPE string OPTIONAL
-          i_stack TYPE i OPTIONAL io_debugger TYPE REF TO lcl_ace.
+                                         i_stack TYPE i OPTIONAL
+                                         io_debugger TYPE REF TO lcl_ace,
+
+        link_calls_to_params IMPORTING io_debugger TYPE REF TO lcl_ace
+                             CHANGING  ct_tokens   TYPE lcl_ace_appl=>tt_kword,
+
+        process_super_and_interfaces IMPORTING i_class     TYPE string
+                                               i_program   TYPE program
+                                               i_stack     TYPE i
+                                               io_debugger TYPE REF TO lcl_ace,
+
+        dispatch_keyword IMPORTING kw          TYPE string
+                                   temp        TYPE char30
+                                   i_program   TYPE program
+                                   i_include   TYPE program
+                                   io_debugger TYPE REF TO lcl_ace
+                                   l_token_row TYPE i
+                         CHANGING  word        TYPE string
+                                   prev        TYPE string
+                                   call        TYPE lcl_ace_appl=>ts_calls
+                                   call_line   TYPE lcl_ace_appl=>ts_calls_line
+                                   token       TYPE lcl_ace_appl=>ts_kword
+                                   variable    TYPE lcl_ace_appl=>ts_vars
+                                   tab         TYPE lcl_ace_appl=>ts_int_tabs
+                                   tabs        TYPE lcl_ace_appl=>tt_tabs
+                                   composed    TYPE lcl_ace_appl=>ts_var
+                                   composed_vars TYPE lcl_ace_appl=>tt_composed
+                                   calculated  TYPE lcl_ace_appl=>ts_var
+                                   calculated_vars TYPE lcl_ace_appl=>tt_calculated
+                                   change      TYPE string
+                                   count       TYPE i
+                                   ref         TYPE boolean
+                                   method_type TYPE i
+                                   class_name  TYPE string
+                                   param       TYPE lcl_ace_appl=>ts_params
+                                   eventtype   TYPE string
+                                   eventname   TYPE string
+                                   class       TYPE boolean
+                                   call_line_class TYPE string
+                         RETURNING VALUE(rv_continue) TYPE boolean,
+
+        detect_method_call IMPORTING word        TYPE string
+                                     i_program   TYPE program
+                                     i_include   TYPE program
+                                     i_class     TYPE string
+                                     io_debugger TYPE REF TO lcl_ace
+                                     l_token_row TYPE i
+                                     new         TYPE boolean
+                           CHANGING  call        TYPE lcl_ace_appl=>ts_calls
+                                     call_line   TYPE lcl_ace_appl=>ts_calls_line
+                                     calculated  TYPE lcl_ace_appl=>ts_var
+                                     calculated_vars TYPE lcl_ace_appl=>tt_calculated
+                                     class_name  TYPE string
+                                     token       TYPE lcl_ace_appl=>ts_kword.
 
 
   ENDCLASS.
@@ -4883,7 +4993,7 @@
             token           TYPE lcl_ace_appl=>ts_kword,
             calculated      TYPE lcl_ace_window=>ts_var,
             composed        TYPE lcl_ace_window=>ts_var,
-            tokens          TYPE lcl_ace_window=>tt_kword,
+            tokens          TYPE lcl_ace_appl=>tt_kword,
             calculated_vars TYPE lcl_ace_window=>tt_calculated,
             composed_vars   TYPE lcl_ace_window=>tt_composed,
             call            TYPE lcl_ace_window=>ts_calls,
@@ -5067,83 +5177,24 @@
                 <call_line>-redefined = abap_true.
               ENDIF.
 
-              IF ( word CS '(' AND ( NOT word CS ')' ) AND word <> '#(' AND word <> '=>' )  OR word CS '->'."can be method call
-
-                IF call-event = 'METHOD' AND call-name IS NOT INITIAL.
-                  APPEND call TO token-tt_calls.
-                  CLEAR: call-event, call-type, call-name, call-outer, call-inner.
-                ENDIF.
-
-                call-name = word.
-                call-event = 'METHOD'.
-                REPLACE ALL OCCURRENCES OF '(' IN call-name WITH ''.
-                REPLACE ALL OCCURRENCES OF 'ME->' IN call-name WITH ''.
-
-                FIND FIRST OCCURRENCE OF '->' IN  call-name.
-                IF sy-subrc = 0.
-                  SPLIT call-name  AT '->' INTO TABLE split.
-                  IF split[ 1 ] <> ')'."to refactor
-                    READ TABLE io_debugger->mo_window->ms_sources-t_vars WITH KEY program = i_program name =  split[ 1 ] INTO DATA(vars).
-                    IF sy-subrc <> 0.
-                      call-class = split[ 1 ].
-                    ELSE.
-                      call-class = vars-type.
-                    ENDIF.
-                  ENDIF.
-                  call-name = split[ 2 ].
-                  IF split[ 1 ] = 'SUPER'.
-                    call-class = class_name.
-                    call-super = abap_true.
-                  ENDIF.
-                ENDIF.
-
-                FIND FIRST OCCURRENCE OF '=>' IN  call-name.
-                IF sy-subrc = 0.
-                  SPLIT call-name  AT '=>' INTO TABLE split.
-                  IF split[ 1 ] <> ')'."to refactor
-                    call-class = split[ 1 ].
-                  ENDIF.
-                  call-name = split[ 2 ].
-                ENDIF.
-
-                IF call-class IS INITIAL.
-                  IF i_class IS NOT INITIAL.
-                    call_line-class = call-class  =  i_class.
-                  ENDIF.
-                  IF class_name IS NOT INITIAL.
-                    call_line-class = call-class  =  class_name.
-                  ENDIF.
-                ENDIF.
-
-                "token-to_evname = call-name.
-                call-event = 'METHOD'.
-
-                IF  new = abap_true.
-
-                  call-class = call-name.
-                  call-name = 'CONSTRUCTOR'.
-
-                  call_line-class = call-class.
-                  call_line-eventname = call-name.
-                  call_line-eventtype = 'METHOD'.
-
-                  READ TABLE calculated_vars WITH KEY line = l_token-row program = i_include INTO DATA(calc).
-                  IF sy-subrc = 0.
-                    APPEND INITIAL LINE TO  io_debugger->mo_window->ms_sources-tt_refvar ASSIGNING FIELD-SYMBOL(<refvar>).
-                    <refvar>-name = calc-name.
-                    <refvar>-class = call-class.
-                    call-class = call-class.
-                  ENDIF.
-                ENDIF.
-
-                READ TABLE io_debugger->mo_window->ms_sources-tt_refvar WITH KEY name = call-class INTO DATA(refvar).
-                IF sy-subrc = 0.
-                  call-class = refvar-class.
-                ENDIF.
-
-                "token-to_class = call-class.
+              IF ( word CS '(' AND ( NOT word CS ')' ) AND word <> '#(' AND word <> '=>' )  OR word CS '->'.
+                lcl_ace_source_parser=>detect_method_call(
+                  EXPORTING
+                    word            = word
+                    i_program       = i_program
+                    i_include       = i_include
+                    i_class         = i_class
+                    io_debugger     = io_debugger
+                    l_token_row     = l_token-row
+                    new             = new
+                  CHANGING
+                    call            = call
+                    call_line       = call_line
+                    calculated      = calculated
+                    calculated_vars = calculated_vars
+                    class_name      = class_name
+                    token           = token ).
               ENDIF.
-
               IF word = '#('.
                 CLEAR new.
                 READ TABLE io_debugger->mo_window->ms_sources-t_vars WITH KEY name = calculated-name INTO DATA(ls_var).
@@ -5329,277 +5380,39 @@
                 CLEAR  new.
               ENDIF.
 
-              CASE kw.
-
-                WHEN 'PUBLIC'.
-                  method_type = 1.
-                  CONTINUE.
-
-                WHEN 'PROTECTED'.
-                  method_type = 2.
-                  CONTINUE.
-
-                WHEN 'PRIVATE'.
-                  method_type = 3.
-                  CONTINUE.
-
-                WHEN 'DATA' OR 'PARAMETERS'.
-                  IF (   prev = 'OF' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
-                    tab-type =  temp.
-                    APPEND tab TO tabs.
-
-                    variable-name = tab-name.
-                    variable-type = tab-type.
-                    variable-line = l_token-row.
-                    variable-icon = icon_table_settings.
-                    APPEND variable TO io_debugger->mo_window->ms_sources-t_vars.
-                  ENDIF.
-
-                  IF (   prev = 'TYPE' ) AND  temp <> 'TABLE' AND  temp <> 'OF'.
-                    variable-name = tab-name.
-                    variable-type = temp.
-                    variable-line = l_token-row.
-
-                    CASE variable-type.
-                      WHEN 'D'.
-                        variable-icon = icon_date.
-                      WHEN 'T'.
-                        variable-icon = icon_bw_time_sap.
-                      WHEN 'C'.
-                        variable-icon = icon_wd_input_field.
-                      WHEN 'P'.
-                        variable-icon = icon_increase_decimal.
-                      WHEN 'STRING'.
-                        variable-icon = icon_text_act.
-                      WHEN 'N' OR 'I'.
-                        variable-icon = icon_pm_order.
-                      WHEN OTHERS.
-                        variable-icon = icon_element.
-                    ENDCASE.
-                    IF ref IS NOT INITIAL.
-                      variable-icon = icon_oo_class.
-                      CLEAR ref.
-                    ENDIF.
-                    variable-program = i_program.
-                    variable-include = i_include.
-                    variable-class = class_name.
-                    APPEND variable TO io_debugger->mo_window->ms_sources-t_vars.
-
-                  ENDIF.
-
-                WHEN 'COMPUTE'.
-                  IF  temp CA '=' AND  new IS INITIAL..
-                    change =  prev.
-                  ENDIF.
-
-                  IF (  prev = '=' OR  prev CA '+-/*' ) AND  temp <> 'NEW'.
-                    IF NOT  temp  CA '()' .
-                      IF NOT  temp  CO '0123456789. '.
-                        composed-name =  temp.
-                        APPEND  composed TO composed_vars.
-                        IF call IS NOT INITIAL.
-                          call-outer =  temp.
-                          READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
-                          IF sy-subrc <> 0.
-                            APPEND call TO token-tt_calls.
-                          ENDIF.
-                        ENDIF.
-                      ENDIF.
-                    ENDIF.
-                  ENDIF.
-
-                WHEN 'PERFORM' .
-
-                  IF   temp = 'USING' OR  temp = 'CHANGING' .
-                    CLEAR  prev.
-                  ENDIF.
-
-                  IF   prev = 'USING' OR  prev = 'CHANGING' .
-
-                    IF NOT  temp  CA '()' .
-                      IF NOT  temp  CO '0123456789. '.
-                        call-outer =  temp.
-                        READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
-                        IF sy-subrc <> 0.
-                          APPEND call TO token-tt_calls.
-                        ENDIF.
-                        change =  temp.
-                      ENDIF.
-                    ENDIF.
-                  ENDIF.
-
-                WHEN 'CREATE' OR 'CALL'.
-                  DATA: import TYPE boolean,
-                        export.
-
-                  IF  prev = 'FUNCTION' AND kw = 'CALL'.
-                    call_line-eventtype = call-event = 'FUNCTION'.
-                    REPLACE ALL OCCURRENCES OF '''' IN  word WITH ''.
-                    call_line-eventname = call-name = word.
-
-                    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventtype = call_line-eventtype eventname = call_line-eventname TRANSPORTING NO FIELDS.
-                    IF sy-subrc <> 0.
-                      CLEAR call_line-class.
-                      APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
-                    ENDIF.
-
-                  ENDIF.
-
-                  IF  prev = 'SCREEN' AND kw = 'CALL'.
-                    APPEND INITIAL LINE TO token-tt_calls ASSIGNING FIELD-SYMBOL(<call>).
-
-                    <call>-event = 'SCREEN'.
-                    <call>-name = temp.
-                    token-program = i_program.
-                  ENDIF.
-
-                  IF word = 'EXPORTING' OR word = 'CHANGING' OR word = 'TABLES'.
-                    export = abap_true.
-                    CLEAR  import.
-                    CONTINUE.
-
-                  ELSEIF word = 'IMPORTING'.
-                    import = abap_true.
-                    CLEAR  export.
-                    CONTINUE.
-
-                  ENDIF.
-
-                  IF  prev = 'OBJECT'.
-                    READ TABLE io_debugger->mo_window->ms_sources-t_vars WITH KEY program = i_program icon = icon_oo_class name = word INTO DATA(var).
-                    IF sy-subrc = 0.
-                      call-class = var-type.
-                      call-event = 'METHOD'.
-                      call-name = 'CONSTRUCTOR'.
-
-                    ENDIF.
-
-                    "WRITE : 'value',  temp.
-                  ENDIF.
-
-                  IF   prev = '='.
-                    IF NOT  temp  CA '()'.
-                      IF NOT  temp  CO '0123456789. '.
-                        IF  import = abap_true.
-                          call-outer =  temp.
-                          READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
-                          IF sy-subrc <> 0.
-                            APPEND call TO token-tt_calls.
-                          ENDIF.
-                          calculated-name =  temp.
-                          APPEND  calculated TO calculated_vars.
-                        ELSEIF  export = abap_true.
-                          call-outer =  temp.
-                          READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
-                          IF sy-subrc <> 0.
-                            APPEND call TO token-tt_calls.
-                          ENDIF.
-                          composed-name =  temp.
-                          APPEND  composed TO composed_vars.
-                        ENDIF.
-                      ENDIF.
-                    ENDIF.
-                  ELSE.
-                    IF NOT  temp  CO '0123456789. ' AND  temp <> '=' AND (  import = abap_true OR  export = abap_true ).
-                      call-inner =  temp.
-                    ENDIF.
-                  ENDIF.
-
-                WHEN 'CLEAR' OR 'SORT'.
-                  change =  temp.
-                WHEN  'CONDENSE'.
-
-                  IF  temp <> 'NO-GAPS'.
-                    change =  temp.
-                  ENDIF.
-                WHEN 'ASSIGN' OR 'UNASSIGN'.
-                  ADD 1 TO  count.
-                  IF  count <> 2.
-                    change =  temp.
-                  ENDIF.
-                WHEN 'ADD' OR 'SUBTRACT'.
-                  ADD 1 TO  count.
-                  IF  count = 1.
-                    IF  NOT  temp CO '0123456789.() '.
-                      composed-name =  temp.
-                      APPEND  composed TO composed_vars.
-                    ENDIF.
-                  ENDIF.
-                  IF  count = 3.
-                    change =  temp.
-                  ENDIF.
-                WHEN 'READ'.
-                  IF  prev =  'INTO' OR  prev =  'ASSIGNING'.
-                    change =  temp.
-                  ENDIF.
-
-                WHEN 'SELECT'.
-                  IF  (  prev =  'INTO' OR  prev =  '(' ) AND (  temp <> 'TABLE' AND  temp <> '('  AND  temp <> ')' AND   temp <> ',' ).
-                    change =  temp.
-                  ENDIF.
-
-                WHEN OTHERS.
-
-              ENDCASE.
-              IF call-event = 'METHOD'.
-                IF word = 'EXPORTING' OR word = 'CHANGING' OR word = 'TABLES'.
-                  export = abap_true.
-                  CLEAR  import.
-                  CONTINUE.
-
-                ELSEIF word = 'IMPORTING'.
-                  import = abap_true.
-                  CLEAR  export.
-                  CONTINUE.
-                ENDIF.
-
-                IF   temp = 'USING' OR  temp = 'CHANGING' .
-                  CLEAR  prev.
-                ENDIF.
-
-                IF   prev = 'USING' OR  prev = 'CHANGING' .
-
-                  IF NOT  temp  CA '()' .
-                    IF NOT  temp  CO '0123456789. '.
-                      call-outer =  temp.
-                      READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
-                      IF sy-subrc <> 0.
-                        APPEND call TO token-tt_calls.
-                      ENDIF.
-                      change =  temp.
-                    ENDIF.
-                  ENDIF.
-                ENDIF.
-
-                IF   prev = '='.
-                  IF NOT  temp  CA '()'.
-                    IF NOT  temp  CO '0123456789. '.
-                      IF  import = abap_true.
-                        call-outer =  temp.
-                        READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
-                        IF sy-subrc <> 0.
-                          APPEND call TO token-tt_calls.
-                        ENDIF.
-
-                        calculated-name =  temp.
-                        APPEND  calculated TO calculated_vars.
-                      ELSEIF  export = abap_true.
-                        call-outer =  temp.
-                        READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING  NO FIELDS.
-                        IF sy-subrc <> 0.
-                          APPEND call TO token-tt_calls.
-                        ENDIF.
-                        composed-name =  temp.
-                        APPEND  composed TO composed_vars.
-                      ENDIF.
-                    ENDIF.
-                  ENDIF.
-                ELSE.
-                  IF NOT  temp  CO '0123456789. ' AND  temp <> '=' AND temp <> ')' AND (  import = abap_true OR  export = abap_true ).
-                    call-inner =  temp.
-                  ENDIF.
-                ENDIF.
-
+              DATA(lv_dispatch_cont) = lcl_ace_source_parser=>dispatch_keyword(
+                EXPORTING
+                  kw              = kw
+                  temp            = temp
+                  i_program       = i_program
+                  i_include       = i_include
+                  io_debugger     = io_debugger
+                  l_token_row     = l_token-row
+                CHANGING
+                  word            = word
+                  prev            = prev
+                  call            = call
+                  call_line       = call_line
+                  token           = token
+                  variable        = variable
+                  tab             = tab
+                  tabs            = tabs
+                  composed        = composed
+                  composed_vars   = composed_vars
+                  calculated      = calculated
+                  calculated_vars = calculated_vars
+                  change          = change
+                  count           = count
+                  ref             = ref
+                  method_type     = method_type
+                  class_name      = class_name
+                  param           = param
+                  eventtype       = eventtype
+                  eventname       = eventname
+                  class           = class
+                  call_line_class = call_line-class ).
+              IF lv_dispatch_cont = abap_true.
+                CONTINUE.
               ENDIF.
 
               IF  temp = '(' .
@@ -5676,24 +5489,9 @@
         ENDDO.
 
         "Fill keyword links for calls
-        LOOP AT tokens ASSIGNING FIELD-SYMBOL(<s_token>) WHERE tt_calls IS NOT INITIAL.
-
-          READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
-          DATA(index) = 0.
-          LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param WHERE event = call-event AND name = call-name .
-            ADD 1 TO  index.
-            READ TABLE <s_token>-tt_calls INDEX  index ASSIGNING <call>.
-            IF sy-subrc = 0.
-              <call>-inner = param-param.
-              IF param-type = 'I'.
-                <call>-type = '>'.
-              ELSE.
-                <call>-type = '<'.
-              ENDIF.
-            ENDIF.
-          ENDLOOP.
-
-        ENDLOOP.
+        lcl_ace_source_parser=>link_calls_to_params(
+          EXPORTING io_debugger = io_debugger
+          CHANGING  ct_tokens   = tokens ).
 
         "clear value(var) to var.
         LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING <param>.
@@ -5711,55 +5509,338 @@
         prog-stack = stack.
         APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
 
-        "Fill keyword links for calls
-        LOOP AT io_debugger->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
-          LOOP AT prog-t_keywords ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
 
-            READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
-            index = 0.
-            LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param WHERE event = call-event AND name = call-name .
-              ADD 1 TO  index.
-              READ TABLE <s_token>-tt_calls INDEX  index ASSIGNING <call>.
-              IF sy-subrc = 0.
-                <call>-inner = param-param.
-                IF param-type = 'I'.
-                  <call>-type = '>'.
-                ELSE.
-                  <call>-type = '<'.
+      ENDIF.
+
+      IF i_main IS NOT INITIAL.
+        lcl_ace_source_parser=>process_super_and_interfaces(
+          i_class     = class_name
+          i_program   = i_program
+          i_stack     = stack
+          io_debugger = io_debugger ).
+      ENDIF.
+
+    ENDMETHOD.
+
+    METHOD process_super_and_interfaces.
+      DATA: suffix     TYPE string,
+            lt_classes TYPE STANDARD TABLE OF lcl_ace_window=>ts_meta,
+            prefix     TYPE string,
+            program    TYPE program,
+            include    TYPE program.
+
+      SELECT clsname, refCLSNAME, reltype FROM seometarel APPENDING TABLE @lt_classes
+        WHERE clsname = @i_class.
+
+      LOOP AT lt_classes INTO DATA(interface).
+        prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
+        CASE interface-reltype.
+          WHEN '0' OR '1'. "Interface
+            suffix = 'IU'.
+          WHEN '2'. "Inheritance
+            suffix = 'CP'.
+          WHEN OTHERS.
+            RETURN. "todo: implement other reltype logic
+        ENDCASE.
+        include = program = prefix && suffix.
+        lcl_ace_source_parser=>parse_tokens(
+          i_main      = abap_true
+          i_reltype   = interface-reltype
+          i_main_prog = i_program
+          i_class     = CONV #( interface-refclsname )
+          i_stack     = i_stack
+          i_program   = program
+          i_include   = include
+          io_debugger = io_debugger ).
+      ENDLOOP.
+
+      APPEND LINES OF lt_classes TO io_debugger->mo_window->ms_sources-t_classes[].
+    ENDMETHOD.
+
+    METHOD dispatch_keyword.
+      DATA: lv_import TYPE boolean,
+            lv_export TYPE boolean.
+
+      CASE kw.
+
+        WHEN 'PUBLIC'.
+          method_type = 1.
+
+        WHEN 'PROTECTED'.
+          method_type = 2.
+
+        WHEN 'PRIVATE'.
+          method_type = 3.
+
+        WHEN 'DATA' OR 'PARAMETERS'.
+          IF ( prev = 'OF' ) AND temp <> 'TABLE' AND temp <> 'OF'.
+            tab-type = temp.
+            APPEND tab TO tabs.
+            variable-name = tab-name.
+            variable-type = tab-type.
+            variable-line = l_token_row.
+            variable-icon = icon_table_settings.
+            APPEND variable TO io_debugger->mo_window->ms_sources-t_vars.
+          ENDIF.
+          IF ( prev = 'TYPE' ) AND temp <> 'TABLE' AND temp <> 'OF'.
+            variable-name = tab-name.
+            variable-type = temp.
+            variable-line = l_token_row.
+            CASE variable-type.
+              WHEN 'D'.    variable-icon = icon_date.
+              WHEN 'T'.    variable-icon = icon_bw_time_sap.
+              WHEN 'C'.    variable-icon = icon_wd_input_field.
+              WHEN 'P'.    variable-icon = icon_increase_decimal.
+              WHEN 'STRING'. variable-icon = icon_text_act.
+              WHEN 'N' OR 'I'. variable-icon = icon_pm_order.
+              WHEN OTHERS. variable-icon = icon_element.
+            ENDCASE.
+            IF ref IS NOT INITIAL.
+              variable-icon = icon_oo_class.
+              CLEAR ref.
+            ENDIF.
+            variable-program = i_program.
+            variable-include = i_include.
+            variable-class = class_name.
+            APPEND variable TO io_debugger->mo_window->ms_sources-t_vars.
+          ENDIF.
+
+        WHEN 'COMPUTE'.
+          IF temp CA '=' AND NOT word IS INITIAL.
+            change = prev.
+          ENDIF.
+          IF ( prev = '=' OR prev CA '+-/*' ) AND temp <> 'NEW'.
+            IF NOT temp CA '()'.
+              IF NOT temp CO '0123456789. '.
+                composed-name = temp.
+                APPEND composed TO composed_vars.
+                IF call IS NOT INITIAL.
+                  call-outer = temp.
+                  READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING NO FIELDS.
+                  IF sy-subrc <> 0.
+                    APPEND call TO token-tt_calls.
+                  ENDIF.
                 ENDIF.
               ENDIF.
-            ENDLOOP.
-          ENDLOOP.
-        ENDLOOP.
+            ENDIF.
+          ENDIF.
 
+        WHEN 'PERFORM'.
+          IF temp = 'USING' OR temp = 'CHANGING'.
+            CLEAR prev.
+          ENDIF.
+          IF prev = 'USING' OR prev = 'CHANGING'.
+            IF NOT temp CA '()'.
+              IF NOT temp CO '0123456789. '.
+                call-outer = temp.
+                READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING NO FIELDS.
+                IF sy-subrc <> 0.
+                  APPEND call TO token-tt_calls.
+                ENDIF.
+                change = temp.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+
+        WHEN 'CREATE' OR 'CALL'.
+          IF prev = 'FUNCTION' AND kw = 'CALL'.
+            call_line-eventtype = call-event = 'FUNCTION'.
+            REPLACE ALL OCCURRENCES OF '''' IN word WITH ''.
+            call_line-eventname = call-name = word.
+            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+              WITH KEY eventtype = call_line-eventtype eventname = call_line-eventname
+              TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              CLEAR call_line-class.
+              APPEND call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
+            ENDIF.
+          ENDIF.
+          IF prev = 'SCREEN' AND kw = 'CALL'.
+            APPEND INITIAL LINE TO token-tt_calls ASSIGNING FIELD-SYMBOL(<call>).
+            <call>-event = 'SCREEN'.
+            <call>-name = temp.
+            token-program = i_program.
+          ENDIF.
+          IF word = 'EXPORTING' OR word = 'CHANGING' OR word = 'TABLES'.
+            lv_export = abap_true. CLEAR lv_import. rv_continue = abap_true. RETURN.
+          ELSEIF word = 'IMPORTING'.
+            lv_import = abap_true. CLEAR lv_export. rv_continue = abap_true. RETURN.
+          ENDIF.
+          IF prev = 'OBJECT'.
+            READ TABLE io_debugger->mo_window->ms_sources-t_vars
+              WITH KEY program = i_program icon = icon_oo_class name = word
+              INTO DATA(var).
+            IF sy-subrc = 0.
+              call-class = var-type.
+              call-event = 'METHOD'.
+              call-name = 'CONSTRUCTOR'.
+            ENDIF.
+          ENDIF.
+          IF prev = '='.
+            IF NOT temp CA '()'.
+              IF NOT temp CO '0123456789. '.
+                IF lv_import = abap_true.
+                  call-outer = temp.
+                  READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING NO FIELDS.
+                  IF sy-subrc <> 0. APPEND call TO token-tt_calls. ENDIF.
+                  calculated-name = temp.
+                  APPEND calculated TO calculated_vars.
+                ELSEIF lv_export = abap_true.
+                  call-outer = temp.
+                  READ TABLE token-tt_calls WITH KEY event = call-event name = call-name outer = call-outer TRANSPORTING NO FIELDS.
+                  IF sy-subrc <> 0. APPEND call TO token-tt_calls. ENDIF.
+                  composed-name = temp.
+                  APPEND composed TO composed_vars.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ELSE.
+            IF NOT temp CO '0123456789. ' AND temp <> '=' AND ( lv_import = abap_true OR lv_export = abap_true ).
+              call-inner = temp.
+            ENDIF.
+          ENDIF.
+
+        WHEN 'CLEAR' OR 'SORT'.
+          change = temp.
+
+        WHEN 'CONDENSE'.
+          IF temp <> 'NO-GAPS'.
+            change = temp.
+          ENDIF.
+
+        WHEN 'ASSIGN' OR 'UNASSIGN'.
+          ADD 1 TO count.
+          IF count <> 2.
+            change = temp.
+          ENDIF.
+
+        WHEN 'ADD' OR 'SUBTRACT'.
+          ADD 1 TO count.
+          IF count = 1.
+            IF NOT temp CO '0123456789.() '.
+              composed-name = temp.
+              APPEND composed TO composed_vars.
+            ENDIF.
+          ENDIF.
+          IF count = 3.
+            change = temp.
+          ENDIF.
+
+        WHEN 'READ'.
+          IF prev = 'INTO' OR prev = 'ASSIGNING'.
+            change = temp.
+          ENDIF.
+
+        WHEN 'SELECT'.
+          IF ( prev = 'INTO' OR prev = '(' )
+            AND temp <> 'TABLE' AND temp <> '(' AND temp <> ')' AND temp <> ','.
+            change = temp.
+          ENDIF.
+
+      ENDCASE.
+    ENDMETHOD.
+
+
+    METHOD detect_method_call.
+      DATA: split TYPE string_table.
+
+      IF call-event = 'METHOD' AND call-name IS NOT INITIAL.
+        APPEND call TO token-tt_calls.
+        CLEAR: call-event, call-type, call-name, call-outer, call-inner.
       ENDIF.
 
-      "Process interfaces and superclasses
-      DATA: suffix     TYPE string,
-            lt_classes TYPE STANDARD TABLE OF lcl_ace_window=>ts_meta.
-      IF i_main IS NOT INITIAL.
-        SELECT clsname, refCLSNAME, reltype FROM seometarel APPENDING TABLE @lt_classes
-          WHERE clsname = @class_name.
-        DATA: prefix  TYPE string,
-              program TYPE program,
-              include TYPE program.
-        LOOP AT lt_classes INTO DATA(interface).
-          prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
-          CASE interface-reltype.
-            WHEN '0' OR '1'."Interface
-              suffix = 'IU'."'IP'
-            WHEN '2'. "Ingeritance
-              suffix = 'CP'.
-            WHEN OTHERS.
-              DATA(a) = 1 / 0. "to catch dump to implement logic
-          ENDCASE.
-          include = program = prefix && suffix. "Interface Program
-          lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_reltype = interface-reltype i_main_prog = i_program i_class = CONV #( interface-refclsname ) i_stack = stack i_program = program i_include = include io_debugger = io_debugger ).
-        ENDLOOP.
+      call-name = word.
+      call-event = 'METHOD'.
+      REPLACE ALL OCCURRENCES OF '(' IN call-name WITH ''.
+      REPLACE ALL OCCURRENCES OF 'ME->' IN call-name WITH ''.
 
-        APPEND LINES OF lt_classes TO  io_debugger->mo_window->ms_sources-t_classes[].
+      FIND FIRST OCCURRENCE OF '->' IN call-name.
+      IF sy-subrc = 0.
+        SPLIT call-name AT '->' INTO TABLE split.
+        IF split[ 1 ] <> ')'.
+          READ TABLE io_debugger->mo_window->ms_sources-t_vars
+            WITH KEY program = i_program name = split[ 1 ]
+            INTO DATA(vars).
+          IF sy-subrc <> 0.
+            call-class = split[ 1 ].
+          ELSE.
+            call-class = vars-type.
+          ENDIF.
+        ENDIF.
+        call-name = split[ 2 ].
+        IF split[ 1 ] = 'SUPER'.
+          call-class = class_name.
+          call-super = abap_true.
+        ENDIF.
       ENDIF.
 
+      FIND FIRST OCCURRENCE OF '=>' IN call-name.
+      IF sy-subrc = 0.
+        SPLIT call-name AT '=>' INTO TABLE split.
+        IF split[ 1 ] <> ')'.
+          call-class = split[ 1 ].
+        ENDIF.
+        call-name = split[ 2 ].
+      ENDIF.
+
+      IF call-class IS INITIAL.
+        IF i_class IS NOT INITIAL.
+          call_line-class = call-class = i_class.
+        ENDIF.
+        IF class_name IS NOT INITIAL.
+          call_line-class = call-class = class_name.
+        ENDIF.
+      ENDIF.
+
+      call-event = 'METHOD'.
+
+      IF new = abap_true.
+        call-class = call-name.
+        call-name = 'CONSTRUCTOR'.
+        call_line-class = call-class.
+        call_line-eventname = call-name.
+        call_line-eventtype = 'METHOD'.
+        READ TABLE calculated_vars WITH KEY line = l_token_row program = i_include INTO DATA(calc).
+        IF sy-subrc = 0.
+          APPEND INITIAL LINE TO io_debugger->mo_window->ms_sources-tt_refvar
+            ASSIGNING FIELD-SYMBOL(<refvar>).
+          <refvar>-name = calc-name.
+          <refvar>-class = call-class.
+        ENDIF.
+      ENDIF.
+
+      READ TABLE io_debugger->mo_window->ms_sources-tt_refvar
+        WITH KEY name = call-class INTO DATA(refvar).
+      IF sy-subrc = 0.
+        call-class = refvar-class.
+      ENDIF.
+
+    ENDMETHOD.
+    METHOD link_calls_to_params.
+      FIELD-SYMBOLS: <s_token> TYPE lcl_ace_appl=>ts_kword,
+                     <call>    TYPE lcl_ace_appl=>ts_calls.
+      DATA: call  TYPE lcl_ace_appl=>ts_calls,
+            param TYPE lcl_ace_window=>ts_params,
+            index TYPE i.
+
+      "Link parameters to calls for the current token list
+      LOOP AT ct_tokens ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
+        READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
+        index = 0.
+        LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param
+          WHERE event = call-event AND name = call-name.
+          ADD 1 TO index.
+          READ TABLE <s_token>-tt_calls INDEX index ASSIGNING <call>.
+          IF sy-subrc = 0.
+            <call>-inner = param-param.
+            IF param-type = 'I'.
+              <call>-type = '>'.
+            ELSE.
+              <call>-type = '<'.
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
     ENDMETHOD.
 
     METHOD code_execution_scanner.
