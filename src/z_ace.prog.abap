@@ -422,42 +422,6 @@
 
   ENDCLASS.
 
-  CLASS lcl_ace_ddic DEFINITION.
-
-    PUBLIC SECTION.
-      CLASS-METHODS: get_text_table IMPORTING i_tname TYPE tabname
-                                    EXPORTING e_tab   TYPE tabname.
-  ENDCLASS.
-
-  CLASS lcl_ace_ddic IMPLEMENTATION.
-
-    METHOD get_text_table.
-      CALL FUNCTION 'DDUT_TEXTTABLE_GET'
-        EXPORTING
-          tabname   = i_tname
-        IMPORTING
-          texttable = e_tab.
-    ENDMETHOD.
-
-  ENDCLASS.
-
-  CLASS lcl_ace_dragdrop_data DEFINITION."drag&drop data
-
-    PUBLIC  SECTION.
-      DATA: m_row    TYPE i,
-            m_column TYPE lvc_s_col.
-
-  ENDCLASS.
-
-  CLASS lcl_ace_dragdrop DEFINITION.
-
-    PUBLIC SECTION.
-      CLASS-METHODS:
-        drag FOR EVENT ondrag OF cl_gui_alv_grid IMPORTING e_dragdropobj e_row e_column ,
-        drop FOR EVENT ondrop OF cl_gui_alv_grid IMPORTING e_dragdropobj e_row.
-
-  ENDCLASS.
-
   CLASS lcl_ace_alv_common DEFINITION.
 
     PUBLIC SECTION.
@@ -3584,7 +3548,6 @@
                     handle_user_command
                     handle_tab_toolbar
                     handle_doubleclick
-                    lcl_ace_dragdrop=>drag
                     FOR mo_alv.
 
       CALL METHOD mo_alv->set_table_for_first_display
@@ -3726,7 +3689,6 @@
       ENDTRY.
 
       it_tabdescr[] = lr_table_descr->components[].
-      lcl_ace_ddic=>get_text_table( EXPORTING i_tname = i_tname IMPORTING e_tab = l_texttab ).
 
       LOOP AT it_tabdescr INTO DATA(ls)
          WHERE type_kind NE 'h'
@@ -4019,8 +3981,6 @@
 
       SET HANDLER handle_user_command
                   handle_sel_toolbar
-                  lcl_ace_dragdrop=>drag
-                  lcl_ace_dragdrop=>drop
                   on_data_changed
                   on_data_changed_finished
                   on_grid_button_click
@@ -4859,152 +4819,6 @@
 
   ENDCLASS.
 
-  CLASS lcl_ace_dragdrop IMPLEMENTATION.
-
-    METHOD drag.
-
-      DATA(dataobj) = NEW lcl_ace_dragdrop_data( ).
-      dataobj->m_row = e_row-index.
-      dataobj->m_column = e_column.
-      e_dragdropobj->object = dataobj.
-
-    ENDMETHOD.
-
-    METHOD drop."It should be refactored someday...
-
-      DATA: row          TYPE lcl_ace_appl=>t_sel_row,
-            set_receiver.
-
-      LOOP AT lcl_ace_appl=>mt_obj INTO DATA(lo).
-        "to
-        IF lo-alv_viewer->mo_sel IS BOUND.
-          IF e_dragdropobj->droptargetctrl = lo-alv_viewer->mo_sel->mo_sel_alv.
-            DATA(o_to) = lo-alv_viewer->mo_sel.
-          ENDIF.
-        ENDIF.
-
-        "from tab
-        IF lo-alv_viewer->mo_alv = e_dragdropobj->dragsourcectrl.
-          DATA(o_from_tab) = lo-alv_viewer.
-          CONTINUE.
-        ENDIF.
-
-        IF e_dragdropobj->dragsourcectrl = lo-alv_viewer->mo_sel->mo_sel_alv.
-          DATA(o_from_sel) = lo-alv_viewer->mo_sel.
-          lo-alv_viewer->mo_sel->mo_sel_alv->get_selected_rows( IMPORTING et_index_rows = DATA(sel_rows) ).
-          lo-alv_viewer->mo_sel->mo_sel_alv->get_selected_cells( IMPORTING et_cell = DATA(sel_cells) ).
-        ENDIF.
-      ENDLOOP.
-
-      IF o_from_tab IS BOUND." tab to select
-        FIELD-SYMBOLS: <f_tab>   TYPE STANDARD TABLE,
-                       <f_field> TYPE any.
-        o_from_tab->mo_alv->get_selected_cells( IMPORTING et_cell = sel_cells ).
-        o_from_tab->mo_alv->get_selected_columns( IMPORTING et_index_columns = DATA(sel_col) ).
-
-        LOOP AT sel_col INTO DATA(l_col).
-          TRY.
-              o_from_tab->mt_alv_catalog[ fieldname = l_col-fieldname ]-style = cl_gui_alv_grid=>mc_style_button.
-            CATCH cx_sy_itab_line_not_found.
-          ENDTRY.
-          READ TABLE o_from_tab->mo_column_emitters WITH KEY column = l_col ASSIGNING FIELD-SYMBOL(<emitter>).
-          IF sy-subrc NE 0.
-            APPEND INITIAL LINE TO o_from_tab->mo_column_emitters ASSIGNING <emitter>.
-            <emitter>-column = l_col.
-            <emitter>-emitter = NEW #( ).
-          ENDIF.
-        ENDLOOP.
-
-        IF sy-subrc = 0.
-          set_receiver = abap_true.
-          CALL METHOD o_from_tab->mo_alv->set_frontend_fieldcatalog EXPORTING it_fieldcatalog = o_from_tab->mt_alv_catalog.
-        ENDIF.
-
-        TRY.
-            ASSIGN o_from_tab->mr_table->* TO <f_tab>.
-            READ TABLE o_to->mt_sel_tab ASSIGNING FIELD-SYMBOL(<to_tab>) INDEX e_row.
-            LOOP AT sel_cells INTO DATA(l_cell).
-              IF sy-tabix = 1.
-                DATA(l_colname) = l_cell-col_id-fieldname.
-              ENDIF.
-              READ TABLE <f_tab> INDEX l_cell-row_id ASSIGNING FIELD-SYMBOL(<f_str>).
-              ASSIGN COMPONENT l_colname OF STRUCTURE <f_str> TO <f_field>.
-              IF sy-subrc = 0.
-                IF  set_receiver IS NOT INITIAL.
-                  IF <to_tab>-receiver IS BOUND.
-                    <to_tab>-receiver->shut_down( ).
-                  ENDIF.
-                  CREATE OBJECT <to_tab>-receiver
-                    EXPORTING
-                      io_transmitter = <emitter>-emitter
-                      i_from_field   = CONV #( sel_cells[ 1 ]-col_id )
-                      i_to_field     = <to_tab>-field_label
-                      io_sel_to      = o_to
-                      io_tab_from    = o_from_tab.
-                  SET HANDLER <to_tab>-receiver->on_grid_button_click FOR o_from_tab->mo_alv.
-                ENDIF.
-
-                IF <to_tab>-range IS INITIAL.
-                  <to_tab>-low = <f_field>.
-                ENDIF.
-                IF NOT line_exists( <to_tab>-range[ low = <f_field> ] ).
-                  APPEND VALUE #( sign = 'I' opti = 'EQ' low = <f_field>  ) TO <to_tab>-range.
-                ENDIF.
-              ENDIF.
-            ENDLOOP.
-            o_to->update_sel_row( CHANGING c_sel_row = <to_tab> ).
-          CATCH cx_sy_itab_line_not_found.              "#EC NO_HANDLER
-        ENDTRY.
-      ENDIF.
-
-      "select to select
-      IF o_from_sel NE o_to.
-        IF sel_rows[] IS INITIAL.
-          DELETE sel_cells WHERE col_id NE 'FIELD_LABEL'.
-          LOOP AT sel_cells INTO DATA(l_sel).
-            APPEND INITIAL LINE TO sel_rows ASSIGNING FIELD-SYMBOL(<row>).
-            <row>-index = l_sel-row_id-index.
-          ENDLOOP.
-        ENDIF.
-
-        LOOP AT sel_rows ASSIGNING <row>.
-          READ TABLE o_from_sel->mt_sel_tab ASSIGNING FIELD-SYMBOL(<from_tab>) INDEX <row>-index.
-          IF lines( sel_rows ) = 1.
-            READ TABLE o_to->mt_sel_tab ASSIGNING <to_tab> INDEX e_row.
-          ELSE.
-            READ TABLE o_to->mt_sel_tab ASSIGNING <to_tab> WITH KEY field_label = <from_tab>-field_label.
-            IF sy-subrc NE 0.
-              CONTINUE.
-            ENDIF.
-          ENDIF.
-          MOVE-CORRESPONDING <from_tab> TO row.
-          MOVE-CORRESPONDING row TO <to_tab>.
-          <from_tab>-emitter = icon_workflow_external_event.
-          <to_tab>-inherited = icon_businav_value_chain.
-          IF <from_tab>-transmitter IS INITIAL.
-            CREATE OBJECT <from_tab>-transmitter.
-          ENDIF.
-          IF <to_tab>-receiver IS NOT INITIAL.
-            <to_tab>-receiver->shut_down( ). "receiver clearing
-            FREE <to_tab>-receiver.
-          ENDIF.
-          CREATE OBJECT <to_tab>-receiver
-            EXPORTING
-              io_transmitter = <from_tab>-transmitter
-              io_sel_to      = o_to
-              i_to_field     = <to_tab>-field_label.
-        ENDLOOP.
-      ENDIF.
-
-      DATA(o_alv) = CAST cl_gui_alv_grid( e_dragdropobj->dragsourcectrl ).
-      lcl_ace_alv_common=>refresh( EXPORTING i_obj = o_alv ).
-
-      o_alv ?= e_dragdropobj->droptargetctrl.
-      o_to->raise_selection_done( ).
-
-    ENDMETHOD.
-
-  ENDCLASS.
 
   CLASS lcl_ace_source_parser IMPLEMENTATION.
 
