@@ -219,10 +219,6 @@
                from     TYPE i,
                to       TYPE i,
                tt_calls TYPE tt_calls,
-               "to_prog   TYPE string,
-               "to_class  TYPE string,
-               "to_evtype TYPE string,
-               "to_evname TYPE string,
              END OF ts_kword,
 
              tt_kword TYPE STANDARD TABLE OF ts_kword WITH NON-UNIQUE DEFAULT KEY,
@@ -325,7 +321,6 @@
                ev_name TYPE string,
              END OF ts_call.
 
-
       CLASS-DATA: m_option_icons   TYPE TABLE OF sign_option_icon_s,
                   mt_lang          TYPE TABLE OF t_lang,
                   mt_obj           TYPE TABLE OF t_obj, "main object table
@@ -338,7 +333,6 @@
 
       CLASS-METHODS:
         init_icons_table,
-        init_lang,
         check_mermaid,
         open_int_table IMPORTING it_tab    TYPE ANY TABLE OPTIONAL
                                  it_ref    TYPE REF TO data OPTIONAL
@@ -787,7 +781,6 @@
 
     ENDMETHOD.
 
-
     METHOD call_openai.
       DATA: prompt   TYPE string,
             payload  TYPE string,
@@ -820,10 +813,9 @@
     METHOD build_request.
 
       DATA:  payload TYPE string.
-
       payload = |{ '{ "model": "' && p_model && '", "messages": [{ "role": "user", "content": "' && i_prompt &&  '" }], "max_tokens": 10000 } ' }|.
-
       e_payload =  payload.
+
     ENDMETHOD.
 
     METHOD send_request.
@@ -1069,9 +1061,7 @@
                                     type  = 0
                                     value = 0 ).
 
-
       SET HANDLER on_box_close FOR mo_ai_box.
-
 
       CREATE OBJECT mo_prompt_text
         EXPORTING
@@ -1114,7 +1104,6 @@
       <str> = 'Explain please the meaning of this ABAP code and provide a code review'.
       mv_prompt = <str>.
       APPEND INITIAL LINE TO string ASSIGNING <str>.
-
 
       LOOP AT i_source INTO DATA(line).
         APPEND INITIAL LINE TO string ASSIGNING <str>.
@@ -1165,7 +1154,6 @@
           CLEAR mv_prompt.
           LOOP AT text INTO DATA(line).
             CONCATENATE mv_prompt  line
-                        "cl_abap_char_utilities=>newline
                    INTO mv_prompt.
           ENDLOOP.
 
@@ -1185,7 +1173,6 @@
     ENDMETHOD.
 
   ENDCLASS.
-
 
   CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_ace_popup .
 
@@ -1415,8 +1402,6 @@
 
   CLASS lcl_ace IMPLEMENTATION.
 
-
-
     METHOD constructor.
 
       CONSTANTS: c_mask TYPE x VALUE '01'.
@@ -1428,22 +1413,18 @@
 
       i_step = abap_on.
       lcl_ace_appl=>check_mermaid( ).
-      lcl_ace_appl=>init_lang( ).
       lcl_ace_appl=>init_icons_table( ).
 
       mo_window = NEW lcl_ace_window( me ).
-
 
       mo_tree_local = NEW lcl_ace_rtti_tree( i_header   = 'Objects & Code Flow'
                                          i_type     = 'L'
                                          i_cont     = mo_window->mo_locals_container
                                          i_debugger = me ).
 
-
       show( ).
 
     ENDMETHOD.
-
 
     METHOD show.
 
@@ -1785,7 +1766,6 @@
 
       ENDLOOP.
 
-
       IF no_locals = abap_false.
         prefix = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
         include =  prefix && 'CP'."local classes
@@ -1920,8 +1900,6 @@
         LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calculated_var) WHERE line = step-line.
           READ TABLE lt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
           IF sy-subrc = 0.
-*          APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
-*          <selected>-name = calculated_var-name.
 
             LOOP AT mo_window->ms_sources-t_composed INTO DATA(composed_var) WHERE line = step-line.
               READ TABLE lt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
@@ -1931,14 +1909,6 @@
               ENDIF.
             ENDLOOP.
           ENDIF.
-          "adding returning values
-*        LOOP AT source-t_params INTO DATA(param).
-*          READ TABLE mo_viewer->mt_selected_var WITH KEY name = param-param TRANSPORTING NO FIELDS.
-*          IF sy-subrc <> 0.
-*            APPEND INITIAL LINE TO  mo_viewer->mt_selected_var ASSIGNING <selected>.
-*            <selected>-name = param-param.
-*          ENDIF.
-*        ENDLOOP.
         ENDLOOP.
 
         READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
@@ -2020,8 +1990,6 @@
         ENDLOOP.
         "if no variable - whole CodeMix flow
         IF sy-subrc <> 0 AND mt_selected_var IS INITIAL.
-*          IF key-name <> 'ENDMETHOD' AND key-name <> 'ENDMODULE' AND  key-name <> 'ENDFORM' AND
-*             key-name <> 'METHOD' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
 
           IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND  key-name <> 'ENDMETHOD' AND
             key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
@@ -2176,10 +2144,6 @@
           CLEAR   els_before.
         ENDIF.
 
-        "READ TABLE results WITH KEY ev_type = <line>-subname TRANSPORTING NO FIELDS.
-        " IF sy-subrc <> 0.
-        "  CLEAR <line>-arrow.
-        " ENDIF.
       ENDLOOP.
 
       IF mt_if IS INITIAL AND ms_if-if_ind IS NOT INITIAL.
@@ -2191,7 +2155,6 @@
           CLEAR results[ lines( results ) ]-arrow .
         ENDIF.
       ENDIF.
-
 
     ENDMETHOD.
 
@@ -2456,19 +2419,6 @@
       ENDLOOP.
       mo_code_viewer->set_marker( EXPORTING marker_number = 4 marker_lines = lines ).
 
-*    "watchpoints or coverage
-*    CLEAR lines.
-*    LOOP AT mt_watch INTO DATA(watch).
-*      APPEND INITIAL LINE TO lines ASSIGNING <line>.
-*      <line> = watch-line.
-*    ENDLOOP.
-*
-*    "coverage
-*    LOOP AT mt_coverage INTO DATA(coverage).
-*      APPEND INITIAL LINE TO lines ASSIGNING <line>.
-*      <line> = coverage-line.
-*    ENDLOOP.
-
       IF i_line IS NOT INITIAL.
 
         IF i_line IS NOT INITIAL.
@@ -2624,7 +2574,6 @@
         DATA:  o_column  TYPE REF TO cl_salv_column.
 
         DATA(o_columns) = mo_salv_stack->get_columns( ).
-        "o_columns->set_optimize( 'X' ).
 
         o_column ?= o_columns->get_column( 'STEP' ).
         o_column->set_output_length( '3' ).
@@ -2667,14 +2616,12 @@
 
       DATA: split TYPE TABLE OF string.
       CLEAR: mt_watch, mt_coverage. "mt_stack.
-      "CHECK mt_stack IS INITIAL.
       LOOP AT mo_viewer->mt_steps INTO DATA(step).
 
         READ TABLE mt_stack WITH KEY include = step-include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           APPEND INITIAL LINE TO mt_stack ASSIGNING FIELD-SYMBOL(<stack>).
           MOVE-CORRESPONDING step TO <stack>.
-
 
           SPLIT <stack>-program  AT '=' INTO TABLE split.
           <stack>-prg = <stack>-program.
@@ -2685,11 +2632,8 @@
           CONTINUE.
         ENDIF.
 
-        "APPEND INITIAL LINE TO mt_coverage ASSIGNING FIELD-SYMBOL(<coverage>).
-        "<coverage>-line = step-line.
       ENDLOOP.
       IF sy-subrc <> 0 AND mt_Stack IS INITIAL . "No steps - show all includes.
-        "CLEAR mt_Stack.
         SORT ms_sources-tt_progs BY stack.
         LOOP AT ms_sources-tt_progs INTO DATA(prog).
           CHECK prog-t_keywords IS NOT INITIAL.
@@ -2768,15 +2712,12 @@
     METHOD on_stack_double_click.
 
       READ TABLE mo_viewer->mo_window->mt_stack INDEX row INTO DATA(stack).
-      "only for coverage stack selection should work.
-      "CHECK mo_viewer->mo_window->mt_coverage IS NOT INITIAL.
 
       MOVE-CORRESPONDING stack TO mo_viewer->mo_window->m_prg.
       MOVE-CORRESPONDING stack TO mo_viewer->ms_stack.
 
       mo_viewer->mo_window->m_prg-program = stack-prg.
 
-      "show_coverage( ).
       mo_viewer->show( ).
       CASE stack-eventtype.
         WHEN 'FUNCTION'.
@@ -2927,11 +2868,6 @@
 
           mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
-
-
-*      WHEN 'COVERAGE'.
-*        show_coverage( ).
-*        mo_viewer->show( ).
 
         WHEN 'CODE'.
           m_zcode = m_zcode BIT-XOR c_mask.
@@ -3131,7 +3067,6 @@
         handle_tab_toolbar  FOR EVENT toolbar OF cl_gui_alv_grid  IMPORTING e_object,
         before_user_command FOR EVENT before_user_command OF cl_gui_alv_grid IMPORTING e_ucomm,
         handle_user_command FOR EVENT user_command OF cl_gui_alv_grid IMPORTING e_ucomm,
-        handle_doubleclick FOR EVENT double_click OF cl_gui_alv_grid IMPORTING e_column es_row_no,
         on_table_close FOR EVENT close OF cl_gui_dialogbox_container IMPORTING sender.
 
   ENDCLASS.
@@ -3305,40 +3240,6 @@
 
   ENDCLASS.
 
-*CLASS lcl_box_handler IMPLEMENTATION.
-*
-*   METHOD on_table_close.
-*    DATA:  tabix LIKE sy-tabix.
-*    sender->free( ).
-*
-*    "Free Memory
-*    LOOP AT lcl_ace_appl=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
-*      IF <obj>-alv_viewer->mo_box = sender.
-*         tabix = sy-tabix.
-*        EXIT.
-*      ENDIF.
-*    ENDLOOP.
-*    IF sy-subrc = 0.
-*      FREE <obj>-alv_viewer->mr_table.
-*      FREE <obj>-alv_viewer->mo_alv.
-*
-*      "shutdown receivers.
-*      IF <obj>-alv_viewer->mo_sel IS NOT INITIAL.
-*        LOOP AT <obj>-alv_viewer->mo_sel->mt_sel_tab INTO DATA(l_sel).
-*          IF l_sel-receiver IS BOUND.
-*            l_sel-receiver->shut_down( ).
-*          ENDIF.
-*        ENDLOOP.
-*      ENDIF.
-*      FREE <obj>-alv_viewer.
-*      IF  tabix NE 0.
-*        DELETE lcl_ace_appl=>mt_obj INDEX  tabix.
-*      ENDIF.
-*    ENDIF.
-*  ENDMETHOD.                    "ON_BOX_CLOSE
-*
-*ENDCLASS.               "lcl_box_handler
-
   CLASS lcl_ace_table_viewer IMPLEMENTATION.
 
     METHOD constructor.
@@ -3507,7 +3408,6 @@
          RECEIVING
           container = mo_alv_parent.
 
-
       SET HANDLER on_table_close FOR mo_box.
 
     ENDMETHOD.
@@ -3547,7 +3447,6 @@
       SET HANDLER   before_user_command
                     handle_user_command
                     handle_tab_toolbar
-                    handle_doubleclick
                     FOR mo_alv.
 
       CALL METHOD mo_alv->set_table_for_first_display
@@ -3729,48 +3628,6 @@
 
     ENDMETHOD.
 
-    METHOD handle_doubleclick.
-
-*    DATA: o_table_descr TYPE REF TO cl_tpda_script_tabledescr,
-*          table_clone    TYPE REF TO data.
-*    FIELD-SYMBOLS: <f_tab>  TYPE STANDARD TABLE.
-*
-*    CHECK es_row_no-row_id IS NOT INITIAL.
-*    ASSIGN mr_table->* TO  <f_tab>.
-*    READ TABLE <f_tab> INDEX es_row_no-row_id ASSIGNING FIELD-SYMBOL(<tab>).
-*    ASSIGN COMPONENT e_column-fieldname  OF STRUCTURE <tab> TO FIELD-SYMBOL(<val>).
-*
-*    CASE e_column-fieldname.
-*      WHEN 'VALUE'.
-*        IF sy-subrc = 0.
-*          IF <val> = 'Table'.
-*            ASSIGN COMPONENT 'REF'  OF STRUCTURE <tab> TO FIELD-SYMBOL(<ref>).
-*            lcl_ace_appl=>open_int_table( EXPORTING i_name = CONV #( e_column-fieldname ) it_ref = <ref> io_window = mo_window ).
-*          ENDIF.
-*        ELSE.
-*          TRY.
-*              o_table_descr ?= cl_tpda_script_data_descr=>factory( |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| ).
-*              table_clone = o_table_descr->elem_clone( ).
-*              lcl_ace_appl=>open_int_table( EXPORTING i_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
-*            CATCH cx_sy_move_cast_error.
-*          ENDTRY.
-*        ENDIF.
-*      WHEN 'STEP'.
-*        MOVE-CORRESPONDING <tab> TO mo_window->m_prg.
-*        MOVE-CORRESPONDING <tab> TO mo_window->mo_viewer->ms_stack.
-*
-*        mo_window->show_coverage( ).
-*        mo_window->mo_viewer->show( ).
-*      WHEN OTHERS. "check if it is an embedded table.
-*        TRY.
-*            o_table_descr ?= cl_tpda_script_data_descr=>factory( |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| ).
-*            table_clone = o_table_descr->elem_clone( ).
-*            lcl_ace_appl=>open_int_table( EXPORTING i_name = |{ m_additional_name }[ { es_row_no-row_id } ]-{ e_column-fieldname }| it_ref = table_clone io_window = mo_window ).
-*          CATCH cx_sy_move_cast_error.
-*        ENDTRY.
-*    ENDCASE.
-*
-    ENDMETHOD.
 
     METHOD on_table_close.
       DATA:  tabix LIKE sy-tabix.
@@ -4585,16 +4442,6 @@
        ( sign = 'E'   option = 'BT'   icon_name = icon_interval_include_red )
        ( sign = 'E'   option = 'NB'   icon_name = icon_interval_exclude_red ) ).
 
-    ENDMETHOD.
-
-    METHOD init_lang.
-      ULINE.
-*    SELECT c~spras t~sptxt INTO CORRESPONDING FIELDS OF TABLE mt_lang
-*      FROM t002c AS c
-*      INNER JOIN t002t AS t
-*      ON c~spras = t~sprsl
-*      WHERE t~spras = sy-langu
-*      ORDER BY c~ladatum DESCENDING c~lauzeit DESCENDING.
     ENDMETHOD.
 
     METHOD check_mermaid.
