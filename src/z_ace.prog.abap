@@ -209,16 +209,18 @@
              tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer,
 
              BEGIN OF ts_kword,
-               program  TYPE string,
-               include  TYPE string,
-               index    TYPE i,
-               line     TYPE i,
-               v_line   TYPE i, "virtual line in code Mix
-               sub      TYPE boolean, "subcode: class/form...
-               name     TYPE string,
-               from     TYPE i,
-               to       TYPE i,
-               tt_calls TYPE tt_calls,
+               program    TYPE string,
+               include    TYPE string,
+               index      TYPE i,
+               line       TYPE i,
+               v_line     TYPE i, "virtual line in code Mix
+               v_from_row TYPE i, "virtual from_row after enhancement inserts
+               v_to_row   TYPE i, "virtual to_row after enhancement inserts
+               sub        TYPE boolean, "subcode: class/form...
+               name       TYPE string,
+               from       TYPE i,
+               to         TYPE i,
+               tt_calls   TYPE tt_calls,
              END OF ts_kword,
 
              tt_kword TYPE STANDARD TABLE OF ts_kword WITH NON-UNIQUE DEFAULT KEY,
@@ -1437,6 +1439,7 @@
             cl_name     TYPE string,
             icon        TYPE salv_de_tree_image,
             forms_rel   TYPE salv_de_node_key,
+            modules_rel TYPE salv_de_node_key,
             f_modules   TYPE salv_de_node_key,
             func_rel    TYPE salv_de_node_key,
             classes_rel TYPE salv_de_node_key,
@@ -1656,6 +1659,24 @@
 
           ENDIF.
           .
+        ENDIF.
+
+        IF subs-eventtype = 'MODULE'.
+          IF subs-program = splits_prg[ 1 ].
+            IF modules_rel IS INITIAL.
+              tree-kind = 'F'.
+              modules_rel = mo_tree_local->add_node( i_name = 'Modules' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
+            ENDIF.
+            CLEAR tree.
+            tree-kind    = 'M'.
+            tree-value   = keyword-v_line.
+            tree-include = subs-include.
+            tree-program = subs-program.
+            tree-ev_type = subs-eventtype.
+            tree-ev_name = subs-eventname.
+            mo_tree_local->add_node( i_name = subs-eventname i_icon = CONV #( icon_biw_info_source_ina ) i_rel = modules_rel i_tree = tree ).
+            CLEAR tree.
+          ENDIF.
         ENDIF.
         cl_name = splits_prg[ 1 ].
       ENDLOOP.
@@ -2195,8 +2216,8 @@
         <keyword_mix>-include = line-include.
         <keyword_mix>-program = line-program.
 
-        DATA(from_row) = prog-scan->tokens[ keyword-from ]-row.
-        DATA(to_row) = prog-scan->tokens[ keyword-to ]-row.
+        DATA(from_row) = keyword-v_from_row.
+        DATA(to_row)   = keyword-v_to_row.
         DATA(spaces) = repeat( val = | | occ = ( line-stack - 1 ) * 3 ).
         DATA(dashes) = repeat( val = |-| occ = ( line-stack ) ).
         IF prev_line-ev_name <> line-ev_name OR prev_line-ev_type <> line-ev_type OR prev_line-class <> line-class. "new event
@@ -4843,8 +4864,10 @@
                 o_procedure = o_procedure
               CHANGING
                 cs_state    = ls_state ).
-            ls_state-token-from = statement-from.
-            ls_state-token-to = statement-to.
+            ls_state-token-from       = statement-from.
+            ls_state-token-to         = statement-to.
+            ls_state-token-v_from_row = o_scan->tokens[ statement-from ]-row.
+            ls_state-token-v_to_row   = o_scan->tokens[ statement-to ]-row.
 
             IF ls_state-token-name <> 'PUBLIC' AND ls_state-token-name <> 'PRIVATE' AND ls_state-token-name <> 'PROTECTED' AND ls_state-token-name IS NOT INITIAL AND
                ls_state-token-name <> 'INCLUDE' AND ls_state-token-name <> 'CLASS-POOL' AND ls_state-token-name <> 'INTERFACE-POOL'.
@@ -5286,10 +5309,12 @@
         " Calculate how many lines were inserted by this enhancement
         DATA(lv_enh_inserted) = lv_offset - lv_offset_snap.
 
-        " Update v_line in t_keywords: shift by inserted count for all keywords at or after insertion point
+        " Update v_line, v_from_row, v_to_row in t_keywords for entries at or after insertion point
         LOOP AT <prog>-t_keywords ASSIGNING FIELD-SYMBOL(<kw_v>).
           IF <kw_v>-line >= lv_insert_line.
             ADD lv_enh_inserted TO <kw_v>-v_line.
+            ADD lv_enh_inserted TO <kw_v>-v_from_row.
+            ADD lv_enh_inserted TO <kw_v>-v_to_row.
           ENDIF.
         ENDLOOP.
 
