@@ -1625,9 +1625,13 @@
               forms_rel = mo_tree_local->add_node( i_name = 'Subroutines' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
             ENDIF.
             CLEAR tree.
-            tree-value = keyword-line.
+            tree-kind    = 'M'.
+            tree-value   = keyword-line.
             tree-include = subs-include.
-            DATA(event_node) = mo_tree_local->add_node( i_name =  form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel =  forms_rel i_tree = tree ).
+            tree-program = subs-program.
+            tree-ev_type = subs-eventtype.
+            tree-ev_name = subs-eventname.
+            DATA(event_node) = mo_tree_local->add_node( i_name = form_name i_icon = CONV #( icon_biw_info_source_ina ) i_rel = forms_rel i_tree = tree ).
 
             CLEAR tree.
             LOOP AT mo_window->ms_sources-t_params INTO DATA(param) WHERE event = 'FORM' AND name = subs-eventname  AND param IS NOT INITIAL.
