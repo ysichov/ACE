@@ -1288,6 +1288,16 @@
              END OF ts_int_tabs,
              tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY,
 
+             BEGIN OF ts_enh_block,
+               ev_type   TYPE string,   " FORM / MODULE
+               ev_name   TYPE string,   " subroutine/module name
+               position  TYPE string,   " BEGIN or END
+               enh_name  TYPE string,   " enhancement name
+               from_line TYPE i,        " first inserted line in source_tab (virtual)
+               to_line   TYPE i,        " last inserted line in source_tab (virtual)
+             END OF ts_enh_block,
+             tt_enh_blocks TYPE STANDARD TABLE OF ts_enh_block WITH EMPTY KEY,
+
              BEGIN OF ts_prog,
                stack         TYPE i,
                program       TYPE program,
@@ -1297,6 +1307,7 @@
                t_keywords    TYPE tt_kword,
                selected      TYPE boolean,
                enh_collected TYPE boolean,
+               tt_enh_blocks TYPE tt_enh_blocks,
              END OF ts_prog,
              tt_progs   TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
              tt_classes TYPE STANDARD TABLE OF ts_meta WITH EMPTY KEY,
@@ -2192,9 +2203,10 @@
 
       DATA: flow_lines TYPE sci_include,
             splits     TYPE TABLE OF string,
-
+            enh_line   TYPE string,
             ind        TYPE i,
             prev_line  TYPE ts_line.
+      FIELD-SYMBOLS: <flow> TYPE string.
 
       DATA(lines) = get_code_flow( ).
       LOOP AT mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_mix>).
@@ -2221,15 +2233,39 @@
         DATA(spaces) = repeat( val = | | occ = ( line-stack - 1 ) * 3 ).
         DATA(dashes) = repeat( val = |-| occ = ( line-stack ) ).
         IF prev_line-ev_name <> line-ev_name OR prev_line-ev_type <> line-ev_type OR prev_line-class <> line-class. "new event
-          SPLIT line-include AT '=' INTO TABLE splits.
 
-          APPEND INITIAL LINE TO flow_lines ASSIGNING FIELD-SYMBOL(<flow>).
+          " Add END enhancements for previous subroutine
+          IF prev_line-ev_name IS NOT INITIAL.
+            READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = prev_line-include INTO DATA(prev_prog).
+            LOOP AT prev_prog-tt_enh_blocks INTO DATA(enh_end)
+              WHERE ev_name = prev_line-ev_name AND ev_type = prev_line-ev_type AND position = 'END'.
+              LOOP AT prev_prog-source_tab FROM enh_end-from_line TO enh_end-to_line INTO enh_line.
+                APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
+                ind = sy-tabix.
+                <flow> = enh_line.
+              ENDLOOP.
+            ENDLOOP.
+          ENDIF.
+
+          SPLIT line-include AT '=' INTO TABLE splits.
+          APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
           ind  = sy-tabix.
           IF line-class IS INITIAL.
             <flow> =  |"{ dashes } { line-ev_type } { line-ev_name } in { splits[ 1 ] }|.
           ELSE.
             <flow> =  |"{ dashes } { line-ev_type } { line-ev_name } in { line-class }|.
           ENDIF.
+
+          " Add BEGIN enhancements for new subroutine
+          LOOP AT prog-tt_enh_blocks INTO DATA(enh_begin)
+            WHERE ev_name = line-ev_name AND ev_type = line-ev_type AND position = 'BEGIN'.
+            LOOP AT prog-source_tab FROM enh_begin-from_line TO enh_begin-to_line INTO enh_line.
+              APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
+              ind = sy-tabix.
+              <flow> = enh_line.
+            ENDLOOP.
+          ENDLOOP.
+
         ENDIF.
 
         <keyword_mix>-v_line = ind + 1.
@@ -2241,6 +2277,19 @@
         ENDLOOP.
         prev_line = line.
       ENDLOOP.
+
+      " Add END enhancements for the last subroutine
+      IF prev_line-ev_name IS NOT INITIAL.
+        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = prev_line-include INTO prev_prog.
+        LOOP AT prev_prog-tt_enh_blocks INTO enh_end
+          WHERE ev_name = prev_line-ev_name AND ev_type = prev_line-ev_type AND position = 'END'.
+          LOOP AT prev_prog-source_tab FROM enh_end-from_line TO enh_end-to_line INTO enh_line.
+            APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
+            ind = sy-tabix.
+            <flow> = enh_line.
+          ENDLOOP.
+        ENDLOOP.
+      ENDIF.
 
       mo_window->mo_code_viewer->set_text( table = flow_lines ).
       <prog_mix>-source_tab = flow_lines.
@@ -5317,6 +5366,15 @@
             ADD lv_enh_inserted TO <kw_v>-v_to_row.
           ENDIF.
         ENDLOOP.
+
+        " Save enhancement block position for CodeMix
+        APPEND INITIAL LINE TO <prog>-tt_enh_blocks ASSIGNING FIELD-SYMBOL(<enh_blk>).
+        <enh_blk>-ev_type   = ls_call_line-eventtype.
+        <enh_blk>-ev_name   = form_name.
+        <enh_blk>-position  = position.
+        <enh_blk>-enh_name  = ls_enh-enhname.
+        <enh_blk>-from_line = lv_insert_line + lv_offset_snap.
+        <enh_blk>-to_line   = lv_src_tabix - 1.
 
       ENDLOOP.
 
