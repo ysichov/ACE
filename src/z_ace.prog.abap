@@ -1287,13 +1287,14 @@
              tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY,
 
              BEGIN OF ts_prog,
-               stack      TYPE i,
-               program    TYPE program,
-               include    TYPE program,
-               source_tab TYPE sci_include,
-               scan       TYPE REF TO cl_ci_scan,
-               t_keywords TYPE tt_kword,
-               selected   TYPE boolean,
+               stack         TYPE i,
+               program       TYPE program,
+               include       TYPE program,
+               source_tab    TYPE sci_include,
+               scan          TYPE REF TO cl_ci_scan,
+               t_keywords    TYPE tt_kword,
+               selected      TYPE boolean,
+               enh_collected TYPE boolean,
              END OF ts_prog,
              tt_progs   TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY,
              tt_classes TYPE STANDARD TABLE OF ts_meta WITH EMPTY KEY,
@@ -1309,6 +1310,7 @@
                t_vars        TYPE tt_vars,
                tt_refvar     TYPE tt_refvar,
                t_classes     TYPE tt_classes,
+               enh_collected TYPE boolean,
              END OF ts_source,
 
              BEGIN OF ts_locals,
@@ -1629,7 +1631,7 @@
             ENDIF.
             CLEAR tree.
             tree-kind    = 'M'.
-            tree-value   = keyword-line.
+            tree-value   = keyword-v_line.
             tree-include = subs-include.
             tree-program = subs-program.
             tree-ev_type = subs-eventtype.
@@ -1713,7 +1715,7 @@
 
         CLEAR tree.
         tree-kind = 'M'.
-        tree-value = keyword-line.
+        tree-value = keyword-v_line.
         tree-include = subs-include.
         tree-program = subs-program.
         tree-ev_type = subs-eventtype.
@@ -4749,6 +4751,7 @@
 
           READ TABLE o_scan->tokens INDEX statement-from INTO DATA(l_token).
           ls_state-token-line = ls_state-calculated-line = ls_state-composed-line = l_token-row.
+          ls_state-token-v_line = l_token-row.  " initialize v_line = line (adjusted if enhancements inserted later)
           ls_state-token-program = i_program.
           READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
           "IF level-type <> 'D'. "Define Macros
@@ -5127,6 +5130,16 @@
         WHERE programname = @i_program
           AND version = 'A'.
 
+      CHECK lt_enh IS NOT INITIAL.
+
+      " Check if enhancements already collected for this include
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        WITH KEY include = i_program
+        ASSIGNING FIELD-SYMBOL(<prog_enh>).
+      IF sy-subrc = 0 AND <prog_enh>-enh_collected = abap_true.
+        RETURN.
+      ENDIF.
+
       LOOP AT lt_enh INTO DATA(ls_enh).
         CLEAR: form_name, position.
 
@@ -5236,6 +5249,7 @@
 
         " Insert source_tab lines at the target position
         DATA(lv_src_tabix) = lv_insert_line + lv_offset.
+        DATA(lv_offset_snap) = lv_offset.  " remember offset before this enhancement
 
         " Insert separator line
         IF position = 'BEGIN'.
@@ -5269,8 +5283,22 @@
           ENDIF.
         ENDLOOP.
 
+        " Calculate how many lines were inserted by this enhancement
+        DATA(lv_enh_inserted) = lv_offset - lv_offset_snap.
+
+        " Update v_line in t_keywords: shift by inserted count for all keywords at or after insertion point
+        LOOP AT <prog>-t_keywords ASSIGNING FIELD-SYMBOL(<kw_v>).
+          IF <kw_v>-line >= lv_insert_line.
+            ADD lv_enh_inserted TO <kw_v>-v_line.
+          ENDIF.
+        ENDLOOP.
+
       ENDLOOP.
 
+      " Mark enhancements as collected for this include
+      IF <prog_enh> IS ASSIGNED.
+        <prog_enh>-enh_collected = abap_true.
+      ENDIF.
 
     ENDMETHOD.
 
