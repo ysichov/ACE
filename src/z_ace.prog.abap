@@ -5114,13 +5114,13 @@
 
     METHOD collect_enhancements.
 
-      DATA: form_name  TYPE string,
+        DATA: form_name  TYPE string,
             position   TYPE string,
             enh_prog   TYPE program,
             tabix      TYPE i,
-            lv_offset  TYPE i.  " смещение source_tab после предыдущих вставок
+            lv_offset  TYPE i.  " offset in source_tab after previous insertions
 
-      " Читаем все энхансменты для данной программы
+      " Read all enhancements for the given program
       SELECT programname, enhname, enhinclude, id, full_name
         FROM d010enh
         INTO TABLE @DATA(lt_enh)
@@ -5130,14 +5130,14 @@
       LOOP AT lt_enh INTO DATA(ls_enh).
         CLEAR: form_name, position.
 
-        " Парсим FULL_NAME: \PR:RDDM0001\FO:INIT_DELIVERY\SE:END\EI
+        " Parse FULL_NAME: \PR:RDDM0001\FO:INIT_DELIVERY\SE:END\EI
         DATA(lv_full) = ls_enh-full_name.
         FIND FIRST OCCURRENCE OF REGEX '\\FO:([^\\]+)' IN lv_full SUBMATCHES form_name.
         FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
 
         CHECK form_name IS NOT INITIAL AND position IS NOT INITIAL.
 
-        " Парсим инклуд энхансмента (если ещё не разобран)
+        " Parse enhancement include if not yet parsed
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           WITH KEY include = ls_enh-enhinclude TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
@@ -5147,19 +5147,19 @@
             io_debugger = io_debugger ).
         ENDIF.
 
-        " Находим прог где живёт этот FORM
+        " Find the program that contains this FORM
         READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
           WITH KEY eventtype = 'FORM' eventname = form_name
           INTO DATA(ls_call_line).
         CHECK sy-subrc = 0.
 
-        " Находим T_KEYWORDS нужного прога
+        " Find t_keywords entry for the target program
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           WITH KEY include = ls_call_line-include
           ASSIGNING FIELD-SYMBOL(<prog>).
         CHECK sy-subrc = 0.
 
-        " Находим позицию FORM в t_keywords итеративно по name = 'FORM' и index
+        " Find FORM position in t_keywords iteratively by name = 'FORM' and index
         DATA(lv_form_tabix) = 0.
         DATA ls_kw_form TYPE lcl_ace_appl=>ts_kword.
         LOOP AT <prog>-t_keywords INTO ls_kw_form.
@@ -5170,26 +5170,26 @@
         ENDLOOP.
         CHECK lv_form_tabix > 0.
 
-        " Берём keywords энхансмента с нужным ID
+        " Read enhancement include keywords
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           WITH KEY include = ls_enh-enhinclude
           INTO DATA(ls_enh_prog).
         CHECK sy-subrc = 0.
 
-        " Берём keywords энхансмента с нужным ID (блок ENHANCEMENT N...ENDENHANCEMENT)
+        " Collect keywords of the ENHANCEMENT N...ENDENHANCEMENT block matching the ID
         DATA lt_enh_kw TYPE lcl_ace_window=>tt_kword.
         DATA lv_in_block TYPE boolean.
         CLEAR: lt_enh_kw, lv_in_block.
         LOOP AT ls_enh_prog-t_keywords INTO DATA(ls_kw).
           IF ls_kw-name = 'ENHANCEMENT'.
-            " Проверяем что это нужный ID: следующий токен = ls_enh-id
+            " Check that this is the correct ID: next token = ls_enh-id
             DATA(lv_enh_id) = CONV i( ls_enh-id ).
-            " в token-line не ID, смотрим через scan на токен offset=2
+            " ID is not in token-line, check via scan at token offset=2
             READ TABLE ls_enh_prog-scan->statements INDEX ls_kw-index INTO DATA(ls_stmt).
             READ TABLE ls_enh_prog-scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
             IF CONV i( ls_tok-str ) = lv_enh_id.
               lv_in_block = abap_true.
-              APPEND ls_kw TO lt_enh_kw.  " включаем ENHANCEMENT только нужного блока
+              APPEND ls_kw TO lt_enh_kw.  " include ENHANCEMENT of the matching block only
             ELSE.
               lv_in_block = abap_false.
             ENDIF.
@@ -5197,7 +5197,7 @@
           ENDIF.
           IF ls_kw-name = 'ENDENHANCEMENT'.
             IF lv_in_block = abap_true.
-              APPEND ls_kw TO lt_enh_kw.  " включаем ENDENHANCEMENT
+              APPEND ls_kw TO lt_enh_kw.  " include ENDENHANCEMENT
             ENDIF.
             CLEAR lv_in_block.
             CONTINUE.
@@ -5209,36 +5209,35 @@
 
         CHECK lt_enh_kw IS NOT INITIAL.
 
-        " Определяем точку вставки
+        " Determine insertion point
         IF position = 'BEGIN'.
-          " После строки FORM
+          " After FORM statement
           tabix = lv_form_tabix + 1.
-        ELSE. " END - перед ENDFORM
-          " Ищем ENDFORM после позиции FORM
+        ELSE. " END - before ENDFORM
+          " Find ENDFORM iteratively after FORM position
           tabix = lv_form_tabix + 1.
           LOOP AT <prog>-t_keywords INTO DATA(ls_kw_end) FROM tabix.
             IF ls_kw_end-name = 'ENDFORM'.
-              tabix = sy-tabix.  " вставляем ПЕРЕД ENDFORM
+              tabix = sy-tabix.  " insert before ENDFORM
               EXIT.
             ENDIF.
           ENDLOOP.
         ENDIF.
 
-        " Вставляем keywords энхансмента в T_KEYWORDS прога
-        " и строки source_tab на нужную позицию
+        " Insert enhancement keywords into t_keywords at the target position
         DATA(lv_insert_line) = COND i(
           WHEN position = 'BEGIN' THEN ls_kw_form-line + 1
-          ELSE ls_kw_end-line ).  " перед строкой ENDFORM
+          ELSE ls_kw_end-line ).  " before ENDFORM line
 
         LOOP AT lt_enh_kw INTO DATA(ls_ins).
           INSERT ls_ins INTO <prog>-t_keywords INDEX tabix.
           ADD 1 TO tabix.
         ENDLOOP.
 
-        " Вставляем строки source_tab
+        " Insert source_tab lines at the target position
         DATA(lv_src_tabix) = lv_insert_line + lv_offset.
 
-        " Вставляем разделительную строку для BEGIN
+        " Insert separator line
         IF position = 'BEGIN'.
           DATA(lv_sep) = |"{ repeat( val = `"` occ = 46 ) }$"$\\SE:({ lv_enh_id }) Form { form_name }, Start|.
           INSERT lv_sep INTO <prog>-source_tab INDEX lv_src_tabix.
@@ -5254,14 +5253,14 @@
         LOOP AT lt_enh_kw INTO ls_ins.
           READ TABLE ls_enh_prog-source_tab INDEX ls_ins-line INTO DATA(lv_src_line).
           CHECK sy-subrc = 0.
-          " Если строка ENHANCEMENT N. - добавляем enhname перед точкой
+          " For ENHANCEMENT N. line - append enhname before the period
           IF ls_ins-name = 'ENHANCEMENT'.
             REPLACE REGEX '(ENHANCEMENT\s+\d+)(\s+)\.' IN lv_src_line WITH `$1$2` && ls_enh-enhname && `.`.
           ENDIF.
           INSERT lv_src_line INTO <prog>-source_tab INDEX lv_src_tabix.
           ADD 1 TO lv_src_tabix.
           ADD 1 TO lv_offset.
-          " После ENDENHANCEMENT вставляем закрывающую строку
+          " After ENDENHANCEMENT insert closing separator line
           IF ls_ins-name = 'ENDENHANCEMENT'.
             DATA(lv_end_sep) = |*$*$-End:   ({ lv_enh_id }){ repeat( val = `-` occ = 40 ) }$*$*|.
             INSERT lv_end_sep INTO <prog>-source_tab INDEX lv_src_tabix.
@@ -5271,6 +5270,7 @@
         ENDLOOP.
 
       ENDLOOP.
+
 
     ENDMETHOD.
 
