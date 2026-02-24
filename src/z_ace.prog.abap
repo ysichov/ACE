@@ -1487,7 +1487,27 @@
 
       mo_tree_local->main_node_key = mo_tree_local->add_node( i_name = CONV #( mo_window->m_prg-program ) i_icon = CONV #( icon_folder )  i_tree = tree ).
 
-      "global variable.
+      " Enhancements branch - first in tree
+      DATA: enh_rel      TYPE salv_de_node_key,
+            enh_form_rel TYPE salv_de_node_key.
+      LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh).
+        LOOP AT prog_enh-tt_enh_blocks INTO DATA(enh_blk).
+          IF enh_rel IS INITIAL.
+            CLEAR tree.
+            tree-kind = 'F'.
+            enh_rel = mo_tree_local->add_node( i_name = 'Enhancements' i_icon = CONV #( icon_folder ) i_rel = mo_tree_local->main_node_key i_tree = tree ).
+          ENDIF.
+          DATA(enh_node_name) = |{ enh_blk-enh_name } { enh_blk-ev_type } { enh_blk-ev_name } ({ enh_blk-position })|.
+          CLEAR tree.
+          tree-kind    = 'M'.
+          tree-value   = enh_blk-from_line.
+          tree-include = prog_enh-include.
+          tree-program = prog_enh-program.
+          tree-ev_type = enh_blk-ev_type.
+          tree-ev_name = enh_blk-ev_name.
+          mo_tree_local->add_node( i_name = enh_node_name i_icon = CONV #( icon_modify ) i_rel = enh_rel i_tree = tree ).
+        ENDLOOP.
+      ENDLOOP.
       CLEAR tree.
       LOOP AT  mo_window->ms_sources-t_vars INTO DATA(var) WHERE program = mo_window->m_prg-program AND eventtype IS INITIAL AND class IS INITIAL.
         IF globals_rel IS INITIAL.
@@ -2234,19 +2254,6 @@
         DATA(dashes) = repeat( val = |-| occ = ( line-stack ) ).
         IF prev_line-ev_name <> line-ev_name OR prev_line-ev_type <> line-ev_type OR prev_line-class <> line-class. "new event
 
-          " Add END enhancements for previous subroutine
-          IF prev_line-ev_name IS NOT INITIAL.
-            READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = prev_line-include INTO DATA(prev_prog).
-            LOOP AT prev_prog-tt_enh_blocks INTO DATA(enh_end)
-              WHERE ev_name = prev_line-ev_name AND ev_type = prev_line-ev_type AND position = 'END'.
-              LOOP AT prev_prog-source_tab FROM enh_end-from_line TO enh_end-to_line INTO enh_line.
-                APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
-                ind = sy-tabix.
-                <flow> = enh_line.
-              ENDLOOP.
-            ENDLOOP.
-          ENDIF.
-
           SPLIT line-include AT '=' INTO TABLE splits.
           APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
           ind  = sy-tabix.
@@ -2275,21 +2282,24 @@
           ind = sy-tabix.
           <flow> = |{ spaces }{ source_line }|.
         ENDLOOP.
+
+        " Add END enhancements after last statement of subroutine (before switch)
+        DATA(next_tabix) = sy-tabix + 1.
+        READ TABLE lines INDEX next_tabix INTO DATA(next_line).
+        IF sy-subrc <> 0 OR next_line-ev_name <> line-ev_name OR next_line-ev_type <> line-ev_type.
+          READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = line-include INTO DATA(cur_prog).
+          LOOP AT cur_prog-tt_enh_blocks INTO DATA(enh_end_cur)
+            WHERE ev_name = line-ev_name AND ev_type = line-ev_type AND position = 'END'.
+            LOOP AT cur_prog-source_tab FROM enh_end_cur-from_line TO enh_end_cur-to_line INTO enh_line.
+              APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
+              ind = sy-tabix.
+              <flow> = enh_line.
+            ENDLOOP.
+          ENDLOOP.
+        ENDIF.
+
         prev_line = line.
       ENDLOOP.
-
-      " Add END enhancements for the last subroutine
-      IF prev_line-ev_name IS NOT INITIAL.
-        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = prev_line-include INTO prev_prog.
-        LOOP AT prev_prog-tt_enh_blocks INTO enh_end
-          WHERE ev_name = prev_line-ev_name AND ev_type = prev_line-ev_type AND position = 'END'.
-          LOOP AT prev_prog-source_tab FROM enh_end-from_line TO enh_end-to_line INTO enh_line.
-            APPEND INITIAL LINE TO flow_lines ASSIGNING <flow>.
-            ind = sy-tabix.
-            <flow> = enh_line.
-          ENDLOOP.
-        ENDLOOP.
-      ENDIF.
 
       mo_window->mo_code_viewer->set_text( table = flow_lines ).
       <prog_mix>-source_tab = flow_lines.
