@@ -2246,7 +2246,9 @@
         APPEND INITIAL LINE TO <prog_mix>-t_keywords ASSIGNING FIELD-SYMBOL(<keyword_mix>).
         <keyword_mix> = keyword.
         <keyword_mix>-include = line-include.
-        <keyword_mix>-program = line-program.
+        IF line-program IS NOT INITIAL.
+          <keyword_mix>-program = line-program.
+        ENDIF.
 
         DATA(from_row) = keyword-v_from_row.
         DATA(to_row)   = keyword-v_to_row.
@@ -2462,6 +2464,9 @@
       mo_code_viewer->remove_all_marker( 4 ).
       mo_code_viewer->remove_all_marker( 7 ).
 
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+        WITH KEY include = m_prg-include INTO DATA(prog_cur).
+
 *    "session breakpoints
       CALL METHOD cl_abap_debugger=>read_breakpoints
         EXPORTING
@@ -2474,13 +2479,18 @@
           wrong_parameters     = 3
           OTHERS               = 4.
 
-      LOOP AT points INTO DATA(point) WHERE  include = m_prg-include.
-        APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
-        <line> = point-line.
-
-        APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
-        MOVE-CORRESPONDING point TO <point>.
-        <point>-type = 'S'.
+      LOOP AT points INTO DATA(point).
+        " Find v_line for this breakpoint (may be in enhancement include)
+        READ TABLE prog_cur-t_keywords
+          WITH KEY include = point-include line = point-line
+          INTO DATA(bp_kw).
+        IF sy-subrc = 0.
+          APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
+          <line> = bp_kw-v_line.
+          APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
+          MOVE-CORRESPONDING point TO <point>.
+          <point>-type = 'S'.
+        ENDIF.
       ENDLOOP.
       mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lines ).
 
@@ -2499,13 +2509,18 @@
 
       CLEAR lines.
 
-      LOOP AT points INTO point. "WHERE inclnamesrc = m_prg-include.
-        APPEND INITIAL LINE TO lines ASSIGNING <line>.
-        <line> = point-line.
-
-        APPEND INITIAL LINE TO mt_bpoints ASSIGNING <point>.
-        MOVE-CORRESPONDING point TO <point>.
-        <point>-type = 'E'.
+      LOOP AT points INTO point.
+        " Find v_line for this breakpoint (may be in enhancement include)
+        READ TABLE prog_cur-t_keywords
+          WITH KEY include = point-include line = point-line
+          INTO bp_kw.
+        IF sy-subrc = 0.
+          APPEND INITIAL LINE TO lines ASSIGNING <line>.
+          <line> = bp_kw-v_line.
+          APPEND INITIAL LINE TO mt_bpoints ASSIGNING <point>.
+          MOVE-CORRESPONDING point TO <point>.
+          <point>-type = 'E'.
+        ENDIF.
       ENDLOOP.
       mo_code_viewer->set_marker( EXPORTING marker_number = 4 marker_lines = lines ).
 
@@ -2835,14 +2850,18 @@
         type = 'E'.
       ENDIF.
       IF m_prg-include = 'Code_Flow_Mix'.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include =  'Code_Flow_Mix' INTO DATA(prog_mix).
-        READ TABLE prog_mix-t_keywords WITH KEY v_line = line  INTO DATA(keyword).
-        program = keyword-program.
-        include = keyword-include.
-        code_line = keyword-line.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' INTO DATA(prog_mix).
+        READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO DATA(keyword).
       ELSE.
-        program = m_prg-program.
-        include = m_prg-include.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = m_prg-include INTO prog_mix.
+        READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO keyword.
+      ENDIF.
+      program   = keyword-program.
+      include   = keyword-include.
+      code_line = keyword-line.
+      IF include IS INITIAL.
+        program   = m_prg-program.
+        include   = m_prg-include.
         code_line = line.
       ENDIF.
       LOOP AT mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = code_line AND include = include.
@@ -5324,9 +5343,20 @@
           WHEN position = 'BEGIN' THEN ls_kw_form-line + 1
           ELSE ls_kw_end-line ).  " before ENDFORM line
 
+        " Pre-calculate base virtual line: insert position + current offset + 1 (separator line)
+        DATA(lv_vline_base) = lv_insert_line + lv_offset + 1.
+        DATA(lv_kw_vline)   = lv_vline_base.
         LOOP AT lt_enh_kw INTO DATA(ls_ins).
+          ls_ins-v_line     = lv_kw_vline.
+          ls_ins-v_from_row = lv_kw_vline.
+          ls_ins-v_to_row   = lv_kw_vline.
           INSERT ls_ins INTO <prog>-t_keywords INDEX tabix.
           ADD 1 TO tabix.
+          ADD 1 TO lv_kw_vline.
+          " After ENDENHANCEMENT there will be a closing separator line too
+          IF ls_ins-name = 'ENDENHANCEMENT'.
+            ADD 1 TO lv_kw_vline.
+          ENDIF.
         ENDLOOP.
 
         " Insert source_tab lines at the target position
