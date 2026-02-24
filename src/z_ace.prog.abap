@@ -596,6 +596,15 @@
         collect_enhancements IMPORTING i_program   TYPE program
                                      io_debugger TYPE REF TO lcl_ace,
 
+        collect_method_enhancements IMPORTING i_enhname    TYPE enhname
+                                              i_enhinclude TYPE program
+                                              i_method     TYPE string
+                                              i_class      TYPE string
+                                              i_meth_pos   TYPE string
+                                              i_id         TYPE i
+                                              io_debugger  TYPE REF TO lcl_ace
+                                    CHANGING  cv_offset    TYPE i,
+
         process_words IMPORTING i_program   TYPE program
                                 i_include   TYPE program
                                 i_class     TYPE string
@@ -5224,34 +5233,77 @@
             tabix      TYPE i,
             lv_offset  TYPE i.  " offset in source_tab after previous insertions
 
-      " Read all enhancements for the given program
-      SELECT programname, enhname, enhinclude, id, full_name
-        FROM d010enh
-        INTO TABLE @DATA(lt_enh)
-        WHERE programname = @i_program
-          AND version = 'A'.
+      " For class method includes (CM*), D010ENH stores enhancements under the CP program.
+      " Resolve the master program via D010INC.
+      DATA(lv_enh_prog) = i_program.
+      SELECT SINGLE master FROM d010inc
+        INTO @DATA(lv_master)
+        WHERE include = @i_program.
+      IF sy-subrc = 0 AND lv_master IS NOT INITIAL.
+        lv_enh_prog = lv_master.
+      ENDIF.
 
-      CHECK lt_enh IS NOT INITIAL.
-
-      " Check if enhancements already collected for this include
+      " Check if enhancements already collected for this include - do this FIRST
+      DATA(lv_prog_enh_tabix) = 0.
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = i_program
         ASSIGNING FIELD-SYMBOL(<prog_enh>).
-      IF sy-subrc = 0 AND <prog_enh>-enh_collected = abap_true.
-        RETURN.
+      IF sy-subrc = 0.
+        lv_prog_enh_tabix = sy-tabix.
+        IF <prog_enh>-enh_collected = abap_true OR <prog_enh>-tt_enh_blocks IS NOT INITIAL.
+          RETURN.
+        ENDIF.
       ENDIF.
+
+      " Read all enhancements for the given program
+      SELECT programname, enhname, enhinclude, id, full_name, enhmode
+        FROM d010enh
+        INTO TABLE @DATA(lt_enh)
+        WHERE programname = @lv_enh_prog
+          AND version = 'A'.
+
+      " DEBUG: show what program we're searching enhancements for
+
+      CHECK lt_enh IS NOT INITIAL.
 
       LOOP AT lt_enh INTO DATA(ls_enh).
         CLEAR: form_name, position.
 
-        " Parse FULL_NAME: \PR:RDDM0001\FO:INIT_DELIVERY\SE:END\EI
         DATA(lv_full) = ls_enh-full_name.
-        FIND FIRST OCCURRENCE OF REGEX '\\FO:([^\\]+)' IN lv_full SUBMATCHES form_name.
-        FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
 
-        CHECK form_name IS NOT INITIAL AND position IS NOT INITIAL.
+        IF ls_enh-enhmode = 'D'.
+          " Method enhancement: \TY:CLASSNAME\ME:METHODNAME\SE:%_BEGIN|%_END\EI
+          DATA(lv_class_name) = ``.
+          DATA(lv_method_name) = ``.
+          FIND FIRST OCCURRENCE OF REGEX '\\TY:([^\\]+)' IN lv_full SUBMATCHES lv_class_name.
+          FIND FIRST OCCURRENCE OF REGEX '\\ME:([^\\]+)' IN lv_full SUBMATCHES lv_method_name.
+          FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
+          CHECK lv_class_name IS NOT INITIAL AND lv_method_name IS NOT INITIAL AND position IS NOT INITIAL.
 
-        " Parse enhancement include if not yet parsed
+          " Map position
+          DATA(lv_meth_pos) = SWITCH string(
+            position
+            WHEN '%_BEGIN' THEN 'BEGIN'
+            WHEN '%_END'   THEN 'END'
+            ELSE `` ).
+          CHECK lv_meth_pos IS NOT INITIAL.
+
+
+        collect_method_enhancements(
+            EXPORTING i_enhname    = CONV #( ls_enh-enhname )
+                      i_enhinclude = CONV #( ls_enh-enhinclude )
+                      i_method     = lv_method_name
+                      i_class      = lv_class_name
+                      i_meth_pos   = lv_meth_pos
+                      i_id         = CONV #( ls_enh-id )
+                      io_debugger  = io_debugger
+            CHANGING  cv_offset    = lv_offset ).
+
+        ELSE.
+          " FORM enhancement: \PR:...\FO:FORMNAME\SE:BEGIN|END\EI
+          FIND FIRST OCCURRENCE OF REGEX '\\FO:([^\\]+)' IN lv_full SUBMATCHES form_name.
+          FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
+          CHECK form_name IS NOT INITIAL AND position IS NOT INITIAL.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           WITH KEY include = ls_enh-enhinclude TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
@@ -5416,12 +5468,195 @@
         <enh_blk>-from_line = lv_insert_line + lv_offset_snap.
         <enh_blk>-to_line   = lv_src_tabix - 1.
 
+        ENDIF. " ENHMODE = 'D' / FORM
+
       ENDLOOP.
 
       " Mark enhancements as collected for this include
-      IF <prog_enh> IS ASSIGNED.
-        <prog_enh>-enh_collected = abap_true.
+      IF lv_prog_enh_tabix > 0.
+        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          INDEX lv_prog_enh_tabix
+          ASSIGNING <prog_enh>.
+        IF sy-subrc = 0.
+          <prog_enh>-enh_collected = abap_true.
+        ENDIF.
       ENDIF.
+
+    ENDMETHOD.
+
+    METHOD collect_method_enhancements.
+
+      " Build EIMP include name: enhinclude ends with ==E, replace E -> EIMP
+      DATA(lv_enhname_trimmed)  = condense( val = CONV string( i_enhname ) ).
+      DATA(lv_enhinclude_str)   = condense( val = CONV string( i_enhinclude ) ).
+      DATA(lv_eimp_include) = CONV program(
+        substring( val = lv_enhinclude_str len = strlen( lv_enhinclude_str ) - 1 ) && 'EIMP' ).
+
+      " IPR_ = pre (%_BEGIN), IPO_ = post (%_END)
+      DATA(lv_impl_prefix) = COND string(
+        WHEN i_meth_pos = 'BEGIN' THEN 'IPR_'
+        WHEN i_meth_pos = 'END'   THEN 'IPO_' ).
+      DATA(lv_impl_method) = lv_impl_prefix && lv_enhname_trimmed && '~' && i_method.
+
+      " Parse EIMP include if not yet done
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        WITH KEY include = lv_eimp_include TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        parse_tokens(
+          i_program   = lv_eimp_include
+          i_include   = lv_eimp_include
+          io_debugger = io_debugger ).
+      ENDIF.
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        WITH KEY include = lv_eimp_include
+        INTO DATA(ls_eimp_prog).
+
+
+      CHECK sy-subrc = 0.
+
+      " Find and parse all CM* includes of the class program
+      DATA(lv_class_prog) = CONV program(
+        i_class && repeat( val = '=' occ = 30 - strlen( i_class ) ) && 'CP' ).
+      DATA(lv_cm_pattern) = lv_class_prog(28) && 'CM%'.
+      SELECT include FROM d010inc
+        INTO TABLE @DATA(lt_cm_includes)
+        WHERE master = @lv_class_prog
+          AND include LIKE @lv_cm_pattern.
+      LOOP AT lt_cm_includes INTO DATA(ls_cm).
+        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          WITH KEY include = ls_cm-include TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          parse_tokens(
+            i_program   = ls_cm-include
+            i_include   = ls_cm-include
+            io_debugger = io_debugger ).
+        ENDIF.
+      ENDLOOP.
+
+      " Find the method in tt_calls_line
+      DATA ls_call_line_m TYPE lcl_ace_appl=>ts_calls_line.
+      LOOP AT io_debugger->mo_window->ms_sources-tt_calls_line
+        INTO ls_call_line_m
+        WHERE eventtype = 'METHOD'
+          AND eventname = i_method
+          AND class     = i_class.
+        EXIT.
+      ENDLOOP.
+
+
+      CHECK sy-subrc = 0.
+
+      " Find prog containing this method
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        WITH KEY include = ls_call_line_m-include
+        ASSIGNING FIELD-SYMBOL(<prog_m>).
+      CHECK sy-subrc = 0.
+
+      " Find METHOD keyword by index
+      DATA(lv_meth_tabix) = 0.
+      DATA ls_kw_meth TYPE lcl_ace_appl=>ts_kword.
+      LOOP AT <prog_m>-t_keywords INTO ls_kw_meth.
+        IF ls_kw_meth-name = 'METHOD' AND ls_kw_meth-index = ls_call_line_m-index.
+          lv_meth_tabix = sy-tabix.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+      CHECK lv_meth_tabix > 0.
+
+      " Collect METHOD IPR/IPO_...~METHOD ... ENDMETHOD from EIMP
+      DATA lt_enh_kw TYPE lcl_ace_window=>tt_kword.
+      DATA lv_in_block TYPE boolean.
+      LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_kw).
+        IF ls_kw-name = 'METHOD'.
+          READ TABLE ls_eimp_prog-scan->statements INDEX ls_kw-index INTO DATA(ls_stmt).
+          READ TABLE ls_eimp_prog-scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
+          IF ls_tok-str = lv_impl_method.
+            lv_in_block = abap_true.
+            APPEND ls_kw TO lt_enh_kw.
+          ELSE.
+            lv_in_block = abap_false.
+          ENDIF.
+          CONTINUE.
+        ENDIF.
+        IF ls_kw-name = 'ENDMETHOD'.
+          IF lv_in_block = abap_true.
+            APPEND ls_kw TO lt_enh_kw.
+          ENDIF.
+          CLEAR lv_in_block.
+          CONTINUE.
+        ENDIF.
+        IF lv_in_block = abap_true.
+          APPEND ls_kw TO lt_enh_kw.
+        ENDIF.
+      ENDLOOP.
+      CHECK lt_enh_kw IS NOT INITIAL.
+
+
+      " Determine insertion tabix and line
+      DATA(lv_ins_tabix) = lv_meth_tabix + 1.
+      DATA ls_kw_end TYPE lcl_ace_appl=>ts_kword.
+      IF i_meth_pos = 'END'.
+        LOOP AT <prog_m>-t_keywords INTO ls_kw_end FROM lv_ins_tabix.
+          IF ls_kw_end-name = 'ENDMETHOD'.
+            lv_ins_tabix = sy-tabix.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+
+      DATA(lv_insert_line) = COND i(
+        WHEN i_meth_pos = 'BEGIN' THEN ls_kw_meth-line + 1
+        ELSE ls_kw_end-line ).
+
+      " Set v_line for inserted keywords
+      DATA(lv_vline_base) = lv_insert_line + cv_offset + 1.
+      DATA(lv_kw_vline)   = lv_vline_base.
+      LOOP AT lt_enh_kw INTO DATA(ls_ins).
+        ls_ins-v_line     = lv_kw_vline.
+        ls_ins-v_from_row = lv_kw_vline.
+        ls_ins-v_to_row   = lv_kw_vline.
+        INSERT ls_ins INTO <prog_m>-t_keywords INDEX lv_ins_tabix.
+        ADD 1 TO lv_ins_tabix.
+        ADD 1 TO lv_kw_vline.
+      ENDLOOP.
+
+      " Insert source_tab lines
+      DATA(lv_src_tabix)   = lv_insert_line + cv_offset.
+      DATA(lv_offset_snap) = cv_offset.
+
+      DATA(lv_sep) = COND string(
+        WHEN i_meth_pos = 'BEGIN' THEN |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Pre ({ lv_impl_method })|
+        WHEN i_meth_pos = 'END'   THEN |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Post ({ lv_impl_method })| ).
+      INSERT lv_sep INTO <prog_m>-source_tab INDEX lv_src_tabix.
+      ADD 1 TO lv_src_tabix.
+      ADD 1 TO cv_offset.
+
+      LOOP AT lt_enh_kw INTO ls_ins.
+        READ TABLE ls_eimp_prog-source_tab INDEX ls_ins-line INTO DATA(lv_src_line).
+        CHECK sy-subrc = 0.
+        INSERT lv_src_line INTO <prog_m>-source_tab INDEX lv_src_tabix.
+        ADD 1 TO lv_src_tabix.
+        ADD 1 TO cv_offset.
+      ENDLOOP.
+
+      " Shift v_line for existing keywords after insertion point
+      DATA(lv_enh_inserted) = cv_offset - lv_offset_snap.
+      LOOP AT <prog_m>-t_keywords ASSIGNING FIELD-SYMBOL(<kw_v>).
+        IF <kw_v>-line >= lv_insert_line AND <kw_v>-v_line < lv_vline_base.
+          ADD lv_enh_inserted TO <kw_v>-v_line.
+          ADD lv_enh_inserted TO <kw_v>-v_from_row.
+          ADD lv_enh_inserted TO <kw_v>-v_to_row.
+        ENDIF.
+      ENDLOOP.
+
+      " Save enh block for CodeMix/tree
+      APPEND INITIAL LINE TO <prog_m>-tt_enh_blocks ASSIGNING FIELD-SYMBOL(<enh_blk>).
+      <enh_blk>-ev_type   = 'METHOD'.
+      <enh_blk>-ev_name   = i_method.
+      <enh_blk>-position  = i_meth_pos.
+      <enh_blk>-enh_name  = i_enhname.
+      <enh_blk>-from_line = lv_insert_line + lv_offset_snap.
+      <enh_blk>-to_line   = lv_src_tabix - 1.
 
     ENDMETHOD.
 
