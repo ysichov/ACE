@@ -602,8 +602,7 @@
                                               i_class      TYPE string
                                               i_meth_pos   TYPE string
                                               i_id         TYPE i
-                                              io_debugger  TYPE REF TO lcl_ace
-                                    CHANGING  cv_offset    TYPE i,
+                                              io_debugger  TYPE REF TO lcl_ace,
 
         process_words IMPORTING i_program   TYPE program
                                 i_include   TYPE program
@@ -5266,6 +5265,9 @@
 
       CHECK lt_enh IS NOT INITIAL.
 
+      " Sort: %_END before %_BEGIN so POST inserts first (doesn't affect PRE position)
+      SORT lt_enh BY full_name DESCENDING.
+
       LOOP AT lt_enh INTO DATA(ls_enh).
         CLEAR: form_name, position.
 
@@ -5289,15 +5291,14 @@
           CHECK lv_meth_pos IS NOT INITIAL.
 
 
-        collect_method_enhancements(
+          collect_method_enhancements(
             EXPORTING i_enhname    = CONV #( ls_enh-enhname )
                       i_enhinclude = CONV #( ls_enh-enhinclude )
                       i_method     = lv_method_name
                       i_class      = lv_class_name
                       i_meth_pos   = lv_meth_pos
                       i_id         = CONV #( ls_enh-id )
-                      io_debugger  = io_debugger
-            CHANGING  cv_offset    = lv_offset ).
+                      io_debugger  = io_debugger ).
 
         ELSE.
           " FORM enhancement: \PR:...\FO:FORMNAME\SE:BEGIN|END\EI
@@ -5428,24 +5429,31 @@
           ADD 1 TO lv_offset.
         ENDIF.
 
-        LOOP AT lt_enh_kw INTO ls_ins.
-          READ TABLE ls_enh_prog-source_tab INDEX ls_ins-line INTO DATA(lv_src_line).
-          CHECK sy-subrc = 0.
-          " For ENHANCEMENT N. line - append enhname before the period
-          IF ls_ins-name = 'ENHANCEMENT'.
-            REPLACE REGEX '(ENHANCEMENT\s+\d+)(\s+)\.' IN lv_src_line WITH `$1$2` && ls_enh-enhname && `.`.
-          ENDIF.
-          INSERT lv_src_line INTO <prog>-source_tab INDEX lv_src_tabix.
-          ADD 1 TO lv_src_tabix.
-          ADD 1 TO lv_offset.
-          " After ENDENHANCEMENT insert closing separator line
-          IF ls_ins-name = 'ENDENHANCEMENT'.
-            DATA(lv_end_sep) = |*$*$-End:   ({ lv_enh_id }){ repeat( val = `-` occ = 40 ) }$*$*|.
-            INSERT lv_end_sep INTO <prog>-source_tab INDEX lv_src_tabix.
+        " Insert source_tab lines - copy full range including comments
+        DATA(lv_first_line) = lt_enh_kw[ 1 ]-line.
+        DATA(lv_last_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
+        DATA(lv_cur_line)   = lv_first_line.
+        WHILE lv_cur_line <= lv_last_line.
+          READ TABLE ls_enh_prog-source_tab INDEX lv_cur_line INTO DATA(lv_src_line).
+          IF sy-subrc = 0.
+            " For ENHANCEMENT N. line - append enhname before the period
+            READ TABLE lt_enh_kw WITH KEY line = lv_cur_line INTO DATA(ls_ins_chk).
+            IF sy-subrc = 0 AND ls_ins_chk-name = 'ENHANCEMENT'.
+              REPLACE REGEX '(ENHANCEMENT\s+\d+)(\s+)\.' IN lv_src_line WITH `$1$2` && ls_enh-enhname && `.`.
+            ENDIF.
+            INSERT lv_src_line INTO <prog>-source_tab INDEX lv_src_tabix.
             ADD 1 TO lv_src_tabix.
             ADD 1 TO lv_offset.
+            " After ENDENHANCEMENT insert closing separator line
+            IF sy-subrc = 0 AND ls_ins_chk-name = 'ENDENHANCEMENT'.
+              DATA(lv_end_sep) = |*$*$-End:   ({ lv_enh_id }){ repeat( val = `-` occ = 40 ) }$*$*|.
+              INSERT lv_end_sep INTO <prog>-source_tab INDEX lv_src_tabix.
+              ADD 1 TO lv_src_tabix.
+              ADD 1 TO lv_offset.
+            ENDIF.
           ENDIF.
-        ENDLOOP.
+          ADD 1 TO lv_cur_line.
+        ENDWHILE.
 
         " Calculate how many lines were inserted by this enhancement
         DATA(lv_enh_inserted) = lv_offset - lv_offset_snap.
@@ -5593,23 +5601,25 @@
 
 
       " Determine insertion tabix and line
-      DATA(lv_ins_tabix) = lv_meth_tabix + 1.
+      DATA(lv_ins_tabix) = COND i(
+        WHEN i_meth_pos = 'BEGIN' THEN lv_meth_tabix
+        ELSE lv_meth_tabix + 1 ).
       DATA ls_kw_end TYPE lcl_ace_appl=>ts_kword.
       IF i_meth_pos = 'END'.
         LOOP AT <prog_m>-t_keywords INTO ls_kw_end FROM lv_ins_tabix.
           IF ls_kw_end-name = 'ENDMETHOD'.
-            lv_ins_tabix = sy-tabix.
+            lv_ins_tabix = sy-tabix + 1.
             EXIT.
           ENDIF.
         ENDLOOP.
       ENDIF.
 
       DATA(lv_insert_line) = COND i(
-        WHEN i_meth_pos = 'BEGIN' THEN ls_kw_meth-line + 1
-        ELSE ls_kw_end-line ).
+        WHEN i_meth_pos = 'BEGIN' THEN ls_kw_meth-line
+        ELSE ls_kw_end-line + 1 ).
 
       " Set v_line for inserted keywords
-      DATA(lv_vline_base) = lv_insert_line + cv_offset + 1.
+      DATA(lv_vline_base) = lv_insert_line + 1.
       DATA(lv_kw_vline)   = lv_vline_base.
       LOOP AT lt_enh_kw INTO DATA(ls_ins).
         ls_ins-v_line     = lv_kw_vline.
@@ -5620,27 +5630,34 @@
         ADD 1 TO lv_kw_vline.
       ENDLOOP.
 
-      " Insert source_tab lines
-      DATA(lv_src_tabix)   = lv_insert_line + cv_offset.
-      DATA(lv_offset_snap) = cv_offset.
+      " Insert source_tab lines - copy full range including comments
+      DATA(lv_src_tabix) = lv_insert_line.
+      DATA(lv_offset)    = 0.
+
+      " Get line range from first to last keyword in block
+      DATA(lv_first_kw_line) = lt_enh_kw[ 1 ]-line.
+      DATA(lv_last_kw_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
 
       DATA(lv_sep) = COND string(
         WHEN i_meth_pos = 'BEGIN' THEN |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Pre ({ lv_impl_method })|
         WHEN i_meth_pos = 'END'   THEN |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Post ({ lv_impl_method })| ).
       INSERT lv_sep INTO <prog_m>-source_tab INDEX lv_src_tabix.
       ADD 1 TO lv_src_tabix.
-      ADD 1 TO cv_offset.
+      ADD 1 TO lv_offset.
 
-      LOOP AT lt_enh_kw INTO ls_ins.
-        READ TABLE ls_eimp_prog-source_tab INDEX ls_ins-line INTO DATA(lv_src_line).
-        CHECK sy-subrc = 0.
-        INSERT lv_src_line INTO <prog_m>-source_tab INDEX lv_src_tabix.
-        ADD 1 TO lv_src_tabix.
-        ADD 1 TO cv_offset.
-      ENDLOOP.
+      DATA(lv_line_idx) = lv_first_kw_line.
+      WHILE lv_line_idx <= lv_last_kw_line.
+        READ TABLE ls_eimp_prog-source_tab INDEX lv_line_idx INTO DATA(lv_src_line).
+        IF sy-subrc = 0.
+          INSERT lv_src_line INTO <prog_m>-source_tab INDEX lv_src_tabix.
+          ADD 1 TO lv_src_tabix.
+          ADD 1 TO lv_offset.
+        ENDIF.
+        ADD 1 TO lv_line_idx.
+      ENDWHILE.
 
       " Shift v_line for existing keywords after insertion point
-      DATA(lv_enh_inserted) = cv_offset - lv_offset_snap.
+      DATA(lv_enh_inserted) = lv_offset.
       LOOP AT <prog_m>-t_keywords ASSIGNING FIELD-SYMBOL(<kw_v>).
         IF <kw_v>-line >= lv_insert_line AND <kw_v>-v_line < lv_vline_base.
           ADD lv_enh_inserted TO <kw_v>-v_line.
@@ -5655,7 +5672,7 @@
       <enh_blk>-ev_name   = i_method.
       <enh_blk>-position  = i_meth_pos.
       <enh_blk>-enh_name  = i_enhname.
-      <enh_blk>-from_line = lv_insert_line + lv_offset_snap.
+      <enh_blk>-from_line = lv_insert_line.
       <enh_blk>-to_line   = lv_src_tabix - 1.
 
     ENDMETHOD.
