@@ -4783,7 +4783,37 @@
                   lt_cm_post TYPE sci_include.
             LOOP AT ls_cm_prog2-tt_enh_blocks INTO DATA(ls_cm_eb)
               WHERE ev_type = 'METHOD' AND ev_name = lv_cm_method
-                AND ( position = 'BEGIN' OR position = 'END' ).
+                AND ( position = 'BEGIN' OR position = 'END' OR position = 'OVERWRITE' ).
+              IF ls_cm_eb-position = 'OVERWRITE'.
+                " Mark method as overwritten - add comment before METHOD line
+                DATA(lv_enh_eimp_ow) = ls_cm_eb-enh_include.
+                READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+                  WITH KEY include = lv_enh_eimp_ow TRANSPORTING NO FIELDS.
+                IF sy-subrc <> 0.
+                  lcl_ace_source_parser=>parse_tokens(
+                    i_program   = CONV #( lv_enh_eimp_ow )
+                    i_include   = CONV #( lv_enh_eimp_ow )
+                    io_debugger = mo_viewer ).
+                ENDIF.
+                READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+                  WITH KEY include = lv_enh_eimp_ow INTO DATA(ls_enh_eimp_ow).
+                IF sy-subrc = 0.
+                  DATA(lv_iow_name) = |IOW_| && ls_cm_eb-enh_name && '~' && lv_cm_method.
+                  " Find METHOD line for IOW_ in EIMP
+                  LOOP AT ls_enh_eimp_ow-t_keywords INTO DATA(ls_ow_kw)
+                    WHERE name = 'METHOD'.
+                    DATA(ls_ow_stmt) = ls_enh_eimp_ow-scan->statements[ ls_ow_kw-index ].
+                    DATA(ls_ow_tok)  = ls_enh_eimp_ow-scan->tokens[ ls_ow_stmt-from + 1 ].
+                    IF ls_ow_tok-str = lv_iow_name.
+                      " Insert 2 comment lines before METHOD line in lt_cm_src (position 1)
+                      INSERT |* OVERWRITTEN BY ENHANCEMENT: | && ls_cm_eb-enh_name INTO lt_cm_src INDEX 1.
+                      INSERT |* | && ls_enh_eimp_ow-source_tab[ ls_ow_kw-line ] INTO lt_cm_src INDEX 2.
+                      EXIT.
+                    ENDIF.
+                  ENDLOOP.
+                ENDIF.
+                CONTINUE.
+              ENDIF.
               DATA(lv_enh_eimp2) = ls_cm_eb-enh_include.
               READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                 WITH KEY include = lv_enh_eimp2 TRANSPORTING NO FIELDS.
@@ -4800,25 +4830,43 @@
                 WHEN ls_cm_eb-position = 'BEGIN' THEN 'IPR_'
                 ELSE                                  'IPO_' ).
               DATA(lv_impl_nm2) = lv_impl_pfx2 && ls_cm_eb-enh_name && '~' && lv_cm_method.
-              DATA: lv_in_eb2   TYPE boolean,
-                    lt_eb2_lines TYPE sci_include.
-              CLEAR: lv_in_eb2, lt_eb2_lines.
+              DATA(lv_iow_nm2)  = |IOW_| && ls_cm_eb-enh_name && '~' && lv_cm_method.
+              DATA: lv_in_eb2    TYPE boolean,
+                    lv_in_iow2   TYPE boolean,
+                    lt_eb2_lines TYPE sci_include,
+                    lt_iow_lines TYPE sci_include.
+              CLEAR: lv_in_eb2, lv_in_iow2, lt_eb2_lines, lt_iow_lines.
               LOOP AT ls_enh_eimp2-t_keywords INTO DATA(ls_ek2).
                 IF ls_ek2-name = 'METHOD'.
                   DATA(ls_ek2_stmt) = ls_enh_eimp2-scan->statements[ ls_ek2-index ].
                   DATA(ls_ek2_tok)  = ls_enh_eimp2-scan->tokens[ ls_ek2_stmt-from + 1 ].
-                  lv_in_eb2 = xsdbool( ls_ek2_tok-str = lv_impl_nm2 ).
-                  IF lv_in_eb2 = abap_true.
+                  IF ls_ek2_tok-str = lv_impl_nm2.
+                    lv_in_eb2 = abap_true. lv_in_iow2 = abap_false.
                     APPEND |* | && ls_enh_eimp2-source_tab[ ls_ek2-line ] TO lt_eb2_lines.
+                  ELSEIF ls_ek2_tok-str = lv_iow_nm2.
+                    lv_in_iow2 = abap_true. lv_in_eb2 = abap_false.
+                    " Add comment header at top of method block
+                    INSERT |* OVERWRITTEN BY ENHANCEMENT: | && ls_cm_eb-enh_name INTO lt_cm_src INDEX 1.
+                    INSERT |* | && ls_enh_eimp2-source_tab[ ls_ek2-line ] INTO lt_cm_src INDEX 2.
+                    APPEND |* | && ls_enh_eimp2-source_tab[ ls_ek2-line ] TO lt_iow_lines.
+                  ELSE.
+                    lv_in_eb2 = abap_false. lv_in_iow2 = abap_false.
                   ENDIF.
                   CONTINUE.
                 ENDIF.
-                IF ls_ek2-name = 'ENDMETHOD' AND lv_in_eb2 = abap_true.
-                  APPEND |* | && ls_enh_eimp2-source_tab[ ls_ek2-line ] TO lt_eb2_lines.
-                  CLEAR lv_in_eb2. EXIT.
+                IF ls_ek2-name = 'ENDMETHOD' AND ( lv_in_eb2 = abap_true OR lv_in_iow2 = abap_true ).
+                  IF lv_in_eb2 = abap_true.
+                    APPEND |* | && ls_enh_eimp2-source_tab[ ls_ek2-line ] TO lt_eb2_lines.
+                  ELSE.
+                    APPEND |* | && ls_enh_eimp2-source_tab[ ls_ek2-line ] TO lt_iow_lines.
+                  ENDIF.
+                  CLEAR: lv_in_eb2, lv_in_iow2.
+                  CONTINUE.
                 ENDIF.
                 IF lv_in_eb2 = abap_true.
                   APPEND ls_enh_eimp2-source_tab[ ls_ek2-line ] TO lt_eb2_lines.
+                ELSEIF lv_in_iow2 = abap_true.
+                  APPEND ls_enh_eimp2-source_tab[ ls_ek2-line ] TO lt_iow_lines.
                 ENDIF.
               ENDLOOP.
               IF lt_eb2_lines IS NOT INITIAL.
@@ -4827,6 +4875,9 @@
                 ELSE.
                   APPEND LINES OF lt_eb2_lines TO lt_cm_post.
                 ENDIF.
+              ENDIF.
+              IF lt_iow_lines IS NOT INITIAL.
+                APPEND LINES OF lt_iow_lines TO lt_cm_src.
               ENDIF.
             ENDLOOP.
             " Insert PRE after METHOD line, POST before ENDMETHOD
