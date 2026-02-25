@@ -5290,7 +5290,6 @@
             ELSE `` ).
           CHECK lv_meth_pos IS NOT INITIAL.
 
-
           collect_method_enhancements(
             EXPORTING i_enhname    = CONV #( ls_enh-enhname )
                       i_enhinclude = CONV #( ls_enh-enhinclude )
@@ -5299,6 +5298,18 @@
                       i_meth_pos   = lv_meth_pos
                       i_id         = CONV #( ls_enh-id )
                       io_debugger  = io_debugger ).
+
+          " Also check for OVERWRITE (IOW_) in the same EIMP
+          IF lv_meth_pos = 'BEGIN'.
+            collect_method_enhancements(
+              EXPORTING i_enhname    = CONV #( ls_enh-enhname )
+                        i_enhinclude = CONV #( ls_enh-enhinclude )
+                        i_method     = lv_method_name
+                        i_class      = lv_class_name
+                        i_meth_pos   = 'OVERWRITE'
+                        i_id         = CONV #( ls_enh-id )
+                        io_debugger  = io_debugger ).
+          ENDIF.
 
         ELSE.
           " FORM enhancement: \PR:...\FO:FORMNAME\SE:BEGIN|END\EI
@@ -5500,10 +5511,11 @@
       DATA(lv_eimp_include) = CONV program(
         substring( val = lv_enhinclude_str len = strlen( lv_enhinclude_str ) - 1 ) && 'EIMP' ).
 
-      " IPR_ = pre (%_BEGIN), IPO_ = post (%_END)
+      " IPR_ = pre (%_BEGIN), IPO_ = post (%_END), IOW_ = overwrite
       DATA(lv_impl_prefix) = COND string(
-        WHEN i_meth_pos = 'BEGIN' THEN 'IPR_'
-        WHEN i_meth_pos = 'END'   THEN 'IPO_' ).
+        WHEN i_meth_pos = 'BEGIN'     THEN 'IPR_'
+        WHEN i_meth_pos = 'END'       THEN 'IPO_'
+        WHEN i_meth_pos = 'OVERWRITE' THEN 'IOW_' ).
       DATA(lv_impl_method) = lv_impl_prefix && lv_enhname_trimmed && '~' && i_method.
 
       " Parse EIMP include if not yet done
@@ -5589,6 +5601,7 @@
         IF ls_kw-name = 'ENDMETHOD'.
           IF lv_in_block = abap_true.
             APPEND ls_kw TO lt_enh_kw.
+            EXIT. " stop after first ENDMETHOD of our block
           ENDIF.
           CLEAR lv_in_block.
           CONTINUE.
@@ -5602,10 +5615,10 @@
 
       " Determine insertion tabix and line
       DATA(lv_ins_tabix) = COND i(
-        WHEN i_meth_pos = 'BEGIN' THEN lv_meth_tabix
+        WHEN i_meth_pos = 'BEGIN' THEN lv_meth_tabix + 1
         ELSE lv_meth_tabix + 1 ).
       DATA ls_kw_end TYPE lcl_ace_appl=>ts_kword.
-      IF i_meth_pos = 'END'.
+      IF i_meth_pos = 'END' OR i_meth_pos = 'OVERWRITE'.
         LOOP AT <prog_m>-t_keywords INTO ls_kw_end FROM lv_ins_tabix.
           IF ls_kw_end-name = 'ENDMETHOD'.
             lv_ins_tabix = sy-tabix + 1.
@@ -5614,29 +5627,71 @@
         ENDLOOP.
       ENDIF.
 
-      DATA(lv_insert_line) = COND i(
-        WHEN i_meth_pos = 'BEGIN' THEN ls_kw_meth-line
-        ELSE ls_kw_end-line + 1 ).
+      " OVERWRITE: replace method body (between METHOD and ENDMETHOD)
+      IF i_meth_pos = 'OVERWRITE'.
+        " Find line range of original method body in source_tab
+        DATA(lv_body_first) = ls_kw_meth-line + 1.
+        DATA(lv_body_last)  = ls_kw_end-line - 1.
+        " Delete original body lines
+        DATA(lv_del_count) = lv_body_last - lv_body_first + 1.
+        DATA(lv_del_idx) = lv_body_first.
+        DO lv_del_count TIMES.
+          DELETE <prog_m>-source_tab INDEX lv_del_idx.
+        ENDDO.
+        " Shift keywords that were after deleted lines
+        LOOP AT <prog_m>-t_keywords ASSIGNING FIELD-SYMBOL(<kw_del>).
+          IF <kw_del>-line > ls_kw_meth-line AND <kw_del>-line <= ls_kw_end-line.
+            <kw_del>-line = ls_kw_meth-line + 1. " collapse to METHOD line+1
+          ELSEIF <kw_del>-line > ls_kw_end-line.
+            <kw_del>-line = <kw_del>-line - lv_del_count.
+          ENDIF.
+        ENDLOOP.
+        " Now insert overwrite body at lv_body_first
+        DATA(lv_ow_sep) = |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Overwrite ({ lv_impl_method })|.
+        DATA(lv_ow_tabix) = lv_body_first.
+        INSERT lv_ow_sep INTO <prog_m>-source_tab INDEX lv_ow_tabix.
+        ADD 1 TO lv_ow_tabix.
+        DATA(lv_ow_first) = lt_enh_kw[ 1 ]-line.
+        DATA(lv_ow_last)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
+        DATA(lv_ow_idx)   = lv_ow_first.
+        WHILE lv_ow_idx <= lv_ow_last.
+          READ TABLE ls_eimp_prog-source_tab INDEX lv_ow_idx INTO DATA(lv_ow_line).
+          IF sy-subrc = 0.
+            " Comment out METHOD/ENDMETHOD to avoid confusing the parser
+            READ TABLE lt_enh_kw WITH KEY line = lv_ow_idx INTO DATA(ls_ow_kw_chk).
+            IF sy-subrc = 0 AND ( ls_ow_kw_chk-name = 'METHOD' OR ls_ow_kw_chk-name = 'ENDMETHOD' ).
+              lv_ow_line = |*{ lv_ow_line }|.
+            ENDIF.
+            INSERT lv_ow_line INTO <prog_m>-source_tab INDEX lv_ow_tabix.
+            ADD 1 TO lv_ow_tabix.
+          ENDIF.
+          ADD 1 TO lv_ow_idx.
+        ENDWHILE.
+        " Save enh block
+        APPEND INITIAL LINE TO <prog_m>-tt_enh_blocks ASSIGNING FIELD-SYMBOL(<enh_blk_ow>).
+        <enh_blk_ow>-ev_type   = 'METHOD'.
+        <enh_blk_ow>-ev_name   = i_method.
+        <enh_blk_ow>-position  = 'OVERWRITE'.
+        <enh_blk_ow>-enh_name  = i_enhname.
+        <enh_blk_ow>-from_line = lv_body_first.
+        <enh_blk_ow>-to_line   = lv_ow_tabix - 1.
+        RETURN.
+      ENDIF.
 
-      " Set v_line for inserted keywords
-      DATA(lv_vline_base) = lv_insert_line + 1.
-      DATA(lv_kw_vline)   = lv_vline_base.
-      LOOP AT lt_enh_kw INTO DATA(ls_ins).
-        ls_ins-v_line     = lv_kw_vline.
-        ls_ins-v_from_row = lv_kw_vline.
-        ls_ins-v_to_row   = lv_kw_vline.
-        INSERT ls_ins INTO <prog_m>-t_keywords INDEX lv_ins_tabix.
-        ADD 1 TO lv_ins_tabix.
-        ADD 1 TO lv_kw_vline.
-      ENDLOOP.
+      DATA(lv_insert_line) = COND i(
+        WHEN i_meth_pos = 'BEGIN' THEN ls_kw_meth-line + 1
+        ELSE ls_kw_end-line ).
 
       " Insert source_tab lines - copy full range including comments
       DATA(lv_src_tabix) = lv_insert_line.
       DATA(lv_offset)    = 0.
 
-      " Get line range from first to last keyword in block
-      DATA(lv_first_kw_line) = lt_enh_kw[ 1 ]-line.
-      DATA(lv_last_kw_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
+      " Get line range - METHOD line to ENDMETHOD line
+      " lt_enh_kw: first=METHOD, last=ENDMETHOD, middle=body keywords
+      DATA(lv_first_kw_line) = lt_enh_kw[ 1 ]-line.        " METHOD line
+      DATA(lv_last_kw_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line. " ENDMETHOD line
+      " Safety check: last must be > first
+      CHECK lv_last_kw_line > lv_first_kw_line.
 
       DATA(lv_sep) = COND string(
         WHEN i_meth_pos = 'BEGIN' THEN |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Pre ({ lv_impl_method })|
@@ -5649,12 +5704,35 @@
       WHILE lv_line_idx <= lv_last_kw_line.
         READ TABLE ls_eimp_prog-source_tab INDEX lv_line_idx INTO DATA(lv_src_line).
         IF sy-subrc = 0.
+          " Comment out METHOD/ENDMETHOD to avoid confusing the parser
+          READ TABLE lt_enh_kw WITH KEY line = lv_line_idx INTO DATA(ls_kw_chk).
+          IF sy-subrc = 0 AND ( ls_kw_chk-name = 'METHOD' OR ls_kw_chk-name = 'ENDMETHOD' ).
+            lv_src_line = |*{ lv_src_line }|.
+          ENDIF.
           INSERT lv_src_line INTO <prog_m>-source_tab INDEX lv_src_tabix.
           ADD 1 TO lv_src_tabix.
           ADD 1 TO lv_offset.
         ENDIF.
         ADD 1 TO lv_line_idx.
       ENDWHILE.
+
+      " Set v_line for inserted keywords - skip METHOD/ENDMETHOD (commented out)
+      " line is recalculated to real position in source_tab: insert_line + 1(sep) + (eimp_line - first_kw_line)
+      DATA(lv_vline_base) = lv_insert_line + 1.
+      DATA(lv_kw_vline)   = lv_vline_base.
+      LOOP AT lt_enh_kw INTO DATA(ls_ins).
+        IF ls_ins-name = 'METHOD' OR ls_ins-name = 'ENDMETHOD'.
+          ADD 1 TO lv_kw_vline. " still advance vline for source_tab alignment
+          CONTINUE.
+        ENDIF.
+        ls_ins-line     = lv_insert_line + 1 + ( ls_ins-line - lv_first_kw_line ).
+        ls_ins-v_line     = lv_kw_vline.
+        ls_ins-v_from_row = lv_kw_vline.
+        ls_ins-v_to_row   = lv_kw_vline.
+        INSERT ls_ins INTO <prog_m>-t_keywords INDEX lv_ins_tabix.
+        ADD 1 TO lv_ins_tabix.
+        ADD 1 TO lv_kw_vline.
+      ENDLOOP.
 
       " Shift v_line for existing keywords after insertion point
       DATA(lv_enh_inserted) = lv_offset.
