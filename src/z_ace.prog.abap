@@ -4612,6 +4612,8 @@
         CHANGING
           t_table     = tree_table ).
 
+.
+
       DATA(o_setting) =  mo_tree->get_tree_settings( ).
       o_setting->set_hierarchy_header( i_header ).
       o_setting->set_hierarchy_size( 30 ).
@@ -4724,6 +4726,12 @@
       ENDLOOP.
 
       mo_tree->display( ).
+
+      " Scroll to top
+      TRY.
+          mo_tree->get_nodes( )->set_top_node( main_node_key ).
+        CATCH cx_root.
+      ENDTRY.
 
     ENDMETHOD.
 
