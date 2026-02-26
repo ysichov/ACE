@@ -4780,20 +4780,42 @@
             ENDLOOP.
           ENDIF.
           IF lv_cm_meth_line > 0 AND lv_cm_endm_line > 0.
-            " Extract METHOD..ENDMETHOD lines
-            DATA lt_cm_src TYPE sci_include.
+            " Check if method has any enhancements
+            READ TABLE ls_cm_prog2-tt_enh_blocks TRANSPORTING NO FIELDS
+              WITH KEY ev_type = 'METHOD' ev_name = lv_cm_method.
+            IF sy-subrc <> 0.
+              " No enhancements - show full CM include as-is
+              mo_viewer->mo_window->set_program( lv_cm_include ).
+              mo_viewer->mo_window->m_prg-include = lv_cm_include.
+              mo_viewer->mo_window->set_program_line( lv_cm_meth_line ).
+              RETURN.
+            ENDIF.
+            DATA lt_cm_src  TYPE sci_include.
+            DATA lt_virt_kw TYPE lcl_ace_appl=>tt_kword.
+            " Copy CM method lines and build keyword map (include=CM, v_line=virtual row)
             LOOP AT ls_cm_prog2-source_tab INTO DATA(lv_cm_line)
               FROM lv_cm_meth_line TO lv_cm_endm_line.
               APPEND lv_cm_line TO lt_cm_src.
+              DATA(lv_virt_row) = lines( lt_cm_src ).
+              DATA(lv_cm_real_line) = lv_cm_meth_line + lv_virt_row - 1.
+              LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_vkw_src)
+                WHERE line = lv_cm_real_line.
+                DATA(ls_vkw) = ls_vkw_src.
+                ls_vkw-include = lv_cm_include.
+                ls_vkw-v_line  = lv_virt_row.
+                APPEND ls_vkw TO lt_virt_kw.
+              ENDLOOP.
             ENDLOOP.
-            " Embed PRE/POST enhancements from tt_enh_blocks
-            DATA: lt_cm_pre  TYPE sci_include,
-                  lt_cm_post TYPE sci_include.
+            " Embed PRE/POST/OVERWRITE enhancements
+            DATA: lt_cm_pre     TYPE sci_include,
+                  lt_cm_post    TYPE sci_include,
+                  lt_cm_pre_kw  TYPE lcl_ace_appl=>tt_kword,
+                  lt_cm_post_kw TYPE lcl_ace_appl=>tt_kword.
             LOOP AT ls_cm_prog2-tt_enh_blocks INTO DATA(ls_cm_eb)
               WHERE ev_type = 'METHOD' AND ev_name = lv_cm_method
                 AND ( position = 'BEGIN' OR position = 'END' OR position = 'OVERWRITE' ).
+              " ---- OVERWRITE ----
               IF ls_cm_eb-position = 'OVERWRITE'.
-                " Add IOW body to lt_cm_src after original method body
                 DATA(lv_enh_eimp_ow) = ls_cm_eb-enh_include.
                 READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                   WITH KEY include = lv_enh_eimp_ow TRANSPORTING NO FIELDS.
@@ -4807,49 +4829,56 @@
                   WITH KEY include = lv_enh_eimp_ow INTO DATA(ls_enh_eimp_ow).
                 IF sy-subrc = 0.
                   DATA(lv_iow_name) = |IOW_| && ls_cm_eb-enh_name && '~' && lv_cm_method.
-                  DATA lv_in_iow TYPE boolean.
-                  CLEAR lv_in_iow.
-                  DATA lv_iow_first_line TYPE i.
-                  DATA lv_iow_last_line  TYPE i.
-                  CLEAR: lv_iow_first_line, lv_iow_last_line.
-                  " Find start/end line of IOW_ method body
+                  DATA lv_in_iow    TYPE boolean.
+                  DATA lv_iow_first TYPE i.
+                  DATA lv_iow_last  TYPE i.
+                  CLEAR: lv_in_iow, lv_iow_first, lv_iow_last.
                   LOOP AT ls_enh_eimp_ow-t_keywords INTO DATA(ls_ow_kw).
                     IF ls_ow_kw-name = 'METHOD'.
                       DATA(ls_ow_stmt) = ls_enh_eimp_ow-scan->statements[ ls_ow_kw-index ].
                       DATA(ls_ow_tok)  = ls_enh_eimp_ow-scan->tokens[ ls_ow_stmt-from + 1 ].
                       IF ls_ow_tok-str = lv_iow_name OR ls_ow_tok-str CP |IOW_*~{ lv_cm_method }|.
-                        lv_in_iow = abap_true.
-                        lv_iow_first_line = ls_ow_kw-line.
+                        lv_in_iow    = abap_true.
+                        lv_iow_first = ls_ow_kw-line.
+                        " Insert 2 comment lines at top, shift all existing virt kw by 2
                         INSERT |* OVERWRITTEN BY ENHANCEMENT: | && ls_cm_eb-enh_name INTO lt_cm_src INDEX 1.
                         INSERT |* | && ls_enh_eimp_ow-source_tab[ ls_ow_kw-line ] INTO lt_cm_src INDEX 2.
+                        LOOP AT lt_virt_kw ASSIGNING FIELD-SYMBOL(<vkw_ow>).
+                          <vkw_ow>-v_line = <vkw_ow>-v_line + 2.
+                        ENDLOOP.
                       ELSE.
-                        IF lv_in_iow = abap_true.
-                          " already found - skip other methods
-                        ENDIF.
                         lv_in_iow = abap_false.
                       ENDIF.
                     ELSEIF ls_ow_kw-name = 'ENDMETHOD' AND lv_in_iow = abap_true.
-                      lv_iow_last_line = ls_ow_kw-line.
+                      lv_iow_last = ls_ow_kw-line.
                       EXIT.
                     ENDIF.
                   ENDLOOP.
-                  " Copy all source lines of IOW_ method (including multi-line statements)
-                  IF lv_iow_first_line > 0 AND lv_iow_last_line > lv_iow_first_line.
+                  " Copy IOW lines + collect their keywords
+                  IF lv_iow_first > 0 AND lv_iow_last > lv_iow_first.
                     DATA lv_iow_idx TYPE i.
-                    lv_iow_idx = lv_iow_first_line.
-                    WHILE lv_iow_idx <= lv_iow_last_line.
+                    lv_iow_idx = lv_iow_first.
+                    WHILE lv_iow_idx <= lv_iow_last.
                       DATA(lv_iow_src_line) = ls_enh_eimp_ow-source_tab[ lv_iow_idx ].
-                      IF lv_iow_idx = lv_iow_first_line OR lv_iow_idx = lv_iow_last_line.
+                      IF lv_iow_idx = lv_iow_first OR lv_iow_idx = lv_iow_last.
                         APPEND |* | && lv_iow_src_line TO lt_cm_src.
                       ELSE.
                         APPEND lv_iow_src_line TO lt_cm_src.
                       ENDIF.
+                      LOOP AT ls_enh_eimp_ow-t_keywords INTO DATA(ls_iow_kw2)
+                        WHERE line = lv_iow_idx.
+                        DATA(ls_iow_vkw) = ls_iow_kw2.
+                        ls_iow_vkw-include = lv_enh_eimp_ow.
+                        ls_iow_vkw-v_line  = lines( lt_cm_src ).
+                        APPEND ls_iow_vkw TO lt_virt_kw.
+                      ENDLOOP.
                       lv_iow_idx = lv_iow_idx + 1.
                     ENDWHILE.
                   ENDIF.
                 ENDIF.
                 CONTINUE.
               ENDIF.
+              " ---- PRE / POST ----
               DATA(lv_enh_eimp2) = ls_cm_eb-enh_include.
               READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                 WITH KEY include = lv_enh_eimp2 TRANSPORTING NO FIELDS.
@@ -4866,38 +4895,29 @@
                 WHEN ls_cm_eb-position = 'BEGIN' THEN 'IPR_'
                 ELSE                                  'IPO_' ).
               DATA(lv_impl_nm2) = lv_impl_pfx2 && ls_cm_eb-enh_name && '~' && lv_cm_method.
-              DATA(lv_iow_nm2)  = |IOW_| && ls_cm_eb-enh_name && '~' && lv_cm_method.
               DATA: lv_in_eb2    TYPE boolean,
-                    lv_in_iow2   TYPE boolean,
                     lt_eb2_lines TYPE sci_include,
-                    lt_iow_lines TYPE sci_include.
-              CLEAR: lv_in_eb2, lv_in_iow2, lt_eb2_lines, lt_iow_lines.
+                    lt_eb2_kw    TYPE lcl_ace_appl=>tt_kword.
               DATA lv_eb2_first TYPE i.
               DATA lv_eb2_last  TYPE i.
-              CLEAR: lv_eb2_first, lv_eb2_last.
-              " Find start/end lines by scanning keywords
+              CLEAR: lv_in_eb2, lt_eb2_lines, lt_eb2_kw, lv_eb2_first, lv_eb2_last.
+              " Find METHOD/ENDMETHOD line range for IPR_/IPO_ method
               LOOP AT ls_enh_eimp2-t_keywords INTO DATA(ls_ek2).
                 IF ls_ek2-name = 'METHOD'.
                   DATA(ls_ek2_stmt) = ls_enh_eimp2-scan->statements[ ls_ek2-index ].
                   DATA(ls_ek2_tok)  = ls_enh_eimp2-scan->tokens[ ls_ek2_stmt-from + 1 ].
                   IF ls_ek2_tok-str = lv_impl_nm2.
-                    lv_in_eb2 = abap_true. lv_in_iow2 = abap_false.
-                    lv_eb2_first = ls_ek2-line.
-                  ELSEIF ls_ek2_tok-str = lv_iow_nm2 OR ls_ek2_tok-str CP |IOW_*~{ lv_cm_method }|.
-                    lv_in_iow2 = abap_true. lv_in_eb2 = abap_false.
+                    lv_in_eb2 = abap_true. lv_eb2_first = ls_ek2-line.
                   ELSE.
-                    lv_in_eb2 = abap_false. lv_in_iow2 = abap_false.
+                    lv_in_eb2 = abap_false.
                   ENDIF.
                   CONTINUE.
                 ENDIF.
-                IF ls_ek2-name = 'ENDMETHOD' AND ( lv_in_eb2 = abap_true OR lv_in_iow2 = abap_true ).
-                  IF lv_in_eb2 = abap_true.
-                    lv_eb2_last = ls_ek2-line.
-                  ENDIF.
-                  CLEAR: lv_in_eb2, lv_in_iow2.
+                IF ls_ek2-name = 'ENDMETHOD' AND lv_in_eb2 = abap_true.
+                  lv_eb2_last = ls_ek2-line. CLEAR lv_in_eb2.
                 ENDIF.
               ENDLOOP.
-              " Copy all source lines (including multi-line statements)
+              " Copy lines + keywords (v_line relative to method start, fixed on INSERT)
               IF lv_eb2_first > 0 AND lv_eb2_last > lv_eb2_first.
                 DATA lv_eb2_idx TYPE i.
                 lv_eb2_idx = lv_eb2_first.
@@ -4908,36 +4928,75 @@
                   ELSE.
                     APPEND lv_eb2_src TO lt_eb2_lines.
                   ENDIF.
+                  LOOP AT ls_enh_eimp2-t_keywords INTO DATA(ls_ek2_kw)
+                    WHERE line = lv_eb2_idx.
+                    DATA(ls_eb2_vkw) = ls_ek2_kw.
+                    ls_eb2_vkw-include = lv_enh_eimp2.
+                    ls_eb2_vkw-v_line  = lv_eb2_idx - lv_eb2_first + 1.
+                    APPEND ls_eb2_vkw TO lt_eb2_kw.
+                  ENDLOOP.
                   lv_eb2_idx = lv_eb2_idx + 1.
                 ENDWHILE.
               ENDIF.
               IF lt_eb2_lines IS NOT INITIAL.
                 IF ls_cm_eb-position = 'BEGIN'.
                   APPEND LINES OF lt_eb2_lines TO lt_cm_pre.
+                  APPEND LINES OF lt_eb2_kw    TO lt_cm_pre_kw.
                 ELSE.
                   APPEND LINES OF lt_eb2_lines TO lt_cm_post.
+                  APPEND LINES OF lt_eb2_kw    TO lt_cm_post_kw.
                 ENDIF.
               ENDIF.
-              IF lt_iow_lines IS NOT INITIAL.
-                APPEND LINES OF lt_iow_lines TO lt_cm_src.
-              ENDIF.
             ENDLOOP.
-            " Insert PRE after METHOD line, POST before ENDMETHOD
+            " Insert PRE lines after METHOD (pos 2), shift existing kw, fix v_line
             IF lt_cm_pre IS NOT INITIAL.
               DATA(lv_cm_ins) = 2.
-              LOOP AT lt_cm_pre INTO DATA(lv_p). INSERT lv_p INTO lt_cm_src INDEX lv_cm_ins. ADD 1 TO lv_cm_ins. ENDLOOP.
+              DATA(lv_pre_seq) = 0.
+              LOOP AT lt_cm_pre INTO DATA(lv_p).
+                INSERT lv_p INTO lt_cm_src INDEX lv_cm_ins.
+                LOOP AT lt_virt_kw ASSIGNING FIELD-SYMBOL(<vkw_s>) WHERE v_line >= lv_cm_ins.
+                  <vkw_s>-v_line = <vkw_s>-v_line + 1.
+                ENDLOOP.
+                lv_pre_seq = lv_pre_seq + 1.
+                LOOP AT lt_cm_pre_kw ASSIGNING FIELD-SYMBOL(<pkw>) WHERE v_line = lv_pre_seq.
+                  DATA(ls_pkw_ins) = <pkw>.
+                  ls_pkw_ins-v_line = lv_cm_ins.
+                  APPEND ls_pkw_ins TO lt_virt_kw.
+                ENDLOOP.
+                lv_cm_ins = lv_cm_ins + 1.
+              ENDLOOP.
             ENDIF.
+            " Insert POST lines before ENDMETHOD (last line), shift existing kw, fix v_line
             IF lt_cm_post IS NOT INITIAL.
               DATA(lv_cm_post_idx) = lines( lt_cm_src ).
-              LOOP AT lt_cm_post INTO DATA(lv_pp). INSERT lv_pp INTO lt_cm_src INDEX lv_cm_post_idx. ADD 1 TO lv_cm_post_idx. ENDLOOP.
+              DATA(lv_post_seq) = 0.
+              LOOP AT lt_cm_post INTO DATA(lv_pp).
+                INSERT lv_pp INTO lt_cm_src INDEX lv_cm_post_idx.
+                LOOP AT lt_virt_kw ASSIGNING FIELD-SYMBOL(<vkw_p>) WHERE v_line >= lv_cm_post_idx.
+                  <vkw_p>-v_line = <vkw_p>-v_line + 1.
+                ENDLOOP.
+                lv_post_seq = lv_post_seq + 1.
+                LOOP AT lt_cm_post_kw ASSIGNING FIELD-SYMBOL(<pokw>) WHERE v_line = lv_post_seq.
+                  DATA(ls_pokw_ins) = <pokw>.
+                  ls_pokw_ins-v_line = lv_cm_post_idx.
+                  APPEND ls_pokw_ins TO lt_virt_kw.
+                ENDLOOP.
+                lv_cm_post_idx = lv_cm_post_idx + 1.
+              ENDLOOP.
             ENDIF.
-            " Mark CM prog as selected and show in editor
+            " Create/replace VIRTUAL prog entry in tt_progs
+            DELETE mo_viewer->mo_window->ms_sources-tt_progs WHERE include = 'VIRTUAL'.
+            APPEND INITIAL LINE TO mo_viewer->mo_window->ms_sources-tt_progs
+              ASSIGNING FIELD-SYMBOL(<virt_prog>).
+            <virt_prog>-program    = mo_viewer->mo_window->m_prg-program.
+            <virt_prog>-include    = 'VIRTUAL'.
+            <virt_prog>-source_tab = lt_cm_src.
+            <virt_prog>-t_keywords = lt_virt_kw.
+            <virt_prog>-selected   = abap_true.
             LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_cm>).
-              CLEAR <prog_cm>-selected.
+              IF <prog_cm>-include <> 'VIRTUAL'. CLEAR <prog_cm>-selected. ENDIF.
             ENDLOOP.
-            READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-              WITH KEY include = lv_cm_include ASSIGNING <prog_cm>.
-            IF sy-subrc = 0. <prog_cm>-selected = abap_true. ENDIF.
+            mo_viewer->mo_window->m_prg-include = 'VIRTUAL'.
             mo_viewer->mo_window->mo_code_viewer->set_text( table = lt_cm_src ).
             mo_viewer->mo_window->set_program_line( 1 ).
             RETURN.
