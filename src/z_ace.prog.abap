@@ -1314,6 +1314,8 @@
                program       TYPE program,
                include       TYPE program,
                source_tab    TYPE sci_include,
+               v_source      TYPE sci_include,   " source with FORM enhancements embedded
+               v_keywords    TYPE tt_kword,       " keywords matching v_source
                scan          TYPE REF TO cl_ci_scan,
                t_keywords    TYPE tt_kword,
                selected      TYPE boolean,
@@ -2463,6 +2465,12 @@
       READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
         WITH KEY include = m_prg-include INTO DATA(prog_cur).
 
+      " Use v_keywords if available (FORM include with embedded enhancements)
+      DATA(lr_kw) = REF #( prog_cur-t_keywords ).
+      IF prog_cur-v_keywords IS NOT INITIAL.
+        lr_kw = REF #( prog_cur-v_keywords ).
+      ENDIF.
+
 *    "session breakpoints
       CALL METHOD cl_abap_debugger=>read_breakpoints
         EXPORTING
@@ -2477,7 +2485,7 @@
 
       LOOP AT points INTO DATA(point).
         " Find v_line for this breakpoint (may be in enhancement include)
-        READ TABLE prog_cur-t_keywords
+        READ TABLE lr_kw->*
           WITH KEY include = point-include line = point-line
           INTO DATA(bp_kw).
         IF sy-subrc = 0.
@@ -2493,7 +2501,7 @@
 *    "exernal breakpoints
       CALL METHOD cl_abap_debugger=>read_breakpoints
         EXPORTING
-          main_program         = mo_viewer->mo_window->m_prg-include
+          main_program         = m_prg-include
           flag_other_session   = abap_true
         IMPORTING
           breakpoints_complete = points
@@ -2507,7 +2515,7 @@
 
       LOOP AT points INTO point.
         " Find v_line for this breakpoint (may be in enhancement include)
-        READ TABLE prog_cur-t_keywords
+        READ TABLE lr_kw->*
           WITH KEY include = point-include line = point-line
           INTO bp_kw.
         IF sy-subrc = 0.
@@ -2850,7 +2858,12 @@
         READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO DATA(keyword).
       ELSE.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = m_prg-include INTO prog_mix.
-        READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO keyword.
+        " Use v_keywords if available (FORM include with embedded enhancements)
+        IF prog_mix-v_keywords IS NOT INITIAL.
+          READ TABLE prog_mix-v_keywords WITH KEY v_line = line INTO keyword.
+        ELSE.
+          READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO keyword.
+        ENDIF.
       ENDIF.
       program   = keyword-program.
       include   = keyword-include.
@@ -4749,6 +4762,54 @@
         WITH KEY program = <program> include = <include> eventname = <ev_name> eventtype = <ev_type>
         INTO mo_viewer->mo_window->ms_sel_call.
 
+      IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'FORM' AND <include> IS NOT INITIAL.
+        " FORM node - show include with all enhancements embedded (v_source)
+        DATA(lv_form_include) = CONV program( <include> ).
+        " Ensure parsed and enhancements collected
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_form_include TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          lcl_ace_source_parser=>parse_tokens(
+            i_program   = lv_form_include
+            i_include   = lv_form_include
+            io_debugger = mo_viewer ).
+        ENDIF.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_form_include INTO DATA(ls_form_prog_check).
+        IF sy-subrc = 0 AND ls_form_prog_check-tt_enh_blocks IS INITIAL.
+          lcl_ace_source_parser=>collect_enhancements(
+            i_program   = lv_form_include
+            io_debugger = mo_viewer ).
+        ENDIF.
+        " Show v_source if available, else source_tab
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_form_include ASSIGNING FIELD-SYMBOL(<form_prog>).
+        IF sy-subrc = 0.
+          LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<fp>).
+            CLEAR <fp>-selected.
+          ENDLOOP.
+          <form_prog>-selected = abap_true.
+          mo_viewer->mo_window->m_prg-include = lv_form_include.
+          IF <form_prog>-v_source IS NOT INITIAL.
+            mo_viewer->mo_window->mo_code_viewer->set_text( table = <form_prog>-v_source ).
+            " Find correct v_line from v_keywords for this FORM
+            DATA(lv_form_orig_line) = CONV i( <value> ).
+            DATA(lv_form_vline) = lv_form_orig_line.
+            READ TABLE <form_prog>-v_keywords
+              WITH KEY include = lv_form_include line = lv_form_orig_line
+              INTO DATA(ls_form_vkw).
+            IF sy-subrc = 0.
+              lv_form_vline = ls_form_vkw-v_line.
+            ENDIF.
+            mo_viewer->mo_window->set_program_line( lv_form_vline ).
+          ELSE.
+            mo_viewer->mo_window->mo_code_viewer->set_text( table = <form_prog>-source_tab ).
+            mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
+          ENDIF.
+        ENDIF.
+        RETURN.
+      ENDIF.
+
       IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'METHOD' AND <include> IS NOT INITIAL.
         " Method node (not enhancement) - show METHOD..ENDMETHOD with embedded enhancements
         DATA(lv_cm_include) = CONV program( <include> ).
@@ -5864,6 +5925,61 @@
           IF ls_ins-name = 'ENDENHANCEMENT'.
             ADD 1 TO lv_kw_vline.
           ENDIF.
+        ENDLOOP.
+
+        " Insert enhancement lines into v_source (prog with all FORM enhancements embedded)
+        IF <prog>-v_source IS INITIAL.
+          <prog>-v_source   = <prog>-source_tab.
+          <prog>-v_keywords = <prog>-t_keywords.
+        ENDIF.
+        DATA(lv_src_tabix)   = lv_insert_line + lv_offset.
+        DATA(lv_offset_snap) = lv_offset.
+        " Separator line
+        DATA lv_sep TYPE string.
+        IF position = 'BEGIN'.
+          lv_sep = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } { form_name } BEGIN|.
+        ELSE.
+          lv_sep = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } { form_name } END|.
+        ENDIF.
+        INSERT CONV string( lv_sep ) INTO <prog>-v_source INDEX lv_src_tabix.
+        ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
+        " Enhancement source lines
+        DATA(lv_first_line) = lt_enh_kw[ 1 ]-line.
+        DATA(lv_last_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
+        DATA(lv_cur_line)   = lv_first_line.
+        WHILE lv_cur_line <= lv_last_line.
+          READ TABLE ls_enh_prog-source_tab INDEX lv_cur_line INTO DATA(lv_fe_src_line).
+          IF sy-subrc = 0.
+            READ TABLE lt_enh_kw WITH KEY line = lv_cur_line INTO DATA(ls_ins_chk).
+            IF sy-subrc = 0 AND ls_ins_chk-name = 'ENHANCEMENT'.
+              REPLACE REGEX '(ENHANCEMENT\s+\d+)(\s+)\.' IN lv_fe_src_line
+                WITH `$1$2` && ls_enh-enhname && `.`.
+            ENDIF.
+            INSERT lv_fe_src_line INTO <prog>-v_source INDEX lv_src_tabix.
+            ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
+            IF sy-subrc = 0 AND ls_ins_chk-name = 'ENDENHANCEMENT'.
+              DATA(lv_end_sep) = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } END|.
+              INSERT CONV string( lv_end_sep ) INTO <prog>-v_source INDEX lv_src_tabix.
+              ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
+            ENDIF.
+          ENDIF.
+          ADD 1 TO lv_cur_line.
+        ENDWHILE.
+        " Shift v_keywords for original lines after insertion point
+        DATA(lv_enh_inserted) = lv_offset - lv_offset_snap.
+        LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
+          WHERE include = <prog>-include AND v_line >= lv_insert_line + lv_offset_snap.
+          ADD lv_enh_inserted TO <kw_v>-v_line.
+          ADD lv_enh_inserted TO <kw_v>-v_from_row.
+          ADD lv_enh_inserted TO <kw_v>-v_to_row.
+        ENDLOOP.
+        " Add enhancement keywords into v_keywords
+        LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
+          DATA(lv_vkw_vline) = lv_insert_line + lv_offset_snap + ( ls_vkw_ins-line - lv_first_line ) + 1.
+          ls_vkw_ins-v_line     = lv_vkw_vline.
+          ls_vkw_ins-v_from_row = lv_vkw_vline.
+          ls_vkw_ins-v_to_row   = lv_vkw_vline.
+          APPEND ls_vkw_ins TO <prog>-v_keywords.
         ENDLOOP.
 
 *
