@@ -316,6 +316,7 @@
                include TYPE program,
                ev_type TYPE string,
                ev_name TYPE string,
+               enh_id  TYPE i,
              END OF ts_tree,
 
              BEGIN OF ts_call,
@@ -1302,6 +1303,7 @@
                position    TYPE string,   " BEGIN or END
                enh_name    TYPE string,   " enhancement name
                enh_include TYPE program,  " EIMP include name
+               enh_id      TYPE i,        " D010ENH-ID for FORM enhancements
                from_line   TYPE i,        " first inserted line in source_tab (virtual)
                to_line     TYPE i,        " last inserted line in source_tab (virtual)
              END OF ts_enh_block,
@@ -1515,6 +1517,7 @@
           tree-ev_type = enh_blk-ev_type.
           tree-ev_name = enh_blk-ev_name.
           tree-param   = enh_blk-enh_include.  " EIMP include for double-click navigation
+          tree-enh_id  = enh_blk-enh_id.
           mo_tree_local->add_node( i_name = enh_node_name i_icon = CONV #( icon_modify ) i_rel = enh_rel i_tree = tree ).
         ENDLOOP.
       ENDLOOP.
@@ -4740,6 +4743,7 @@
       ASSIGN COMPONENT 'INCLUDE' OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
       ASSIGN COMPONENT 'EV_TYPE' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_type>).
       ASSIGN COMPONENT 'EV_NAME' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
+      ASSIGN COMPONENT 'ENH_ID'  OF STRUCTURE <row> TO FIELD-SYMBOL(<enh_id>).
 
       READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
         WITH KEY program = <program> include = <include> eventname = <ev_name> eventtype = <ev_type>
@@ -5021,7 +5025,81 @@
         RETURN.
       ENDIF.
 
-      IF <kind> = 'M' AND <param> IS NOT INITIAL AND ( <ev_type> = 'METHOD' OR <ev_type> = 'FORM' ).
+      IF <kind> = 'M' AND <param> IS NOT INITIAL AND <ev_type> = 'FORM'.
+        " FORM enhancement - show only ENHANCEMENT N...ENDENHANCEMENT block
+        DATA(lv_enh_include_f) = CONV program( <param> ).
+        DATA(lv_form_enh_id)   = CONV i( <enh_id> ).
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_enh_include_f TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          lcl_ace_source_parser=>parse_tokens(
+            i_program   = CONV #( lv_enh_include_f )
+            i_include   = CONV #( lv_enh_include_f )
+            io_debugger = mo_viewer ).
+        ENDIF.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_enh_include_f INTO DATA(ls_form_enh_prog).
+        IF sy-subrc = 0.
+          " Find ENHANCEMENT N...ENDENHANCEMENT block by ID
+          DATA lt_form_virt_src  TYPE sci_include.
+          DATA lt_form_virt_kw   TYPE lcl_ace_appl=>tt_kword.
+          DATA lv_in_enh_block   TYPE boolean.
+          DATA lv_enh_start_line TYPE i.
+          DATA lv_enh_end_line   TYPE i.
+          CLEAR: lv_in_enh_block, lv_enh_start_line, lv_enh_end_line.
+          LOOP AT ls_form_enh_prog-t_keywords INTO DATA(ls_fe_kw).
+            IF ls_fe_kw-name = 'ENHANCEMENT'.
+              READ TABLE ls_form_enh_prog-scan->statements INDEX ls_fe_kw-index INTO DATA(ls_fe_stmt).
+              READ TABLE ls_form_enh_prog-scan->tokens INDEX ls_fe_stmt-from + 1 INTO DATA(ls_fe_tok).
+              IF CONV i( ls_fe_tok-str ) = lv_form_enh_id.
+                lv_in_enh_block   = abap_true.
+                lv_enh_start_line = ls_fe_kw-line.
+              ELSE.
+                lv_in_enh_block = abap_false.
+              ENDIF.
+              CONTINUE.
+            ENDIF.
+            IF ls_fe_kw-name = 'ENDENHANCEMENT' AND lv_in_enh_block = abap_true.
+              lv_enh_end_line = ls_fe_kw-line.
+              CLEAR lv_in_enh_block.
+              CONTINUE.
+            ENDIF.
+          ENDLOOP.
+          IF lv_enh_start_line > 0 AND lv_enh_end_line > 0.
+            " Build virtual source and keyword map for this block only
+            LOOP AT ls_form_enh_prog-source_tab INTO DATA(lv_fe_src_line)
+              FROM lv_enh_start_line TO lv_enh_end_line.
+              APPEND lv_fe_src_line TO lt_form_virt_src.
+              DATA(lv_fe_vrow) = lines( lt_form_virt_src ).
+              DATA(lv_fe_real) = lv_enh_start_line + lv_fe_vrow - 1.
+              LOOP AT ls_form_enh_prog-t_keywords INTO DATA(ls_fe_vkw)
+                WHERE line = lv_fe_real.
+                DATA(ls_fe_out_kw) = ls_fe_vkw.
+                ls_fe_out_kw-include = lv_enh_include_f.
+                ls_fe_out_kw-v_line  = lv_fe_vrow.
+                APPEND ls_fe_out_kw TO lt_form_virt_kw.
+              ENDLOOP.
+            ENDLOOP.
+          ENDIF.
+          DELETE mo_viewer->mo_window->ms_sources-tt_progs WHERE include = 'VIRTUAL'.
+          APPEND INITIAL LINE TO mo_viewer->mo_window->ms_sources-tt_progs
+            ASSIGNING FIELD-SYMBOL(<virt_f>).
+          <virt_f>-program    = mo_viewer->mo_window->m_prg-program.
+          <virt_f>-include    = 'VIRTUAL'.
+          <virt_f>-source_tab = lt_form_virt_src.
+          <virt_f>-t_keywords = lt_form_virt_kw.
+          <virt_f>-selected   = abap_true.
+          LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_f>).
+            IF <prog_f>-include <> 'VIRTUAL'. CLEAR <prog_f>-selected. ENDIF.
+          ENDLOOP.
+          mo_viewer->mo_window->m_prg-include = 'VIRTUAL'.
+          mo_viewer->mo_window->set_program( 'VIRTUAL' ).
+          mo_viewer->mo_window->set_program_line( 1 ).
+        ENDIF.
+        RETURN.
+      ENDIF.
+
+      IF <kind> = 'M' AND <param> IS NOT INITIAL AND <ev_type> = 'METHOD'.
         " Enhancement node - navigate to EIMP include
         DATA(lv_eimp_include) = CONV program( <param> ).
         DATA(lv_eimp_method)  = CONV string( <ev_name> ).
@@ -5788,71 +5866,18 @@
           ENDIF.
         ENDLOOP.
 
-*        " Insert source_tab lines at the target position
-*        DATA(lv_src_tabix) = lv_insert_line + lv_offset.
-*        DATA(lv_offset_snap) = lv_offset.  " remember offset before this enhancement
-*
-*        " Insert separator line
-*        IF position = 'BEGIN'.
-*          DATA(lv_sep) = |"{ repeat( val = `"` occ = 46 ) }$"$\\SE:({ lv_enh_id }) Form { form_name }, Start|.
-*          INSERT lv_sep INTO <prog>-source_tab INDEX lv_src_tabix.
-*          ADD 1 TO lv_src_tabix.
-*          ADD 1 TO lv_offset.
-*        ELSE.
-*          lv_sep = |"{ repeat( val = `"` occ = 46 ) }$"$\\SE:({ lv_enh_id }) Form { form_name }, End|.
-*          INSERT lv_sep INTO <prog>-source_tab INDEX lv_src_tabix.
-*          ADD 1 TO lv_src_tabix.
-*          ADD 1 TO lv_offset.
-*        ENDIF.
-*
-*        " Insert source_tab lines - copy full range including comments
-*        DATA(lv_first_line) = lt_enh_kw[ 1 ]-line.
-*        DATA(lv_last_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
-*        DATA(lv_cur_line)   = lv_first_line.
-*        WHILE lv_cur_line <= lv_last_line.
-*          READ TABLE ls_enh_prog-source_tab INDEX lv_cur_line INTO DATA(lv_src_line).
-*          IF sy-subrc = 0.
-*            " For ENHANCEMENT N. line - append enhname before the period
-*            READ TABLE lt_enh_kw WITH KEY line = lv_cur_line INTO DATA(ls_ins_chk).
-*            IF sy-subrc = 0 AND ls_ins_chk-name = 'ENHANCEMENT'.
-*              REPLACE REGEX '(ENHANCEMENT\s+\d+)(\s+)\.' IN lv_src_line WITH `$1$2` && ls_enh-enhname && `.`.
-*            ENDIF.
-*            INSERT lv_src_line INTO <prog>-source_tab INDEX lv_src_tabix.
-*            ADD 1 TO lv_src_tabix.
-*            ADD 1 TO lv_offset.
-*            " After ENDENHANCEMENT insert closing separator line
-*            IF sy-subrc = 0 AND ls_ins_chk-name = 'ENDENHANCEMENT'.
-*              DATA(lv_end_sep) = |*$*$-End:   ({ lv_enh_id }){ repeat( val = `-` occ = 40 ) }$*$*|.
-*              INSERT lv_end_sep INTO <prog>-source_tab INDEX lv_src_tabix.
-*              ADD 1 TO lv_src_tabix.
-*              ADD 1 TO lv_offset.
-*            ENDIF.
-*          ENDIF.
-*          ADD 1 TO lv_cur_line.
-*        ENDWHILE.
-*
-*        " Calculate how many lines were inserted by this enhancement
-*        DATA(lv_enh_inserted) = lv_offset - lv_offset_snap.
-*
-*        " Update v_line, v_from_row, v_to_row in t_keywords for entries at or after insertion point
-*        LOOP AT <prog>-t_keywords ASSIGNING FIELD-SYMBOL(<kw_v>).
-*          IF <kw_v>-line >= lv_insert_line.
-*            ADD lv_enh_inserted TO <kw_v>-v_line.
-*            ADD lv_enh_inserted TO <kw_v>-v_from_row.
-*            ADD lv_enh_inserted TO <kw_v>-v_to_row.
-*          ENDIF.
-*        ENDLOOP.
 *
 *        " Save enhancement block position for CodeMix
         " Save enhancement block position for CodeMix/tree
         APPEND INITIAL LINE TO <prog>-tt_enh_blocks ASSIGNING FIELD-SYMBOL(<enh_blk>).
-        <enh_blk>-ev_type   = ls_call_line-eventtype.
-        <enh_blk>-ev_name   = form_name.
-        <enh_blk>-position  = position.
-        <enh_blk>-enh_name    = ls_enh-enhname.
-        <enh_blk>-enh_include = CONV #( |{ ls_enh-enhinclude }IMP| ).
-        <enh_blk>-from_line = 0.
-        <enh_blk>-to_line   = 0.
+        <enh_blk>-ev_type    = ls_call_line-eventtype.
+        <enh_blk>-ev_name    = form_name.
+        <enh_blk>-position   = position.
+        <enh_blk>-enh_name   = ls_enh-enhname.
+        <enh_blk>-enh_include = ls_enh-enhinclude.
+        <enh_blk>-enh_id     = lv_enh_id.
+        <enh_blk>-from_line  = 0.
+        <enh_blk>-to_line    = 0.
 
         ENDIF. " ENHMODE = 'D' / FORM
 
