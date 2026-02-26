@@ -2414,6 +2414,19 @@
 
     METHOD set_program.
 
+      " Fast path for VIRTUAL - source already built, just display it
+      IF i_include = 'VIRTUAL'.
+        LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<virt_p>).
+          CLEAR <virt_p>-selected.
+        ENDLOOP.
+        READ TABLE ms_sources-tt_progs WITH KEY include = 'VIRTUAL' ASSIGNING <virt_p>.
+        IF sy-subrc = 0.
+          <virt_p>-selected = abap_true.
+          mo_code_viewer->set_text( table = <virt_p>-source_tab ).
+        ENDIF.
+        RETURN.
+      ENDIF.
+
       lcl_ace_source_parser=>parse_tokens( i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
       lcl_ace_source_parser=>collect_enhancements( i_program = i_include io_debugger = mo_viewer ).
       SORT ms_sources-t_params.
@@ -4997,7 +5010,7 @@
               IF <prog_cm>-include <> 'VIRTUAL'. CLEAR <prog_cm>-selected. ENDIF.
             ENDLOOP.
             mo_viewer->mo_window->m_prg-include = 'VIRTUAL'.
-            mo_viewer->mo_window->mo_code_viewer->set_text( table = lt_cm_src ).
+            mo_viewer->mo_window->set_program( 'VIRTUAL' ).
             mo_viewer->mo_window->set_program_line( 1 ).
             RETURN.
           ENDIF.
@@ -5054,26 +5067,36 @@
               EXIT.
             ENDLOOP.
             IF lv_endm_line > 0.
-              " Extract only METHOD...ENDMETHOD lines from source_tab
+              " Extract METHOD...ENDMETHOD lines from EIMP + build keyword map
               DATA lt_meth_src TYPE sci_include.
+              DATA lt_meth_kw  TYPE lcl_ace_appl=>tt_kword.
               LOOP AT ls_eimp_prog-source_tab INTO DATA(lv_src_line)
                 FROM lv_meth_line TO lv_endm_line.
                 APPEND lv_src_line TO lt_meth_src.
+                DATA(lv_meth_vrow) = lines( lt_meth_src ).
+                DATA(lv_meth_real) = lv_meth_line + lv_meth_vrow - 1.
+                LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_meth_kw)
+                  WHERE line = lv_meth_real.
+                  DATA(ls_meth_vkw) = ls_meth_kw.
+                  ls_meth_vkw-include = lv_eimp_include.
+                  ls_meth_vkw-v_line  = lv_meth_vrow.
+                  APPEND ls_meth_vkw TO lt_meth_kw.
+                ENDLOOP.
               ENDLOOP.
-
-              " Show only the extracted METHOD..ENDMETHOD lines from EIMP
-              " No further enhancement embedding needed here
-
-              " Mark EIMP prog as selected, show only extracted lines in editor
+              " Create/replace VIRTUAL entry in tt_progs
+              DELETE mo_viewer->mo_window->ms_sources-tt_progs WHERE include = 'VIRTUAL'.
+              APPEND INITIAL LINE TO mo_viewer->mo_window->ms_sources-tt_progs
+                ASSIGNING FIELD-SYMBOL(<virt_e>).
+              <virt_e>-program    = mo_viewer->mo_window->m_prg-program.
+              <virt_e>-include    = 'VIRTUAL'.
+              <virt_e>-source_tab = lt_meth_src.
+              <virt_e>-t_keywords = lt_meth_kw.
+              <virt_e>-selected   = abap_true.
               LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_e>).
-                CLEAR <prog_e>-selected.
+                IF <prog_e>-include <> 'VIRTUAL'. CLEAR <prog_e>-selected. ENDIF.
               ENDLOOP.
-              READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-                WITH KEY include = lv_eimp_include ASSIGNING <prog_e>.
-              IF sy-subrc = 0.
-                <prog_e>-selected = abap_true.
-              ENDIF.
-              mo_viewer->mo_window->mo_code_viewer->set_text( table = lt_meth_src ).
+              mo_viewer->mo_window->m_prg-include = 'VIRTUAL'.
+              mo_viewer->mo_window->set_program( 'VIRTUAL' ).
               mo_viewer->mo_window->set_program_line( 1 ).
               RETURN.
             ENDIF.
