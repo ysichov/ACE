@@ -5021,7 +5021,7 @@
         RETURN.
       ENDIF.
 
-      IF <kind> = 'M' AND <param> IS NOT INITIAL AND <ev_type> = 'METHOD'.
+      IF <kind> = 'M' AND <param> IS NOT INITIAL AND ( <ev_type> = 'METHOD' OR <ev_type> = 'FORM' ).
         " Enhancement node - navigate to EIMP include
         DATA(lv_eimp_include) = CONV program( <param> ).
         DATA(lv_eimp_method)  = CONV string( <ev_name> ).
@@ -5040,9 +5040,11 @@
           " Build exact prefix from position (BEGIN=IPR_, END=IPO_, OVERWRITE=IOW_)
           DATA(lv_enh_pos)    = CONV string( <value> ).
           DATA(lv_impl_prefix) = COND string(
-            WHEN lv_enh_pos = 'BEGIN'     THEN 'IPR_'
-            WHEN lv_enh_pos = 'END'       THEN 'IPO_'
-            WHEN lv_enh_pos = 'OVERWRITE' THEN 'IOW_'
+            WHEN lv_enh_pos = 'BEGIN'     AND <ev_type> = 'METHOD' THEN 'IPR_'
+            WHEN lv_enh_pos = 'END'       AND <ev_type> = 'METHOD' THEN 'IPO_'
+            WHEN lv_enh_pos = 'OVERWRITE' AND <ev_type> = 'METHOD' THEN 'IOW_'
+            WHEN lv_enh_pos = 'BEGIN'     AND <ev_type> = 'FORM'   THEN 'IPF_'
+            WHEN lv_enh_pos = 'END'       AND <ev_type> = 'FORM'   THEN 'IPF_'
             ELSE '' ).
           DATA(lv_cp_pattern) = COND string(
             WHEN lv_impl_prefix IS NOT INITIAL THEN lv_impl_prefix && |*~{ lv_eimp_method }|
