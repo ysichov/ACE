@@ -2246,14 +2246,16 @@
           CLEAR results[ lines( results ) ]-arrow .
         ENDIF.
       ENDIF.
-      "to refactor doubling the last if
-      DATA(last_ind) = lines( results ).
-      IF last_ind > 1.
-        DATA(prev_ind) = last_ind - 1.
-        IF results[ last_ind ]-line = results[ prev_ind ]-line.
-          DELETE results INDEX last_ind.
+      "remove duplicate lines (same line+include, keep first occurrence) quick fix instead of fixing real bug )) to refactor
+      DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+      LOOP AT results ASSIGNING FIELD-SYMBOL(<res>).
+        DATA(lv_key) = |{ <res>-include }:{ <res>-line }|.
+        INSERT lv_key INTO TABLE lt_seen.
+        IF sy-subrc <> 0.
+          <res>-del = abap_true.
         ENDIF.
-      ENDIF.
+      ENDLOOP.
+      DELETE results WHERE del = abap_true.
 
     ENDMETHOD.
 
@@ -7284,7 +7286,7 @@
         RETURN.
       ENDIF.
 
-      " Read prog with already-inserted enhancement keywords
+      " Read prog AFTER collect_enhancements so t_keywords includes inserted blocks
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = lv_inc INTO DATA(prog).
       CHECK sy-subrc = 0.
@@ -7299,19 +7301,55 @@
       ENDLOOP.
       CHECK lv_tabix > 0.
 
+      " Check if PRE enhancement exists — if yes, FORM body shifts to lv_stack+1
+      DATA(lv_has_pre) = abap_false.
+      READ TABLE prog-tt_enh_blocks TRANSPORTING NO FIELDS
+        WITH KEY ev_name = i_call_name position = 'BEGIN'.
+      IF sy-subrc = 0. lv_has_pre = abap_true. ENDIF.
+      DATA(lv_body_stack) = COND i( WHEN lv_has_pre = abap_true THEN lv_stack + 1 ELSE lv_stack ).
+
+      " Track current active enhancement block while iterating keywords
+      DATA ls_cur_enh TYPE lcl_ace_window=>ts_enh_block.
+      CLEAR ls_cur_enh.
+
       " Iterate all keywords from FORM to ENDFORM (including inserted enhancements)
       LOOP AT prog-t_keywords INTO kw FROM lv_tabix.
         IF kw-name = 'ENDFORM'.
           EXIT.
         ENDIF.
+        " Track which enhancement block we're entering/leaving
+        IF kw-name = 'ENHANCEMENT'.
+          " Read enhancement ID from scan tokens (ENHANCEMENT <id> <name>.)
+          DATA(lv_enh_id_cur) = 0.
+          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+            WITH KEY include = kw-include INTO DATA(enh_prog).
+          IF sy-subrc = 0.
+            READ TABLE enh_prog-scan->statements INDEX kw-index INTO DATA(ls_enh_stmt).
+            IF sy-subrc = 0.
+              READ TABLE enh_prog-scan->tokens INDEX ls_enh_stmt-from + 1 INTO DATA(ls_enh_tok).
+              lv_enh_id_cur = CONV i( ls_enh_tok-str ).
+            ENDIF.
+          ENDIF.
+
+          READ TABLE prog-tt_enh_blocks INTO ls_cur_enh
+            WITH KEY enh_include = kw-include ev_name = i_call_name enh_id = lv_enh_id_cur.
+          IF sy-subrc <> 0.
+            READ TABLE prog-tt_enh_blocks INTO ls_cur_enh
+              WITH KEY enh_include = kw-include ev_name = i_call_name.
+          ENDIF.
+          CONTINUE.
+        ENDIF.
+        IF kw-name = 'ENDENHANCEMENT'.
+          CLEAR ls_cur_enh.
+          CONTINUE.
+        ENDIF.
         IF kw-name = 'FORM' OR kw-name = 'DATA' OR kw-name = 'TYPES'
-          OR kw-name = 'CONSTANTS' OR kw-name IS INITIAL
-          OR kw-name = 'ENHANCEMENT' OR kw-name = 'ENDENHANCEMENT'.
+          OR kw-name = 'CONSTANTS' OR kw-name IS INITIAL.
           CONTINUE.
         ENDIF.
 
         lcl_ace_source_parser=>parse_tokens(
-          i_stack = lv_stack i_program = CONV #( kw-program )
+          i_stack = lv_body_stack i_program = CONV #( kw-program )
           i_include = CONV #( kw-include ) io_debugger = io_debugger ).
 
         READ TABLE io_debugger->mt_steps
@@ -7320,20 +7358,20 @@
         IF sy-subrc <> 0.
           ADD 1 TO io_debugger->m_step.
           APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
-          <step>-step       = io_debugger->m_step.
-          <step>-line       = kw-line.
-          <step>-stacklevel = lv_stack.
-          <step>-program    = i_program.
-          <step>-include    = kw-include.
-          " If keyword belongs to an enhancement include — use ENHANCEMENT type/name
-          READ TABLE prog-tt_enh_blocks INTO DATA(ls_enh_blk)
-            WITH KEY enh_include = kw-include ev_name = i_call_name.
-          IF sy-subrc = 0.
+          <step>-step    = io_debugger->m_step.
+          <step>-line    = kw-line.
+          <step>-program = i_program.
+          <step>-include = kw-include.
+          IF ls_cur_enh IS NOT INITIAL.
+            " Inside an enhancement block
             <step>-eventtype = 'ENHANCEMENT'.
-            <step>-eventname = ls_enh_blk-enh_name.
+            <step>-eventname = |{ ls_cur_enh-enh_name } { ls_cur_enh-enh_id }|.
+            <step>-stacklevel = lv_stack + 1.
           ELSE.
-            <step>-eventtype = 'FORM'.
-            <step>-eventname = i_call_name.
+            " FORM body
+            <step>-eventtype  = 'FORM'.
+            <step>-eventname  = i_call_name.
+            <step>-stacklevel = lv_body_stack.
           ENDIF.
         ENDIF.
 
