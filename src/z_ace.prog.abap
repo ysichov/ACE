@@ -536,6 +536,12 @@
                              i_class     TYPE string OPTIONAL
                              io_debugger TYPE REF TO lcl_ace,
 
+        parse_call_form IMPORTING i_call_name TYPE string
+                                  i_program   TYPE program
+                                  i_include   TYPE program
+                                  i_stack     TYPE i
+                                  io_debugger TYPE REF TO lcl_ace,
+
         parse_class IMPORTING key         TYPE lcl_ace_appl=>ts_kword
                               i_include   TYPE program
                               i_call      TYPE lcl_ace_appl=>ts_calls
@@ -595,7 +601,7 @@
                                  io_debugger TYPE REF TO lcl_ace,
 
         collect_enhancements IMPORTING i_program   TYPE program
-                                     io_debugger TYPE REF TO lcl_ace,
+                                       io_debugger TYPE REF TO lcl_ace,
 
         collect_method_enhancements IMPORTING i_enhname    TYPE enhname
                                               i_enhinclude TYPE program
@@ -2231,11 +2237,19 @@
           CLEAR results[ lines( results ) ]-arrow .
         ENDIF.
       ENDIF.
+      "to refactor doubling the last if
+      DATA(last_ind) = lines( results ).
+      IF last_ind > 1.
+        DATA(prev_ind) = last_ind - 1.
+        IF results[ last_ind ]-line = results[ prev_ind ]-line.
+          DELETE results INDEX last_ind.
+        ENDIF.
+      ENDIF.
 
     ENDMETHOD.
 
     METHOD get_code_mix.
-  DATA: flow_lines TYPE sci_include,
+      DATA: flow_lines TYPE sci_include,
             splits     TYPE TABLE OF string,
 
             ind        TYPE i,
@@ -4612,7 +4626,7 @@
         CHANGING
           t_table     = tree_table ).
 
-.
+      .
 
       DATA(o_setting) =  mo_tree->get_tree_settings( ).
       o_setting->set_hierarchy_header( i_header ).
@@ -5557,13 +5571,20 @@
             cs_state-variable-type = temp.
             cs_state-variable-line = l_token_row.
             CASE cs_state-variable-type.
-              WHEN 'D'.    cs_state-variable-icon = icon_date.
-              WHEN 'T'.    cs_state-variable-icon = icon_bw_time_sap.
-              WHEN 'C'.    cs_state-variable-icon = icon_wd_input_field.
-              WHEN 'P'.    cs_state-variable-icon = icon_increase_decimal.
-              WHEN 'STRING'. cs_state-variable-icon = icon_text_act.
-              WHEN 'N' OR 'I'. cs_state-variable-icon = icon_pm_order.
-              WHEN OTHERS. cs_state-variable-icon = icon_element.
+              WHEN 'D'.
+                cs_state-variable-icon = icon_date.
+              WHEN 'T'.
+                cs_state-variable-icon = icon_bw_time_sap.
+              WHEN 'C'.
+                cs_state-variable-icon = icon_wd_input_field.
+              WHEN 'P'.
+                cs_state-variable-icon = icon_increase_decimal.
+              WHEN 'STRING'.
+                cs_state-variable-icon = icon_text_act.
+              WHEN 'N' OR 'I'.
+                cs_state-variable-icon = icon_pm_order.
+              WHEN OTHERS.
+                cs_state-variable-icon = icon_element.
             ENDCASE.
             IF cs_state-ref IS NOT INITIAL.
               cs_state-variable-icon = icon_oo_class.
@@ -5723,11 +5744,11 @@
 
     METHOD collect_enhancements.
 
-        DATA: form_name  TYPE string,
-            position   TYPE string,
-            enh_prog   TYPE program,
-            tabix      TYPE i,
-            lv_offset  TYPE i.  " offset in source_tab after previous insertions
+      DATA: form_name TYPE string,
+            position  TYPE string,
+            enh_prog  TYPE program,
+            tabix     TYPE i,
+            lv_offset TYPE i.  " offset in source_tab after previous insertions
 
       " For class method includes (CM*), D010ENH stores enhancements under the CP program.
       " Resolve the master program via D010INC.
@@ -5828,180 +5849,180 @@
           FIND FIRST OCCURRENCE OF REGEX '\\FO:([^\\]+)' IN lv_full SUBMATCHES form_name.
           FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
           CHECK form_name IS NOT INITIAL AND position IS NOT INITIAL.
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
-          WITH KEY include = ls_enh-enhinclude TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          lcl_ace_source_parser=>parse_tokens(
-            i_program   = CONV #( ls_enh-enhinclude )
-            i_include   = CONV #( ls_enh-enhinclude )
-            io_debugger = io_debugger ).
-        ENDIF.
-
-        " Find the program that contains this FORM
-        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-          WITH KEY eventtype = 'FORM' eventname = form_name
-          INTO DATA(ls_call_line).
-        CHECK sy-subrc = 0.
-
-        " Find t_keywords entry for the target program
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
-          WITH KEY include = ls_call_line-include
-          ASSIGNING FIELD-SYMBOL(<prog>).
-        CHECK sy-subrc = 0.
-
-        " Find FORM position in t_keywords iteratively by name = 'FORM' and index
-        DATA(lv_form_tabix) = 0.
-        DATA ls_kw_form TYPE lcl_ace_appl=>ts_kword.
-        LOOP AT <prog>-t_keywords INTO ls_kw_form.
-          IF ls_kw_form-name = 'FORM' AND ls_kw_form-index = ls_call_line-index.
-            lv_form_tabix = sy-tabix.
-            EXIT.
+          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+            WITH KEY include = ls_enh-enhinclude TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            lcl_ace_source_parser=>parse_tokens(
+              i_program   = CONV #( ls_enh-enhinclude )
+              i_include   = CONV #( ls_enh-enhinclude )
+              io_debugger = io_debugger ).
           ENDIF.
-        ENDLOOP.
-        CHECK lv_form_tabix > 0.
 
-        " Read enhancement include keywords
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
-          WITH KEY include = ls_enh-enhinclude
-          INTO DATA(ls_enh_prog).
-        CHECK sy-subrc = 0.
+          " Find the program that contains this FORM
+          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+            WITH KEY eventtype = 'FORM' eventname = form_name
+            INTO DATA(ls_call_line).
+          CHECK sy-subrc = 0.
 
-        " Collect keywords of the ENHANCEMENT N...ENDENHANCEMENT block matching the ID
-        DATA lt_enh_kw TYPE lcl_ace_window=>tt_kword.
-        DATA lv_in_block TYPE boolean.
-        CLEAR: lt_enh_kw, lv_in_block.
-        LOOP AT ls_enh_prog-t_keywords INTO DATA(ls_kw).
-          IF ls_kw-name = 'ENHANCEMENT'.
-            " Check that this is the correct ID: next token = ls_enh-id
-            DATA(lv_enh_id) = CONV i( ls_enh-id ).
-            " ID is not in token-line, check via scan at token offset=2
-            READ TABLE ls_enh_prog-scan->statements INDEX ls_kw-index INTO DATA(ls_stmt).
-            READ TABLE ls_enh_prog-scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
-            IF CONV i( ls_tok-str ) = lv_enh_id.
-              lv_in_block = abap_true.
-              APPEND ls_kw TO lt_enh_kw.  " include ENHANCEMENT of the matching block only
-            ELSE.
-              lv_in_block = abap_false.
-            ENDIF.
-            CONTINUE.
-          ENDIF.
-          IF ls_kw-name = 'ENDENHANCEMENT'.
-            IF lv_in_block = abap_true.
-              APPEND ls_kw TO lt_enh_kw.  " include ENDENHANCEMENT
-            ENDIF.
-            CLEAR lv_in_block.
-            CONTINUE.
-          ENDIF.
-          IF lv_in_block = abap_true.
-            APPEND ls_kw TO lt_enh_kw.
-          ENDIF.
-        ENDLOOP.
+          " Find t_keywords entry for the target program
+          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+            WITH KEY include = ls_call_line-include
+            ASSIGNING FIELD-SYMBOL(<prog>).
+          CHECK sy-subrc = 0.
 
-        CHECK lt_enh_kw IS NOT INITIAL.
-
-        " Determine insertion point
-        IF position = 'BEGIN'.
-          " After FORM statement
-          tabix = lv_form_tabix + 1.
-        ELSE. " END - before ENDFORM
-          " Find ENDFORM iteratively after FORM position
-          tabix = lv_form_tabix + 1.
-          LOOP AT <prog>-t_keywords INTO DATA(ls_kw_end) FROM tabix.
-            IF ls_kw_end-name = 'ENDFORM'.
-              tabix = sy-tabix.  " insert before ENDFORM
+          " Find FORM position in t_keywords iteratively by name = 'FORM' and index
+          DATA(lv_form_tabix) = 0.
+          DATA ls_kw_form TYPE lcl_ace_appl=>ts_kword.
+          LOOP AT <prog>-t_keywords INTO ls_kw_form.
+            IF ls_kw_form-name = 'FORM' AND ls_kw_form-index = ls_call_line-index.
+              lv_form_tabix = sy-tabix.
               EXIT.
             ENDIF.
           ENDLOOP.
-        ENDIF.
+          CHECK lv_form_tabix > 0.
 
-        " Insert enhancement keywords into t_keywords at the target position
-        DATA(lv_insert_line) = COND i(
-          WHEN position = 'BEGIN' THEN ls_kw_form-line + 1
-          ELSE ls_kw_end-line ).  " before ENDFORM line
+          " Read enhancement include keywords
+          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+            WITH KEY include = ls_enh-enhinclude
+            INTO DATA(ls_enh_prog).
+          CHECK sy-subrc = 0.
 
-        " Pre-calculate base virtual line: insert position + current offset + 1 (separator line)
-        DATA(lv_vline_base) = lv_insert_line + lv_offset + 1.
-        DATA(lv_kw_vline)   = lv_vline_base.
-        LOOP AT lt_enh_kw INTO DATA(ls_ins).
-          ls_ins-v_line     = lv_kw_vline.
-          ls_ins-v_from_row = lv_kw_vline.
-          ls_ins-v_to_row   = lv_kw_vline.
-          INSERT ls_ins INTO <prog>-t_keywords INDEX tabix.
-          ADD 1 TO tabix.
-          ADD 1 TO lv_kw_vline.
-          " After ENDENHANCEMENT there will be a closing separator line too
-          IF ls_ins-name = 'ENDENHANCEMENT'.
+          " Collect keywords of the ENHANCEMENT N...ENDENHANCEMENT block matching the ID
+          DATA lt_enh_kw TYPE lcl_ace_window=>tt_kword.
+          DATA lv_in_block TYPE boolean.
+          CLEAR: lt_enh_kw, lv_in_block.
+          LOOP AT ls_enh_prog-t_keywords INTO DATA(ls_kw).
+            IF ls_kw-name = 'ENHANCEMENT'.
+              " Check that this is the correct ID: next token = ls_enh-id
+              DATA(lv_enh_id) = CONV i( ls_enh-id ).
+              " ID is not in token-line, check via scan at token offset=2
+              READ TABLE ls_enh_prog-scan->statements INDEX ls_kw-index INTO DATA(ls_stmt).
+              READ TABLE ls_enh_prog-scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
+              IF CONV i( ls_tok-str ) = lv_enh_id.
+                lv_in_block = abap_true.
+                APPEND ls_kw TO lt_enh_kw.  " include ENHANCEMENT of the matching block only
+              ELSE.
+                lv_in_block = abap_false.
+              ENDIF.
+              CONTINUE.
+            ENDIF.
+            IF ls_kw-name = 'ENDENHANCEMENT'.
+              IF lv_in_block = abap_true.
+                APPEND ls_kw TO lt_enh_kw.  " include ENDENHANCEMENT
+              ENDIF.
+              CLEAR lv_in_block.
+              CONTINUE.
+            ENDIF.
+            IF lv_in_block = abap_true.
+              APPEND ls_kw TO lt_enh_kw.
+            ENDIF.
+          ENDLOOP.
+
+          CHECK lt_enh_kw IS NOT INITIAL.
+
+          " Determine insertion point
+          IF position = 'BEGIN'.
+            " After FORM statement
+            tabix = lv_form_tabix + 1.
+          ELSE. " END - before ENDFORM
+            " Find ENDFORM iteratively after FORM position
+            tabix = lv_form_tabix + 1.
+            LOOP AT <prog>-t_keywords INTO DATA(ls_kw_end) FROM tabix.
+              IF ls_kw_end-name = 'ENDFORM'.
+                tabix = sy-tabix.  " insert before ENDFORM
+                EXIT.
+              ENDIF.
+            ENDLOOP.
+          ENDIF.
+
+          " Insert enhancement keywords into t_keywords at the target position
+          DATA(lv_insert_line) = COND i(
+            WHEN position = 'BEGIN' THEN ls_kw_form-line + 1
+            ELSE ls_kw_end-line ).  " before ENDFORM line
+
+          " Pre-calculate base virtual line: insert position + current offset + 1 (separator line)
+          DATA(lv_vline_base) = lv_insert_line + lv_offset + 1.
+          DATA(lv_kw_vline)   = lv_vline_base.
+          LOOP AT lt_enh_kw INTO DATA(ls_ins).
+            ls_ins-v_line     = lv_kw_vline.
+            ls_ins-v_from_row = lv_kw_vline.
+            ls_ins-v_to_row   = lv_kw_vline.
+            INSERT ls_ins INTO <prog>-t_keywords INDEX tabix.
+            ADD 1 TO tabix.
             ADD 1 TO lv_kw_vline.
-          ENDIF.
-        ENDLOOP.
+            " After ENDENHANCEMENT there will be a closing separator line too
+            IF ls_ins-name = 'ENDENHANCEMENT'.
+              ADD 1 TO lv_kw_vline.
+            ENDIF.
+          ENDLOOP.
 
-        " Insert enhancement lines into v_source (prog with all FORM enhancements embedded)
-        IF <prog>-v_source IS INITIAL.
-          <prog>-v_source   = <prog>-source_tab.
-          <prog>-v_keywords = <prog>-t_keywords.
-        ENDIF.
-        DATA(lv_src_tabix)   = lv_insert_line + lv_offset.
-        DATA(lv_offset_snap) = lv_offset.
-        " Separator line
-        DATA lv_sep TYPE string.
-        IF position = 'BEGIN'.
-          lv_sep = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } { form_name } BEGIN|.
-        ELSE.
-          lv_sep = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } { form_name } END|.
-        ENDIF.
-        INSERT CONV string( lv_sep ) INTO <prog>-v_source INDEX lv_src_tabix.
-        ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
-        " Enhancement source lines
-        DATA(lv_first_line) = lt_enh_kw[ 1 ]-line.
-        DATA(lv_last_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
-        DATA(lv_cur_line)   = lv_first_line.
-        WHILE lv_cur_line <= lv_last_line.
-          READ TABLE ls_enh_prog-source_tab INDEX lv_cur_line INTO DATA(lv_fe_src_line).
-          IF sy-subrc = 0.
-            READ TABLE lt_enh_kw WITH KEY line = lv_cur_line INTO DATA(ls_ins_chk).
-            IF sy-subrc = 0 AND ls_ins_chk-name = 'ENHANCEMENT'.
-              REPLACE REGEX '(ENHANCEMENT\s+\d+)(\s+)\.' IN lv_fe_src_line
-                WITH `$1$2` && ls_enh-enhname && `.`.
-            ENDIF.
-            INSERT lv_fe_src_line INTO <prog>-v_source INDEX lv_src_tabix.
-            ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
-            IF sy-subrc = 0 AND ls_ins_chk-name = 'ENDENHANCEMENT'.
-              DATA(lv_end_sep) = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } END|.
-              INSERT CONV string( lv_end_sep ) INTO <prog>-v_source INDEX lv_src_tabix.
-              ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
-            ENDIF.
+          " Insert enhancement lines into v_source (prog with all FORM enhancements embedded)
+          IF <prog>-v_source IS INITIAL.
+            <prog>-v_source   = <prog>-source_tab.
+            <prog>-v_keywords = <prog>-t_keywords.
           ENDIF.
-          ADD 1 TO lv_cur_line.
-        ENDWHILE.
-        " Shift v_keywords for original lines after insertion point
-        DATA(lv_enh_inserted) = lv_offset - lv_offset_snap.
-        LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
-          WHERE include = <prog>-include AND v_line >= lv_insert_line + lv_offset_snap.
-          ADD lv_enh_inserted TO <kw_v>-v_line.
-          ADD lv_enh_inserted TO <kw_v>-v_from_row.
-          ADD lv_enh_inserted TO <kw_v>-v_to_row.
-        ENDLOOP.
-        " Add enhancement keywords into v_keywords
-        LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
-          DATA(lv_vkw_vline) = lv_insert_line + lv_offset_snap + ( ls_vkw_ins-line - lv_first_line ) + 1.
-          ls_vkw_ins-v_line     = lv_vkw_vline.
-          ls_vkw_ins-v_from_row = lv_vkw_vline.
-          ls_vkw_ins-v_to_row   = lv_vkw_vline.
-          APPEND ls_vkw_ins TO <prog>-v_keywords.
-        ENDLOOP.
+          DATA(lv_src_tabix)   = lv_insert_line + lv_offset.
+          DATA(lv_offset_snap) = lv_offset.
+          " Separator line
+          DATA lv_sep TYPE string.
+          IF position = 'BEGIN'.
+            lv_sep = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } { form_name } BEGIN|.
+          ELSE.
+            lv_sep = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } { form_name } END|.
+          ENDIF.
+          INSERT CONV string( lv_sep ) INTO <prog>-v_source INDEX lv_src_tabix.
+          ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
+          " Enhancement source lines
+          DATA(lv_first_line) = lt_enh_kw[ 1 ]-line.
+          DATA(lv_last_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
+          DATA(lv_cur_line)   = lv_first_line.
+          WHILE lv_cur_line <= lv_last_line.
+            READ TABLE ls_enh_prog-source_tab INDEX lv_cur_line INTO DATA(lv_fe_src_line).
+            IF sy-subrc = 0.
+              READ TABLE lt_enh_kw WITH KEY line = lv_cur_line INTO DATA(ls_ins_chk).
+              IF sy-subrc = 0 AND ls_ins_chk-name = 'ENHANCEMENT'.
+                REPLACE REGEX '(ENHANCEMENT\s+\d+)(\s+)\.' IN lv_fe_src_line
+                  WITH `$1$2` && ls_enh-enhname && `.`.
+              ENDIF.
+              INSERT lv_fe_src_line INTO <prog>-v_source INDEX lv_src_tabix.
+              ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
+              IF sy-subrc = 0 AND ls_ins_chk-name = 'ENDENHANCEMENT'.
+                DATA(lv_end_sep) = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } END|.
+                INSERT CONV string( lv_end_sep ) INTO <prog>-v_source INDEX lv_src_tabix.
+                ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
+              ENDIF.
+            ENDIF.
+            ADD 1 TO lv_cur_line.
+          ENDWHILE.
+          " Shift v_keywords for original lines after insertion point
+          DATA(lv_enh_inserted) = lv_offset - lv_offset_snap.
+          LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
+            WHERE include = <prog>-include AND v_line >= lv_insert_line + lv_offset_snap.
+            ADD lv_enh_inserted TO <kw_v>-v_line.
+            ADD lv_enh_inserted TO <kw_v>-v_from_row.
+            ADD lv_enh_inserted TO <kw_v>-v_to_row.
+          ENDLOOP.
+          " Add enhancement keywords into v_keywords
+          LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
+            DATA(lv_vkw_vline) = lv_insert_line + lv_offset_snap + ( ls_vkw_ins-line - lv_first_line ) + 1.
+            ls_vkw_ins-v_line     = lv_vkw_vline.
+            ls_vkw_ins-v_from_row = lv_vkw_vline.
+            ls_vkw_ins-v_to_row   = lv_vkw_vline.
+            APPEND ls_vkw_ins TO <prog>-v_keywords.
+          ENDLOOP.
 
 *
 *        " Save enhancement block position for CodeMix
-        " Save enhancement block position for CodeMix/tree
-        APPEND INITIAL LINE TO <prog>-tt_enh_blocks ASSIGNING FIELD-SYMBOL(<enh_blk>).
-        <enh_blk>-ev_type    = ls_call_line-eventtype.
-        <enh_blk>-ev_name    = form_name.
-        <enh_blk>-position   = position.
-        <enh_blk>-enh_name   = ls_enh-enhname.
-        <enh_blk>-enh_include = ls_enh-enhinclude.
-        <enh_blk>-enh_id     = lv_enh_id.
-        <enh_blk>-from_line  = 0.
-        <enh_blk>-to_line    = 0.
+          " Save enhancement block position for CodeMix/tree
+          APPEND INITIAL LINE TO <prog>-tt_enh_blocks ASSIGNING FIELD-SYMBOL(<enh_blk>).
+          <enh_blk>-ev_type    = ls_call_line-eventtype.
+          <enh_blk>-ev_name    = form_name.
+          <enh_blk>-position   = position.
+          <enh_blk>-enh_name   = ls_enh-enhname.
+          <enh_blk>-enh_include = ls_enh-enhinclude.
+          <enh_blk>-enh_id     = lv_enh_id.
+          <enh_blk>-from_line  = 0.
+          <enh_blk>-to_line    = 0.
 
         ENDIF. " ENHMODE = 'D' / FORM
 
@@ -6937,17 +6958,11 @@
           IF call-name IS NOT INITIAL AND NOT ( call-event = 'METHOD' AND call-class IS INITIAL ).
             .
             IF call-event = 'FORM'.
-
-              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = call-name eventtype = call-event INTO DATA(call_line).
-              IF sy-subrc = 0.
-                lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                                         i_e_name = call_line-eventname
-                                                         i_e_type = call_line-eventtype
-                                                         i_program = i_include
-                                                         i_include = i_include
-                                                         i_stack   =  stack
-                                                         io_debugger = io_debugger ).
-              ENDIF.
+              parse_call_form( i_call_name = call-name
+                               i_program   = i_include
+                               i_include   = i_include
+                               i_stack     = stack
+                               io_debugger = io_debugger ).
 
             ELSEIF call-event = 'FUNCTION'.
               DATA:  func TYPE rs38l_fnam.
@@ -7220,6 +7235,26 @@
 
       ENDLOOP.
 
+    ENDMETHOD.
+
+    METHOD parse_call_form.
+      " Lookup FORM definition in tt_calls_line and recurse into parse_call
+      DATA call_line TYPE lcl_ace_appl=>ts_calls_line.
+      READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+        WITH KEY eventname = i_call_name eventtype = 'FORM'
+        INTO call_line.
+      IF sy-subrc = 0.
+        DATA(lv_inc) = CONV program( call_line-include ).
+        IF lv_inc IS INITIAL. lv_inc = i_include. ENDIF.
+        lcl_ace_source_parser=>parse_call(
+          EXPORTING i_index     = call_line-index
+                    i_e_name    = call_line-eventname
+                    i_e_type    = call_line-eventtype
+                    i_program   = i_program
+                    i_include   = lv_inc
+                    i_stack     = i_stack
+                    io_debugger = io_debugger ).
+      ENDIF.
     ENDMETHOD.
 
   ENDCLASS.
