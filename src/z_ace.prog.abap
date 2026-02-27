@@ -1903,13 +1903,22 @@
 
       IF mo_window->ms_sel_call IS NOT INITIAL.
         CLEAR: mt_steps, mo_window->mt_calls.
-        lcl_ace_source_parser=>parse_call( EXPORTING i_index = mo_window->ms_sel_call-index
-                                                  i_e_name = mo_window->ms_sel_call-eventname
-                                                  i_e_type = mo_window->ms_sel_call-eventtype
-                                                  i_program = CONV #( mo_window->ms_sel_call-program )
-                                                  i_include = CONV #( mo_window->ms_sel_call-include )
-                                                  i_stack   =  0
-                                                  io_debugger = mo_window->mo_viewer ).
+        IF mo_window->ms_sel_call-eventtype = 'FORM'.
+          lcl_ace_source_parser=>parse_call_form(
+            EXPORTING i_call_name = mo_window->ms_sel_call-eventname
+                      i_program   = CONV #( mo_window->ms_sel_call-program )
+                      i_include   = CONV #( mo_window->ms_sel_call-include )
+                      i_stack     = 0
+                      io_debugger = mo_window->mo_viewer ).
+        ELSE.
+          lcl_ace_source_parser=>parse_call( EXPORTING i_index = mo_window->ms_sel_call-index
+                                                    i_e_name = mo_window->ms_sel_call-eventname
+                                                    i_e_type = mo_window->ms_sel_call-eventtype
+                                                    i_program = CONV #( mo_window->ms_sel_call-program )
+                                                    i_include = CONV #( mo_window->ms_sel_call-include )
+                                                    i_stack   =  0
+                                                    io_debugger = mo_window->mo_viewer ).
+        ENDIF.
       ENDIF.
 
       DATA(steps) = mt_steps.
@@ -6821,16 +6830,11 @@
             IF call-name IS NOT INITIAL AND NOT ( call-event = 'METHOD' AND call-class IS INITIAL ).
 
               IF call-event = 'FORM'.
-                READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY eventname = call-name eventtype = call-event INTO call_line.
-                IF sy-subrc = 0.
-                  lcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
-                                                   i_e_name = call_line-eventname
-                                                   i_e_type = call_line-eventtype
-                                                   i_program = CONV #( call_line-program )
-                                                   i_include = CONV #( call_line-include )
-                                                   i_stack   =  stack
-                                                   io_debugger = io_debugger ).
-                ENDIF.
+                parse_call_form( i_call_name = call-name
+                                 i_program   = CONV #( call_line-program )
+                                 i_include   = CONV #( call_line-include )
+                                 i_stack     = stack
+                                 io_debugger = io_debugger ).
               ELSEIF call-event = 'FUNCTION'.
                 DATA:  func TYPE rs38l_fnam.
                 func = call-name.
@@ -7238,23 +7242,136 @@
     ENDMETHOD.
 
     METHOD parse_call_form.
-      " Lookup FORM definition in tt_calls_line and recurse into parse_call
+      " Lookup FORM definition in tt_calls_line
       DATA call_line TYPE lcl_ace_appl=>ts_calls_line.
       READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
         WITH KEY eventname = i_call_name eventtype = 'FORM'
         INTO call_line.
-      IF sy-subrc = 0.
-        DATA(lv_inc) = CONV program( call_line-include ).
-        IF lv_inc IS INITIAL. lv_inc = i_include. ENDIF.
-        lcl_ace_source_parser=>parse_call(
-          EXPORTING i_index     = call_line-index
-                    i_e_name    = call_line-eventname
-                    i_e_type    = call_line-eventtype
-                    i_program   = i_program
-                    i_include   = lv_inc
-                    i_stack     = i_stack
-                    io_debugger = io_debugger ).
+      CHECK sy-subrc = 0.
+
+      DATA(lv_inc) = CONV program( call_line-include ).
+      IF lv_inc IS INITIAL. lv_inc = i_include. ENDIF.
+
+      " Ensure include is parsed
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        WITH KEY include = lv_inc TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        lcl_ace_source_parser=>parse_tokens(
+          i_stack = i_stack i_program = lv_inc i_include = lv_inc io_debugger = io_debugger ).
       ENDIF.
+
+      " Insert PRE/POST enhancement keywords into t_keywords of lv_inc
+      lcl_ace_source_parser=>collect_enhancements( i_program = lv_inc io_debugger = io_debugger ).
+
+      " Anti-recursion check
+      READ TABLE io_debugger->mo_window->mt_calls
+        WITH KEY include = lv_inc ev_name = i_call_name TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        RETURN.
+      ELSE.
+        APPEND INITIAL LINE TO io_debugger->mo_window->mt_calls ASSIGNING FIELD-SYMBOL(<mc>).
+        <mc>-include = lv_inc.
+        <mc>-ev_name = i_call_name.
+      ENDIF.
+
+      DATA(lv_stack) = i_stack + 1.
+      CHECK lv_stack <= io_debugger->mo_window->m_hist_depth.
+
+      READ TABLE io_debugger->mt_steps
+        WITH KEY program = lv_inc eventname = i_call_name eventtype = 'FORM'
+        TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        RETURN.
+      ENDIF.
+
+      " Read prog with already-inserted enhancement keywords
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        WITH KEY include = lv_inc INTO DATA(prog).
+      CHECK sy-subrc = 0.
+
+      " Find FORM start tabix in t_keywords
+      DATA(lv_tabix) = 0.
+      LOOP AT prog-t_keywords INTO DATA(kw).
+        IF kw-name = 'FORM' AND kw-index = call_line-index.
+          lv_tabix = sy-tabix.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+      CHECK lv_tabix > 0.
+
+      " Iterate all keywords from FORM to ENDFORM (including inserted enhancements)
+      LOOP AT prog-t_keywords INTO kw FROM lv_tabix.
+        IF kw-name = 'ENDFORM'.
+          EXIT.
+        ENDIF.
+        IF kw-name = 'FORM' OR kw-name = 'DATA' OR kw-name = 'TYPES'
+          OR kw-name = 'CONSTANTS' OR kw-name IS INITIAL
+          OR kw-name = 'ENHANCEMENT' OR kw-name = 'ENDENHANCEMENT'.
+          CONTINUE.
+        ENDIF.
+
+        lcl_ace_source_parser=>parse_tokens(
+          i_stack = lv_stack i_program = CONV #( kw-program )
+          i_include = CONV #( kw-include ) io_debugger = io_debugger ).
+
+        READ TABLE io_debugger->mt_steps
+          WITH KEY line = kw-line program = i_program include = kw-include
+          TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          ADD 1 TO io_debugger->m_step.
+          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+          <step>-step       = io_debugger->m_step.
+          <step>-line       = kw-line.
+          <step>-stacklevel = lv_stack.
+          <step>-program    = i_program.
+          <step>-include    = kw-include.
+          " If keyword belongs to an enhancement include — use ENHANCEMENT type/name
+          READ TABLE prog-tt_enh_blocks INTO DATA(ls_enh_blk)
+            WITH KEY enh_include = kw-include ev_name = i_call_name.
+          IF sy-subrc = 0.
+            <step>-eventtype = 'ENHANCEMENT'.
+            <step>-eventname = ls_enh_blk-enh_name.
+          ELSE.
+            <step>-eventtype = 'FORM'.
+            <step>-eventname = i_call_name.
+          ENDIF.
+        ENDIF.
+
+        " Recurse into nested calls
+        LOOP AT kw-tt_calls INTO DATA(call).
+          IF call-name IS NOT INITIAL AND NOT ( call-event = 'METHOD' AND call-class IS INITIAL ).
+            IF call-event = 'FORM'.
+              lcl_ace_source_parser=>parse_call_form(
+                i_call_name = call-name
+                i_program   = lv_inc
+                i_include   = lv_inc
+                i_stack     = lv_stack
+                io_debugger = io_debugger ).
+            ELSEIF call-event = 'FUNCTION'.
+              DATA func TYPE rs38l_fnam.
+              func = call-name.
+              REPLACE ALL OCCURRENCES OF '''' IN func WITH ''.
+              IF io_debugger->mo_window->m_zcode IS INITIAL OR
+                func+0(1) = 'Z' OR func+0(1) = 'Y'.
+                DATA lv_finc TYPE progname.
+                CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+                  CHANGING funcname = func include = lv_finc
+                  EXCEPTIONS OTHERS = 6.
+                IF sy-subrc = 0.
+                  lcl_ace_source_parser=>code_execution_scanner(
+                    i_program = lv_finc i_include = lv_finc
+                    i_stack = lv_stack i_evtype = 'FUNCTION' i_evname = CONV #( func )
+                    io_debugger = io_debugger ).
+                ENDIF.
+              ENDIF.
+            ELSEIF call-event = 'METHOD'.
+              lcl_ace_source_parser=>parse_class(
+                i_include = lv_inc i_call = call
+                i_stack = lv_stack io_debugger = io_debugger key = kw ).
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
     ENDMETHOD.
 
   ENDCLASS.
