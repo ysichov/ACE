@@ -7366,7 +7366,11 @@
             " Inside an enhancement block
             <step>-eventtype = 'ENHANCEMENT'.
             <step>-eventname = |{ ls_cur_enh-enh_name } { ls_cur_enh-enh_id }|.
-            <step>-stacklevel = lv_stack + 1.
+            IF ls_cur_enh-position = 'BEGIN'.
+              <step>-stacklevel = lv_stack.          " PRE → same as FORM call level
+            ELSE.
+              <step>-stacklevel = lv_body_stack + 1. " POST → after FORM body
+            ENDIF.
           ELSE.
             " FORM body
             <step>-eventtype  = 'FORM'.
