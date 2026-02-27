@@ -2290,7 +2290,7 @@
         DATA(to_row) = prog-scan->tokens[ keyword-to ]-row.
         DATA(spaces) = repeat( val = | | occ = ( line-stack - 1 ) * 3 ).
         DATA(dashes) = repeat( val = |-| occ = ( line-stack ) ).
-        IF prev_line-ev_name <> line-ev_name OR prev_line-ev_type <> line-ev_type OR prev_line-class <> line-class. "new event
+        IF prev_line-ev_name <> line-ev_name OR prev_line-ev_type <> line-ev_type OR prev_line-class <> line-class OR prev_line-stack <> line-stack. "new event
           SPLIT line-include AT '=' INTO TABLE splits.
 
           APPEND INITIAL LINE TO flow_lines ASSIGNING FIELD-SYMBOL(<flow>).
@@ -4809,11 +4809,21 @@
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_form_include INTO DATA(ls_form_prog_check).
-        IF sy-subrc = 0 AND ls_form_prog_check-tt_enh_blocks IS INITIAL.
-          lcl_ace_source_parser=>collect_enhancements(
-            i_program   = lv_form_include
-            io_debugger = mo_viewer ).
+        " Rebuild v_source on double-click from current t_keywords (which already has enhancements)
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_form_include ASSIGNING FIELD-SYMBOL(<fp_rebuild>).
+        IF sy-subrc = 0.
+          IF <fp_rebuild>-enh_collected = abap_true.
+            " Already collected — just clear v_source/v_keywords so collect_enhancements rebuilds them
+            CLEAR: <fp_rebuild>-v_source, <fp_rebuild>-v_keywords.
+            " Restore t_keywords to original by removing inserted enhancement keywords
+            DELETE <fp_rebuild>-t_keywords WHERE include <> lv_form_include.
+            CLEAR: <fp_rebuild>-enh_collected, <fp_rebuild>-tt_enh_blocks.
+          ENDIF.
         ENDIF.
+        lcl_ace_source_parser=>collect_enhancements(
+          i_program   = lv_form_include
+          io_debugger = mo_viewer ).
         " Show v_source if available, else source_tab
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_form_include ASSIGNING FIELD-SYMBOL(<form_prog>).
@@ -5797,6 +5807,15 @@
       " Sort: %_END before %_BEGIN so POST inserts first (doesn't affect PRE position)
       SORT lt_enh BY full_name DESCENDING.
 
+      " Pre-initialize v_source/v_keywords from source_tab/t_keywords BEFORE any insertions
+      " so that both PRE and POST are inserted into the same base and order is preserved
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        WITH KEY include = i_program ASSIGNING FIELD-SYMBOL(<prog_init>).
+      IF sy-subrc = 0 AND <prog_init>-v_source IS INITIAL.
+        <prog_init>-v_source   = <prog_init>-source_tab.
+        <prog_init>-v_keywords = <prog_init>-t_keywords.
+      ENDIF.
+
       LOOP AT lt_enh INTO DATA(ls_enh).
         CLEAR: form_name, position.
 
@@ -5968,10 +5987,6 @@
           ENDLOOP.
 
           " Insert enhancement lines into v_source (prog with all FORM enhancements embedded)
-          IF <prog>-v_source IS INITIAL.
-            <prog>-v_source   = <prog>-source_tab.
-            <prog>-v_keywords = <prog>-t_keywords.
-          ENDIF.
           DATA(lv_src_tabix)   = lv_insert_line + lv_offset.
           DATA(lv_offset_snap) = lv_offset.
           " Separator line
