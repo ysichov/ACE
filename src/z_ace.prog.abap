@@ -1,4 +1,4 @@
-  REPORT z_ace_ref. " ACE - Abap Code Explorer
+  REPORT z_ace. " ACE - Abap Code Explorer
   " & Multi-windows program for ABAP code analysis
   " &----------------------------------------------------------------------
   " & version: beta 0.5
@@ -29,13 +29,8 @@
 
   SELECTION-SCREEN SKIP.
 
-  SELECTION-SCREEN BEGIN OF BLOCK ai WITH FRAME TITLE TEXT-003.
-    PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
-                p_model  TYPE text255 MEMORY ID model,
-                p_apikey TYPE text255 MEMORY ID api.
-  SELECTION-SCREEN END OF BLOCK ai.
 
-  CLASS lcl_ace_ai DEFINITION DEFERRED.
+
   CLASS lcl_ace_data_receiver DEFINITION DEFERRED.
   CLASS lcl_ace_data_transmitter DEFINITION DEFERRED.
   CLASS lcl_ace_rtti_tree DEFINITION DEFERRED.
@@ -707,10 +702,8 @@
             mt_if             TYPE tt_if.
 
       METHODS:
-        constructor IMPORTING i_prog   TYPE prog
-                              i_dest   TYPE text255
-                              i_model  TYPE text255
-                              i_apikey TYPE text255,
+        constructor IMPORTING i_prog   TYPE prog,
+
 
         show,
         add_class IMPORTING i_class TYPE string i_refnode TYPE salv_de_node_key no_locals TYPE boolean OPTIONAL i_tree TYPE lcl_ace_appl=>ts_tree OPTIONAL i_type TYPE flag OPTIONAL,
@@ -754,213 +747,6 @@
 
   ENDCLASS.
 
-
-  CLASS lcl_ace_ai_api DEFINITION.
-
-    PUBLIC SECTION.
-
-      METHODS:      constructor IMPORTING
-                                  i_dest   TYPE text255
-                                  i_model  TYPE text255
-                                  i_apikey TYPE text255 ,
-        call_openai   IMPORTING i_prompt TYPE string RETURNING VALUE(rv_answer) TYPE string,
-
-
-        build_request
-          IMPORTING
-            i_prompt  TYPE string
-          EXPORTING
-            e_payload TYPE string ,
-
-        send_request
-          IMPORTING
-            i_payload  TYPE string
-          EXPORTING
-            e_response TYPE string
-            e_error    TYPE boolean,
-        output
-          IMPORTING
-                    i_prompt         TYPE string
-                    i_content        TYPE string
-          RETURNING VALUE(rv_answer) TYPE string.
-
-    PRIVATE SECTION.
-      DATA mv_api_key TYPE string .
-      DATA mv_dest TYPE text255 .
-      DATA mv_model TYPE string .
-
-  ENDCLASS.
-
-  CLASS lcl_ace_ai_api IMPLEMENTATION.
-
-    METHOD constructor.
-
-      mv_dest = i_dest.
-      mv_model = i_model.
-      mv_api_key = i_apikey.
-
-    ENDMETHOD.
-
-    METHOD call_openai.
-      DATA: prompt   TYPE string,
-            payload  TYPE string,
-            response TYPE string.
-
-      "Build payload
-      CALL METHOD build_request
-        EXPORTING
-          i_prompt  = i_prompt
-        IMPORTING
-          e_payload = payload.
-
-      CALL METHOD me->send_request
-        EXPORTING
-          i_payload  = payload
-        IMPORTING
-          e_response = response
-          e_error    = DATA(error).
-
-      IF  error IS NOT INITIAL.
-        rv_answer =  response.
-      ELSE.
-        rv_answer = output(
-          EXPORTING
-            i_prompt  = i_prompt
-            i_content =  response ).
-      ENDIF.
-    ENDMETHOD.
-
-    METHOD build_request.
-
-      DATA:  payload TYPE string.
-      payload = |{ '{ "model": "' && p_model && '", "messages": [{ "role": "user", "content": "' && i_prompt &&  '" }], "max_tokens": 10000 } ' }|.
-      e_payload =  payload.
-
-    ENDMETHOD.
-
-    METHOD send_request.
-
-      DATA: o_http_client TYPE REF TO if_http_client,
-            response_body TYPE string,
-            header        TYPE string.
-
-      CALL METHOD cl_http_client=>create_by_destination
-        EXPORTING
-          destination              = p_dest
-        IMPORTING
-          client                   = o_http_client
-        EXCEPTIONS
-          argument_not_found       = 1
-          destination_not_found    = 2
-          destination_no_authority = 3
-          plugin_not_active        = 4
-          internal_error           = 5
-          OTHERS                   = 13.
-      IF sy-subrc = 2.
-        e_response = 'Destination not found. Please check it in SM59 transaction'.
-        e_error = abap_true.
-        RETURN.
-      ELSEIF sy-subrc <> 0.
-        e_response = |cl_http_client=>create_by_destination error №' { sy-subrc }|.
-        e_error = abap_true.
-        RETURN.
-      ENDIF.
-
-      "mv_api_key = 'lmstudio'. "any name for local LLMs or secret key for external
-      mv_api_key = p_apikey.
-      "set request header
-      o_http_client->request->set_header_field( name = 'Content-Type' value = 'application/json' ).
-      o_http_client->request->set_header_field( name = 'Authorization' value = |Bearer { mv_api_key }| ).
-
-      o_http_client->request->set_method('POST').
-
-      "set payload
-      o_http_client->request->set_cdata( i_payload ).
-
-      CALL METHOD o_http_client->send
-        EXCEPTIONS
-          http_communication_failure = 1
-          http_invalid_state         = 2
-          http_processing_failed     = 3
-          http_invalid_timeout       = 4
-          OTHERS                     = 5.
-      IF sy-subrc = 0.
-        CALL METHOD o_http_client->receive
-          EXCEPTIONS
-            http_communication_failure = 1
-            http_invalid_state         = 2
-            http_processing_failed     = 3
-            OTHERS                     = 4.
-        "Get response
-        IF sy-subrc <> 0.
-          response_body = o_http_client->response->get_data( ).
-          e_response =  response_body.
-        ELSE.
-          response_body = o_http_client->response->get_data( ).
-          IF  response_body IS NOT INITIAL.
-            e_response =  response_body.
-          ELSE.
-            e_response = 'Call was succeesful, but got no response'.
-          ENDIF.
-        ENDIF.
-
-      ENDIF.
-
-    ENDMETHOD.
-
-    METHOD output.
-
-      DATA: text(1000) TYPE c,
-            string     TYPE string,
-            content    TYPE string,
-            reasoning  TYPE string.
-
-      TYPES: BEGIN OF lty_s_message,
-               role              TYPE string,
-               content           TYPE string,
-               reasoning_content TYPE string,
-             END           OF lty_s_message,
-             lty_t_message TYPE STANDARD TABLE OF lty_s_message WITH NON-UNIQUE DEFAULT KEY,
-             BEGIN OF lty_s_choice,
-               index         TYPE string,
-               message       TYPE lty_s_message,
-               logprobs      TYPE string,
-               finish_reason TYPE string,
-             END      OF lty_s_choice,
-             BEGIN OF lty_s_base_chatgpt_res,
-               id      TYPE string,
-               object  TYPE string,
-               created TYPE string,
-               model   TYPE string,
-               choices TYPE TABLE OF lty_s_choice WITH NON-UNIQUE DEFAULT KEY,
-             END OF lty_s_base_chatgpt_res.
-
-      DATA response TYPE lty_s_base_chatgpt_res.
-
-      DATA:  binary TYPE xstring.
-
-      DATA: o_x2c TYPE REF TO cl_abap_conv_in_ce.
-      o_x2c = cl_abap_conv_in_ce=>create( encoding = 'UTF-8' ).
-      binary = i_content.
-      o_x2c->convert( EXPORTING input =  binary
-                       IMPORTING data  =  string ).
-
-      /ui2/cl_json=>deserialize( EXPORTING json =  string CHANGING data = response ).
-
-      IF  response-choices IS NOT INITIAL.
-        content = response-choices[ 1 ]-message-content.
-        reasoning = response-choices[ 1 ]-message-reasoning_content.
-      ELSE.
-        content =  string.
-        cl_abap_browser=>show_html(  html_string =  content title = 'Error (' ).
-        RETURN.
-      ENDIF.
-
-      rv_answer =  content.
-
-    ENDMETHOD.
-
-  ENDCLASS.
 
   CLASS lcl_ace_rtti_tree DEFINITION FINAL.
 
@@ -1012,187 +798,6 @@
 
   ENDCLASS.
 
-  CLASS lcl_ace_ai DEFINITION INHERITING FROM lcl_ace_popup.
-
-    PUBLIC SECTION.
-      DATA: mo_ai_box               TYPE REF TO cl_gui_dialogbox_container,
-            mo_ai_splitter          TYPE REF TO cl_gui_splitter_container,
-            mo_ai_toolbar_container TYPE REF TO cl_gui_container,
-            mo_ai_toolbar           TYPE REF TO cl_gui_toolbar,
-            mo_prompt_container     TYPE REF TO cl_gui_container,
-            mo_answer_container     TYPE REF TO cl_gui_container,
-            mo_prompt_text          TYPE REF TO cl_gui_textedit,
-            mo_answer_text          TYPE REF TO cl_gui_textedit,
-            mv_prompt               TYPE string,
-            mv_answer               TYPE string.
-
-      METHODS:  constructor IMPORTING i_source  TYPE sci_include
-                                      io_parent TYPE REF TO cl_gui_dialogbox_container,
-        add_ai_toolbar_buttons,
-        hnd_ai_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode.
-
-  ENDCLASS.
-
-  CLASS lcl_ace_ai IMPLEMENTATION.
-
-    METHOD constructor.
-      super->constructor( ).
-
-      mo_ai_box = create( i_name = 'ACE: Abap Code Explorer - AI chat' i_width = 1400 i_hight = 400 ).
-      CREATE OBJECT mo_ai_splitter
-        EXPORTING
-          parent  = mo_ai_box
-          rows    = 3
-          columns = 1
-        EXCEPTIONS
-          OTHERS  = 1.
-
-      "save new popup ref
-      APPEND INITIAL LINE TO lcl_ace_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
-      <popup>-parent = io_parent.
-      <popup>-child = mo_ai_box.
-
-      SET HANDLER on_box_close FOR mo_ai_box.
-
-      mo_ai_splitter->get_container(
-           EXPORTING
-             row       = 1
-             column    = 1
-           RECEIVING
-             container = mo_ai_toolbar_container ).
-
-      mo_ai_splitter->get_container(
-        EXPORTING
-          row       = 2
-          column    = 1
-        RECEIVING
-          container = mo_prompt_container ).
-
-      mo_ai_splitter->get_container(
-        EXPORTING
-          row       = 3
-          column    = 1
-        RECEIVING
-          container = mo_answer_container  ).
-
-      mo_ai_splitter->set_row_height( id = 1 height = '3' ).
-
-      mo_ai_splitter->set_row_sash( id    = 1
-                                    type  = 0
-                                    value = 0 ).
-
-      SET HANDLER on_box_close FOR mo_ai_box.
-
-      CREATE OBJECT mo_prompt_text
-        EXPORTING
-          parent                 = mo_prompt_container
-        EXCEPTIONS
-          error_cntl_create      = 1
-          error_cntl_init        = 2
-          error_cntl_link        = 3
-          error_dp_create        = 4
-          gui_type_not_supported = 5
-          OTHERS                 = 6.
-      IF sy-subrc <> 0.
-        on_box_close( mo_box ).
-      ENDIF.
-
-      CREATE OBJECT mo_answer_text
-        EXPORTING
-          parent                 = mo_answer_container
-        EXCEPTIONS
-          error_cntl_create      = 1
-          error_cntl_init        = 2
-          error_cntl_link        = 3
-          error_dp_create        = 4
-          gui_type_not_supported = 5
-          OTHERS                 = 6.
-      IF sy-subrc <> 0.
-        on_box_close( mo_box ).
-      ENDIF.
-
-      mo_answer_text->set_readonly_mode( ).
-
-      CREATE OBJECT mo_ai_toolbar EXPORTING parent = mo_ai_toolbar_container.
-      add_ai_toolbar_buttons( ).
-      mo_ai_toolbar->set_visible( 'X' ).
-
-      "set prompt
-      DATA string TYPE TABLE OF char255.
-
-      APPEND INITIAL LINE TO string ASSIGNING FIELD-SYMBOL(<str>).
-      <str> = 'Explain please the meaning of this ABAP code and provide a code review'.
-      mv_prompt = <str>.
-      APPEND INITIAL LINE TO string ASSIGNING <str>.
-
-      LOOP AT i_source INTO DATA(line).
-        APPEND INITIAL LINE TO string ASSIGNING <str>.
-        <str> = line.
-        mv_prompt = mv_prompt && <str>.
-      ENDLOOP.
-
-      mo_prompt_text->set_text_as_r3table( string ).
-      cl_gui_control=>set_focus( mo_ai_box ).
-
-    ENDMETHOD.
-
-    METHOD add_ai_toolbar_buttons.
-
-      DATA: button TYPE ttb_button,
-            events TYPE cntl_simple_events,
-            event  LIKE LINE OF events.
-
-      button  = VALUE #(
-       ( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ).
-
-      mo_ai_toolbar->add_button_group( button ).
-
-*   Register events
-      event-eventid = cl_gui_toolbar=>m_id_function_selected.
-      event-appl_event = space.
-      APPEND event TO events.
-
-      mo_ai_toolbar->set_registered_events( events = events ).
-      SET HANDLER me->hnd_ai_toolbar FOR mo_ai_toolbar.
-
-    ENDMETHOD.
-
-    METHOD hnd_ai_toolbar.
-
-      DATA:  prompt TYPE string.
-
-      CASE fcode.
-
-        WHEN 'AI'.
-
-          DATA(o_ai) = NEW lcl_ace_ai_api( i_model = p_model i_dest = p_dest i_apikey = p_apikey ).
-
-          DATA text TYPE TABLE OF char255.
-          CALL METHOD mo_prompt_text->get_text_as_stream
-            IMPORTING
-              text = text.
-          CLEAR mv_prompt.
-          LOOP AT text INTO DATA(line).
-            CONCATENATE mv_prompt  line
-                   INTO mv_prompt.
-          ENDLOOP.
-
-          REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN mv_prompt WITH ''.
-          REPLACE ALL OCCURRENCES OF '#' IN mv_prompt WITH ''.
-          REPLACE ALL OCCURRENCES OF '"' IN mv_prompt WITH ''''.
-          DO 50 TIMES.
-            REPLACE ALL OCCURRENCES OF '/' IN mv_prompt WITH ''.
-          ENDDO.
-          REPLACE ALL OCCURRENCES OF REGEX '[[:cntrl:]]' IN mv_prompt WITH ' '.
-
-          mv_answer = o_ai->call_openai( mv_prompt ).
-          mo_answer_text->set_textstream( mv_answer ).
-
-      ENDCASE.
-
-    ENDMETHOD.
-
-  ENDCLASS.
 
   CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_ace_popup .
 
@@ -1444,10 +1049,6 @@
       CONSTANTS: c_mask TYPE x VALUE '01'.
 
       mv_prog = i_prog.
-      mv_dest = i_dest.
-      mv_model = i_model.
-      mv_apikey = i_apikey.
-
       i_step = abap_on.
       lcl_ace_appl=>check_mermaid( ).
       lcl_ace_appl=>init_icons_table( ).
@@ -2945,11 +2546,6 @@
       m_debug_button = fcode.
       READ TABLE mt_stack INDEX 1 INTO DATA(stack).
       CASE fcode.
-
-        WHEN 'AI'.
-
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY selected = abap_true INTO DATA(prog).
-          NEW lcl_ace_ai( i_source = prog-source_tab io_parent =  mo_viewer->mo_window->mo_box ).
 
         WHEN 'RUN'.
 
@@ -7919,7 +7515,7 @@
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
     IF sy-dbcnt <> 0.
-      DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
+      DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog ).
     ELSE.
       MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
     ENDIF.
