@@ -244,8 +244,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
       IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'FORM' AND <include> IS NOT INITIAL.
         " FORM node - show include with all enhancements embedded (v_source)
+        " v_source/v_keywords already built at parse_tokens time - just display
         DATA(lv_form_include) = CONV program( <include> ).
-        " Ensure parsed and enhancements collected
+        " Ensure parsed (enhancements already collected inside parse_tokens)
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_form_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
@@ -254,24 +255,6 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             i_include   = lv_form_include
             io_debugger = mo_viewer ).
         ENDIF.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-          WITH KEY include = lv_form_include INTO DATA(ls_form_prog_check).
-        " Rebuild v_source on double-click from current t_keywords (which already has enhancements)
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-          WITH KEY include = lv_form_include ASSIGNING FIELD-SYMBOL(<fp_rebuild>).
-        IF sy-subrc = 0.
-          IF <fp_rebuild>-enh_collected = abap_true.
-            " Already collected — just clear v_source/v_keywords so collect_enhancements rebuilds them
-            CLEAR: <fp_rebuild>-v_source, <fp_rebuild>-v_keywords.
-            " Restore t_keywords to original by removing inserted enhancement keywords
-            DELETE <fp_rebuild>-t_keywords WHERE include <> lv_form_include.
-            CLEAR: <fp_rebuild>-enh_collected, <fp_rebuild>-tt_enh_blocks.
-          ENDIF.
-        ENDIF.
-        ZCL_ACE_SOURCE_PARSER=>collect_enhancements(
-          i_program   = lv_form_include
-          io_debugger = mo_viewer ).
-        " Show v_source if available, else source_tab
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_form_include ASSIGNING FIELD-SYMBOL(<form_prog>).
         IF sy-subrc = 0.

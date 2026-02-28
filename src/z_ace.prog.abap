@@ -14,7 +14,6 @@
   " & https://github.com/WegnerDan/abapMermaid
   " & https://github.com/oisee/vibing-steampunk
 
-
   SELECTION-SCREEN BEGIN OF BLOCK s1 WITH FRAME TITLE TEXT-004.
     SELECTION-SCREEN BEGIN OF LINE.
       SELECTION-SCREEN COMMENT (29) TEXT-002 FOR FIELD p_prog.
@@ -29,7 +28,6 @@
   SELECTION-SCREEN END OF BLOCK s1.
 
   SELECTION-SCREEN SKIP.
-
 
   INITIALIZATION.
 

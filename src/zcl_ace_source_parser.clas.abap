@@ -309,11 +309,12 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   method COLLECT_ENHANCEMENTS.
 
 
-      DATA: form_name TYPE string,
-            position  TYPE string,
-            enh_prog  TYPE program,
-            tabix     TYPE i,
-            lv_offset TYPE i.  " offset in source_tab after previous insertions
+      DATA: form_name    TYPE string,
+            position     TYPE string,
+            enh_prog     TYPE program,
+            tabix        TYPE i.
+
+      " (offset tracking removed: insertions are processed bottom-up)
 
       " For class method includes (CM*), D010ENH stores enhancements under the CP program.
       " Resolve the master program via D010INC.
@@ -332,7 +333,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ASSIGNING FIELD-SYMBOL(<prog_enh>).
       IF sy-subrc = 0.
         lv_prog_enh_tabix = sy-tabix.
-        IF <prog_enh>-enh_collected = abap_true OR <prog_enh>-tt_enh_blocks IS NOT INITIAL.
+        IF <prog_enh>-enh_collected = abap_true.
           RETURN.
         ENDIF.
       ENDIF.
@@ -348,19 +349,39 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       CHECK lt_enh IS NOT INITIAL.
 
-      " Sort: %_END before %_BEGIN so POST inserts first (doesn't affect PRE position)
-      SORT lt_enh BY full_name DESCENDING.
+      " Add enhtype: 1=BEGIN, 2=END for correct insertion order within same form
+      " (BEGIN inserted first = after FORM, END inserted second = before ENDFORM)
+      TYPES: BEGIN OF ts_enh_ext,
+               programname  TYPE d010enh-programname,
+               enhname      TYPE d010enh-enhname,
+               enhinclude   TYPE d010enh-enhinclude,
+               id           TYPE d010enh-id,
+               full_name    TYPE d010enh-full_name,
+               enhmode      TYPE d010enh-enhmode,
+               enhtype      TYPE i,
+               full_name_30 TYPE c LENGTH 30,  " for sorting (STRING offset not allowed)
+             END OF ts_enh_ext.
+      DATA lt_enh_ext TYPE STANDARD TABLE OF ts_enh_ext.
+      LOOP AT lt_enh INTO DATA(ls_enh_raw).
+        DATA(ls_ext) = CORRESPONDING ts_enh_ext( ls_enh_raw ).
+        ls_ext-enhtype = COND i(
+          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_BEGIN'    THEN 1  " Method PRE
+          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_END'      THEN 2  " Method POST
+          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:BEGIN' THEN 1  " FORM PRE
+          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:END'   THEN 2  " FORM POST
+          ELSE 1 ).
+        ls_ext-full_name_30 = ls_ext-full_name.  " truncate STRING to C(30) for sort
+        APPEND ls_ext TO lt_enh_ext.
+      ENDLOOP.
+      " Sort by insertion line DESCENDING so we process bottom-up.
+      " This ensures each insertion does not shift positions of subsequent insertions.
+      " Within the same form: END(2) before BEGIN(1) in descending line order is natural,
+      " but we need explicit secondary sort: same line -> END(2) before BEGIN(1).
+      " We'll resolve line after building lt_enh_ext; for now sort by full_name descending,
+      " then enhtype descending so END comes before BEGIN when lines are equal.
+      SORT lt_enh_ext BY full_name_30 DESCENDING enhtype DESCENDING.
 
-      " Pre-initialize v_source/v_keywords from source_tab/t_keywords BEFORE any insertions
-      " so that both PRE and POST are inserted into the same base and order is preserved
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
-        WITH KEY include = i_program ASSIGNING FIELD-SYMBOL(<prog_init>).
-      IF sy-subrc = 0 AND <prog_init>-v_source IS INITIAL.
-        <prog_init>-v_source   = <prog_init>-source_tab.
-        <prog_init>-v_keywords = <prog_init>-t_keywords.
-      ENDIF.
-
-      LOOP AT lt_enh INTO DATA(ls_enh).
+      LOOP AT lt_enh_ext INTO DATA(ls_enh).
         CLEAR: form_name, position.
 
         DATA(lv_full) = ls_enh-full_name.
@@ -444,6 +465,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ASSIGNING FIELD-SYMBOL(<prog>).
           CHECK sy-subrc = 0.
 
+          " Bottom-up processing: no accumulated offset needed.
+          " Each insertion is at the original line number (previous insertions were below).
+          DATA(lv_offset) = 0.
+
           " Find FORM position in t_keywords iteratively by name = 'FORM' and index
           DATA(lv_form_tabix) = 0.
           DATA ls_kw_form TYPE ZCL_ACE_APPL=>ts_kword.
@@ -454,6 +479,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
           ENDLOOP.
           CHECK lv_form_tabix > 0.
+          " Refresh v_line from v_keywords (t_keywords v_line is not updated by bottom-up shifts)
+          READ TABLE <prog>-v_keywords WITH KEY include = ls_kw_form-include
+            index = ls_kw_form-index INTO DATA(ls_vkw_form).
+          IF sy-subrc = 0. ls_kw_form-v_line = ls_vkw_form-v_line. ENDIF.
 
           " Read enhancement include keywords
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs
@@ -495,27 +524,41 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           CHECK lt_enh_kw IS NOT INITIAL.
 
           " Determine insertion point
+          DATA ls_kw_end TYPE ZCL_ACE_APPL=>ts_kword.  " always fresh
+          CLEAR ls_kw_end.
           IF position = 'BEGIN'.
             " After FORM statement
             tabix = lv_form_tabix + 1.
           ELSE. " END - before ENDFORM
-            " Find ENDFORM iteratively after FORM position
             tabix = lv_form_tabix + 1.
-            LOOP AT <prog>-t_keywords INTO DATA(ls_kw_end) FROM tabix.
+            LOOP AT <prog>-t_keywords INTO ls_kw_end FROM tabix.
               IF ls_kw_end-name = 'ENDFORM'.
-                tabix = sy-tabix.  " insert before ENDFORM
+                tabix = sy-tabix.
                 EXIT.
               ENDIF.
+              CLEAR ls_kw_end.
             ENDLOOP.
+            " Refresh v_line from v_keywords for ENDFORM
+            READ TABLE <prog>-v_keywords WITH KEY include = ls_kw_end-include
+              index = ls_kw_end-index INTO DATA(ls_vkw_end).
+            IF sy-subrc = 0. ls_kw_end-v_line = ls_vkw_end-v_line. ENDIF.
           ENDIF.
 
-          " Insert enhancement keywords into t_keywords at the target position
+          " Insert enhancement keywords into t_keywords at the target position.
+          " lv_insert_line = original source line (for v_keywords shift condition).
+          " lv_vsrc_tabix  = index into v_source (accounts for already-inserted lines).
           DATA(lv_insert_line) = COND i(
             WHEN position = 'BEGIN' THEN ls_kw_form-line + 1
-            ELSE ls_kw_end-line ).  " before ENDFORM line
+            ELSE ls_kw_end-line ).
 
-          " Pre-calculate base virtual line: insert position + current offset + 1 (separator line)
-          DATA(lv_vline_base) = lv_insert_line + lv_offset + 1.
+          " v_line of the anchor keyword already reflects prior bottom-up insertions below.
+          " Use it as the actual insertion index into v_source.
+          DATA(lv_vsrc_tabix) = COND i(
+            WHEN position = 'BEGIN' THEN ls_kw_form-v_line + 1
+            ELSE ls_kw_end-v_line ).
+
+          " Base virtual line for inserted ENH keywords
+          DATA(lv_vline_base) = lv_vsrc_tabix + 1.
           DATA(lv_kw_vline)   = lv_vline_base.
           LOOP AT lt_enh_kw INTO DATA(ls_ins).
             ls_ins-v_line     = lv_kw_vline.
@@ -524,15 +567,19 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             INSERT ls_ins INTO <prog>-t_keywords INDEX tabix.
             ADD 1 TO tabix.
             ADD 1 TO lv_kw_vline.
-            " After ENDENHANCEMENT there will be a closing separator line too
             IF ls_ins-name = 'ENDENHANCEMENT'.
               ADD 1 TO lv_kw_vline.
             ENDIF.
           ENDLOOP.
 
-          " Insert enhancement lines into v_source (prog with all FORM enhancements embedded)
-          DATA(lv_src_tabix)   = lv_insert_line + lv_offset.
-          DATA(lv_offset_snap) = lv_offset.
+          " Insert enhancement lines into v_source
+          " DEBUG
+          DATA(lv_dbg) = |ENH { lv_enh_id } pos={ position
+            } fl={ ls_kw_form-line } el={ ls_kw_end-line
+            } ins={ lv_insert_line } vt={ lv_vsrc_tabix
+            } vsrc={ lines( <prog>-v_source ) } inc={ ls_call_line-include }|.
+          MESSAGE lv_dbg TYPE 'I'.
+          DATA(lv_src_tabix) = lv_vsrc_tabix.
           " Separator line
           DATA lv_sep TYPE string.
           IF position = 'BEGIN'.
@@ -564,22 +611,26 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
             ADD 1 TO lv_cur_line.
           ENDWHILE.
-          " Shift v_keywords for original lines after insertion point
-          DATA(lv_enh_inserted) = lv_offset - lv_offset_snap.
+          " lv_enh_inserted = количество строк вставленных в текущем энхансменте
+          DATA(lv_enh_inserted) = lv_offset.
+          " IMPORTANT: use original 'line' field (not v_line) for the condition,
+          " because bottom-up processing means previous insertions (below) have already
+          " shifted v_line of those entries upward - comparing v_line would double-shift them.
           LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
-            WHERE include = <prog>-include AND v_line >= lv_insert_line + lv_offset_snap.
+            WHERE include = <prog>-include AND line >= lv_insert_line.
             ADD lv_enh_inserted TO <kw_v>-v_line.
             ADD lv_enh_inserted TO <kw_v>-v_from_row.
             ADD lv_enh_inserted TO <kw_v>-v_to_row.
           ENDLOOP.
           " Add enhancement keywords into v_keywords
           LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
-            DATA(lv_vkw_vline) = lv_insert_line + lv_offset_snap + ( ls_vkw_ins-line - lv_first_line ) + 1.
+            DATA(lv_vkw_vline) = lv_insert_line + ( ls_vkw_ins-line - lv_first_line ) + 1.
             ls_vkw_ins-v_line     = lv_vkw_vline.
             ls_vkw_ins-v_from_row = lv_vkw_vline.
             ls_vkw_ins-v_to_row   = lv_vkw_vline.
             APPEND ls_vkw_ins TO <prog>-v_keywords.
           ENDLOOP.
+          " (bottom-up: no offset accumulation needed)
 
 *
 *        " Save enhancement block position for CodeMix
@@ -1735,7 +1786,14 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         prog-t_keywords = tokens.
         prog-program = i_program.
         prog-stack = stack.
+        " Initialize v_source/v_keywords from source before enhancements
+        prog-v_source   = prog-source_tab.
+        prog-v_keywords = tokens.
         APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
+        " Build v_source/v_keywords with FORM enhancements embedded (once, at parse time)
+        ZCL_ACE_SOURCE_PARSER=>COLLECT_ENHANCEMENTS(
+          i_program   = i_program
+          io_debugger = io_debugger ).
 
       ENDIF.
 

@@ -770,7 +770,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDIF.
 
       ZCL_ACE_SOURCE_PARSER=>PARSE_TOKENS( i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
-      ZCL_ACE_SOURCE_PARSER=>COLLECT_ENHANCEMENTS( i_program = i_include io_debugger = mo_viewer ).
+      " Note: COLLECT_ENHANCEMENTS is called inside PARSE_TOKENS, no need to call again
       SORT ms_sources-t_params.
       DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
       IF mo_viewer->m_step IS INITIAL.
@@ -783,9 +783,12 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       READ TABLE ms_sources-tt_progs WITH KEY include = i_include ASSIGNING <prog>.
       IF sy-subrc = 0.
-
         <prog>-selected = abap_true.
-        mo_code_viewer->set_text( table = <prog>-source_tab ).
+        IF <prog>-v_source IS NOT INITIAL.
+          mo_code_viewer->set_text( table = <prog>-v_source ).
+        ELSE.
+          mo_code_viewer->set_text( table = <prog>-source_tab ).
+        ENDIF.
       ENDIF.
 
   endmethod.
