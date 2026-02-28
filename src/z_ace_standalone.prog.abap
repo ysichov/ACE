@@ -1,4 +1,4 @@
-  REPORT z_ace. " ACE - Abap Code Explorer
+  REPORT z_ace_standalone. " ACE - Abap Code Explorer
   " & Multi-windows program for ABAP code analysis
   " &----------------------------------------------------------------------
   " & version: beta 0.5
@@ -13,7 +13,6 @@
   " & External resources
   " & https://github.com/WegnerDan/abapMermaid
   " & https://github.com/oisee/vibing-steampunk
-
 
   SELECTION-SCREEN BEGIN OF BLOCK s1 WITH FRAME TITLE TEXT-004.
     SELECTION-SCREEN BEGIN OF LINE.
@@ -30,8 +29,15 @@
 
   SELECTION-SCREEN SKIP.
 
+  SELECTION-SCREEN BEGIN OF BLOCK ai WITH FRAME TITLE TEXT-003.
+    PARAMETERS: p_dest   TYPE text255 MEMORY ID dest,
+                p_model  TYPE text255 MEMORY ID model,
+                p_apikey TYPE text255 MEMORY ID api.
+  SELECTION-SCREEN END OF BLOCK ai.
 
-
+  CLASS lcl_ace_ai DEFINITION DEFERRED.
+  CLASS lcl_ace_data_receiver DEFINITION DEFERRED.
+  CLASS lcl_ace_data_transmitter DEFINITION DEFERRED.
   CLASS lcl_ace_rtti_tree DEFINITION DEFERRED.
   CLASS lcl_ace_window DEFINITION DEFERRED.
   CLASS lcl_ace_table_viewer DEFINITION DEFERRED.
@@ -60,6 +66,8 @@
           domain      TYPE text60,
           datatype    TYPE string,
           length      TYPE i,
+          transmitter TYPE REF TO lcl_ace_data_transmitter,
+          receiver    TYPE REF TO lcl_ace_data_receiver,
           color       TYPE lvc_t_scol,
           style       TYPE lvc_t_styl,
         END OF selection_display_s,
@@ -699,8 +707,10 @@
             mt_if             TYPE tt_if.
 
       METHODS:
-        constructor IMPORTING i_prog   TYPE prog,
-
+        constructor IMPORTING i_prog   TYPE prog
+                              i_dest   TYPE text255
+                              i_model  TYPE text255
+                              i_apikey TYPE text255,
 
         show,
         add_class IMPORTING i_class TYPE string i_refnode TYPE salv_de_node_key no_locals TYPE boolean OPTIONAL i_tree TYPE lcl_ace_appl=>ts_tree OPTIONAL i_type TYPE flag OPTIONAL,
@@ -744,6 +754,213 @@
 
   ENDCLASS.
 
+
+  CLASS lcl_ace_ai_api DEFINITION.
+
+    PUBLIC SECTION.
+
+      METHODS:      constructor IMPORTING
+                                  i_dest   TYPE text255
+                                  i_model  TYPE text255
+                                  i_apikey TYPE text255 ,
+        call_openai   IMPORTING i_prompt TYPE string RETURNING VALUE(rv_answer) TYPE string,
+
+
+        build_request
+          IMPORTING
+            i_prompt  TYPE string
+          EXPORTING
+            e_payload TYPE string ,
+
+        send_request
+          IMPORTING
+            i_payload  TYPE string
+          EXPORTING
+            e_response TYPE string
+            e_error    TYPE boolean,
+        output
+          IMPORTING
+                    i_prompt         TYPE string
+                    i_content        TYPE string
+          RETURNING VALUE(rv_answer) TYPE string.
+
+    PRIVATE SECTION.
+      DATA mv_api_key TYPE string .
+      DATA mv_dest TYPE text255 .
+      DATA mv_model TYPE string .
+
+  ENDCLASS.
+
+  CLASS lcl_ace_ai_api IMPLEMENTATION.
+
+    METHOD constructor.
+
+      mv_dest = i_dest.
+      mv_model = i_model.
+      mv_api_key = i_apikey.
+
+    ENDMETHOD.
+
+    METHOD call_openai.
+      DATA: prompt   TYPE string,
+            payload  TYPE string,
+            response TYPE string.
+
+      "Build payload
+      CALL METHOD build_request
+        EXPORTING
+          i_prompt  = i_prompt
+        IMPORTING
+          e_payload = payload.
+
+      CALL METHOD me->send_request
+        EXPORTING
+          i_payload  = payload
+        IMPORTING
+          e_response = response
+          e_error    = DATA(error).
+
+      IF  error IS NOT INITIAL.
+        rv_answer =  response.
+      ELSE.
+        rv_answer = output(
+          EXPORTING
+            i_prompt  = i_prompt
+            i_content =  response ).
+      ENDIF.
+    ENDMETHOD.
+
+    METHOD build_request.
+
+      DATA:  payload TYPE string.
+      payload = |{ '{ "model": "' && p_model && '", "messages": [{ "role": "user", "content": "' && i_prompt &&  '" }], "max_tokens": 10000 } ' }|.
+      e_payload =  payload.
+
+    ENDMETHOD.
+
+    METHOD send_request.
+
+      DATA: o_http_client TYPE REF TO if_http_client,
+            response_body TYPE string,
+            header        TYPE string.
+
+      CALL METHOD cl_http_client=>create_by_destination
+        EXPORTING
+          destination              = p_dest
+        IMPORTING
+          client                   = o_http_client
+        EXCEPTIONS
+          argument_not_found       = 1
+          destination_not_found    = 2
+          destination_no_authority = 3
+          plugin_not_active        = 4
+          internal_error           = 5
+          OTHERS                   = 13.
+      IF sy-subrc = 2.
+        e_response = 'Destination not found. Please check it in SM59 transaction'.
+        e_error = abap_true.
+        RETURN.
+      ELSEIF sy-subrc <> 0.
+        e_response = |cl_http_client=>create_by_destination error №' { sy-subrc }|.
+        e_error = abap_true.
+        RETURN.
+      ENDIF.
+
+      "mv_api_key = 'lmstudio'. "any name for local LLMs or secret key for external
+      mv_api_key = p_apikey.
+      "set request header
+      o_http_client->request->set_header_field( name = 'Content-Type' value = 'application/json' ).
+      o_http_client->request->set_header_field( name = 'Authorization' value = |Bearer { mv_api_key }| ).
+
+      o_http_client->request->set_method('POST').
+
+      "set payload
+      o_http_client->request->set_cdata( i_payload ).
+
+      CALL METHOD o_http_client->send
+        EXCEPTIONS
+          http_communication_failure = 1
+          http_invalid_state         = 2
+          http_processing_failed     = 3
+          http_invalid_timeout       = 4
+          OTHERS                     = 5.
+      IF sy-subrc = 0.
+        CALL METHOD o_http_client->receive
+          EXCEPTIONS
+            http_communication_failure = 1
+            http_invalid_state         = 2
+            http_processing_failed     = 3
+            OTHERS                     = 4.
+        "Get response
+        IF sy-subrc <> 0.
+          response_body = o_http_client->response->get_data( ).
+          e_response =  response_body.
+        ELSE.
+          response_body = o_http_client->response->get_data( ).
+          IF  response_body IS NOT INITIAL.
+            e_response =  response_body.
+          ELSE.
+            e_response = 'Call was succeesful, but got no response'.
+          ENDIF.
+        ENDIF.
+
+      ENDIF.
+
+    ENDMETHOD.
+
+    METHOD output.
+
+      DATA: text(1000) TYPE c,
+            string     TYPE string,
+            content    TYPE string,
+            reasoning  TYPE string.
+
+      TYPES: BEGIN OF lty_s_message,
+               role              TYPE string,
+               content           TYPE string,
+               reasoning_content TYPE string,
+             END           OF lty_s_message,
+             lty_t_message TYPE STANDARD TABLE OF lty_s_message WITH NON-UNIQUE DEFAULT KEY,
+             BEGIN OF lty_s_choice,
+               index         TYPE string,
+               message       TYPE lty_s_message,
+               logprobs      TYPE string,
+               finish_reason TYPE string,
+             END      OF lty_s_choice,
+             BEGIN OF lty_s_base_chatgpt_res,
+               id      TYPE string,
+               object  TYPE string,
+               created TYPE string,
+               model   TYPE string,
+               choices TYPE TABLE OF lty_s_choice WITH NON-UNIQUE DEFAULT KEY,
+             END OF lty_s_base_chatgpt_res.
+
+      DATA response TYPE lty_s_base_chatgpt_res.
+
+      DATA:  binary TYPE xstring.
+
+      DATA: o_x2c TYPE REF TO cl_abap_conv_in_ce.
+      o_x2c = cl_abap_conv_in_ce=>create( encoding = 'UTF-8' ).
+      binary = i_content.
+      o_x2c->convert( EXPORTING input =  binary
+                       IMPORTING data  =  string ).
+
+      /ui2/cl_json=>deserialize( EXPORTING json =  string CHANGING data = response ).
+
+      IF  response-choices IS NOT INITIAL.
+        content = response-choices[ 1 ]-message-content.
+        reasoning = response-choices[ 1 ]-message-reasoning_content.
+      ELSE.
+        content =  string.
+        cl_abap_browser=>show_html(  html_string =  content title = 'Error (' ).
+        RETURN.
+      ENDIF.
+
+      rv_answer =  content.
+
+    ENDMETHOD.
+
+  ENDCLASS.
 
   CLASS lcl_ace_rtti_tree DEFINITION FINAL.
 
@@ -795,6 +1012,187 @@
 
   ENDCLASS.
 
+  CLASS lcl_ace_ai DEFINITION INHERITING FROM lcl_ace_popup.
+
+    PUBLIC SECTION.
+      DATA: mo_ai_box               TYPE REF TO cl_gui_dialogbox_container,
+            mo_ai_splitter          TYPE REF TO cl_gui_splitter_container,
+            mo_ai_toolbar_container TYPE REF TO cl_gui_container,
+            mo_ai_toolbar           TYPE REF TO cl_gui_toolbar,
+            mo_prompt_container     TYPE REF TO cl_gui_container,
+            mo_answer_container     TYPE REF TO cl_gui_container,
+            mo_prompt_text          TYPE REF TO cl_gui_textedit,
+            mo_answer_text          TYPE REF TO cl_gui_textedit,
+            mv_prompt               TYPE string,
+            mv_answer               TYPE string.
+
+      METHODS:  constructor IMPORTING i_source  TYPE sci_include
+                                      io_parent TYPE REF TO cl_gui_dialogbox_container,
+        add_ai_toolbar_buttons,
+        hnd_ai_toolbar FOR EVENT function_selected OF cl_gui_toolbar IMPORTING fcode.
+
+  ENDCLASS.
+
+  CLASS lcl_ace_ai IMPLEMENTATION.
+
+    METHOD constructor.
+      super->constructor( ).
+
+      mo_ai_box = create( i_name = 'ACE: Abap Code Explorer - AI chat' i_width = 1400 i_hight = 400 ).
+      CREATE OBJECT mo_ai_splitter
+        EXPORTING
+          parent  = mo_ai_box
+          rows    = 3
+          columns = 1
+        EXCEPTIONS
+          OTHERS  = 1.
+
+      "save new popup ref
+      APPEND INITIAL LINE TO lcl_ace_appl=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+      <popup>-parent = io_parent.
+      <popup>-child = mo_ai_box.
+
+      SET HANDLER on_box_close FOR mo_ai_box.
+
+      mo_ai_splitter->get_container(
+           EXPORTING
+             row       = 1
+             column    = 1
+           RECEIVING
+             container = mo_ai_toolbar_container ).
+
+      mo_ai_splitter->get_container(
+        EXPORTING
+          row       = 2
+          column    = 1
+        RECEIVING
+          container = mo_prompt_container ).
+
+      mo_ai_splitter->get_container(
+        EXPORTING
+          row       = 3
+          column    = 1
+        RECEIVING
+          container = mo_answer_container  ).
+
+      mo_ai_splitter->set_row_height( id = 1 height = '3' ).
+
+      mo_ai_splitter->set_row_sash( id    = 1
+                                    type  = 0
+                                    value = 0 ).
+
+      SET HANDLER on_box_close FOR mo_ai_box.
+
+      CREATE OBJECT mo_prompt_text
+        EXPORTING
+          parent                 = mo_prompt_container
+        EXCEPTIONS
+          error_cntl_create      = 1
+          error_cntl_init        = 2
+          error_cntl_link        = 3
+          error_dp_create        = 4
+          gui_type_not_supported = 5
+          OTHERS                 = 6.
+      IF sy-subrc <> 0.
+        on_box_close( mo_box ).
+      ENDIF.
+
+      CREATE OBJECT mo_answer_text
+        EXPORTING
+          parent                 = mo_answer_container
+        EXCEPTIONS
+          error_cntl_create      = 1
+          error_cntl_init        = 2
+          error_cntl_link        = 3
+          error_dp_create        = 4
+          gui_type_not_supported = 5
+          OTHERS                 = 6.
+      IF sy-subrc <> 0.
+        on_box_close( mo_box ).
+      ENDIF.
+
+      mo_answer_text->set_readonly_mode( ).
+
+      CREATE OBJECT mo_ai_toolbar EXPORTING parent = mo_ai_toolbar_container.
+      add_ai_toolbar_buttons( ).
+      mo_ai_toolbar->set_visible( 'X' ).
+
+      "set prompt
+      DATA string TYPE TABLE OF char255.
+
+      APPEND INITIAL LINE TO string ASSIGNING FIELD-SYMBOL(<str>).
+      <str> = 'Explain please the meaning of this ABAP code and provide a code review'.
+      mv_prompt = <str>.
+      APPEND INITIAL LINE TO string ASSIGNING <str>.
+
+      LOOP AT i_source INTO DATA(line).
+        APPEND INITIAL LINE TO string ASSIGNING <str>.
+        <str> = line.
+        mv_prompt = mv_prompt && <str>.
+      ENDLOOP.
+
+      mo_prompt_text->set_text_as_r3table( string ).
+      cl_gui_control=>set_focus( mo_ai_box ).
+
+    ENDMETHOD.
+
+    METHOD add_ai_toolbar_buttons.
+
+      DATA: button TYPE ttb_button,
+            events TYPE cntl_simple_events,
+            event  LIKE LINE OF events.
+
+      button  = VALUE #(
+       ( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ).
+
+      mo_ai_toolbar->add_button_group( button ).
+
+*   Register events
+      event-eventid = cl_gui_toolbar=>m_id_function_selected.
+      event-appl_event = space.
+      APPEND event TO events.
+
+      mo_ai_toolbar->set_registered_events( events = events ).
+      SET HANDLER me->hnd_ai_toolbar FOR mo_ai_toolbar.
+
+    ENDMETHOD.
+
+    METHOD hnd_ai_toolbar.
+
+      DATA:  prompt TYPE string.
+
+      CASE fcode.
+
+        WHEN 'AI'.
+
+          DATA(o_ai) = NEW lcl_ace_ai_api( i_model = p_model i_dest = p_dest i_apikey = p_apikey ).
+
+          DATA text TYPE TABLE OF char255.
+          CALL METHOD mo_prompt_text->get_text_as_stream
+            IMPORTING
+              text = text.
+          CLEAR mv_prompt.
+          LOOP AT text INTO DATA(line).
+            CONCATENATE mv_prompt  line
+                   INTO mv_prompt.
+          ENDLOOP.
+
+          REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN mv_prompt WITH ''.
+          REPLACE ALL OCCURRENCES OF '#' IN mv_prompt WITH ''.
+          REPLACE ALL OCCURRENCES OF '"' IN mv_prompt WITH ''''.
+          DO 50 TIMES.
+            REPLACE ALL OCCURRENCES OF '/' IN mv_prompt WITH ''.
+          ENDDO.
+          REPLACE ALL OCCURRENCES OF REGEX '[[:cntrl:]]' IN mv_prompt WITH ' '.
+
+          mv_answer = o_ai->call_openai( mv_prompt ).
+          mo_answer_text->set_textstream( mv_answer ).
+
+      ENDCASE.
+
+    ENDMETHOD.
+
+  ENDCLASS.
 
   CLASS lcl_ace_window DEFINITION INHERITING FROM lcl_ace_popup .
 
@@ -1046,6 +1444,10 @@
       CONSTANTS: c_mask TYPE x VALUE '01'.
 
       mv_prog = i_prog.
+      mv_dest = i_dest.
+      mv_model = i_model.
+      mv_apikey = i_apikey.
+
       i_step = abap_on.
       lcl_ace_appl=>check_mermaid( ).
       lcl_ace_appl=>init_icons_table( ).
@@ -2544,6 +2946,11 @@
       READ TABLE mt_stack INDEX 1 INTO DATA(stack).
       CASE fcode.
 
+        WHEN 'AI'.
+
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY selected = abap_true INTO DATA(prog).
+          NEW lcl_ace_ai( i_source = prog-source_tab io_parent =  mo_viewer->mo_window->mo_box ).
+
         WHEN 'RUN'.
 
           DATA: lt_source TYPE STANDARD TABLE OF text255,
@@ -2674,6 +3081,53 @@
 
   ENDCLASS.
 
+  CLASS lcl_ace_data_transmitter DEFINITION.
+
+    PUBLIC SECTION.
+      EVENTS: data_changed EXPORTING VALUE(e_row) TYPE lcl_ace_appl=>t_sel_row,
+        col_changed EXPORTING VALUE(e_column) TYPE lvc_fname.
+      METHODS: emit IMPORTING e_row TYPE lcl_ace_appl=>t_sel_row,
+        emit_col IMPORTING e_column TYPE lvc_fname.
+
+  ENDCLASS.
+
+  CLASS lcl_ace_data_transmitter IMPLEMENTATION.
+
+    METHOD  emit.
+      RAISE EVENT data_changed EXPORTING e_row = e_row.
+
+    ENDMETHOD.
+
+    METHOD emit_col.
+      RAISE EVENT col_changed EXPORTING e_column = e_column.
+    ENDMETHOD.
+
+  ENDCLASS.
+
+  CLASS lcl_ace_data_receiver DEFINITION.
+
+    PUBLIC SECTION.
+      DATA: mo_transmitter TYPE REF TO lcl_ace_data_transmitter,
+            o_tab_from     TYPE REF TO lcl_ace_table_viewer,
+            o_sel_to       TYPE REF TO lcl_ace_sel_opt,
+            m_from_field   TYPE lvc_fname,
+            m_to_field     TYPE lvc_fname.
+      METHODS: constructor
+        IMPORTING io_transmitter TYPE REF TO lcl_ace_data_transmitter OPTIONAL
+                  io_tab_from    TYPE REF TO lcl_ace_table_viewer OPTIONAL
+                  io_sel_to      TYPE REF TO lcl_ace_sel_opt OPTIONAL
+                  i_from_field   TYPE lvc_fname OPTIONAL
+                  i_to_field     TYPE lvc_fname OPTIONAL,
+        shut_down,
+        update FOR EVENT data_changed OF lcl_ace_data_transmitter IMPORTING e_row,
+        update_col FOR EVENT col_changed OF lcl_ace_data_transmitter IMPORTING e_column,
+        on_grid_button_click
+          FOR EVENT button_click OF cl_gui_alv_grid
+          IMPORTING
+            es_col_id
+            es_row_no.
+
+  ENDCLASS.
 
   CLASS lcl_ace_sel_opt DEFINITION.
 
@@ -2712,7 +3166,11 @@
   CLASS lcl_ace_table_viewer DEFINITION INHERITING FROM lcl_ace_popup.
 
     PUBLIC SECTION.
-      TYPES: BEGIN OF t_elem,
+      TYPES: BEGIN OF t_column_emitter,
+               column  TYPE lvc_fname,
+               emitter TYPE REF TO lcl_ace_data_transmitter,
+             END OF t_column_emitter,
+             BEGIN OF t_elem,
                field TYPE fieldname,
                elem  TYPE ddobjname,
              END OF t_elem.
@@ -2726,6 +3184,7 @@
             mo_alv_parent      TYPE REF TO cl_gui_container,
             mt_alv_catalog     TYPE lvc_t_fcat,
             mt_fields          TYPE TABLE OF t_elem,
+            mo_column_emitters TYPE TABLE OF t_column_emitter,
             mo_sel_width       TYPE i,
             m_visible,
             m_std_tbar         TYPE x,
@@ -2817,6 +3276,112 @@
 
   ENDCLASS.
 
+  CLASS lcl_ace_data_receiver IMPLEMENTATION.
+
+    METHOD constructor.
+
+      o_sel_to = io_sel_to.
+      m_from_field =  i_from_field.
+      m_to_field =  i_to_field.
+      o_tab_from = io_tab_from.
+      mo_transmitter = io_transmitter.
+
+      IF mo_transmitter IS NOT INITIAL.
+        IF o_tab_from IS INITIAL.
+          SET HANDLER me->update FOR io_transmitter.
+        ELSE.
+          SET HANDLER me->update_col FOR io_transmitter.
+        ENDIF.
+      ELSE.
+        SET HANDLER me->update FOR ALL INSTANCES.
+      ENDIF.
+
+    ENDMETHOD.
+
+    METHOD shut_down.
+
+      IF mo_transmitter IS NOT INITIAL.
+        SET HANDLER me->update FOR mo_transmitter  ACTIVATION space.
+      ELSE.
+        SET HANDLER me->update FOR ALL INSTANCES  ACTIVATION space.
+      ENDIF.
+      CLEAR o_sel_to.
+
+    ENDMETHOD.
+
+    METHOD on_grid_button_click.
+
+      FIELD-SYMBOLS: <f_tab>   TYPE STANDARD TABLE.
+
+      CHECK m_from_field = es_col_id-fieldname.
+      ASSIGN o_tab_from->mr_table->* TO <f_tab>.
+      READ TABLE <f_tab> INDEX es_row_no-row_id ASSIGNING FIELD-SYMBOL(<tab>).
+      ASSIGN COMPONENT es_col_id-fieldname OF STRUCTURE <tab> TO  FIELD-SYMBOL(<f_field>).
+      CHECK o_sel_to IS NOT INITIAL.
+      o_sel_to->set_value( i_field = m_to_field i_low = <f_field> ).
+      o_sel_to->raise_selection_done( ).
+
+    ENDMETHOD.
+
+    METHOD  update.
+
+      DATA: l_updated.
+
+      READ TABLE o_sel_to->mt_sel_tab ASSIGNING FIELD-SYMBOL(<to>) WITH KEY field_label = m_to_field.
+      IF <to>-range[] = e_row-range[].
+        l_updated = abap_true."so as not to have an infinite event loop
+      ENDIF.
+      MOVE-CORRESPONDING e_row TO <to>.
+      IF <to>-transmitter IS BOUND AND l_updated IS INITIAL.
+        <to>-transmitter->emit( EXPORTING e_row = e_row ).
+      ENDIF.
+      o_sel_to->raise_selection_done( ).
+
+    ENDMETHOD.
+
+    METHOD update_col.
+
+      DATA: l_updated,
+            sel_row   TYPE lcl_ace_appl=>t_sel_row.
+
+      FIELD-SYMBOLS: <tab>   TYPE STANDARD TABLE,
+                     <field> TYPE any.
+
+      CHECK o_sel_to IS NOT INITIAL.
+      READ TABLE o_sel_to->mt_sel_tab ASSIGNING FIELD-SYMBOL(<to>) WITH KEY field_label = m_to_field.
+      DATA(old_range) = <to>-range.
+      CLEAR: <to>-sign, <to>-opti, <to>-low, <to>-high, <to>-range.
+      ASSIGN o_tab_from->mr_table->* TO <tab>.
+
+      LOOP AT <tab> ASSIGNING FIELD-SYMBOL(<row>).
+        ASSIGN COMPONENT e_column OF STRUCTURE <row> TO <field>.
+        IF line_exists( <to>-range[ low = <field> ] ).
+          APPEND VALUE #( sign = 'I' opti = 'EQ' low = <field> ) TO <to>-range.
+        ENDIF.
+      ENDLOOP.
+
+      IF sy-subrc NE 0." empty column
+        APPEND VALUE #( sign = 'I' opti = 'EQ' low = '' ) TO <to>-range.
+      ENDIF.
+
+      LOOP AT <to>-range ASSIGNING FIELD-SYMBOL(<sel>).
+        <to>-low = <sel>-low.
+        o_sel_to->update_sel_row( CHANGING c_sel_row = <to> ).
+        EXIT.
+      ENDLOOP.
+
+      MOVE-CORRESPONDING <to> TO sel_row.
+      IF <to>-range = old_range.
+        l_updated = abap_true."so as not to have an infinite event loop
+      ENDIF.
+      IF <to>-transmitter IS BOUND AND l_updated IS INITIAL.
+        <to>-transmitter->emit( EXPORTING e_row = sel_row ).
+        o_sel_to->raise_selection_done( ).
+      ENDIF.
+
+    ENDMETHOD.
+
+  ENDCLASS.
 
   CLASS lcl_ace_table_viewer IMPLEMENTATION.
 
@@ -3225,6 +3790,14 @@
         FREE <obj>-alv_viewer->mr_table.
         FREE <obj>-alv_viewer->mo_alv.
 
+        "shutdown receivers.
+        IF <obj>-alv_viewer->mo_sel IS NOT INITIAL.
+          LOOP AT <obj>-alv_viewer->mo_sel->mt_sel_tab INTO DATA(l_sel).
+            IF l_sel-receiver IS BOUND.
+              l_sel-receiver->shut_down( ).
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
         FREE <obj>-alv_viewer.
         IF  tabix NE 0.
           DELETE lcl_ace_appl=>mt_obj INDEX  tabix.
@@ -3344,6 +3917,10 @@
       set_header( ).
 
       LOOP AT mo_sel->mt_sel_tab  ASSIGNING FIELD-SYMBOL(<sel>).
+        IF <sel>-transmitter IS NOT INITIAL.
+          MOVE-CORRESPONDING <sel> TO row.
+          <sel>-transmitter->emit( e_row = row ).
+        ENDIF.
         LOOP AT <sel>-range INTO DATA(l_range).
           APPEND VALUE #( fieldname = <sel>-field_label
                                 low = l_range-low
@@ -3360,7 +3937,9 @@
         lcl_ace_alv_common=>refresh( mo_sel->mo_sel_alv ).
         lcl_ace_alv_common=>refresh( mo_alv ).
         mo_sel->mo_viewer->handle_user_command( 'SHOW' ).
-
+        LOOP AT mo_column_emitters INTO DATA(l_emit).
+          l_emit-emitter->emit_col( l_emit-column ).
+        ENDLOOP.
       ENDIF.
     ENDMETHOD.
   ENDCLASS.
@@ -3453,7 +4032,12 @@
 
       lcl_ace_alv_common=>refresh( mo_sel_alv ).
       RAISE EVENT selection_done.
-
+      LOOP AT mt_sel_tab  ASSIGNING FIELD-SYMBOL(<sel>).
+        IF <sel>-transmitter IS NOT INITIAL.
+          MOVE-CORRESPONDING <sel> TO row.
+          <sel>-transmitter->emit( e_row = row ).
+        ENDIF.
+      ENDLOOP.
 
     ENDMETHOD.
 
@@ -3518,6 +4102,11 @@
         CLEAR:  <to>-opti, <to>-sign.
         <to>-high = i_high.
         update_sel_row( CHANGING c_sel_row = <to> ).
+      ENDIF.
+      IF <to>-transmitter IS BOUND.
+        DATA: row TYPE lcl_ace_appl=>t_sel_row.
+        MOVE-CORRESPONDING <to> TO row.
+        <to>-transmitter->emit( EXPORTING e_row = row ).
       ENDIF.
 
     ENDMETHOD.
@@ -3620,6 +4209,10 @@
         ENDIF.
       ENDIF.
       c_sel_row-more_icon = COND #( WHEN c_sel_row-range IS INITIAL THEN icon_enter_more    ELSE icon_display_more  ).
+
+      IF c_sel_row-receiver IS BOUND AND c_sel_row-inherited IS INITIAL.
+        c_sel_row-inherited = icon_businav_value_chain.
+      ENDIF.
 
     ENDMETHOD.
 
@@ -3902,6 +4495,13 @@
             text  = 'Clear Select-Options'.
       ENDIF.
 
+      IF l_sel-receiver IS NOT INITIAL OR l_index IS INITIAL.
+        CALL METHOD e_object->add_function
+          EXPORTING
+            fcode = 'DELR'
+            text  = 'Delete receiver'.
+      ENDIF.
+
     ENDMETHOD.
 
     METHOD handle_user_command.
@@ -3938,6 +4538,13 @@
           READ TABLE mt_sel_tab ASSIGNING FIELD-SYMBOL(<sel>) INDEX l_row-index.
           IF e_ucomm = 'SEL_CLEAR'.
             CLEAR : <sel>-low, <sel>-high, <sel>-sign, <sel>-opti, <sel>-range.
+          ELSEIF e_ucomm = 'DELR'.
+            IF <sel>-receiver IS NOT INITIAL.
+              <sel>-receiver->shut_down( ).
+              FREE <sel>-receiver.
+              CLEAR <sel>-receiver.
+              CLEAR <sel>-inherited.
+            ENDIF.
           ENDIF.
           update_sel_row( CHANGING c_sel_row = <sel> ).
         ENDLOOP.
@@ -7312,7 +7919,7 @@
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
     IF sy-dbcnt <> 0.
-      DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog ).
+      DATA(gv_ace) = NEW lcl_ace( i_prog = p_prog i_dest = p_dest i_model = p_model i_apikey = p_apikey ).
     ELSE.
       MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
     ENDIF.
