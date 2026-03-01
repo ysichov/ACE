@@ -827,10 +827,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           OTHERS               = 4.
 
       LOOP AT points INTO DATA(point).
-        " Find v_line for this breakpoint (may be in enhancement include)
-        READ TABLE lr_kw->*
-          WITH KEY include = point-include line = point-line
-          INTO DATA(bp_kw).
+        " Find v_line for this breakpoint - search by include+line
+        LOOP AT lr_kw->* INTO DATA(bp_kw)
+          WHERE include = point-include AND line = point-line.
+          EXIT.
+        ENDLOOP.
         IF sy-subrc = 0.
           APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
           <line> = bp_kw-v_line.
@@ -857,10 +858,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       CLEAR lines.
 
       LOOP AT points INTO point.
-        " Find v_line for this breakpoint (may be in enhancement include)
-        READ TABLE lr_kw->*
-          WITH KEY include = point-include line = point-line
-          INTO bp_kw.
+        " Find v_line for this breakpoint - search by include+line
+        LOOP AT lr_kw->* INTO bp_kw
+          WHERE include = point-include AND line = point-line.
+          EXIT.
+        ENDLOOP.
         IF sy-subrc = 0.
           APPEND INITIAL LINE TO lines ASSIGNING <line>.
           <line> = bp_kw-v_line.
