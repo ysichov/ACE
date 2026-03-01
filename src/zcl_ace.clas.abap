@@ -156,7 +156,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       "interfaces
       LOOP AT mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = i_class AND reltype = '1'.
         IF class_rel IS INITIAL.
-          class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon =  icon i_rel = i_refnode i_tree = i_tree ).
+          class_rel = mo_tree_local->add_node( i_name =  i_class  i_icon =  icon i_rel = i_refnode i_tree = i_tree ).
         ENDIF.
 
         add_class( i_class = CONV #( ls_class-refclsname ) i_refnode = class_rel no_locals = abap_true i_type = 'I' ).
@@ -164,7 +164,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
       LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class =  i_class AND eventtype = 'METHOD'.
         IF class_rel IS INITIAL.
-          class_rel = mo_tree_local->add_node( i_name = CONV #( i_class ) i_icon = CONV #( icon ) i_rel = i_refnode i_tree = i_tree ).
+          class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon  i_rel = i_refnode i_tree = i_tree ).
 
           "Attributes
           CLEAR tree.

@@ -314,6 +314,15 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             enh_prog     TYPE program,
             tabix        TYPE i.
 
+      " Per-FORM accumulated offset (top-down processing)
+      TYPES: BEGIN OF ts_form_offset,
+               form_name TYPE string,
+               include   TYPE program,
+               offset    TYPE i,
+             END OF ts_form_offset.
+      DATA lt_form_offsets TYPE STANDARD TABLE OF ts_form_offset.
+      DATA lv_offset       TYPE i.  " current FORM's accumulated offset
+
       " (offset tracking removed: insertions are processed bottom-up)
 
       " For class method includes (CM*), D010ENH stores enhancements under the CP program.
@@ -373,13 +382,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ls_ext-full_name_30 = ls_ext-full_name.  " truncate STRING to C(30) for sort
         APPEND ls_ext TO lt_enh_ext.
       ENDLOOP.
-      " Sort by insertion line DESCENDING so we process bottom-up.
-      " This ensures each insertion does not shift positions of subsequent insertions.
-      " Within the same form: END(2) before BEGIN(1) in descending line order is natural,
-      " but we need explicit secondary sort: same line -> END(2) before BEGIN(1).
-      " We'll resolve line after building lt_enh_ext; for now sort by full_name descending,
-      " then enhtype descending so END comes before BEGIN when lines are equal.
-      SORT lt_enh_ext BY full_name_30 DESCENDING enhtype DESCENDING.
+      " Sort top-down: PRE (enhtype=1) before POST (enhtype=2).
+      " We process enhancements in file order (ascending) and accumulate offset as we go.
+      SORT lt_enh_ext BY full_name_30 ASCENDING enhtype ASCENDING.
 
       LOOP AT lt_enh_ext INTO DATA(ls_enh).
         CLEAR: form_name, position.
@@ -465,9 +470,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ASSIGNING FIELD-SYMBOL(<prog>).
           CHECK sy-subrc = 0.
 
-          " Bottom-up processing: no accumulated offset needed.
-          " Each insertion is at the original line number (previous insertions were below).
-          DATA(lv_offset) = 0.
+          " top-down: save offset before this insertion to compute delta
+          DATA(lv_offset_before) = lv_offset.
 
           " Find FORM position in t_keywords iteratively by name = 'FORM' and index
           DATA(lv_form_tabix) = 0.
@@ -551,30 +555,68 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             WHEN position = 'BEGIN' THEN ls_kw_form-line + 1
             ELSE ls_kw_end-line ).
 
-          " v_line of the anchor keyword already reflects prior bottom-up insertions below.
-          " Use it as the actual insertion index into v_source.
+          " Use v_line from v_keywords - it already reflects all prior insertions
+          " (updated by the shift loop after each previous enhancement insertion).
           DATA(lv_vsrc_tabix) = COND i(
             WHEN position = 'BEGIN' THEN ls_kw_form-v_line + 1
             ELSE ls_kw_end-v_line ).
 
-          " Base virtual line for inserted ENH keywords
-          DATA(lv_vline_base) = lv_vsrc_tabix + 1.
-          DATA(lv_kw_vline)   = lv_vline_base.
-          LOOP AT lt_enh_kw INTO DATA(ls_ins).
-            ls_ins-v_line     = lv_kw_vline.
-            ls_ins-v_from_row = lv_kw_vline.
-            ls_ins-v_to_row   = lv_kw_vline.
-            INSERT ls_ins INTO <prog>-t_keywords INDEX tabix.
-            ADD 1 TO tabix.
-            ADD 1 TO lv_kw_vline.
-            IF ls_ins-name = 'ENDENHANCEMENT'.
-              ADD 1 TO lv_kw_vline.
+          " Find insertion point in v_keywords (mirrors t_keywords logic but for v_keywords)
+          " Anchor = FORM or ENDFORM keyword by include+index
+          DATA(lv_vkw_tabix) = 0.
+          IF position = 'BEGIN'.
+            LOOP AT <prog>-v_keywords INTO DATA(ls_vkw_anchor)
+              WHERE include = ls_kw_form-include AND index = ls_kw_form-index AND name = 'FORM'.
+              lv_vkw_tabix = sy-tabix + 1.
+              EXIT.
+            ENDLOOP.
+          ELSE.
+            LOOP AT <prog>-v_keywords INTO ls_vkw_anchor
+              WHERE include = ls_kw_end-include AND index = ls_kw_end-index AND name = 'ENDFORM'.
+              lv_vkw_tabix = sy-tabix.
+              EXIT.
+            ENDLOOP.
+          ENDIF.
+          IF lv_vkw_tabix = 0.
+            lv_vkw_tabix = lines( <prog>-v_keywords ) + 1.
+          ENDIF.
+
+          " Step 1: compute how many lines will be inserted
+          " (1 separator + ENH source lines + 1 end-separator after ENDENHANCEMENT)
+          DATA(lv_enh_inserted) = 1.  " separator line
+          DATA(lv_tmp_line) = lt_enh_kw[ 1 ]-line.
+          DATA(lv_tmp_last) = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
+          WHILE lv_tmp_line <= lv_tmp_last.
+            ADD 1 TO lv_enh_inserted.  " source line
+            READ TABLE lt_enh_kw WITH KEY line = lv_tmp_line INTO DATA(ls_ins_pre).
+            IF sy-subrc = 0 AND ls_ins_pre-name = 'ENDENHANCEMENT'.
+              ADD 1 TO lv_enh_inserted.  " end-separator after ENDENHANCEMENT
             ENDIF.
+            ADD 1 TO lv_tmp_line.
+          ENDWHILE.
+
+          " Step 2: shift ALL existing v_keywords at or after insertion point BEFORE inserting.
+          " This way new keywords are inserted after shift - no need to skip anything.
+          LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
+            WHERE v_line >= lv_vsrc_tabix.
+            ADD lv_enh_inserted TO <kw_v>-v_line.
+            ADD lv_enh_inserted TO <kw_v>-v_from_row.
+            ADD lv_enh_inserted TO <kw_v>-v_to_row.
           ENDLOOP.
 
-          " Insert enhancement lines into v_source
+          " Step 3: insert ENH keywords into v_keywords with correct v_line
+          DATA(lv_vkw_vline) = lv_vsrc_tabix + 1.
+          LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
+            ls_vkw_ins-v_line     = lv_vkw_vline.
+            ls_vkw_ins-v_from_row = lv_vkw_vline.
+            ls_vkw_ins-v_to_row   = lv_vkw_vline.
+            INSERT ls_vkw_ins INTO <prog>-v_keywords INDEX lv_vkw_tabix.
+            ADD 1 TO lv_vkw_tabix.
+            ADD 1 TO lv_vkw_vline.
+          ENDLOOP.
+
+          " Step 4: insert enhancement lines into v_source
           DATA(lv_src_tabix) = lv_vsrc_tabix.
-          " Separator line
           DATA lv_sep TYPE string.
           IF position = 'BEGIN'.
             lv_sep = |"{ repeat( val = `"` occ = 40 ) } ENH { lv_enh_id } { form_name } BEGIN|.
@@ -583,7 +625,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDIF.
           INSERT CONV string( lv_sep ) INTO <prog>-v_source INDEX lv_src_tabix.
           ADD 1 TO lv_src_tabix. ADD 1 TO lv_offset.
-          " Enhancement source lines
           DATA(lv_first_line) = lt_enh_kw[ 1 ]-line.
           DATA(lv_last_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
           DATA(lv_cur_line)   = lv_first_line.
@@ -605,26 +646,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
             ADD 1 TO lv_cur_line.
           ENDWHILE.
-          " lv_enh_inserted = количество строк вставленных в текущем энхансменте
-          DATA(lv_enh_inserted) = lv_offset.
-          " IMPORTANT: use original 'line' field (not v_line) for the condition,
-          " because bottom-up processing means previous insertions (below) have already
-          " shifted v_line of those entries upward - comparing v_line would double-shift them.
-          LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
-            WHERE include = <prog>-include AND line >= lv_insert_line.
-            ADD lv_enh_inserted TO <kw_v>-v_line.
-            ADD lv_enh_inserted TO <kw_v>-v_from_row.
-            ADD lv_enh_inserted TO <kw_v>-v_to_row.
-          ENDLOOP.
-          " Add enhancement keywords into v_keywords
-          LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
-            DATA(lv_vkw_vline) = lv_insert_line + ( ls_vkw_ins-line - lv_first_line ) + 1.
-            ls_vkw_ins-v_line     = lv_vkw_vline.
-            ls_vkw_ins-v_from_row = lv_vkw_vline.
-            ls_vkw_ins-v_to_row   = lv_vkw_vline.
-            APPEND ls_vkw_ins TO <prog>-v_keywords.
-          ENDLOOP.
-          " (bottom-up: no offset accumulation needed)
 
 *
 *        " Save enhancement block position for CodeMix

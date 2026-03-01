@@ -581,14 +581,22 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO DATA(keyword).
       ELSE.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = m_prg-include INTO prog_mix.
-        " Use v_keywords if available (FORM include with embedded enhancements)
+        " Use v_keywords to map v_line→real include/line, then confirm via t_keywords
         IF prog_mix-v_keywords IS NOT INITIAL.
-          READ TABLE prog_mix-v_keywords WITH KEY v_line = line INTO keyword.
+          LOOP AT prog_mix-v_keywords INTO keyword WHERE v_line = line.
+            EXIT.
+          ENDLOOP.
+          " keyword now has real include+line from v_keywords
         ELSE.
-          READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO keyword.
+          LOOP AT prog_mix-t_keywords INTO keyword WHERE v_line = line.
+            EXIT.
+          ENDLOOP.
         ENDIF.
       ENDIF.
-      program   = keyword-program.
+      " Separator/comment lines have no keyword - skip
+      CHECK keyword-include IS NOT INITIAL.
+      "program   = keyword-program.
+       program   = m_prg-program.
       include   = keyword-include.
       code_line = keyword-line.
       IF include IS INITIAL.
@@ -804,6 +812,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->remove_all_marker( 2 ).
       mo_code_viewer->remove_all_marker( 4 ).
       mo_code_viewer->remove_all_marker( 7 ).
+      CLEAR mt_bpoints.
 
       READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
         WITH KEY include = m_prg-include INTO DATA(prog_cur).
@@ -814,7 +823,24 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         lr_kw = REF #( prog_cur-v_keywords ).
       ENDIF.
 
-*    "session breakpoints
+      " Collect all unique includes from v_keywords (main + enh includes)
+      DATA lt_includes TYPE STANDARD TABLE OF program WITH EMPTY KEY.
+      DATA lv_inc      TYPE program.
+      LOOP AT lr_kw->* INTO DATA(lv_kw_inc).
+        lv_inc = lv_kw_inc-include.
+        IF lv_inc IS NOT INITIAL.
+          READ TABLE lt_includes WITH KEY table_line = lv_inc TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND lv_inc TO lt_includes.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+      IF lt_includes IS INITIAL.
+        lv_inc = m_prg-include.
+        APPEND lv_inc TO lt_includes.
+      ENDIF.
+
+*    "session breakpoints - read for main program (returns all includes + enh includes)
       CALL METHOD cl_abap_debugger=>read_breakpoints
         EXPORTING
           main_program         = mo_viewer->mo_window->m_prg-program
@@ -827,7 +853,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           OTHERS               = 4.
 
       LOOP AT points INTO DATA(point).
-        " Find v_line for this breakpoint - search by include+line
+        READ TABLE lt_includes WITH KEY table_line = point-include TRANSPORTING NO FIELDS.
+        CHECK sy-subrc = 0.
         LOOP AT lr_kw->* INTO DATA(bp_kw)
           WHERE include = point-include AND line = point-line.
           EXIT.
@@ -835,41 +862,49 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF sy-subrc = 0.
           APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
           <line> = bp_kw-v_line.
-          APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
-          MOVE-CORRESPONDING point TO <point>.
-          <point>-type = 'S'.
+          READ TABLE mt_bpoints TRANSPORTING NO FIELDS
+            WITH KEY include = point-include line = point-line.
+          IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
+            MOVE-CORRESPONDING point TO <point>.
+            <point>-type = 'S'.
+          ENDIF.
         ENDIF.
       ENDLOOP.
       mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lines ).
 
-*    "exernal breakpoints
-      CALL METHOD cl_abap_debugger=>read_breakpoints
-        EXPORTING
-          main_program         = m_prg-include
-          flag_other_session   = abap_true
-        IMPORTING
-          breakpoints_complete = points
-        EXCEPTIONS
-          c_call_error         = 1
-          generate             = 2
-          wrong_parameters     = 3
-          OTHERS               = 4.
-
+*    "external breakpoints - read per include
       CLEAR lines.
+      LOOP AT lt_includes INTO lv_inc.
+        CALL METHOD cl_abap_debugger=>read_breakpoints
+          EXPORTING
+            main_program         = lv_inc
+            flag_other_session   = abap_true
+          IMPORTING
+            breakpoints_complete = points
+          EXCEPTIONS
+            c_call_error         = 1
+            generate             = 2
+            wrong_parameters     = 3
+            OTHERS               = 4.
 
-      LOOP AT points INTO point.
-        " Find v_line for this breakpoint - search by include+line
-        LOOP AT lr_kw->* INTO bp_kw
-          WHERE include = point-include AND line = point-line.
-          EXIT.
+        LOOP AT points INTO point WHERE include = lv_inc.
+          LOOP AT lr_kw->* INTO bp_kw
+            WHERE include = point-include AND line = point-line.
+            EXIT.
+          ENDLOOP.
+          IF sy-subrc = 0.
+            APPEND INITIAL LINE TO lines ASSIGNING <line>.
+            <line> = bp_kw-v_line.
+            READ TABLE mt_bpoints TRANSPORTING NO FIELDS
+              WITH KEY include = point-include line = point-line.
+            IF sy-subrc <> 0.
+              APPEND INITIAL LINE TO mt_bpoints ASSIGNING <point>.
+              MOVE-CORRESPONDING point TO <point>.
+              <point>-type = 'E'.
+            ENDIF.
+          ENDIF.
         ENDLOOP.
-        IF sy-subrc = 0.
-          APPEND INITIAL LINE TO lines ASSIGNING <line>.
-          <line> = bp_kw-v_line.
-          APPEND INITIAL LINE TO mt_bpoints ASSIGNING <point>.
-          MOVE-CORRESPONDING point TO <point>.
-          <point>-type = 'E'.
-        ENDIF.
       ENDLOOP.
       mo_code_viewer->set_marker( EXPORTING marker_number = 4 marker_lines = lines ).
 
