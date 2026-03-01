@@ -2490,6 +2490,7 @@
       mo_code_viewer->remove_all_marker( 2 ).
       mo_code_viewer->remove_all_marker( 4 ).
       mo_code_viewer->remove_all_marker( 7 ).
+      CLEAR mt_bpoints.
 
       READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
         WITH KEY include = m_prg-include INTO DATA(prog_cur).
@@ -2500,7 +2501,24 @@
         lr_kw = REF #( prog_cur-v_keywords ).
       ENDIF.
 
-*    "session breakpoints
+      " Collect all unique includes from v_keywords (main + enh includes)
+      DATA lt_includes TYPE STANDARD TABLE OF program WITH EMPTY KEY.
+      DATA lv_inc      TYPE program.
+      LOOP AT lr_kw->* INTO DATA(lv_kw_inc).
+        lv_inc = lv_kw_inc-include.
+        IF lv_inc IS NOT INITIAL.
+          READ TABLE lt_includes WITH KEY table_line = lv_inc TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND lv_inc TO lt_includes.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+      IF lt_includes IS INITIAL.
+        lv_inc = m_prg-include.
+        APPEND lv_inc TO lt_includes.
+      ENDIF.
+
+*    "session breakpoints - read for main program (returns all includes + enh includes)
       CALL METHOD cl_abap_debugger=>read_breakpoints
         EXPORTING
           main_program         = mo_viewer->mo_window->m_prg-program
@@ -2513,47 +2531,58 @@
           OTHERS               = 4.
 
       LOOP AT points INTO DATA(point).
-        " Find v_line for this breakpoint (may be in enhancement include)
-        READ TABLE lr_kw->*
-          WITH KEY include = point-include line = point-line
-          INTO DATA(bp_kw).
+        READ TABLE lt_includes WITH KEY table_line = point-include TRANSPORTING NO FIELDS.
+        CHECK sy-subrc = 0.
+        LOOP AT lr_kw->* INTO DATA(bp_kw)
+          WHERE include = point-include AND line = point-line.
+          EXIT.
+        ENDLOOP.
         IF sy-subrc = 0.
           APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
           <line> = bp_kw-v_line.
-          APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
-          MOVE-CORRESPONDING point TO <point>.
-          <point>-type = 'S'.
+          READ TABLE mt_bpoints TRANSPORTING NO FIELDS
+            WITH KEY include = point-include line = point-line.
+          IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
+            MOVE-CORRESPONDING point TO <point>.
+            <point>-type = 'S'.
+          ENDIF.
         ENDIF.
       ENDLOOP.
       mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lines ).
 
-*    "exernal breakpoints
-      CALL METHOD cl_abap_debugger=>read_breakpoints
-        EXPORTING
-          main_program         = m_prg-include
-          flag_other_session   = abap_true
-        IMPORTING
-          breakpoints_complete = points
-        EXCEPTIONS
-          c_call_error         = 1
-          generate             = 2
-          wrong_parameters     = 3
-          OTHERS               = 4.
-
+*    "external breakpoints - read per include
       CLEAR lines.
+      LOOP AT lt_includes INTO lv_inc.
+        CALL METHOD cl_abap_debugger=>read_breakpoints
+          EXPORTING
+            main_program         = lv_inc
+            flag_other_session   = abap_true
+          IMPORTING
+            breakpoints_complete = points
+          EXCEPTIONS
+            c_call_error         = 1
+            generate             = 2
+            wrong_parameters     = 3
+            OTHERS               = 4.
 
-      LOOP AT points INTO point.
-        " Find v_line for this breakpoint (may be in enhancement include)
-        READ TABLE lr_kw->*
-          WITH KEY include = point-include line = point-line
-          INTO bp_kw.
-        IF sy-subrc = 0.
-          APPEND INITIAL LINE TO lines ASSIGNING <line>.
-          <line> = bp_kw-v_line.
-          APPEND INITIAL LINE TO mt_bpoints ASSIGNING <point>.
-          MOVE-CORRESPONDING point TO <point>.
-          <point>-type = 'E'.
-        ENDIF.
+        LOOP AT points INTO point WHERE include = lv_inc.
+          LOOP AT lr_kw->* INTO bp_kw
+            WHERE include = point-include AND line = point-line.
+            EXIT.
+          ENDLOOP.
+          IF sy-subrc = 0.
+            APPEND INITIAL LINE TO lines ASSIGNING <line>.
+            <line> = bp_kw-v_line.
+            READ TABLE mt_bpoints TRANSPORTING NO FIELDS
+              WITH KEY include = point-include line = point-line.
+            IF sy-subrc <> 0.
+              APPEND INITIAL LINE TO mt_bpoints ASSIGNING <point>.
+              MOVE-CORRESPONDING point TO <point>.
+              <point>-type = 'E'.
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
       ENDLOOP.
       mo_code_viewer->set_marker( EXPORTING marker_number = 4 marker_lines = lines ).
 
@@ -5475,11 +5504,19 @@
 
   method COLLECT_ENHANCEMENTS.
 
-
       DATA: form_name    TYPE string,
             position     TYPE string,
             enh_prog     TYPE program,
             tabix        TYPE i.
+
+      " Per-FORM accumulated offset (top-down processing)
+      TYPES: BEGIN OF ts_form_offset,
+               form_name TYPE string,
+               include   TYPE program,
+               offset    TYPE i,
+             END OF ts_form_offset.
+      DATA lt_form_offsets TYPE STANDARD TABLE OF ts_form_offset.
+      DATA lv_offset       TYPE i.  " current FORM's accumulated offset
 
       " (offset tracking removed: insertions are processed bottom-up)
 
@@ -5514,7 +5551,6 @@
 
       CHECK lt_enh IS NOT INITIAL.
 
-      " Add enhtype: 1=BEGIN, 2=END for correct insertion order within same form
       TYPES: BEGIN OF ts_enh_ext,
                programname  TYPE d010enh-programname,
                enhname      TYPE d010enh-enhname,
@@ -5537,7 +5573,7 @@
         ls_ext-full_name_30 = ls_ext-full_name.
         APPEND ls_ext TO lt_enh_ext.
       ENDLOOP.
-      SORT lt_enh_ext BY full_name_30 DESCENDING enhtype DESCENDING.
+      SORT lt_enh_ext BY full_name_30 ASCENDING enhtype ASCENDING.
 
       LOOP AT lt_enh_ext INTO DATA(ls_enh).
         CLEAR: form_name, position.
@@ -5545,6 +5581,7 @@
         DATA(lv_full) = ls_enh-full_name.
 
         IF ls_enh-enhmode = 'D'.
+          " Method enhancement: \TY:CLASSNAME\ME:METHODNAME\SE:%_BEGIN|%_END\EI
           DATA(lv_class_name) = ``.
           DATA(lv_method_name) = ``.
           FIND FIRST OCCURRENCE OF REGEX '\\TY:([^\\]+)' IN lv_full SUBMATCHES lv_class_name.
@@ -5593,6 +5630,7 @@
           ENDIF.
 
         ELSE.
+          " FORM enhancement: \PR:...\FO:FORMNAME\SE:BEGIN|END\EI
           FIND FIRST OCCURRENCE OF REGEX '\\FO:([^\\]+)' IN lv_full SUBMATCHES form_name.
           FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
           CHECK form_name IS NOT INITIAL AND position IS NOT INITIAL.
@@ -5615,7 +5653,7 @@
             ASSIGNING FIELD-SYMBOL(<prog>).
           CHECK sy-subrc = 0.
 
-          DATA(lv_offset) = 0.
+          DATA(lv_offset_before) = lv_offset.
 
           DATA(lv_form_tabix) = 0.
           DATA ls_kw_form TYPE lcl_ace_appl=>ts_kword.
@@ -5691,18 +5729,51 @@
             WHEN position = 'BEGIN' THEN ls_kw_form-v_line + 1
             ELSE ls_kw_end-v_line ).
 
-          DATA(lv_vline_base) = lv_vsrc_tabix + 1.
-          DATA(lv_kw_vline)   = lv_vline_base.
-          LOOP AT lt_enh_kw INTO DATA(ls_ins).
-            ls_ins-v_line     = lv_kw_vline.
-            ls_ins-v_from_row = lv_kw_vline.
-            ls_ins-v_to_row   = lv_kw_vline.
-            INSERT ls_ins INTO <prog>-t_keywords INDEX tabix.
-            ADD 1 TO tabix.
-            ADD 1 TO lv_kw_vline.
-            IF ls_ins-name = 'ENDENHANCEMENT'.
-              ADD 1 TO lv_kw_vline.
+          DATA(lv_vkw_tabix) = 0.
+          IF position = 'BEGIN'.
+            LOOP AT <prog>-v_keywords INTO DATA(ls_vkw_anchor)
+              WHERE include = ls_kw_form-include AND index = ls_kw_form-index AND name = 'FORM'.
+              lv_vkw_tabix = sy-tabix + 1.
+              EXIT.
+            ENDLOOP.
+          ELSE.
+            LOOP AT <prog>-v_keywords INTO ls_vkw_anchor
+              WHERE include = ls_kw_end-include AND index = ls_kw_end-index AND name = 'ENDFORM'.
+              lv_vkw_tabix = sy-tabix.
+              EXIT.
+            ENDLOOP.
+          ENDIF.
+          IF lv_vkw_tabix = 0.
+            lv_vkw_tabix = lines( <prog>-v_keywords ) + 1.
+          ENDIF.
+
+          DATA(lv_enh_inserted) = 1.
+          DATA(lv_tmp_line) = lt_enh_kw[ 1 ]-line.
+          DATA(lv_tmp_last) = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
+          WHILE lv_tmp_line <= lv_tmp_last.
+            ADD 1 TO lv_enh_inserted.
+            READ TABLE lt_enh_kw WITH KEY line = lv_tmp_line INTO DATA(ls_ins_pre).
+            IF sy-subrc = 0 AND ls_ins_pre-name = 'ENDENHANCEMENT'.
+              ADD 1 TO lv_enh_inserted.
             ENDIF.
+            ADD 1 TO lv_tmp_line.
+          ENDWHILE.
+
+          LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
+            WHERE v_line >= lv_vsrc_tabix.
+            ADD lv_enh_inserted TO <kw_v>-v_line.
+            ADD lv_enh_inserted TO <kw_v>-v_from_row.
+            ADD lv_enh_inserted TO <kw_v>-v_to_row.
+          ENDLOOP.
+
+          DATA(lv_vkw_vline) = lv_vsrc_tabix + 1.
+          LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
+            ls_vkw_ins-v_line     = lv_vkw_vline.
+            ls_vkw_ins-v_from_row = lv_vkw_vline.
+            ls_vkw_ins-v_to_row   = lv_vkw_vline.
+            INSERT ls_vkw_ins INTO <prog>-v_keywords INDEX lv_vkw_tabix.
+            ADD 1 TO lv_vkw_tabix.
+            ADD 1 TO lv_vkw_vline.
           ENDLOOP.
 
           DATA(lv_src_tabix) = lv_vsrc_tabix.
@@ -5735,35 +5806,22 @@
             ENDIF.
             ADD 1 TO lv_cur_line.
           ENDWHILE.
-          DATA(lv_enh_inserted) = lv_offset.
-          LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
-            WHERE include = <prog>-include AND line >= lv_insert_line.
-            ADD lv_enh_inserted TO <kw_v>-v_line.
-            ADD lv_enh_inserted TO <kw_v>-v_from_row.
-            ADD lv_enh_inserted TO <kw_v>-v_to_row.
-          ENDLOOP.
-          LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
-            DATA(lv_vkw_vline) = lv_insert_line + ( ls_vkw_ins-line - lv_first_line ) + 1.
-            ls_vkw_ins-v_line     = lv_vkw_vline.
-            ls_vkw_ins-v_from_row = lv_vkw_vline.
-            ls_vkw_ins-v_to_row   = lv_vkw_vline.
-            APPEND ls_vkw_ins TO <prog>-v_keywords.
-          ENDLOOP.
 
           APPEND INITIAL LINE TO <prog>-tt_enh_blocks ASSIGNING FIELD-SYMBOL(<enh_blk>).
-          <enh_blk>-ev_type    = ls_call_line-eventtype.
-          <enh_blk>-ev_name    = form_name.
-          <enh_blk>-position   = position.
-          <enh_blk>-enh_name   = ls_enh-enhname.
+          <enh_blk>-ev_type     = ls_call_line-eventtype.
+          <enh_blk>-ev_name     = form_name.
+          <enh_blk>-position    = position.
+          <enh_blk>-enh_name    = ls_enh-enhname.
           <enh_blk>-enh_include = ls_enh-enhinclude.
-          <enh_blk>-enh_id     = lv_enh_id.
-          <enh_blk>-from_line  = 0.
-          <enh_blk>-to_line    = 0.
+          <enh_blk>-enh_id      = lv_enh_id.
+          <enh_blk>-from_line   = 0.
+          <enh_blk>-to_line     = 0.
 
-        ENDIF.
+        ENDIF. " ENHMODE = 'D' / FORM
 
       ENDLOOP.
 
+      " Mark enhancements as collected for this include
       IF lv_prog_enh_tabix > 0.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           INDEX lv_prog_enh_tabix
@@ -6604,6 +6662,7 @@
         o_statement = cl_cikzn_scan_iterator_factory=>get_statement_iterator( ciscan = o_scan ).
         o_procedure = cl_cikzn_scan_iterator_factory=>get_procedure_iterator( ciscan = o_scan ).
 
+        "methods in definition should be overwritten by Implementation section
         IF i_class IS NOT INITIAL.
           ls_state-class = abap_true.
           IF i_main_prog IS INITIAL.
@@ -6612,7 +6671,9 @@
         ENDIF.
 
         ls_state-kw = o_statement->get_keyword( ).
+
         ls_state-word = o_statement->get_token( offset = 2 ).
+
         o_procedure->statement_index = o_statement->statement_index.
         o_procedure->statement_type = o_statement->statement_type.
 
@@ -6638,41 +6699,47 @@
           ls_state-token-line = ls_state-calculated-line = ls_state-composed-line = l_token-row.
           ls_state-token-v_line = l_token-row.
           ls_state-token-program = i_program.
-          READ TABLE o_scan->levels INDEX statement-level INTO DATA(level).
+          READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
           IF i_include <> level-name.
             lcl_ace_source_parser=>parse_tokens( i_class = i_class i_reltype = i_reltype i_main_prog = i_main_prog i_stack = stack i_program = CONV #( ls_state-token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
             ls_state-token-include = level-name.
+
           ELSE.
             ls_state-token-include = i_include.
+
             ls_state-calculated-program = ls_state-composed-program = i_include.
+
             CLEAR ls_state-new.
 
             IF ls_state-kw = 'CLASS'.
               ls_state-class = abap_true.
             ENDIF.
+
             IF ls_state-kw = 'PUBLIC'.
               ls_state-method_type = 1.
             ENDIF.
+
             IF ls_state-kw = 'PROTECTED'.
               ls_state-method_type = 2.
             ENDIF.
+
             IF ls_state-kw = 'PRIVATE'.
               ls_state-method_type = 3.
             ENDIF.
 
             IF ls_state-kw = 'FORM' OR ls_state-kw = 'METHOD' OR ls_state-kw = 'METHODS' OR ls_state-kw = 'CLASS-METHODS' OR ls_state-kw = 'MODULE'.
-              ls_state-variable-eventtype = ls_state-tab-eventtype = ls_state-eventtype = ls_state-param-event = ls_state-kw.
+              ls_state-variable-eventtype = ls_state-tab-eventtype =  ls_state-eventtype = ls_state-param-event =  ls_state-kw.
               ls_state-param-program = i_program.
               ls_state-param-include = i_include.
               ls_state-param-class = ls_state-class_name.
-              CLEAR ls_state-eventname.
+              CLEAR  ls_state-eventname.
               IF ls_state-kw = 'FORM'.
-                CLEAR: ls_state-class, ls_state-param-class.
+                CLEAR:  ls_state-class, ls_state-param-class.
               ELSEIF ls_state-kw = 'MODULE'.
-                CLEAR: ls_state-class, ls_state-param-class.
-                ls_state-tab-eventtype = ls_state-eventtype = ls_state-param-event = 'MODULE'.
+                CLEAR:  ls_state-class, ls_state-param-class.
+                ls_state-tab-eventtype =  ls_state-eventtype = ls_state-param-event =  'MODULE'.
               ELSE.
-                ls_state-tab-eventtype = ls_state-eventtype = ls_state-param-event = 'METHOD'.
+                ls_state-tab-eventtype =  ls_state-eventtype = ls_state-param-event =  'METHOD'.
               ENDIF.
             ENDIF.
 
@@ -6681,7 +6748,7 @@
             ENDIF.
 
             IF ls_state-kw = 'ENDFORM' OR ls_state-kw = 'ENDMETHOD' OR ls_state-kw = 'ENDMODULE'.
-              CLEAR: ls_state-eventtype, ls_state-eventname, ls_state-tabs, ls_state-variable, ls_state-token-sub.
+              CLEAR:  ls_state-eventtype,  ls_state-eventname, ls_state-tabs, ls_state-variable, ls_state-token-sub.
               IF ls_state-param-param IS INITIAL.
                 READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = ls_state-param-event name = ls_state-param-name TRANSPORTING NO FIELDS.
                 IF sy-subrc <> 0.
@@ -6690,13 +6757,13 @@
               ENDIF.
             ENDIF.
 
-            CLEAR ls_state-prev.
-            IF ls_state-kw = 'ASSIGN' OR ls_state-kw = 'ADD' OR ls_state-kw = 'SUBTRACT'.
+            CLEAR  ls_state-prev.
+            IF ls_state-kw = 'ASSIGN' OR ls_state-kw = 'ADD' OR ls_state-kw = 'SUBTRACT' .
               ls_state-count = 0.
             ENDIF.
             CLEAR ls_state-new.
 
-            IF ls_state-eventname IS NOT INITIAL OR ls_state-class IS NOT INITIAL AND ls_state-eventtype <> 'EVENT' OR ls_state-kw = 'INCLUDE' OR ls_state-kw = 'CLASS-POOL' OR ls_state-kw = 'INTERFACE-POOL'.
+            IF ls_state-eventname IS  NOT INITIAL OR ls_state-class IS NOT INITIAL AND ls_state-eventtype <> 'EVENT' OR ls_state-kw = 'INCLUDE' OR ls_state-kw = 'CLASS-POOL' OR ls_state-kw = 'INTERFACE-POOL'.
               ls_state-token-sub = abap_true.
             ENDIF.
 
@@ -6731,16 +6798,18 @@
             ENDIF.
           ENDIF.
 
-          IF o_procedure->statement_index = max.
+          IF o_procedure->statement_index =  max.
             EXIT.
           ENDIF.
 
         ENDDO.
 
+        "Fill keyword links for calls
         lcl_ace_source_parser=>link_calls_to_params(
           EXPORTING io_debugger = io_debugger
           CHANGING  ct_tokens   = tokens ).
 
+        "clear value(var) to var.
         LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING FIELD-SYMBOL(<param>).
           REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.
           REPLACE ALL OCCURRENCES OF ')' IN <param>-param WITH ''.
@@ -6754,10 +6823,12 @@
         prog-t_keywords = tokens.
         prog-program = i_program.
         prog-stack = stack.
+        " Initialize v_source/v_keywords from source before enhancements
         prog-v_source   = prog-source_tab.
         prog-v_keywords = tokens.
         APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
-        lcl_ace_source_parser=>collect_enhancements(
+        " Build v_source/v_keywords with FORM enhancements embedded (once, at parse time)
+        lcl_ace_source_parser=>COLLECT_ENHANCEMENTS(
           i_program   = i_program
           io_debugger = io_debugger ).
 
