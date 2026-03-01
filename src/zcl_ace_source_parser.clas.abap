@@ -573,12 +573,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDLOOP.
 
           " Insert enhancement lines into v_source
-          " DEBUG
-          DATA(lv_dbg) = |ENH { lv_enh_id } pos={ position
-            } fl={ ls_kw_form-line } el={ ls_kw_end-line
-            } ins={ lv_insert_line } vt={ lv_vsrc_tabix
-            } vsrc={ lines( <prog>-v_source ) } inc={ ls_call_line-include }|.
-          MESSAGE lv_dbg TYPE 'I'.
           DATA(lv_src_tabix) = lv_vsrc_tabix.
           " Separator line
           DATA lv_sep TYPE string.
