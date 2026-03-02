@@ -523,7 +523,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
           ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
-          mo_viewer->mo_window->show_coverage( ).
+          "mo_viewer->mo_window->show_coverage( ).
           mo_viewer->mo_window->show_stack( ).
           IF mo_mermaid IS NOT INITIAL.
             mo_mermaid->refresh( ).
@@ -560,7 +560,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           ELSE.
             mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Only Z code' ).
           ENDIF.
-          mo_viewer->mo_window->show_coverage( ).
+          "mo_viewer->mo_window->show_coverage( ).
           mo_viewer->mo_window->show_stack( ).
           IF mo_mermaid IS NOT INITIAL.
             mo_mermaid->refresh( ).
