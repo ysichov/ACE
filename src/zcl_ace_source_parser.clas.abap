@@ -1211,7 +1211,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           i_stack = i_stack i_program = lv_inc i_include = lv_inc io_debugger = io_debugger ).
       ENDIF.
 
-      " Insert PRE/POST enhancement keywords into t_keywords of lv_inc
+      " Insert PRE/POST enhancement keywords into v_keywords of lv_inc
       ZCL_ACE_SOURCE_PARSER=>collect_enhancements( i_program = lv_inc io_debugger = io_debugger ).
 
       " Anti-recursion check
@@ -1235,22 +1235,38 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         RETURN.
       ENDIF.
 
-      " Read prog AFTER collect_enhancements so t_keywords includes inserted blocks
+      " Read prog AFTER collect_enhancements
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = lv_inc INTO DATA(prog).
       CHECK sy-subrc = 0.
 
-      " Find FORM start tabix in t_keywords
+      " Use v_keywords if available — it contains inserted enhancement keywords.
+      " Fall back to t_keywords if v_keywords is empty.
+      DATA(lv_use_vkw) = abap_false.
+      IF prog-v_keywords IS NOT INITIAL.
+        lv_use_vkw = abap_true.
+      ENDIF.
+
+      " Find FORM start tabix
       DATA(lv_tabix) = 0.
-      LOOP AT prog-t_keywords INTO DATA(kw).
-        IF kw-name = 'FORM' AND kw-index = call_line-index.
-          lv_tabix = sy-tabix.
-          EXIT.
-        ENDIF.
-      ENDLOOP.
+      IF lv_use_vkw = abap_true.
+        LOOP AT prog-v_keywords INTO DATA(kw).
+          IF kw-name = 'FORM' AND kw-index = call_line-index.
+            lv_tabix = sy-tabix.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+      ELSE.
+        LOOP AT prog-t_keywords INTO kw.
+          IF kw-name = 'FORM' AND kw-index = call_line-index.
+            lv_tabix = sy-tabix.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
       CHECK lv_tabix > 0.
 
-      " Check if PRE enhancement exists — if yes, FORM body shifts to lv_stack+1
+      " Check if PRE enhancement exists
       DATA(lv_has_pre) = abap_false.
       READ TABLE prog-tt_enh_blocks TRANSPORTING NO FIELDS
         WITH KEY ev_name = i_call_name position = 'BEGIN'.
@@ -1261,14 +1277,21 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       DATA ls_cur_enh TYPE ZCL_ACE_WINDOW=>ts_enh_block.
       CLEAR ls_cur_enh.
 
-      " Iterate all keywords from FORM to ENDFORM (including inserted enhancements)
-      LOOP AT prog-t_keywords INTO kw FROM lv_tabix.
+      " Iterate keywords from FORM to ENDFORM using v_keywords (includes inserted enhancements)
+      FIELD-SYMBOLS <kw_tab> TYPE ZCL_ACE_WINDOW=>tt_kword.
+      IF lv_use_vkw = abap_true.
+        ASSIGN prog-v_keywords TO <kw_tab>.
+      ELSE.
+        ASSIGN prog-t_keywords TO <kw_tab>.
+      ENDIF.
+
+      LOOP AT <kw_tab> INTO kw FROM lv_tabix.
         IF kw-name = 'ENDFORM'.
           EXIT.
         ENDIF.
-        " Track which enhancement block we're entering/leaving
+
+        " Detect entering/leaving enhancement block
         IF kw-name = 'ENHANCEMENT'.
-          " Read enhancement ID from scan tokens (ENHANCEMENT <id> <name>.)
           DATA(lv_enh_id_cur) = 0.
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs
             WITH KEY include = kw-include INTO DATA(enh_prog).
@@ -1279,7 +1302,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
               lv_enh_id_cur = CONV i( ls_enh_tok-str ).
             ENDIF.
           ENDIF.
-
           READ TABLE prog-tt_enh_blocks INTO ls_cur_enh
             WITH KEY enh_include = kw-include ev_name = i_call_name enh_id = lv_enh_id_cur.
           IF sy-subrc <> 0.
@@ -1312,16 +1334,14 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           <step>-program = i_program.
           <step>-include = kw-include.
           IF ls_cur_enh IS NOT INITIAL.
-            " Inside an enhancement block
             <step>-eventtype = 'ENHANCEMENT'.
             <step>-eventname = |{ ls_cur_enh-enh_name } { ls_cur_enh-enh_id }|.
             IF ls_cur_enh-position = 'BEGIN'.
-              <step>-stacklevel = lv_stack.          " PRE → same as FORM call level
+              <step>-stacklevel = lv_stack.
             ELSE.
-              <step>-stacklevel = lv_body_stack + 1. " POST → after FORM body
+              <step>-stacklevel = lv_body_stack + 1.
             ENDIF.
           ELSE.
-            " FORM body
             <step>-eventtype  = 'FORM'.
             <step>-eventname  = i_call_name.
             <step>-stacklevel = lv_body_stack.

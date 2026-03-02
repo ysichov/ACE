@@ -425,30 +425,44 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
             parts     TYPE TABLE OF string,
             step      LIKE LINE OF mo_viewer->mt_steps,
             ind       TYPE t_ind,
-            indexes   TYPE TABLE OF t_ind.
+            indexes   TYPE TABLE OF t_ind,
+            enh_ids   TYPE TABLE OF i.
 
       DATA(copy) = mo_viewer->mt_steps.
 
       LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
+        CLEAR entity.
         IF <copy>-eventtype = 'METHOD'.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line WITH KEY include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname INTO DATA(call_line).
           <copy>-eventname = entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
-          entity-event = <copy>-eventtype.
-
+          entity-event = 'METHOD'.
         ELSEIF <copy>-eventtype = 'FUNCTION'.
           <copy>-eventname = entity-name = |"{ <copy>-eventtype }:{ <copy>-eventname }"|.
+          entity-event = 'FUNCTION'.
         ELSEIF <copy>-eventtype = 'SCREEN'.
           <copy>-eventname = entity-name = |"CALL SCREEN { <copy>-eventname }"|.
+          entity-event = 'SCREEN'.
         ELSEIF <copy>-eventtype = 'MODULE'.
           <copy>-eventname = entity-name = |"MODULE { <copy>-eventname }"|.
+          entity-event = 'MODULE'.
         ELSEIF <copy>-eventtype = 'FORM'.
           <copy>-eventname = entity-name = |"FORM { <copy>-eventname }"|.
-
+          entity-event = 'FORM'.
+        ELSEIF <copy>-eventtype = 'ENHANCEMENT'.
+          <copy>-eventname = entity-name = |"ENH { <copy>-eventname }"|.
+          entity-event = 'ENHANCEMENT'.
         ELSE.
           <copy>-eventname = entity-name = |"{ <copy>-program }:{ <copy>-eventname }"|.
+          entity-event = <copy>-eventtype.
         ENDIF.
 
-        COLLECT entity INTO entities.
+        READ TABLE entities WITH KEY name = entity-name TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND entity TO entities.
+          IF entity-event = 'ENHANCEMENT'.
+            APPEND lines( entities ) TO enh_ids.
+          ENDIF.
+        ENDIF.
       ENDLOOP.
 
       CLEAR step.
@@ -472,17 +486,30 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           ind-to = sy-tabix.
           READ TABLE indexes WITH KEY from = ind-from to = ind-to TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
-            "REPLACE ALL OCCURRENCES OF `-` IN step-eventname WITH `~` IN CHARACTER MODE.
-            "REPLACE ALL OCCURRENCES OF `-` IN step2-eventname WITH `~` IN CHARACTER MODE.
-            mm_string = |{  mm_string }{ ind-from }({ step-eventname }) --> { ind-to }({ step2-eventname })\n|.
+            mm_string = |{ mm_string }{ ind-from }({ step-eventname }) --> { ind-to }({ step2-eventname })\n|.
             APPEND ind TO indexes.
           ENDIF.
         ENDIF.
         step = step2.
       ENDLOOP.
-      mm_string = |{  mm_string }\n|.
 
-      open_mermaid(  mm_string ).
+      " Add enhancement styling if any enhancement nodes exist
+      IF enh_ids IS NOT INITIAL.
+        DATA(lv_ids) = ``.
+        LOOP AT enh_ids INTO DATA(lv_id).
+          IF lv_ids IS NOT INITIAL.
+            lv_ids = |{ lv_ids },{ lv_id }|.
+          ELSE.
+            lv_ids = |{ lv_id }|.
+          ENDIF.
+        ENDLOOP.
+        mm_string = |{ mm_string } classDef enh fill:#AED6F1,stroke:#2E86C1\n|.
+        mm_string = |{ mm_string } class { lv_ids } enh\n|.
+      ENDIF.
+
+      mm_string = |{ mm_string }\n|.
+
+      open_mermaid( mm_string ).
 
 
   endmethod.
