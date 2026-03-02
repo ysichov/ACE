@@ -418,11 +418,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
                to   TYPE i,
              END OF t_ind.
 
-      CONSTANTS: c_style_event  TYPE string VALUE 'event',
-                 c_style_method TYPE string VALUE 'method',
-                 c_style_form   TYPE string VALUE 'form',
-                 c_style_constr TYPE string VALUE 'constr',
-                 c_style_enh    TYPE string VALUE 'enh'.
+      CONSTANTS: c_style_event    TYPE string VALUE 'event',
+                 c_style_method   TYPE string VALUE 'method',
+                 c_style_form     TYPE string VALUE 'form',
+                 c_style_constr   TYPE string VALUE 'constr',
+                 c_style_enh      TYPE string VALUE 'enh',
+                 c_style_function TYPE string VALUE 'func'.
 
       DATA: mm_string TYPE string,
             entities  TYPE TABLE OF lty_entity,
@@ -432,11 +433,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
             indexes   TYPE TABLE OF t_ind.
 
       " style class -> list of node IDs
-      DATA: ids_event  TYPE TABLE OF string,
-            ids_method TYPE TABLE OF string,
-            ids_form   TYPE TABLE OF string,
-            ids_constr TYPE TABLE OF string,
-            ids_enh    TYPE TABLE OF string.
+      DATA: ids_event    TYPE TABLE OF string,
+            ids_method   TYPE TABLE OF string,
+            ids_form     TYPE TABLE OF string,
+            ids_constr   TYPE TABLE OF string,
+            ids_enh      TYPE TABLE OF string,
+            ids_function TYPE TABLE OF string.
 
       DATA(copy) = mo_viewer->mt_steps.
 
@@ -463,6 +465,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
             WHEN 'ENHANCEMENT' THEN |"ENH { <copy>-eventname }"|
             ELSE                    |"{ <copy>-program }:{ <copy>-eventname }"| ).
           entity-style = SWITCH string( <copy>-eventtype
+            WHEN 'FUNCTION'    THEN c_style_function
             WHEN 'FORM'        THEN c_style_form
             WHEN 'ENHANCEMENT' THEN c_style_enh
             WHEN 'MODULE'      THEN c_style_form
@@ -476,11 +479,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           APPEND entity TO entities.
           DATA(lv_node_id) = |{ lines( entities ) }|.
           CASE entity-style.
-            WHEN c_style_event.  APPEND lv_node_id TO ids_event.
-            WHEN c_style_method. APPEND lv_node_id TO ids_method.
-            WHEN c_style_form.   APPEND lv_node_id TO ids_form.
-            WHEN c_style_constr. APPEND lv_node_id TO ids_constr.
-            WHEN c_style_enh.    APPEND lv_node_id TO ids_enh.
+            WHEN c_style_event.    APPEND lv_node_id TO ids_event.
+            WHEN c_style_method.   APPEND lv_node_id TO ids_method.
+            WHEN c_style_form.     APPEND lv_node_id TO ids_form.
+            WHEN c_style_constr.   APPEND lv_node_id TO ids_constr.
+            WHEN c_style_enh.      APPEND lv_node_id TO ids_enh.
+            WHEN c_style_function. APPEND lv_node_id TO ids_function.
           ENDCASE.
         ENDIF.
       ENDLOOP.
@@ -509,11 +513,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       ENDLOOP.
 
       " classDef declarations
-      mm_string = |{ mm_string } classDef event  fill:#FFE0B2,stroke:#E65100\n|.
-      mm_string = |{ mm_string } classDef method fill:#BBDEFB,stroke:#1565C0\n|.
-      mm_string = |{ mm_string } classDef form   fill:#EEEEEE,stroke:#616161\n|.
-      mm_string = |{ mm_string } classDef constr fill:#E1BEE7,stroke:#6A1B9A\n|.
-      mm_string = |{ mm_string } classDef enh    fill:#FCE4EC,stroke:#AD1457\n|.
+      mm_string = |{ mm_string } classDef event    fill:#FFE0B2,stroke:#E65100\n|.
+      mm_string = |{ mm_string } classDef method   fill:#BBDEFB,stroke:#1565C0\n|.
+      mm_string = |{ mm_string } classDef form     fill:#EEEEEE,stroke:#616161\n|.
+      mm_string = |{ mm_string } classDef constr   fill:#E1BEE7,stroke:#6A1B9A\n|.
+      mm_string = |{ mm_string } classDef enh      fill:#FCE4EC,stroke:#AD1457\n|.
+      mm_string = |{ mm_string } classDef func     fill:#C8E6C9,stroke:#2E7D32\n|.
 
       " Apply styles to nodes
       DATA(lv_ids) = ``.
@@ -536,6 +541,10 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       IF ids_enh IS NOT INITIAL.
         CONCATENATE LINES OF ids_enh INTO lv_ids SEPARATED BY ','.
         mm_string = |{ mm_string } class { lv_ids } enh\n|.
+      ENDIF.
+      IF ids_function IS NOT INITIAL.
+        CONCATENATE LINES OF ids_function INTO lv_ids SEPARATED BY ','.
+        mm_string = |{ mm_string } class { lv_ids } func\n|.
       ENDIF.
 
       mm_string = |{ mm_string }\n|.
