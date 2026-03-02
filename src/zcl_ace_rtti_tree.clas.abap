@@ -201,6 +201,12 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         ENDTRY.
       ENDLOOP.
 
+      " Expand main node BEFORE display so children are visible
+      TRY.
+          mo_tree->get_nodes( )->get_node( main_node_key )->expand( ).
+        CATCH cx_root.
+      ENDTRY.
+
       mo_tree->display( ).
 
   endmethod.
