@@ -408,7 +408,6 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
   method STEPS_FLOW.
 
-
       TYPES: BEGIN OF lty_entity,
                event TYPE string,
                name  TYPE string,
@@ -416,71 +415,59 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
              BEGIN OF t_ind,
                from TYPE i,
                to   TYPE i,
-             END OF t_ind  .
+             END OF t_ind.
 
       DATA: mm_string TYPE string,
-            name      TYPE string,
             entities  TYPE TABLE OF lty_entity,
             entity    TYPE lty_entity,
-            parts     TYPE TABLE OF string,
             step      LIKE LINE OF mo_viewer->mt_steps,
             ind       TYPE t_ind,
             indexes   TYPE TABLE OF t_ind,
-            enh_ids   TYPE TABLE OF i.
+            enh_ids   TYPE TABLE OF string.
 
       DATA(copy) = mo_viewer->mt_steps.
 
+      " Build unique entity list with formatted display names
       LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
-        CLEAR entity.
+        entity-event = <copy>-eventtype.
+
         IF <copy>-eventtype = 'METHOD'.
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line WITH KEY include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname INTO DATA(call_line).
-          <copy>-eventname = entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
-          entity-event = 'METHOD'.
-        ELSEIF <copy>-eventtype = 'FUNCTION'.
-          <copy>-eventname = entity-name = |"{ <copy>-eventtype }:{ <copy>-eventname }"|.
-          entity-event = 'FUNCTION'.
-        ELSEIF <copy>-eventtype = 'SCREEN'.
-          <copy>-eventname = entity-name = |"CALL SCREEN { <copy>-eventname }"|.
-          entity-event = 'SCREEN'.
-        ELSEIF <copy>-eventtype = 'MODULE'.
-          <copy>-eventname = entity-name = |"MODULE { <copy>-eventname }"|.
-          entity-event = 'MODULE'.
-        ELSEIF <copy>-eventtype = 'FORM'.
-          <copy>-eventname = entity-name = |"FORM { <copy>-eventname }"|.
-          entity-event = 'FORM'.
-        ELSEIF <copy>-eventtype = 'ENHANCEMENT'.
-          <copy>-eventname = entity-name = |"ENH { <copy>-eventname }"|.
-          entity-event = 'ENHANCEMENT'.
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+            WITH KEY include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname
+            INTO DATA(call_line).
+          entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
         ELSE.
-          <copy>-eventname = entity-name = |"{ <copy>-program }:{ <copy>-eventname }"|.
-          entity-event = <copy>-eventtype.
+          entity-name = SWITCH string( <copy>-eventtype
+            WHEN 'FUNCTION'    THEN |"FUNCTION:{ <copy>-eventname }"|
+            WHEN 'SCREEN'      THEN |"CALL SCREEN { <copy>-eventname }"|
+            WHEN 'MODULE'      THEN |"MODULE { <copy>-eventname }"|
+            WHEN 'FORM'        THEN |"FORM { <copy>-eventname }"|
+            WHEN 'ENHANCEMENT' THEN |"ENH { <copy>-eventname }"|
+            ELSE                    |"{ <copy>-program }:{ <copy>-eventname }"| ).
         ENDIF.
+
+        <copy>-eventname = entity-name.
 
         READ TABLE entities WITH KEY name = entity-name TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           APPEND entity TO entities.
           IF entity-event = 'ENHANCEMENT'.
-            APPEND lines( entities ) TO enh_ids.
+            APPEND |{ lines( entities ) }| TO enh_ids.
           ENDIF.
         ENDIF.
       ENDLOOP.
 
-      CLEAR step.
+      " Build graph header
+      mm_string = |graph { COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'TD' ) }\n |.
 
-      IF i_direction IS INITIAL.
-        mm_string = |graph TD\n |.
-      ELSE.
-        mm_string = |graph { i_direction }\n |.
-      ENDIF.
-
+      " Build edges
       LOOP AT copy INTO DATA(step2).
         IF step IS INITIAL.
           step = step2.
           CONTINUE.
         ENDIF.
         IF step2-stacklevel >= step-stacklevel AND step2-eventname <> step-eventname.
-
-          READ TABLE entities WITH KEY name = step-eventname TRANSPORTING NO FIELDS.
+          READ TABLE entities WITH KEY name = step-eventname  TRANSPORTING NO FIELDS.
           ind-from = sy-tabix.
           READ TABLE entities WITH KEY name = step2-eventname TRANSPORTING NO FIELDS.
           ind-to = sy-tabix.
@@ -493,16 +480,10 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
         step = step2.
       ENDLOOP.
 
-      " Add enhancement styling if any enhancement nodes exist
+      " Add enhancement styling
       IF enh_ids IS NOT INITIAL.
         DATA(lv_ids) = ``.
-        LOOP AT enh_ids INTO DATA(lv_id).
-          IF lv_ids IS NOT INITIAL.
-            lv_ids = |{ lv_ids },{ lv_id }|.
-          ELSE.
-            lv_ids = |{ lv_id }|.
-          ENDIF.
-        ENDLOOP.
+        CONCATENATE LINES OF enh_ids INTO lv_ids SEPARATED BY ','.
         mm_string = |{ mm_string } classDef enh fill:#AED6F1,stroke:#2E86C1\n|.
         mm_string = |{ mm_string } class { lv_ids } enh\n|.
       ENDIF.
@@ -510,7 +491,6 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       mm_string = |{ mm_string }\n|.
 
       open_mermaid( mm_string ).
-
 
   endmethod.
 ENDCLASS.
