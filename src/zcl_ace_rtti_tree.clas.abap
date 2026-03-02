@@ -301,6 +301,43 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         WITH KEY program = <program> include = <include> eventname = <ev_name> eventtype = <ev_type>
         INTO mo_viewer->mo_window->ms_sel_call.
 
+      IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'MODULE' AND <include> IS NOT INITIAL.
+        DATA(lv_mod_include) = CONV program( <include> ).
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_mod_include TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          ZCL_ACE_SOURCE_PARSER=>parse_tokens(
+            i_program   = lv_mod_include
+            i_include   = lv_mod_include
+            io_debugger = mo_viewer ).
+        ENDIF.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_mod_include ASSIGNING FIELD-SYMBOL(<mod_prog>).
+        IF sy-subrc = 0.
+          LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<mp>).
+            CLEAR <mp>-selected.
+          ENDLOOP.
+          <mod_prog>-selected = abap_true.
+          mo_viewer->mo_window->m_prg-include = lv_mod_include.
+          IF <mod_prog>-v_source IS NOT INITIAL.
+            mo_viewer->mo_window->mo_code_viewer->set_text( table = <mod_prog>-v_source ).
+            DATA(lv_mod_orig_line) = CONV i( <value> ).
+            DATA(lv_mod_vline)     = lv_mod_orig_line.
+            READ TABLE <mod_prog>-v_keywords
+              WITH KEY include = lv_mod_include line = lv_mod_orig_line
+              INTO DATA(ls_mod_vkw).
+            IF sy-subrc = 0.
+              lv_mod_vline = ls_mod_vkw-v_line.
+            ENDIF.
+            mo_viewer->mo_window->set_program_line( lv_mod_vline ).
+          ELSE.
+            mo_viewer->mo_window->mo_code_viewer->set_text( table = <mod_prog>-source_tab ).
+            mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
+          ENDIF.
+        ENDIF.
+        RETURN.
+      ENDIF.
+
       IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'FORM' AND <include> IS NOT INITIAL.
         DATA(lv_form_include) = CONV program( <include> ).
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
