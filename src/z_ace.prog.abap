@@ -31,7 +31,7 @@
 
   INITIALIZATION.
 
-    "supressing F8 button
+    PERFORM supress_button. "supressing F8 button
     DATA itab TYPE TABLE OF sy-ucomm.
 
     APPEND: 'ONLI' TO itab.
@@ -108,3 +108,15 @@
       p_wdc = gt_tab[ 1 ]-obj_name.
 
     ENDIF.
+
+  FORM supress_button. "supressing F8 button
+
+    DATA itab TYPE TABLE OF sy-ucomm.
+
+    APPEND: 'ONLI' TO itab.
+    CALL FUNCTION 'RS_SET_SELSCREEN_STATUS'
+      EXPORTING
+        p_status  = sy-pfkey
+      TABLES
+        p_exclude = itab.
+  ENDFORM.

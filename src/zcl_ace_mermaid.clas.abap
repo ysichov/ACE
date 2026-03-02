@@ -411,19 +411,32 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       TYPES: BEGIN OF lty_entity,
                event TYPE string,
                name  TYPE string,
+               style TYPE string,
              END OF lty_entity,
              BEGIN OF t_ind,
                from TYPE i,
                to   TYPE i,
              END OF t_ind.
 
+      CONSTANTS: c_style_event  TYPE string VALUE 'event',
+                 c_style_method TYPE string VALUE 'method',
+                 c_style_form   TYPE string VALUE 'form',
+                 c_style_constr TYPE string VALUE 'constr',
+                 c_style_enh    TYPE string VALUE 'enh'.
+
       DATA: mm_string TYPE string,
             entities  TYPE TABLE OF lty_entity,
             entity    TYPE lty_entity,
             step      LIKE LINE OF mo_viewer->mt_steps,
             ind       TYPE t_ind,
-            indexes   TYPE TABLE OF t_ind,
-            enh_ids   TYPE TABLE OF string.
+            indexes   TYPE TABLE OF t_ind.
+
+      " style class -> list of node IDs
+      DATA: ids_event  TYPE TABLE OF string,
+            ids_method TYPE TABLE OF string,
+            ids_form   TYPE TABLE OF string,
+            ids_constr TYPE TABLE OF string,
+            ids_enh    TYPE TABLE OF string.
 
       DATA(copy) = mo_viewer->mt_steps.
 
@@ -436,6 +449,11 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
             WITH KEY include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname
             INTO DATA(call_line).
           entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
+          IF <copy>-eventname = 'CONSTRUCTOR' OR <copy>-eventname = 'CLASS_CONSTRUCTOR'.
+            entity-style = c_style_constr.
+          ELSE.
+            entity-style = c_style_method.
+          ENDIF.
         ELSE.
           entity-name = SWITCH string( <copy>-eventtype
             WHEN 'FUNCTION'    THEN |"FUNCTION:{ <copy>-eventname }"|
@@ -444,6 +462,11 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
             WHEN 'FORM'        THEN |"FORM { <copy>-eventname }"|
             WHEN 'ENHANCEMENT' THEN |"ENH { <copy>-eventname }"|
             ELSE                    |"{ <copy>-program }:{ <copy>-eventname }"| ).
+          entity-style = SWITCH string( <copy>-eventtype
+            WHEN 'FORM'        THEN c_style_form
+            WHEN 'ENHANCEMENT' THEN c_style_enh
+            WHEN 'MODULE'      THEN c_style_form
+            ELSE                    c_style_event ).
         ENDIF.
 
         <copy>-eventname = entity-name.
@@ -451,9 +474,14 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
         READ TABLE entities WITH KEY name = entity-name TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           APPEND entity TO entities.
-          IF entity-event = 'ENHANCEMENT'.
-            APPEND |{ lines( entities ) }| TO enh_ids.
-          ENDIF.
+          DATA(lv_node_id) = |{ lines( entities ) }|.
+          CASE entity-style.
+            WHEN c_style_event.  APPEND lv_node_id TO ids_event.
+            WHEN c_style_method. APPEND lv_node_id TO ids_method.
+            WHEN c_style_form.   APPEND lv_node_id TO ids_form.
+            WHEN c_style_constr. APPEND lv_node_id TO ids_constr.
+            WHEN c_style_enh.    APPEND lv_node_id TO ids_enh.
+          ENDCASE.
         ENDIF.
       ENDLOOP.
 
@@ -480,11 +508,33 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
         step = step2.
       ENDLOOP.
 
-      " Add enhancement styling
-      IF enh_ids IS NOT INITIAL.
-        DATA(lv_ids) = ``.
-        CONCATENATE LINES OF enh_ids INTO lv_ids SEPARATED BY ','.
-        mm_string = |{ mm_string } classDef enh fill:#AED6F1,stroke:#2E86C1\n|.
+      " classDef declarations
+      mm_string = |{ mm_string } classDef event  fill:#FFE0B2,stroke:#E65100\n|.
+      mm_string = |{ mm_string } classDef method fill:#BBDEFB,stroke:#1565C0\n|.
+      mm_string = |{ mm_string } classDef form   fill:#EEEEEE,stroke:#616161\n|.
+      mm_string = |{ mm_string } classDef constr fill:#E1BEE7,stroke:#6A1B9A\n|.
+      mm_string = |{ mm_string } classDef enh    fill:#FCE4EC,stroke:#AD1457\n|.
+
+      " Apply styles to nodes
+      DATA(lv_ids) = ``.
+      IF ids_event IS NOT INITIAL.
+        CONCATENATE LINES OF ids_event INTO lv_ids SEPARATED BY ','.
+        mm_string = |{ mm_string } class { lv_ids } event\n|.
+      ENDIF.
+      IF ids_method IS NOT INITIAL.
+        CONCATENATE LINES OF ids_method INTO lv_ids SEPARATED BY ','.
+        mm_string = |{ mm_string } class { lv_ids } method\n|.
+      ENDIF.
+      IF ids_form IS NOT INITIAL.
+        CONCATENATE LINES OF ids_form INTO lv_ids SEPARATED BY ','.
+        mm_string = |{ mm_string } class { lv_ids } form\n|.
+      ENDIF.
+      IF ids_constr IS NOT INITIAL.
+        CONCATENATE LINES OF ids_constr INTO lv_ids SEPARATED BY ','.
+        mm_string = |{ mm_string } class { lv_ids } constr\n|.
+      ENDIF.
+      IF ids_enh IS NOT INITIAL.
+        CONCATENATE LINES OF ids_enh INTO lv_ids SEPARATED BY ','.
         mm_string = |{ mm_string } class { lv_ids } enh\n|.
       ENDIF.
 
