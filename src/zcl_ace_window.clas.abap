@@ -494,11 +494,31 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           ENDIF.
 
         WHEN 'DEPTH'.
-          IF m_hist_depth < 9.
-            ADD 1 TO m_hist_depth.
-          ELSE.
-            m_hist_depth = 1.
+          DATA: lv_answer TYPE c LENGTH 1,
+                lv_value1 TYPE spop-varvalue1.
+
+          CALL FUNCTION 'POPUP_TO_GET_ONE_VALUE'
+            EXPORTING
+              textline1   = |Current depth: { m_hist_depth }. Enter new value (0-99):|
+              titel       = 'Set History Depth'
+              valuelength = '2'
+            IMPORTING
+              answer      = lv_answer
+              value1      = lv_value1
+            EXCEPTIONS
+              OTHERS      = 1.
+
+          IF sy-subrc <> 0 OR lv_answer <> 'J' OR lv_value1 IS INITIAL.
+            RETURN.
           ENDIF.
+
+          DATA(lv_new_depth) = CONV i( lv_value1 ).
+          IF lv_new_depth < 0.
+            lv_new_depth = 0.
+          ELSEIF lv_new_depth > 99.
+            lv_new_depth = 99.
+          ENDIF.
+          m_hist_depth = lv_new_depth.
 
           CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
