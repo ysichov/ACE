@@ -187,7 +187,11 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
   method DISPLAY.
 
       DATA(o_columns) = mo_tree->get_columns( ).
-      o_columns->get_column( 'KIND' )->set_visible( abap_false ).
+      o_columns->get_column( 'KIND'    )->set_visible( abap_false ).
+      o_columns->get_column( 'PROGRAM' )->set_visible( abap_false ).
+      o_columns->get_column( 'EV_TYPE' )->set_visible( abap_false ).
+      o_columns->get_column( 'EV_NAME' )->set_visible( abap_false ).
+      o_columns->get_column( 'ENH_ID'  )->set_visible( abap_false ).
 
       " Set expander on lazy-load folders BEFORE display
       LOOP AT mt_lazy_nodes INTO DATA(lv_lazy_key).
@@ -737,7 +741,53 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
 
   method HNDL_EXPAND_EMPTY.
-      add_node( i_name = 'loading...' i_rel = node_key ).
+
+    DATA(o_node) = mo_tree->get_nodes( )->get_node( node_key ).
+    DATA r_row   TYPE REF TO data.
+    r_row = o_node->get_data_row( ).
+    ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
+    ASSIGN COMPONENT 'KIND'    OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
+    ASSIGN COMPONENT 'PARAM'   OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
+    ASSIGN COMPONENT 'PROGRAM' OF STRUCTURE <row> TO FIELD-SYMBOL(<program>).
+
+    CHECK <kind> = 'F' AND <param> IS NOT INITIAL.
+
+    IF <param>+0(5) = 'VARS:'.
+      " vars/params folder: VARS:{class}:{method}
+      DATA(lv_str)  = CONV string( <param> ).
+      SPLIT lv_str AT ':' INTO DATA(lv_pfx) DATA(lv_class) DATA(lv_meth).
+      DATA(lv_prog) = CONV program( <program> ).
+
+      LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_p)
+        WHERE class = lv_class AND event = 'METHOD' AND name = lv_meth AND param IS NOT INITIAL.
+        DATA(lv_p_icon) = COND salv_de_tree_image(
+          WHEN lv_p-type = 'I' THEN CONV #( icon_parameter_import )
+          ELSE                      CONV #( icon_parameter_export ) ).
+        add_node( i_name = lv_p-param i_icon = lv_p_icon i_rel = node_key
+                  i_tree = VALUE #( value = lv_p-line include = lv_p-include ) ).
+      ENDLOOP.
+
+      LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_v)
+        WHERE program = lv_prog AND class = lv_class AND eventname = lv_meth.
+        add_node( i_name = lv_v-name i_icon = lv_v-icon i_rel = node_key
+                  i_tree = VALUE #( value = lv_v-line include = lv_v-include ) ).
+      ENDLOOP.
+
+    ELSEIF <param>+0(5) = 'ATTR:'.
+      " attributes folder: ATTR:{class}
+      DATA(lv_attr_class) = CONV string( <param>+5 ).
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+        WITH KEY class = lv_attr_class eventtype = 'METHOD'
+        INTO DATA(lv_sub).
+      CHECK sy-subrc = 0.
+      LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_a)
+        WHERE program = lv_sub-program AND class = lv_attr_class AND eventname IS INITIAL.
+        add_node( i_name = lv_a-name i_icon = lv_a-icon i_rel = node_key
+                  i_tree = VALUE #( value = lv_a-line include = lv_a-include ) ).
+      ENDLOOP.
+
+    ENDIF.
+
   endmethod.
 
 
