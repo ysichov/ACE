@@ -146,6 +146,11 @@ public section.
                tt_enh_blocks TYPE tt_enh_blocks,
              END OF ts_prog .
   types:
+    BEGIN OF ts_virtual_block,
+               source   TYPE sci_include,
+               keywords TYPE tt_kword,
+             END OF ts_virtual_block .
+  types:
     tt_progs   TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY .
   types:
     tt_classes TYPE STANDARD TABLE OF ts_meta WITH EMPTY KEY .

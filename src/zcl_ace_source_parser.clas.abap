@@ -1068,19 +1068,28 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       DATA: cl_key        TYPE seoclskey,
             meth_includes TYPE seop_methods_w_include.
       cl_key = i_class.
-      CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-        EXPORTING
-          clskey                       = cl_key
-        IMPORTING
-          includes                     = meth_includes
-        EXCEPTIONS
-          _internal_class_not_existing = 1
-          OTHERS                       = 2.
 
-      IF lines( meth_includes ) IS INITIAL.
+      " Check if this class is already known as local (parsed from program source)
+      READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+        WITH KEY class = i_class
+        TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        " Local class - skip global lookup, use i_index directly
         statement = i_index.
       ELSE.
-        statement = 1.
+        CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+          EXPORTING
+            clskey                       = cl_key
+          IMPORTING
+            includes                     = meth_includes
+          EXCEPTIONS
+            _internal_class_not_existing = 1
+            OTHERS                       = 2.
+        IF lines( meth_includes ) IS INITIAL.
+          statement = i_index.
+        ELSE.
+          statement = 1.
+        ENDIF.
       ENDIF.
 
       IF i_include IS NOT INITIAL.
@@ -1401,20 +1410,31 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       cl_key = i_call-class.
       stack = i_stack." + 1.
 
-      CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-        EXPORTING
-          clskey                       = cl_key
-        IMPORTING
-          includes                     = meth_includes
-        EXCEPTIONS
-          _internal_class_not_existing = 1
-          OTHERS                       = 2.
+      " Check if this class is already known as local (parsed from program source)
+      DATA(lv_local_exists) = abap_false.
+      READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+        WITH KEY class = i_call-class
+        TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        lv_local_exists = abap_true.
+      ENDIF.
+
+      IF lv_local_exists = abap_false.
+        CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+          EXPORTING
+            clskey                       = cl_key
+          IMPORTING
+            includes                     = meth_includes
+          EXCEPTIONS
+            _internal_class_not_existing = 1
+            OTHERS                       = 2.
+      ENDIF.
 
       IF io_debugger->mo_window->m_zcode IS INITIAL OR
        ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( i_call-class+0(1) = 'Z' OR i_call-class+0(1) = 'Y' ) )
          OR meth_includes IS INITIAL.
 
-        IF lines( meth_includes ) > 0.
+        IF lines( meth_includes ) > 0 AND lv_local_exists = abap_false.
           prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
           include = program = prefix && 'CP'."Class Program
 

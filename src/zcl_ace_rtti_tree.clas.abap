@@ -13,6 +13,7 @@ public section.
   data M_PRG_INFO type TPDA_SCR_PRG_INFO .
   data MO_VIEWER type ref to ZCL_ACE .
   data MO_TREE type ref to CL_SALV_TREE .
+  data MT_LAZY_NODES type STANDARD TABLE OF SALV_DE_NODE_KEY WITH DEFAULT KEY.
 
   methods CONSTRUCTOR
     importing
@@ -54,6 +55,10 @@ private section.
 
   methods HNDL_DOUBLE_CLICK
     for event DOUBLE_CLICK of CL_SALV_EVENTS_TREE
+    importing
+      !NODE_KEY .
+  methods HNDL_EXPAND_EMPTY
+    for event EXPAND_EMPTY_FOLDER of CL_SALV_EVENTS_TREE
     importing
       !NODE_KEY .
   methods HNDL_USER_COMMAND
@@ -118,6 +123,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
 
       mo_tree->get_nodes( )->delete_all( ).
+      CLEAR mt_lazy_nodes.
 
 
   endmethod.
@@ -155,6 +161,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
       DATA(o_event) = mo_tree->get_event( ) .
       SET HANDLER hndl_double_click
+                  hndl_expand_empty
                   hndl_user_command FOR o_event.
 
       mo_tree->display( ).
@@ -179,74 +186,113 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
   method DISPLAY.
 
-
       DATA(o_columns) = mo_tree->get_columns( ).
       o_columns->get_column( 'KIND' )->set_visible( abap_false ).
 
-      DATA(o_nodes) = mo_tree->get_nodes( ).
-      DATA(nodes) =  o_nodes->get_all_nodes( ).
-
-      DATA sub TYPE salv_t_nodes.
-
-      LOOP AT nodes INTO DATA(l_node).
-
-        DATA r_row TYPE REF TO data.
-
-        r_row = l_node-node->get_data_row( ).
-        ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
-        ASSIGN COMPONENT 'KIND' OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
-
-        IF <kind> = 'F'.
-
-          TRY.
-              l_node-node->expand( ).
-              sub = l_node-node->get_subtree( ).
-            CATCH cx_root.
-          ENDTRY.
-        ELSEIF <kind> IS INITIAL.
-          l_node-node->collapse( ).
-        ENDIF.
+      " Set expander on lazy-load folders BEFORE display
+      LOOP AT mt_lazy_nodes INTO DATA(lv_lazy_key).
+        TRY.
+            mo_tree->get_nodes( )->get_node( lv_lazy_key )->set_expander( abap_true ).
+          CATCH cx_root.
+        ENDTRY.
       ENDLOOP.
 
       mo_tree->display( ).
-
-      " Scroll to top
-      TRY.
-          mo_tree->get_nodes( )->set_top_node( main_node_key ).
-        CATCH cx_root.
-      ENDTRY.
-
 
   endmethod.
 
 
   method HNDL_DOUBLE_CLICK.
 
-
       DATA(o_nodes) = mo_tree->get_nodes( ).
-      DATA(o_node) =  o_nodes->get_node( node_key ).
+      DATA(o_node)  = o_nodes->get_node( node_key ).
       DATA r_row TYPE REF TO data.
+      DATA ls_clear_row TYPE ZCL_ACE_APPL=>ts_tree.
 
       r_row = o_node->get_data_row( ).
       ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
-      ASSIGN COMPONENT 'KIND' OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
-      ASSIGN COMPONENT 'VALUE' OF STRUCTURE <row> TO FIELD-SYMBOL(<value>).
-      ASSIGN COMPONENT 'PARAM' OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
+      ASSIGN COMPONENT 'KIND'    OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
+      ASSIGN COMPONENT 'VALUE'   OF STRUCTURE <row> TO FIELD-SYMBOL(<value>).
+      ASSIGN COMPONENT 'PARAM'   OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
       ASSIGN COMPONENT 'PROGRAM' OF STRUCTURE <row> TO FIELD-SYMBOL(<program>).
       ASSIGN COMPONENT 'INCLUDE' OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
       ASSIGN COMPONENT 'EV_TYPE' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_type>).
       ASSIGN COMPONENT 'EV_NAME' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
       ASSIGN COMPONENT 'ENH_ID'  OF STRUCTURE <row> TO FIELD-SYMBOL(<enh_id>).
 
+      IF <kind> = 'F' AND <param> IS NOT INITIAL AND <param>+0(5) = 'VARS:'.
+        " Lazy expand: load real vars/params nodes under this folder
+        DATA(lv_lazy_str)  = CONV string( <param> ).
+        SPLIT lv_lazy_str AT ':' INTO DATA(lv_pfx) DATA(lv_lazy_class) DATA(lv_lazy_meth).
+        DATA(lv_lazy_prog) = CONV program( <program> ).
+
+        " Clear marker so we don't expand twice
+        ls_clear_row-kind    = 'F'.
+        ls_clear_row-program = <program>.
+        ls_clear_row-include = <include>.
+        ls_clear_row-ev_type = 'VARS'.
+        ls_clear_row-ev_name = <ev_name>.
+        o_node->set_data_row( REF #( ls_clear_row ) ).
+
+        " Add params
+        DATA(lv_added) = 0.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_ep)
+          WHERE class = lv_lazy_class AND event = 'METHOD' AND name = lv_lazy_meth AND param IS NOT INITIAL.
+          DATA(lv_ep_icon) = COND salv_de_tree_image(
+            WHEN lv_ep-type = 'I' THEN CONV #( icon_parameter_import )
+            ELSE                       CONV #( icon_parameter_export ) ).
+          DATA(lv_ep_tree) = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ep-line include = lv_ep-include ).
+          add_node( i_name = lv_ep-param i_icon = lv_ep_icon i_rel = node_key i_tree = lv_ep_tree ).
+          lv_added = lv_added + 1.
+        ENDLOOP.
+
+        " Add local vars
+        LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_ev)
+          WHERE program = lv_lazy_prog AND class = lv_lazy_class AND eventname = lv_lazy_meth.
+          DATA(lv_ev_tree) = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ev-line include = lv_ev-include ).
+          add_node( i_name = lv_ev-name i_icon = lv_ev-icon i_rel = node_key i_tree = lv_ev_tree ).
+          lv_added = lv_added + 1.
+        ENDLOOP.
+
+        IF lv_added > 0.
+          TRY.
+              o_node->expand( ).
+            CATCH cx_root.
+          ENDTRY.
+        ENDIF.
+        RETURN.
+      ENDIF.
+
+      IF <kind> = 'F' AND <param> IS NOT INITIAL AND <param>+0(5) = 'ATTR:'.
+        " Lazy expand: load class attributes
+        DATA(lv_attr_param) = CONV string( <param> ).
+        DATA(lv_attr_class) = lv_attr_param+5.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+          WITH KEY class = lv_attr_class eventtype = 'METHOD'
+          INTO DATA(lv_attr_sub).
+        IF sy-subrc = 0.
+          LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_av)
+            WHERE program = lv_attr_sub-program AND class = lv_attr_class AND eventname IS INITIAL.
+            DATA(lv_av_tree) = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_av-line include = lv_av-include ).
+            add_node( i_name = lv_av-name i_icon = lv_av-icon i_rel = node_key i_tree = lv_av_tree ).
+          ENDLOOP.
+        ENDIF.
+        CLEAR ls_clear_row.
+        ls_clear_row-kind = 'F'.
+        o_node->set_data_row( REF #( ls_clear_row ) ).
+        TRY.
+            o_node->expand( ).
+          CATCH cx_root.
+        ENDTRY.
+        RETURN.
+      ENDIF.
+
       READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
         WITH KEY program = <program> include = <include> eventname = <ev_name> eventtype = <ev_type>
         INTO mo_viewer->mo_window->ms_sel_call.
 
       IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'FORM' AND <include> IS NOT INITIAL.
-        " FORM node - show include with all enhancements embedded (v_source)
-        " v_source/v_keywords already built at parse_tokens time - just display
         DATA(lv_form_include) = CONV program( <include> ).
-        " Ensure parsed (enhancements already collected inside parse_tokens)
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_form_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
@@ -265,9 +311,8 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           mo_viewer->mo_window->m_prg-include = lv_form_include.
           IF <form_prog>-v_source IS NOT INITIAL.
             mo_viewer->mo_window->mo_code_viewer->set_text( table = <form_prog>-v_source ).
-            " Find correct v_line from v_keywords for this FORM
             DATA(lv_form_orig_line) = CONV i( <value> ).
-            DATA(lv_form_vline) = lv_form_orig_line.
+            DATA(lv_form_vline)     = lv_form_orig_line.
             READ TABLE <form_prog>-v_keywords
               WITH KEY include = lv_form_include line = lv_form_orig_line
               INTO DATA(ls_form_vkw).
@@ -284,10 +329,8 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       ENDIF.
 
       IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'METHOD' AND <include> IS NOT INITIAL.
-        " Method node (not enhancement) - show METHOD..ENDMETHOD with embedded enhancements
         DATA(lv_cm_include) = CONV program( <include> ).
         DATA(lv_cm_method)  = CONV string( <ev_name> ).
-        " Ensure CM include is parsed
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
@@ -296,46 +339,37 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             i_include   = lv_cm_include
             io_debugger = mo_viewer ).
         ENDIF.
-        " Ensure enhancements are collected for this CM include (only once)
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include INTO DATA(ls_cm_check).
         IF sy-subrc = 0 AND ls_cm_check-tt_enh_blocks IS INITIAL.
           ZCL_ACE_SOURCE_PARSER=>collect_enhancements(
-            i_program   = lv_cm_include
-            io_debugger = mo_viewer ).
+            i_program = lv_cm_include io_debugger = mo_viewer ).
         ELSEIF sy-subrc <> 0.
           ZCL_ACE_SOURCE_PARSER=>collect_enhancements(
-            i_program   = lv_cm_include
-            io_debugger = mo_viewer ).
+            i_program = lv_cm_include io_debugger = mo_viewer ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include INTO DATA(ls_cm_prog2).
         IF sy-subrc = 0.
-          " Find METHOD keyword for this method
           DATA(lv_cm_meth_line) = 0.
           DATA(lv_cm_endm_line) = 0.
-          LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_cm_kw)
-            WHERE name = 'METHOD'.
+          LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_cm_kw) WHERE name = 'METHOD'.
             DATA(ls_cm_stmt) = ls_cm_prog2-scan->statements[ ls_cm_kw-index ].
             DATA(ls_cm_tok)  = ls_cm_prog2-scan->tokens[ ls_cm_stmt-from + 1 ].
             IF ls_cm_tok-str = lv_cm_method.
-              lv_cm_meth_line = ls_cm_kw-line.
-              EXIT.
+              lv_cm_meth_line = ls_cm_kw-line. EXIT.
             ENDIF.
           ENDLOOP.
           IF lv_cm_meth_line > 0.
             LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_cm_kw2)
               WHERE name = 'ENDMETHOD' AND line > lv_cm_meth_line.
-              lv_cm_endm_line = ls_cm_kw2-line.
-              EXIT.
+              lv_cm_endm_line = ls_cm_kw2-line. EXIT.
             ENDLOOP.
           ENDIF.
           IF lv_cm_meth_line > 0 AND lv_cm_endm_line > 0.
-            " Check if method has any enhancements
             READ TABLE ls_cm_prog2-tt_enh_blocks TRANSPORTING NO FIELDS
               WITH KEY ev_type = 'METHOD' ev_name = lv_cm_method.
             IF sy-subrc <> 0.
-              " No enhancements - show full CM include as-is
               mo_viewer->mo_window->set_program( lv_cm_include ).
               mo_viewer->mo_window->m_prg-include = lv_cm_include.
               mo_viewer->mo_window->set_program_line( lv_cm_meth_line ).
@@ -343,21 +377,18 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             ENDIF.
             DATA lt_cm_src  TYPE sci_include.
             DATA lt_virt_kw TYPE ZCL_ACE_APPL=>tt_kword.
-            " Copy CM method lines and build keyword map (include=CM, v_line=virtual row)
             LOOP AT ls_cm_prog2-source_tab INTO DATA(lv_cm_line)
               FROM lv_cm_meth_line TO lv_cm_endm_line.
               APPEND lv_cm_line TO lt_cm_src.
-              DATA(lv_virt_row) = lines( lt_cm_src ).
+              DATA(lv_virt_row)     = lines( lt_cm_src ).
               DATA(lv_cm_real_line) = lv_cm_meth_line + lv_virt_row - 1.
-              LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_vkw_src)
-                WHERE line = lv_cm_real_line.
-                DATA(ls_vkw) = ls_vkw_src.
-                ls_vkw-include = lv_cm_include.
-                ls_vkw-v_line  = lv_virt_row.
+              LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_vkw_src) WHERE line = lv_cm_real_line.
+                DATA(ls_vkw)      = ls_vkw_src.
+                ls_vkw-include    = lv_cm_include.
+                ls_vkw-v_line     = lv_virt_row.
                 APPEND ls_vkw TO lt_virt_kw.
               ENDLOOP.
             ENDLOOP.
-            " Embed PRE/POST/OVERWRITE enhancements
             DATA: lt_cm_pre     TYPE sci_include,
                   lt_cm_post    TYPE sci_include,
                   lt_cm_pre_kw  TYPE ZCL_ACE_APPL=>tt_kword,
@@ -365,15 +396,13 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             LOOP AT ls_cm_prog2-tt_enh_blocks INTO DATA(ls_cm_eb)
               WHERE ev_type = 'METHOD' AND ev_name = lv_cm_method
                 AND ( position = 'BEGIN' OR position = 'END' OR position = 'OVERWRITE' ).
-              " ---- OVERWRITE ----
               IF ls_cm_eb-position = 'OVERWRITE'.
                 DATA(lv_enh_eimp_ow) = ls_cm_eb-enh_include.
                 READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                   WITH KEY include = lv_enh_eimp_ow TRANSPORTING NO FIELDS.
                 IF sy-subrc <> 0.
                   ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-                    i_program   = CONV #( lv_enh_eimp_ow )
-                    i_include   = CONV #( lv_enh_eimp_ow )
+                    i_program = CONV #( lv_enh_eimp_ow ) i_include = CONV #( lv_enh_eimp_ow )
                     io_debugger = mo_viewer ).
                 ENDIF.
                 READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
@@ -389,9 +418,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                       DATA(ls_ow_stmt) = ls_enh_eimp_ow-scan->statements[ ls_ow_kw-index ].
                       DATA(ls_ow_tok)  = ls_enh_eimp_ow-scan->tokens[ ls_ow_stmt-from + 1 ].
                       IF ls_ow_tok-str = lv_iow_name OR ls_ow_tok-str CP |IOW_*~{ lv_cm_method }|.
-                        lv_in_iow    = abap_true.
-                        lv_iow_first = ls_ow_kw-line.
-                        " Insert 2 comment lines at top, shift all existing virt kw by 2
+                        lv_in_iow = abap_true. lv_iow_first = ls_ow_kw-line.
                         INSERT |* OVERWRITTEN BY ENHANCEMENT: | && ls_cm_eb-enh_name INTO lt_cm_src INDEX 1.
                         INSERT |* | && ls_enh_eimp_ow-source_tab[ ls_ow_kw-line ] INTO lt_cm_src INDEX 2.
                         LOOP AT lt_virt_kw ASSIGNING FIELD-SYMBOL(<vkw_ow>).
@@ -401,11 +428,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                         lv_in_iow = abap_false.
                       ENDIF.
                     ELSEIF ls_ow_kw-name = 'ENDMETHOD' AND lv_in_iow = abap_true.
-                      lv_iow_last = ls_ow_kw-line.
-                      EXIT.
+                      lv_iow_last = ls_ow_kw-line. EXIT.
                     ENDIF.
                   ENDLOOP.
-                  " Copy IOW lines + collect their keywords
                   IF lv_iow_first > 0 AND lv_iow_last > lv_iow_first.
                     DATA lv_iow_idx TYPE i.
                     lv_iow_idx = lv_iow_first.
@@ -416,9 +441,8 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                       ELSE.
                         APPEND lv_iow_src_line TO lt_cm_src.
                       ENDIF.
-                      LOOP AT ls_enh_eimp_ow-t_keywords INTO DATA(ls_iow_kw2)
-                        WHERE line = lv_iow_idx.
-                        DATA(ls_iow_vkw) = ls_iow_kw2.
+                      LOOP AT ls_enh_eimp_ow-t_keywords INTO DATA(ls_iow_kw2) WHERE line = lv_iow_idx.
+                        DATA(ls_iow_vkw)   = ls_iow_kw2.
                         ls_iow_vkw-include = lv_enh_eimp_ow.
                         ls_iow_vkw-v_line  = lines( lt_cm_src ).
                         APPEND ls_iow_vkw TO lt_virt_kw.
@@ -429,30 +453,25 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                 ENDIF.
                 CONTINUE.
               ENDIF.
-              " ---- PRE / POST ----
               DATA(lv_enh_eimp2) = ls_cm_eb-enh_include.
               READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                 WITH KEY include = lv_enh_eimp2 TRANSPORTING NO FIELDS.
               IF sy-subrc <> 0.
                 ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-                  i_program   = CONV #( lv_enh_eimp2 )
-                  i_include   = CONV #( lv_enh_eimp2 )
+                  i_program = CONV #( lv_enh_eimp2 ) i_include = CONV #( lv_enh_eimp2 )
                   io_debugger = mo_viewer ).
               ENDIF.
               READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                 WITH KEY include = lv_enh_eimp2 INTO DATA(ls_enh_eimp2).
               CHECK sy-subrc = 0.
               DATA(lv_impl_pfx2) = COND string(
-                WHEN ls_cm_eb-position = 'BEGIN' THEN 'IPR_'
-                ELSE                                  'IPO_' ).
+                WHEN ls_cm_eb-position = 'BEGIN' THEN 'IPR_' ELSE 'IPO_' ).
               DATA(lv_impl_nm2) = lv_impl_pfx2 && ls_cm_eb-enh_name && '~' && lv_cm_method.
-              DATA: lv_in_eb2    TYPE boolean,
-                    lt_eb2_lines TYPE sci_include,
-                    lt_eb2_kw    TYPE ZCL_ACE_APPL=>tt_kword.
+              DATA: lv_in_eb2 TYPE boolean, lt_eb2_lines TYPE sci_include,
+                    lt_eb2_kw TYPE ZCL_ACE_APPL=>tt_kword.
               DATA lv_eb2_first TYPE i.
               DATA lv_eb2_last  TYPE i.
               CLEAR: lv_in_eb2, lt_eb2_lines, lt_eb2_kw, lv_eb2_first, lv_eb2_last.
-              " Find METHOD/ENDMETHOD line range for IPR_/IPO_ method
               LOOP AT ls_enh_eimp2-t_keywords INTO DATA(ls_ek2).
                 IF ls_ek2-name = 'METHOD'.
                   DATA(ls_ek2_stmt) = ls_enh_eimp2-scan->statements[ ls_ek2-index ].
@@ -468,7 +487,6 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                   lv_eb2_last = ls_ek2-line. CLEAR lv_in_eb2.
                 ENDIF.
               ENDLOOP.
-              " Copy lines + keywords (v_line relative to method start, fixed on INSERT)
               IF lv_eb2_first > 0 AND lv_eb2_last > lv_eb2_first.
                 DATA lv_eb2_idx TYPE i.
                 lv_eb2_idx = lv_eb2_first.
@@ -479,9 +497,8 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                   ELSE.
                     APPEND lv_eb2_src TO lt_eb2_lines.
                   ENDIF.
-                  LOOP AT ls_enh_eimp2-t_keywords INTO DATA(ls_ek2_kw)
-                    WHERE line = lv_eb2_idx.
-                    DATA(ls_eb2_vkw) = ls_ek2_kw.
+                  LOOP AT ls_enh_eimp2-t_keywords INTO DATA(ls_ek2_kw) WHERE line = lv_eb2_idx.
+                    DATA(ls_eb2_vkw)   = ls_ek2_kw.
                     ls_eb2_vkw-include = lv_enh_eimp2.
                     ls_eb2_vkw-v_line  = lv_eb2_idx - lv_eb2_first + 1.
                     APPEND ls_eb2_vkw TO lt_eb2_kw.
@@ -499,7 +516,6 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                 ENDIF.
               ENDIF.
             ENDLOOP.
-            " Insert PRE lines after METHOD (pos 2), shift existing kw, fix v_line
             IF lt_cm_pre IS NOT INITIAL.
               DATA(lv_cm_ins) = 2.
               DATA(lv_pre_seq) = 0.
@@ -510,14 +526,13 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                 ENDLOOP.
                 lv_pre_seq = lv_pre_seq + 1.
                 LOOP AT lt_cm_pre_kw ASSIGNING FIELD-SYMBOL(<pkw>) WHERE v_line = lv_pre_seq.
-                  DATA(ls_pkw_ins) = <pkw>.
+                  DATA(ls_pkw_ins)  = <pkw>.
                   ls_pkw_ins-v_line = lv_cm_ins.
                   APPEND ls_pkw_ins TO lt_virt_kw.
                 ENDLOOP.
                 lv_cm_ins = lv_cm_ins + 1.
               ENDLOOP.
             ENDIF.
-            " Insert POST lines before ENDMETHOD (last line), shift existing kw, fix v_line
             IF lt_cm_post IS NOT INITIAL.
               DATA(lv_cm_post_idx) = lines( lt_cm_src ).
               DATA(lv_post_seq) = 0.
@@ -528,14 +543,13 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                 ENDLOOP.
                 lv_post_seq = lv_post_seq + 1.
                 LOOP AT lt_cm_post_kw ASSIGNING FIELD-SYMBOL(<pokw>) WHERE v_line = lv_post_seq.
-                  DATA(ls_pokw_ins) = <pokw>.
+                  DATA(ls_pokw_ins)  = <pokw>.
                   ls_pokw_ins-v_line = lv_cm_post_idx.
                   APPEND ls_pokw_ins TO lt_virt_kw.
                 ENDLOOP.
                 lv_cm_post_idx = lv_cm_post_idx + 1.
               ENDLOOP.
             ENDIF.
-            " Create/replace VIRTUAL prog entry in tt_progs
             DELETE mo_viewer->mo_window->ms_sources-tt_progs WHERE include = 'VIRTUAL'.
             APPEND INITIAL LINE TO mo_viewer->mo_window->ms_sources-tt_progs
               ASSIGNING FIELD-SYMBOL(<virt_prog>).
@@ -553,28 +567,24 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             RETURN.
           ENDIF.
         ENDIF.
-        " Fallback: show full CM include
         mo_viewer->mo_window->set_program( lv_cm_include ).
         mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
         RETURN.
       ENDIF.
 
       IF <kind> = 'M' AND <param> IS NOT INITIAL AND <ev_type> = 'FORM'.
-        " FORM enhancement - show only ENHANCEMENT N...ENDENHANCEMENT block
         DATA(lv_enh_include_f) = CONV program( <param> ).
         DATA(lv_form_enh_id)   = CONV i( <enh_id> ).
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_enh_include_f TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program   = CONV #( lv_enh_include_f )
-            i_include   = CONV #( lv_enh_include_f )
+            i_program = CONV #( lv_enh_include_f ) i_include = CONV #( lv_enh_include_f )
             io_debugger = mo_viewer ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_enh_include_f INTO DATA(ls_form_enh_prog).
         IF sy-subrc = 0.
-          " Find ENHANCEMENT N...ENDENHANCEMENT block by ID
           DATA lt_form_virt_src  TYPE sci_include.
           DATA lt_form_virt_kw   TYPE ZCL_ACE_APPL=>tt_kword.
           DATA lv_in_enh_block   TYPE boolean.
@@ -586,29 +596,24 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
               READ TABLE ls_form_enh_prog-scan->statements INDEX ls_fe_kw-index INTO DATA(ls_fe_stmt).
               READ TABLE ls_form_enh_prog-scan->tokens INDEX ls_fe_stmt-from + 1 INTO DATA(ls_fe_tok).
               IF CONV i( ls_fe_tok-str ) = lv_form_enh_id.
-                lv_in_enh_block   = abap_true.
-                lv_enh_start_line = ls_fe_kw-line.
+                lv_in_enh_block = abap_true. lv_enh_start_line = ls_fe_kw-line.
               ELSE.
                 lv_in_enh_block = abap_false.
               ENDIF.
               CONTINUE.
             ENDIF.
             IF ls_fe_kw-name = 'ENDENHANCEMENT' AND lv_in_enh_block = abap_true.
-              lv_enh_end_line = ls_fe_kw-line.
-              CLEAR lv_in_enh_block.
-              CONTINUE.
+              lv_enh_end_line = ls_fe_kw-line. CLEAR lv_in_enh_block. CONTINUE.
             ENDIF.
           ENDLOOP.
           IF lv_enh_start_line > 0 AND lv_enh_end_line > 0.
-            " Build virtual source and keyword map for this block only
             LOOP AT ls_form_enh_prog-source_tab INTO DATA(lv_fe_src_line)
               FROM lv_enh_start_line TO lv_enh_end_line.
               APPEND lv_fe_src_line TO lt_form_virt_src.
               DATA(lv_fe_vrow) = lines( lt_form_virt_src ).
               DATA(lv_fe_real) = lv_enh_start_line + lv_fe_vrow - 1.
-              LOOP AT ls_form_enh_prog-t_keywords INTO DATA(ls_fe_vkw)
-                WHERE line = lv_fe_real.
-                DATA(ls_fe_out_kw) = ls_fe_vkw.
+              LOOP AT ls_form_enh_prog-t_keywords INTO DATA(ls_fe_vkw) WHERE line = lv_fe_real.
+                DATA(ls_fe_out_kw)   = ls_fe_vkw.
                 ls_fe_out_kw-include = lv_enh_include_f.
                 ls_fe_out_kw-v_line  = lv_fe_vrow.
                 APPEND ls_fe_out_kw TO lt_form_virt_kw.
@@ -634,23 +639,19 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       ENDIF.
 
       IF <kind> = 'M' AND <param> IS NOT INITIAL AND <ev_type> = 'METHOD'.
-        " Enhancement node - navigate to EIMP include
         DATA(lv_eimp_include) = CONV program( <param> ).
         DATA(lv_eimp_method)  = CONV string( <ev_name> ).
-        " Parse EIMP if not yet loaded
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_eimp_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program   = CONV #( lv_eimp_include )
-            i_include   = CONV #( lv_eimp_include )
+            i_program = CONV #( lv_eimp_include ) i_include = CONV #( lv_eimp_include )
             io_debugger = mo_viewer ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_eimp_include INTO DATA(ls_eimp_prog).
         IF sy-subrc = 0.
-          " Build exact prefix from position (BEGIN=IPR_, END=IPO_, OVERWRITE=IOW_)
-          DATA(lv_enh_pos)    = CONV string( <value> ).
+          DATA(lv_enh_pos)     = CONV string( <value> ).
           DATA(lv_impl_prefix) = COND string(
             WHEN lv_enh_pos = 'BEGIN'     AND <ev_type> = 'METHOD' THEN 'IPR_'
             WHEN lv_enh_pos = 'END'       AND <ev_type> = 'METHOD' THEN 'IPO_'
@@ -661,27 +662,21 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           DATA(lv_cp_pattern) = COND string(
             WHEN lv_impl_prefix IS NOT INITIAL THEN lv_impl_prefix && |*~{ lv_eimp_method }|
             ELSE |*~| && lv_eimp_method ).
-          DATA(lv_meth_line)  = 0.
-          DATA(lv_endm_line)  = 0.
-          " Find METHOD line matching prefix~ev_name
-          LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_eimp_kw)
-            WHERE name = 'METHOD'.
+          DATA(lv_meth_line) = 0.
+          DATA(lv_endm_line) = 0.
+          LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_eimp_kw) WHERE name = 'METHOD'.
             DATA(ls_eimp_stmt) = ls_eimp_prog-scan->statements[ ls_eimp_kw-index ].
             DATA(ls_eimp_tok)  = ls_eimp_prog-scan->tokens[ ls_eimp_stmt-from + 1 ].
             IF ls_eimp_tok-str CP lv_cp_pattern.
-              lv_meth_line = ls_eimp_kw-line.
-              EXIT.
+              lv_meth_line = ls_eimp_kw-line. EXIT.
             ENDIF.
           ENDLOOP.
           IF lv_meth_line > 0.
-            " Find corresponding ENDMETHOD after METHOD line
             LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_eimp_kw2)
               WHERE name = 'ENDMETHOD' AND line > lv_meth_line.
-              lv_endm_line = ls_eimp_kw2-line.
-              EXIT.
+              lv_endm_line = ls_eimp_kw2-line. EXIT.
             ENDLOOP.
             IF lv_endm_line > 0.
-              " Extract METHOD...ENDMETHOD lines from EIMP + build keyword map
               DATA lt_meth_src TYPE sci_include.
               DATA lt_meth_kw  TYPE ZCL_ACE_APPL=>tt_kword.
               LOOP AT ls_eimp_prog-source_tab INTO DATA(lv_src_line)
@@ -689,15 +684,13 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                 APPEND lv_src_line TO lt_meth_src.
                 DATA(lv_meth_vrow) = lines( lt_meth_src ).
                 DATA(lv_meth_real) = lv_meth_line + lv_meth_vrow - 1.
-                LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_meth_kw)
-                  WHERE line = lv_meth_real.
-                  DATA(ls_meth_vkw) = ls_meth_kw.
+                LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_meth_kw) WHERE line = lv_meth_real.
+                  DATA(ls_meth_vkw)   = ls_meth_kw.
                   ls_meth_vkw-include = lv_eimp_include.
                   ls_meth_vkw-v_line  = lv_meth_vrow.
                   APPEND ls_meth_vkw TO lt_meth_kw.
                 ENDLOOP.
               ENDLOOP.
-              " Create/replace VIRTUAL entry in tt_progs
               DELETE mo_viewer->mo_window->ms_sources-tt_progs WHERE include = 'VIRTUAL'.
               APPEND INITIAL LINE TO mo_viewer->mo_window->ms_sources-tt_progs
                 ASSIGNING FIELD-SYMBOL(<virt_e>).
@@ -715,7 +708,6 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
               RETURN.
             ENDIF.
           ENDIF.
-          " Fallback: show start of EIMP
           mo_viewer->mo_window->set_program( CONV #( lv_eimp_include ) ).
           mo_viewer->mo_window->set_program_line( '1' ).
         ENDIF.
@@ -729,19 +721,23 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
 
       IF <param> IS NOT INITIAL.
-        READ TABLE mo_viewer->mt_selected_var WITH KEY name =  <param> TRANSPORTING NO FIELDS.
+        READ TABLE mo_viewer->mt_selected_var WITH KEY name = <param> TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
           DELETE mo_viewer->mt_selected_var WHERE name = <param>.
           o_node->set_row_style( if_salv_c_tree_style=>default ).
         ELSE.
           o_node->set_row_style( if_salv_c_tree_style=>emphasized_b ).
           APPEND INITIAL LINE TO mo_viewer->mt_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
-          <sel>-name = <param>.
+          <sel>-name  = <param>.
           <sel>-i_sel = abap_true.
         ENDIF.
       ENDIF.
 
+  endmethod.
 
+
+  method HNDL_EXPAND_EMPTY.
+      add_node( i_name = 'loading...' i_rel = node_key ).
   endmethod.
 
 
