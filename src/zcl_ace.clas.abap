@@ -138,22 +138,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
             splits_incl TYPE TABLE OF string,
             icon        TYPE salv_de_tree_image,
             locals_rel  TYPE salv_de_node_key,
-            test_rel    TYPE salv_de_node_key,
             class_rel   TYPE salv_de_node_key,
-            var_rel     TYPE salv_de_node_key,
             attr_rel    TYPE salv_de_node_key,
             include     TYPE string,
             prefix      TYPE string.
 
-      IF i_type = 'I'."interface
+      IF i_type = 'I'.
         icon = icon_oo_connection.
-      ELSEIF i_type = 'T'. "test class
+      ELSEIF i_type = 'T'.
         icon = icon_test.
       ELSE.
         icon = icon_folder.
       ENDIF.
 
-      "interfaces
+      " Interfaces
       LOOP AT mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = i_class AND reltype = '1'.
         IF class_rel IS INITIAL.
           class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
@@ -163,19 +161,22 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
       LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = i_class AND eventtype = 'METHOD'.
         IF class_rel IS INITIAL.
-          class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
+          IF i_tree-kind = 'C'.
+            " Global class node — kind='C' blocks nav and highlight
+            class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
+          ELSE.
+            " Local class node — param='CLASS:...' suppresses highlight
+            class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
+                          i_tree = VALUE #( param = |CLASS:{ i_class }| ) ).
+          ENDIF.
 
-          " Add Public/Protected/Private section nodes (only for global classes: kind='C' in i_tree)
+          " Public/Protected/Private sections — global classes only
           IF i_tree-kind = 'C' AND i_type <> 'I' AND i_type <> 'T'.
             DATA(lv_sec_prefix) = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
-            DATA(lt_sections) = VALUE string_table(
-              ( lv_sec_prefix && `CU` )
-              ( lv_sec_prefix && `CO` )
-              ( lv_sec_prefix && `CI` ) ).
+            DATA(lt_sections)   = VALUE string_table(
+              ( lv_sec_prefix && `CU` ) ( lv_sec_prefix && `CO` ) ( lv_sec_prefix && `CI` ) ).
             DATA(lt_sec_labels) = VALUE string_table(
-              ( `Public Section` )
-              ( `Protected Section` )
-              ( `Private Section` ) ).
+              ( `Public Section` ) ( `Protected Section` ) ( `Private Section` ) ).
             DATA(lv_sec_idx) = 0.
             LOOP AT lt_sections INTO DATA(lv_sec_inc).
               lv_sec_idx += 1.
@@ -191,21 +192,18 @@ CLASS ZCL_ACE IMPLEMENTATION.
             ENDLOOP.
           ENDIF.
 
-          " Count attributes - show as single folder node only
+          " Attributes folder (lazy)
           DATA(lv_attr_cnt) = 0.
           LOOP AT mo_window->ms_sources-t_vars INTO DATA(var_cnt)
             WHERE program = subs-program AND class = subs-class AND eventname IS INITIAL.
-            lv_attr_cnt = lv_attr_cnt + 1.
+            lv_attr_cnt += 1.
           ENDLOOP.
           IF lv_attr_cnt > 0.
-            CLEAR tree.
-            tree-kind  = 'F'.
-            tree-param = |ATTR:{ i_class }|.
             attr_rel = mo_tree_local->add_node(
               i_name = |Attributes ({ lv_attr_cnt })|
               i_icon = CONV #( icon_folder )
               i_rel  = class_rel
-              i_tree = tree ).
+              i_tree = VALUE #( param = |ATTR:{ i_class }| ) ).
             APPEND attr_rel TO mo_tree_local->mt_lazy_nodes.
           ENDIF.
         ENDIF.
@@ -214,13 +212,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO DATA(prog).
         READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
 
-        CLEAR tree.
         tree-kind    = 'M'.
         tree-value   = keyword-v_line.
         tree-include = subs-include.
         tree-program = subs-program.
         tree-ev_type = subs-eventtype.
         tree-ev_name = subs-eventname.
+        CLEAR tree-param.
 
         IF i_type = 'I'.
           icon = icon_oo_inst_method.
@@ -241,48 +239,41 @@ CLASS ZCL_ACE IMPLEMENTATION.
         DATA(event_node) = mo_tree_local->add_node(
           i_name = subs-eventname i_icon = icon i_rel = class_rel i_tree = tree ).
 
-        " Count params + local vars - show as single summary folder (lazy load)
+        " vars/params folder (lazy)
         DATA(lv_sub_cnt) = 0.
         LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
           WHERE program = subs-program AND class = subs-class AND eventname = subs-eventname.
-          lv_sub_cnt = lv_sub_cnt + 1.
+          lv_sub_cnt += 1.
         ENDLOOP.
         LOOP AT mo_window->ms_sources-t_params INTO DATA(lv_p)
           WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname AND param IS NOT INITIAL.
-          lv_sub_cnt = lv_sub_cnt + 1.
+          lv_sub_cnt += 1.
         ENDLOOP.
         IF lv_sub_cnt > 0.
-          CLEAR tree.
-          tree-kind    = 'F'.
-          tree-program = subs-program.
-          tree-include = subs-include.
-          tree-ev_type = 'VARS'.
-          tree-ev_name = subs-eventname.
-          tree-param   = |VARS:{ subs-class }:{ subs-eventname }|.
           DATA(lv_vars_node) = mo_tree_local->add_node(
             i_name = |vars/params ({ lv_sub_cnt })|
             i_icon = CONV #( icon_folder )
             i_rel  = event_node
-            i_tree = tree ).
+            i_tree = VALUE #( program = subs-program include = subs-include
+                              ev_type = 'VARS' ev_name = subs-eventname
+                              param   = |VARS:{ subs-class }:{ subs-eventname }| ) ).
           APPEND lv_vars_node TO mo_tree_local->mt_lazy_nodes.
         ENDIF.
 
       ENDLOOP.
 
       IF no_locals = abap_false.
-        prefix = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
+        prefix  = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
         include = prefix && 'CP'.
-
         DATA: local TYPE string.
         LOOP AT mo_window->ms_sources-tt_calls_line INTO subs
           WHERE program = include AND class <> i_class AND eventtype = 'METHOD'.
           IF local <> subs-class.
             IF locals_rel IS INITIAL.
-              CLEAR tree.
-              tree-kind = 'F'.
               locals_rel = mo_tree_local->add_node(
                 i_name = 'Local Classes' i_icon = CONV #( icon_folder )
-                i_rel  = class_rel i_tree = tree ).
+                i_rel  = class_rel
+                i_tree = VALUE #( ) ).
             ENDIF.
             add_class( i_class = CONV #( subs-class ) i_refnode = locals_rel no_locals = abap_true ).
           ENDIF.
@@ -821,7 +812,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       mo_tree_local->main_node_key = mo_tree_local->add_node(
         i_name = CONV #( mo_window->m_prg-program )
         i_icon = CONV #( icon_folder )
-        i_tree = VALUE #( kind = 'F' ) ).
+        i_tree = VALUE #( ) ).
 
       " ---- Enhancements ----
       LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh).
@@ -830,7 +821,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
             enh_rel = mo_tree_local->add_node(
               i_name = 'Enhancements' i_icon = CONV #( icon_folder )
               i_rel  = mo_tree_local->main_node_key
-              i_tree = VALUE #( kind = 'F' ) ).
+              i_tree = VALUE #( ) ).
           ENDIF.
           mo_tree_local->add_node(
             i_name = |{ enh_blk-enh_name } { enh_blk-ev_type } { enh_blk-ev_name } ({ enh_blk-position })|
@@ -864,7 +855,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
         events_rel = mo_tree_local->add_node(
           i_name = 'Events' i_icon = CONV #( icon_folder )
           i_rel  = mo_tree_local->main_node_key
-          i_tree = VALUE #( kind = 'F' ) ).
+          i_tree = VALUE #( ) ).
         mo_tree_local->add_node(
           i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event )
           i_rel  = events_rel
@@ -875,7 +866,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           events_rel = mo_tree_local->add_node(
             i_name = 'Events' i_icon = CONV #( icon_folder )
             i_rel  = mo_tree_local->main_node_key
-            i_tree = VALUE #( kind = 'F' ) ).
+            i_tree = VALUE #( ) ).
         ENDIF.
         mo_tree_local->add_node(
           i_name = event-name i_icon = CONV #( icon_oo_event )
@@ -901,7 +892,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           f_modules = mo_tree_local->add_node(
             i_name = 'Function Modules' i_icon = CONV #( icon_folder )
             i_rel  = mo_tree_local->main_node_key
-            i_tree = VALUE #( kind = 'F' ) ).
+            i_tree = VALUE #( ) ).
         ENDIF.
         func_rel = mo_tree_local->add_node(
           i_name = CONV #( funcname ) i_icon = CONV #( icon_folder )
@@ -939,7 +930,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
                   locals_rel = mo_tree_local->add_node(
                     i_name = 'Local Classes' i_icon = CONV #( icon_folder )
                     i_rel  = mo_tree_local->main_node_key
-                    i_tree = VALUE #( kind = 'F' ) ).
+                    i_tree = VALUE #( ) ).
                 ENDIF.
                 add_class( i_class = CONV #( subs-class ) i_refnode = locals_rel no_locals = abap_true ).
               ENDIF.
@@ -975,7 +966,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDDO.
       classes_rel = class_rel = mo_tree_local->main_node_key.
 
-      " ---- Subroutines and Modules ----
+      " ---- Subroutines ----
       DATA(lv_form_cnt) = 0.
       DATA(lv_mod_cnt)  = 0.
       LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs2).
@@ -983,7 +974,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         IF subs2-eventtype = 'MODULE' AND subs2-program = splits_prg[ 1 ]. lv_mod_cnt  += 1. ENDIF.
       ENDLOOP.
 
-      " Subroutines
       IF lv_form_cnt > 0.
         IF lv_form_cnt <= c_lazy_threshold.
           LOOP AT mo_window->ms_sources-tt_calls_line INTO subs2
@@ -992,7 +982,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
               forms_rel = mo_tree_local->add_node(
                 i_name = 'Subroutines' i_icon = CONV #( icon_folder )
                 i_rel  = mo_tree_local->main_node_key
-                i_tree = VALUE #( kind = 'F' ) ).
+                i_tree = VALUE #( ) ).
             ENDIF.
             SPLIT subs2-include AT '=' INTO TABLE splits_incl.
             READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs2-include INTO prog.
@@ -1023,7 +1013,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      " Modules
+      " ---- Modules ----
       IF lv_mod_cnt > 0.
         IF lv_mod_cnt <= c_lazy_threshold.
           LOOP AT mo_window->ms_sources-tt_calls_line INTO subs2
@@ -1032,7 +1022,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
               modules_rel = mo_tree_local->add_node(
                 i_name = 'Modules' i_icon = CONV #( icon_folder )
                 i_rel  = mo_tree_local->main_node_key
-                i_tree = VALUE #( kind = 'F' ) ).
+                i_tree = VALUE #( ) ).
             ENDIF.
             SPLIT subs2-include AT '=' INTO TABLE splits_incl.
             READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs2-include INTO prog.

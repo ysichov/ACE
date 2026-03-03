@@ -97,11 +97,10 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
   method ADD_NODE.
 
-
-      DATA style TYPE salv_de_constant.
-      IF i_tree-kind = 'F'." OR i_tree-value IS NOT INITIAL.
-        style = if_salv_c_tree_style=>intensified.
-      ENDIF.
+      " intensified style for lazy-load folders (have a param marker)
+      DATA(style) = COND salv_de_constant(
+        WHEN i_tree-param IS NOT INITIAL THEN if_salv_c_tree_style=>intensified
+        ELSE                                  if_salv_c_tree_style=>default ).
 
       rv_node =
             mo_tree->get_nodes( )->add_node(
@@ -114,7 +113,6 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
               text           = CONV #( i_name )
               folder         = abap_true
             )->get_key( ).
-
 
   endmethod.
 
@@ -250,76 +248,77 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       ASSIGN COMPONENT 'EV_NAME' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
       ASSIGN COMPONENT 'ENH_ID'  OF STRUCTURE <row> TO FIELD-SYMBOL(<enh_id>).
 
-      " kind='C' = global class node — no navigation on double-click
+      " kind='C' = global class node — no navigation, no highlight
       CHECK <kind> <> 'C'.
 
-      IF <kind> = 'F' AND <param> IS NOT INITIAL AND <param>+0(5) = 'VARS:'.
-        " Lazy expand: load real vars/params nodes under this folder
-        DATA(lv_lazy_str)  = CONV string( <param> ).
-        SPLIT lv_lazy_str AT ':' INTO DATA(lv_pfx) DATA(lv_lazy_class) DATA(lv_lazy_meth).
-        DATA(lv_lazy_prog) = CONV program( <program> ).
+      DATA(lv_param) = CONV string( <param> ).
 
-        " Clear marker so we don't expand twice
-        ls_clear_row-kind    = 'F'.
+      " --- VARS: lazy-load folder ---
+      IF lv_param IS NOT INITIAL AND lv_param+0(5) = 'VARS:'.
+        SPLIT lv_param AT ':' INTO DATA(lv_pfx) DATA(lv_lazy_class) DATA(lv_lazy_meth).
+        DATA(lv_lazy_prog) = CONV program( <program> ).
+        ls_clear_row-kind    = <kind>.
         ls_clear_row-program = <program>.
         ls_clear_row-include = <include>.
-        ls_clear_row-ev_type = 'VARS'.
+        ls_clear_row-ev_type = <ev_type>.
         ls_clear_row-ev_name = <ev_name>.
         o_node->set_data_row( REF #( ls_clear_row ) ).
-
-        " Add params
         DATA(lv_added) = 0.
         LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_ep)
           WHERE class = lv_lazy_class AND event = 'METHOD' AND name = lv_lazy_meth AND param IS NOT INITIAL.
           DATA(lv_ep_icon) = COND salv_de_tree_image(
             WHEN lv_ep-type = 'I' THEN CONV #( icon_parameter_import )
             ELSE                       CONV #( icon_parameter_export ) ).
-          DATA(lv_ep_tree) = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ep-line include = lv_ep-include ).
-          add_node( i_name = lv_ep-param i_icon = lv_ep_icon i_rel = node_key i_tree = lv_ep_tree ).
+          add_node( i_name = lv_ep-param i_icon = lv_ep_icon i_rel = node_key
+                    i_tree = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ep-line include = lv_ep-include ) ).
           lv_added = lv_added + 1.
         ENDLOOP.
-
-        " Add local vars
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_ev)
           WHERE program = lv_lazy_prog AND class = lv_lazy_class AND eventname = lv_lazy_meth.
-          DATA(lv_ev_tree) = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ev-line include = lv_ev-include ).
-          add_node( i_name = lv_ev-name i_icon = lv_ev-icon i_rel = node_key i_tree = lv_ev_tree ).
+          add_node( i_name = lv_ev-name i_icon = lv_ev-icon i_rel = node_key
+                    i_tree = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ev-line include = lv_ev-include ) ).
           lv_added = lv_added + 1.
         ENDLOOP.
-
         IF lv_added > 0.
-          TRY.
-              o_node->expand( ).
-            CATCH cx_root.
-          ENDTRY.
+          TRY. o_node->expand( ). CATCH cx_root. ENDTRY.
         ENDIF.
         RETURN.
       ENDIF.
 
-      IF <kind> = 'F' AND <param> IS NOT INITIAL AND <param>+0(5) = 'ATTR:'.
-        " Lazy expand: load class attributes
-        DATA(lv_attr_param) = CONV string( <param> ).
-        DATA(lv_attr_class) = lv_attr_param+5.
+      " --- ATTR: lazy-load folder ---
+      IF lv_param IS NOT INITIAL AND lv_param+0(5) = 'ATTR:'.
+        DATA(lv_attr_class) = lv_param+5.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
-          WITH KEY class = lv_attr_class eventtype = 'METHOD'
-          INTO DATA(lv_attr_sub).
+          WITH KEY class = lv_attr_class eventtype = 'METHOD' INTO DATA(lv_attr_sub).
         IF sy-subrc = 0.
           LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_av)
             WHERE program = lv_attr_sub-program AND class = lv_attr_class AND eventname IS INITIAL.
-            DATA(lv_av_tree) = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_av-line include = lv_av-include ).
-            add_node( i_name = lv_av-name i_icon = lv_av-icon i_rel = node_key i_tree = lv_av_tree ).
+            add_node( i_name = lv_av-name i_icon = lv_av-icon i_rel = node_key
+                      i_tree = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_av-line include = lv_av-include ) ).
           ENDLOOP.
         ENDIF.
         CLEAR ls_clear_row.
-        ls_clear_row-kind = 'F'.
         o_node->set_data_row( REF #( ls_clear_row ) ).
-        TRY.
-            o_node->expand( ).
-          CATCH cx_root.
-        ENDTRY.
+        TRY. o_node->expand( ). CATCH cx_root. ENDTRY.
         RETURN.
       ENDIF.
 
+      " --- Structural markers: navigate without highlight ---
+      IF lv_param IS NOT INITIAL AND ( lv_param+0(6) = 'CLASS:' OR lv_param+0(9) = 'LCLASSES:' ).
+        IF <include> IS NOT INITIAL.
+          mo_viewer->mo_window->set_program( CONV #( <include> ) ).
+        ENDIF.
+        mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
+        RETURN.
+      ENDIF.
+
+      " --- Other lazy-load markers (GVARS/FORMS/MODS): no action on dblclick ---
+      IF lv_param IS NOT INITIAL AND (
+          lv_param+0(6) = 'GVARS:' OR lv_param+0(6) = 'FORMS:' OR lv_param+0(5) = 'MODS:' ).
+        RETURN.
+      ENDIF.
+
+      " --- Navigation nodes ---
       READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
         WITH KEY program = <program> include = <include> eventname = <ev_name> eventtype = <ev_type>
         INTO mo_viewer->mo_window->ms_sel_call.
@@ -330,16 +329,12 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           WITH KEY include = lv_mod_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program   = lv_mod_include
-            i_include   = lv_mod_include
-            io_debugger = mo_viewer ).
+            i_program = lv_mod_include i_include = lv_mod_include io_debugger = mo_viewer ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_mod_include ASSIGNING FIELD-SYMBOL(<mod_prog>).
         IF sy-subrc = 0.
-          LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<mp>).
-            CLEAR <mp>-selected.
-          ENDLOOP.
+          LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<mp>). CLEAR <mp>-selected. ENDLOOP.
           <mod_prog>-selected = abap_true.
           mo_viewer->mo_window->m_prg-include = lv_mod_include.
           IF <mod_prog>-v_source IS NOT INITIAL.
@@ -347,11 +342,8 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             DATA(lv_mod_orig_line) = CONV i( <value> ).
             DATA(lv_mod_vline)     = lv_mod_orig_line.
             READ TABLE <mod_prog>-v_keywords
-              WITH KEY include = lv_mod_include line = lv_mod_orig_line
-              INTO DATA(ls_mod_vkw).
-            IF sy-subrc = 0.
-              lv_mod_vline = ls_mod_vkw-v_line.
-            ENDIF.
+              WITH KEY include = lv_mod_include line = lv_mod_orig_line INTO DATA(ls_mod_vkw).
+            IF sy-subrc = 0. lv_mod_vline = ls_mod_vkw-v_line. ENDIF.
             mo_viewer->mo_window->set_program_line( lv_mod_vline ).
           ELSE.
             mo_viewer->mo_window->mo_code_viewer->set_text( table = <mod_prog>-source_tab ).
@@ -367,16 +359,12 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           WITH KEY include = lv_form_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program   = lv_form_include
-            i_include   = lv_form_include
-            io_debugger = mo_viewer ).
+            i_program = lv_form_include i_include = lv_form_include io_debugger = mo_viewer ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_form_include ASSIGNING FIELD-SYMBOL(<form_prog>).
         IF sy-subrc = 0.
-          LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<fp>).
-            CLEAR <fp>-selected.
-          ENDLOOP.
+          LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<fp>). CLEAR <fp>-selected. ENDLOOP.
           <form_prog>-selected = abap_true.
           mo_viewer->mo_window->m_prg-include = lv_form_include.
           IF <form_prog>-v_source IS NOT INITIAL.
@@ -384,11 +372,8 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             DATA(lv_form_orig_line) = CONV i( <value> ).
             DATA(lv_form_vline)     = lv_form_orig_line.
             READ TABLE <form_prog>-v_keywords
-              WITH KEY include = lv_form_include line = lv_form_orig_line
-              INTO DATA(ls_form_vkw).
-            IF sy-subrc = 0.
-              lv_form_vline = ls_form_vkw-v_line.
-            ENDIF.
+              WITH KEY include = lv_form_include line = lv_form_orig_line INTO DATA(ls_form_vkw).
+            IF sy-subrc = 0. lv_form_vline = ls_form_vkw-v_line. ENDIF.
             mo_viewer->mo_window->set_program_line( lv_form_vline ).
           ELSE.
             mo_viewer->mo_window->mo_code_viewer->set_text( table = <form_prog>-source_tab ).
@@ -405,18 +390,14 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           WITH KEY include = lv_cm_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program   = lv_cm_include
-            i_include   = lv_cm_include
-            io_debugger = mo_viewer ).
+            i_program = lv_cm_include i_include = lv_cm_include io_debugger = mo_viewer ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include INTO DATA(ls_cm_check).
         IF sy-subrc = 0 AND ls_cm_check-tt_enh_blocks IS INITIAL.
-          ZCL_ACE_SOURCE_PARSER=>collect_enhancements(
-            i_program = lv_cm_include io_debugger = mo_viewer ).
+          ZCL_ACE_SOURCE_PARSER=>collect_enhancements( i_program = lv_cm_include io_debugger = mo_viewer ).
         ELSEIF sy-subrc <> 0.
-          ZCL_ACE_SOURCE_PARSER=>collect_enhancements(
-            i_program = lv_cm_include io_debugger = mo_viewer ).
+          ZCL_ACE_SOURCE_PARSER=>collect_enhancements( i_program = lv_cm_include io_debugger = mo_viewer ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include INTO DATA(ls_cm_prog2).
@@ -426,9 +407,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_cm_kw) WHERE name = 'METHOD'.
             DATA(ls_cm_stmt) = ls_cm_prog2-scan->statements[ ls_cm_kw-index ].
             DATA(ls_cm_tok)  = ls_cm_prog2-scan->tokens[ ls_cm_stmt-from + 1 ].
-            IF ls_cm_tok-str = lv_cm_method.
-              lv_cm_meth_line = ls_cm_kw-line. EXIT.
-            ENDIF.
+            IF ls_cm_tok-str = lv_cm_method. lv_cm_meth_line = ls_cm_kw-line. EXIT. ENDIF.
           ENDLOOP.
           IF lv_cm_meth_line > 0.
             LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_cm_kw2)
@@ -453,9 +432,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
               DATA(lv_virt_row)     = lines( lt_cm_src ).
               DATA(lv_cm_real_line) = lv_cm_meth_line + lv_virt_row - 1.
               LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_vkw_src) WHERE line = lv_cm_real_line.
-                DATA(ls_vkw)      = ls_vkw_src.
-                ls_vkw-include    = lv_cm_include.
-                ls_vkw-v_line     = lv_virt_row.
+                DATA(ls_vkw)   = ls_vkw_src.
+                ls_vkw-include = lv_cm_include.
+                ls_vkw-v_line  = lv_virt_row.
                 APPEND ls_vkw TO lt_virt_kw.
               ENDLOOP.
             ENDLOOP.
@@ -691,8 +670,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             ENDLOOP.
           ENDIF.
           DELETE mo_viewer->mo_window->ms_sources-tt_progs WHERE include = 'VIRTUAL'.
-          APPEND INITIAL LINE TO mo_viewer->mo_window->ms_sources-tt_progs
-            ASSIGNING FIELD-SYMBOL(<virt_f>).
+          APPEND INITIAL LINE TO mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<virt_f>).
           <virt_f>-program    = mo_viewer->mo_window->m_prg-program.
           <virt_f>-include    = 'VIRTUAL'.
           <virt_f>-source_tab = lt_form_virt_src.
@@ -737,9 +715,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_eimp_kw) WHERE name = 'METHOD'.
             DATA(ls_eimp_stmt) = ls_eimp_prog-scan->statements[ ls_eimp_kw-index ].
             DATA(ls_eimp_tok)  = ls_eimp_prog-scan->tokens[ ls_eimp_stmt-from + 1 ].
-            IF ls_eimp_tok-str CP lv_cp_pattern.
-              lv_meth_line = ls_eimp_kw-line. EXIT.
-            ENDIF.
+            IF ls_eimp_tok-str CP lv_cp_pattern. lv_meth_line = ls_eimp_kw-line. EXIT. ENDIF.
           ENDLOOP.
           IF lv_meth_line > 0.
             LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_eimp_kw2)
@@ -762,8 +738,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                 ENDLOOP.
               ENDLOOP.
               DELETE mo_viewer->mo_window->ms_sources-tt_progs WHERE include = 'VIRTUAL'.
-              APPEND INITIAL LINE TO mo_viewer->mo_window->ms_sources-tt_progs
-                ASSIGNING FIELD-SYMBOL(<virt_e>).
+              APPEND INITIAL LINE TO mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<virt_e>).
               <virt_e>-program    = mo_viewer->mo_window->m_prg-program.
               <virt_e>-include    = 'VIRTUAL'.
               <virt_e>-source_tab = lt_meth_src.
@@ -784,13 +759,14 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         RETURN.
       ENDIF.
 
+      " --- Fallback: navigate + highlight for var/param leaf nodes ---
       IF <include> IS NOT INITIAL.
         mo_viewer->mo_window->set_program( CONV #( <include> ) ).
       ENDIF.
-
       mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
 
-      IF <param> IS NOT INITIAL AND NOT ( <param>+0(6) = 'CLASS:' OR <param>+0(9) = 'LCLASSES' ).
+      " Highlight only for var/param leaf nodes (param is the variable name, no prefix marker)
+      IF <param> IS NOT INITIAL.
         READ TABLE mo_viewer->mt_selected_var WITH KEY name = <param> TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
           DELETE mo_viewer->mt_selected_var WHERE name = <param>.
@@ -818,7 +794,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     CHECK <param> IS NOT INITIAL.
     DATA(lv_param) = CONV string( <param> ).
 
-    " ---- VARS:{class}:{method} — vars/params of a method ----
+    " ---- VARS:{class}:{method} ----
     IF lv_param+0(5) = 'VARS:'.
       SPLIT lv_param AT ':' INTO DATA(lv_pfx) DATA(lv_class) DATA(lv_meth).
       LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_p)
@@ -837,7 +813,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " ---- ATTR:{class} — class attributes ----
+    " ---- ATTR:{class} ----
     IF lv_param+0(5) = 'ATTR:'.
       DATA(lv_attr_class) = lv_param+5.
       READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
@@ -852,7 +828,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " ---- GVARS: — global variables of program ----
+    " ---- GVARS: ----
     IF lv_param = 'GVARS:'.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_g)
         WHERE program = <program> AND eventtype IS INITIAL AND class IS INITIAL.
@@ -862,7 +838,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " ---- FORMS:{program} — all subroutines ----
+    " ---- FORMS:{program} ----
     IF strlen( lv_param ) > 6 AND lv_param+0(6) = 'FORMS:'.
       DATA(lv_forms_prog) = lv_param+6.
       LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_fs)
@@ -887,7 +863,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " ---- MODS:{program} — all modules ----
+    " ---- MODS:{program} ----
     IF strlen( lv_param ) > 5 AND lv_param+0(5) = 'MODS:'.
       DATA(lv_mods_prog) = lv_param+5.
       LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_ms)
@@ -903,11 +879,10 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " ---- LCLASSES:{program} — list of local classes (lazy, no methods yet) ----
+    " ---- LCLASSES:{program} ----
     IF strlen( lv_param ) > 9 AND lv_param+0(9) = 'LCLASSES:'.
       DATA(lv_lc_prog) = lv_param+9.
       DATA(lv_lc_prev) = ``.
-      " Extract main class name (before '=')
       DATA(lv_lc_splits) = VALUE string_table( ).
       SPLIT lv_lc_prog AT '=' INTO TABLE lv_lc_splits.
       DATA(lv_main_class) = lv_lc_splits[ 1 ].
@@ -915,13 +890,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         WHERE program = lv_lc_prog AND eventtype = 'METHOD'.
         CHECK lv_lc-class <> lv_main_class.
         IF lv_lc_prev <> lv_lc-class.
-          " Use def_include/def_line so double-click navigates to CLASS DEFINITION
           DATA(lv_cls_inc)  = COND program( WHEN lv_lc-def_include IS NOT INITIAL
-                                            THEN lv_lc-def_include
-                                            ELSE lv_lc-include ).
-          DATA(lv_cls_line) = COND i( WHEN lv_lc-def_line > 0
-                                      THEN lv_lc-def_line
-                                      ELSE 0 ).
+                                            THEN lv_lc-def_include ELSE lv_lc-include ).
+          DATA(lv_cls_line) = COND i( WHEN lv_lc-def_line > 0 THEN lv_lc-def_line ELSE 0 ).
           DATA(lv_cls_node) = add_node(
             i_name = CONV #( lv_lc-class )
             i_icon = CONV #( icon_folder )
@@ -942,10 +913,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " ---- CLASS:{classname} — methods of one class ----
+    " ---- CLASS:{classname} ----
     IF strlen( lv_param ) > 6 AND lv_param+0(6) = 'CLASS:'.
       DATA(lv_cls_name) = lv_param+6.
-      " Add attributes folder (lazy)
       DATA(lv_attr_cnt) = 0.
       READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
         WITH KEY class = lv_cls_name eventtype = 'METHOD'
@@ -960,7 +930,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             i_name = |Attributes ({ lv_attr_cnt })|
             i_icon = CONV #( icon_folder )
             i_rel  = node_key
-            i_tree = VALUE #( kind = 'F' param = |ATTR:{ lv_cls_name }| ) ).
+            i_tree = VALUE #( param = |ATTR:{ lv_cls_name }| ) ).
           APPEND lv_attr_node TO mt_lazy_nodes.
           TRY.
               mo_tree->get_nodes( )->get_node( lv_attr_node )->set_expander( abap_true ).
@@ -968,13 +938,11 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           ENDTRY.
         ENDIF.
       ENDIF.
-      " Add each method as lazy (vars/params load on expand)
       LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_cm)
         WHERE class = lv_cls_name AND eventtype = 'METHOD'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm-include INTO DATA(lv_cmprog).
         READ TABLE lv_cmprog-t_keywords WITH KEY index = lv_cm-index INTO DATA(lv_cmkw).
-        " Choose icon
         DATA(lv_micon) = COND salv_de_tree_image(
           WHEN lv_cm-redefined = abap_false THEN
             COND #( WHEN lv_cm-meth_type = 0 OR lv_cm-meth_type = 1 THEN CONV #( icon_led_green )
@@ -987,7 +955,6 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           i_name = lv_cm-eventname i_icon = lv_micon i_rel = node_key
           i_tree = VALUE #( kind = 'M' value = lv_cmkw-v_line include = lv_cm-include
                             program = lv_cm-program ev_type = lv_cm-eventtype ev_name = lv_cm-eventname ) ).
-        " Check if method has vars/params — add lazy folder
         DATA(lv_mv_cnt) = 0.
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_mv)
           WHERE program = lv_cm-program AND class = lv_cls_name AND eventname = lv_cm-eventname.
@@ -1002,9 +969,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
             i_name = |vars/params ({ lv_mv_cnt })|
             i_icon = CONV #( icon_folder )
             i_rel  = lv_meth_node
-            i_tree = VALUE #( kind = 'F' program = lv_cm-program include = lv_cm-include
+            i_tree = VALUE #( program = lv_cm-program include = lv_cm-include
                               ev_type = 'VARS' ev_name = lv_cm-eventname
-                              param = |VARS:{ lv_cls_name }:{ lv_cm-eventname }| ) ).
+                              param   = |VARS:{ lv_cls_name }:{ lv_cm-eventname }| ) ).
           APPEND lv_vars_node TO mt_lazy_nodes.
           TRY.
               mo_tree->get_nodes( )->get_node( lv_vars_node )->set_expander( abap_true ).
