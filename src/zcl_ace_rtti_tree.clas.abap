@@ -193,7 +193,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       o_columns->get_column( 'EV_NAME' )->set_visible( abap_false ).
       o_columns->get_column( 'ENH_ID'  )->set_visible( abap_false ).
 
-      " Set expander on lazy-load folders BEFORE display
+      " Set expander on lazy-load folders
       LOOP AT mt_lazy_nodes INTO DATA(lv_lazy_key).
         TRY.
             mo_tree->get_nodes( )->get_node( lv_lazy_key )->set_expander( abap_true ).
@@ -201,9 +201,25 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         ENDTRY.
       ENDLOOP.
 
-      " Expand main node BEFORE display so children are visible
+      " Expand root node
       TRY.
           mo_tree->get_nodes( )->get_node( main_node_key )->expand( ).
+        CATCH cx_root.
+      ENDTRY.
+
+      " Expand all 2nd-level nodes (direct children of root)
+      TRY.
+          DATA(o_nodes_obj) = mo_tree->get_nodes( ).
+          DATA(lv_child_key) = o_nodes_obj->get_node( main_node_key )->get_first_child( )->get_key( ).
+          DO.
+            TRY.
+                DATA(o_child) = o_nodes_obj->get_node( lv_child_key ).
+                o_child->expand( ).
+                lv_child_key = o_child->get_next_sibling( )->get_key( ).
+              CATCH cx_root.
+                EXIT.
+            ENDTRY.
+          ENDDO.
         CATCH cx_root.
       ENDTRY.
 
@@ -789,18 +805,16 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     DATA r_row   TYPE REF TO data.
     r_row = o_node->get_data_row( ).
     ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
-    ASSIGN COMPONENT 'KIND'    OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
     ASSIGN COMPONENT 'PARAM'   OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
     ASSIGN COMPONENT 'PROGRAM' OF STRUCTURE <row> TO FIELD-SYMBOL(<program>).
 
-    CHECK <kind> = 'F' AND <param> IS NOT INITIAL.
+    CHECK <param> IS NOT INITIAL.
+    DATA(lv_param) = CONV string( <param> ).
 
-    IF <param>+0(5) = 'VARS:'.
-      " vars/params folder: VARS:{class}:{method}
-      DATA(lv_str)  = CONV string( <param> ).
-      SPLIT lv_str AT ':' INTO DATA(lv_pfx) DATA(lv_class) DATA(lv_meth).
+    " ---- VARS:{class}:{method} ----
+    IF lv_param+0(5) = 'VARS:'.
+      SPLIT lv_param AT ':' INTO DATA(lv_pfx) DATA(lv_class) DATA(lv_meth).
       DATA(lv_prog) = CONV program( <program> ).
-
       LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_p)
         WHERE class = lv_class AND event = 'METHOD' AND name = lv_meth AND param IS NOT INITIAL.
         DATA(lv_p_icon) = COND salv_de_tree_image(
@@ -809,16 +823,17 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         add_node( i_name = lv_p-param i_icon = lv_p_icon i_rel = node_key
                   i_tree = VALUE #( value = lv_p-line include = lv_p-include ) ).
       ENDLOOP.
-
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_v)
         WHERE program = lv_prog AND class = lv_class AND eventname = lv_meth.
         add_node( i_name = lv_v-name i_icon = lv_v-icon i_rel = node_key
                   i_tree = VALUE #( value = lv_v-line include = lv_v-include ) ).
       ENDLOOP.
+      RETURN.
+    ENDIF.
 
-    ELSEIF <param>+0(5) = 'ATTR:'.
-      " attributes folder: ATTR:{class}
-      DATA(lv_attr_class) = CONV string( <param>+5 ).
+    " ---- ATTR:{class} ----
+    IF lv_param+0(5) = 'ATTR:'.
+      DATA(lv_attr_class) = lv_param+5.
       READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
         WITH KEY class = lv_attr_class eventtype = 'METHOD'
         INTO DATA(lv_sub).
@@ -828,7 +843,76 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         add_node( i_name = lv_a-name i_icon = lv_a-icon i_rel = node_key
                   i_tree = VALUE #( value = lv_a-line include = lv_a-include ) ).
       ENDLOOP.
+      RETURN.
+    ENDIF.
 
+    " ---- GVARS: — global variables of program ----
+    IF lv_param = 'GVARS:'.
+      LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_g)
+        WHERE program = <program> AND eventtype IS INITIAL AND class IS INITIAL.
+        add_node( i_name = lv_g-name i_icon = lv_g-icon i_rel = node_key
+                  i_tree = VALUE #( value = lv_g-line include = lv_g-include ) ).
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
+    " ---- FORMS:{program} — all subroutines ----
+    IF strlen( lv_param ) > 6 AND lv_param+0(6) = 'FORMS:'.
+      DATA(lv_forms_prog) = lv_param+6.
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_fs)
+        WHERE eventtype = 'FORM' AND program = lv_forms_prog.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_fs-include INTO DATA(lv_fp).
+        READ TABLE lv_fp-t_keywords WITH KEY index = lv_fs-index INTO DATA(lv_fkw).
+        DATA(lv_fn) = add_node(
+          i_name = lv_fs-eventname i_icon = CONV #( icon_biw_info_source_ina ) i_rel = node_key
+          i_tree = VALUE #( kind = 'M' value = lv_fkw-v_line include = lv_fs-include
+                            program = lv_fs-program ev_type = lv_fs-eventtype ev_name = lv_fs-eventname ) ).
+        LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_fprm)
+          WHERE event = 'FORM' AND name = lv_fs-eventname AND param IS NOT INITIAL.
+          DATA(lv_ficon) = COND salv_de_tree_image(
+            WHEN lv_fprm-type = 'I' THEN CONV #( icon_parameter_import )
+            WHEN lv_fprm-type = 'E' THEN CONV #( icon_parameter_export )
+            ELSE                         CONV #( icon_parameter_changing ) ).
+          add_node( i_name = lv_fprm-param i_icon = lv_ficon i_rel = lv_fn
+                    i_tree = VALUE #( param = lv_fprm-param ) ).
+        ENDLOOP.
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
+    " ---- MODS:{program} — all modules ----
+    IF strlen( lv_param ) > 5 AND lv_param+0(5) = 'MODS:'.
+      DATA(lv_mods_prog) = lv_param+5.
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_ms)
+        WHERE eventtype = 'MODULE' AND program = lv_mods_prog.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_ms-include INTO DATA(lv_mp).
+        READ TABLE lv_mp-t_keywords WITH KEY index = lv_ms-index INTO DATA(lv_mkw).
+        add_node(
+          i_name = lv_ms-eventname i_icon = CONV #( icon_biw_info_source_ina ) i_rel = node_key
+          i_tree = VALUE #( kind = 'M' value = lv_mkw-v_line include = lv_ms-include
+                            program = lv_ms-program ev_type = lv_ms-eventtype ev_name = lv_ms-eventname ) ).
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
+    " ---- LCLASSES:{program} — all local classes ----
+    IF strlen( lv_param ) > 9 AND lv_param+0(9) = 'LCLASSES:'.
+      DATA(lv_lc_prog) = lv_param+9.
+      DATA(lv_lc_prev) = ``.
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_lc)
+        WHERE program = lv_lc_prog AND eventtype = 'METHOD'.
+        " skip the main class (first part of program name before '=')
+        DATA(lv_splits) = VALUE string_table( ).
+        SPLIT lv_lc_prog AT '=' INTO TABLE lv_splits.
+        CHECK lv_lc-class <> lv_splits[ 1 ].
+        IF lv_lc_prev <> lv_lc-class.
+          mo_viewer->add_class( i_class = CONV #( lv_lc-class ) i_refnode = node_key no_locals = abap_true ).
+        ENDIF.
+        lv_lc_prev = lv_lc-class.
+      ENDLOOP.
+      RETURN.
     ENDIF.
 
   endmethod.

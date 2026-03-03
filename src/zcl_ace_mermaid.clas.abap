@@ -273,6 +273,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
     DATA: mm_string TYPE string,
           direction TYPE string.
 
+    clear mo_viewer->mt_if.
     DATA(lines) = mo_viewer->get_code_flow( ).
     CHECK lines IS NOT INITIAL.
 
@@ -536,5 +537,4 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       open_mermaid( mm_string ).
 
   endmethod.
-
 ENDCLASS.
