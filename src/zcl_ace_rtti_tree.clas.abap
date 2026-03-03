@@ -250,6 +250,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       ASSIGN COMPONENT 'EV_NAME' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
       ASSIGN COMPONENT 'ENH_ID'  OF STRUCTURE <row> TO FIELD-SYMBOL(<enh_id>).
 
+      " kind='C' = global class node — no navigation on double-click
+      CHECK <kind> <> 'C'.
+
       IF <kind> = 'F' AND <param> IS NOT INITIAL AND <param>+0(5) = 'VARS:'.
         " Lazy expand: load real vars/params nodes under this folder
         DATA(lv_lazy_str)  = CONV string( <param> ).

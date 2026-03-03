@@ -165,6 +165,32 @@ CLASS ZCL_ACE IMPLEMENTATION.
         IF class_rel IS INITIAL.
           class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
 
+          " Add Public/Protected/Private section nodes (only for global classes: kind='C' in i_tree)
+          IF i_tree-kind = 'C' AND i_type <> 'I' AND i_type <> 'T'.
+            DATA(lv_sec_prefix) = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
+            DATA(lt_sections) = VALUE string_table(
+              ( lv_sec_prefix && `CU` )
+              ( lv_sec_prefix && `CO` )
+              ( lv_sec_prefix && `CI` ) ).
+            DATA(lt_sec_labels) = VALUE string_table(
+              ( `Public Section` )
+              ( `Protected Section` )
+              ( `Private Section` ) ).
+            DATA(lv_sec_idx) = 0.
+            LOOP AT lt_sections INTO DATA(lv_sec_inc).
+              lv_sec_idx += 1.
+              DATA(lv_sec_incl) = CONV program( lv_sec_inc ).
+              READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = lv_sec_incl TRANSPORTING NO FIELDS.
+              IF sy-subrc = 0.
+                mo_tree_local->add_node(
+                  i_name = lt_sec_labels[ lv_sec_idx ]
+                  i_icon = CONV #( icon_open_folder )
+                  i_rel  = class_rel
+                  i_tree = VALUE #( kind = 'M' include = lv_sec_incl value = '1' ) ).
+              ENDIF.
+            ENDLOOP.
+          ENDIF.
+
           " Count attributes - show as single folder node only
           DATA(lv_attr_cnt) = 0.
           LOOP AT mo_window->ms_sources-t_vars INTO DATA(var_cnt)
@@ -942,7 +968,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
         cl_name = ls_class-refclsname.
       ENDDO.
       DO.
-        add_class( i_class = CONV #( cl_name ) i_refnode = classes_rel i_tree = VALUE #( ) ).
+        add_class( i_class = CONV #( cl_name ) i_refnode = classes_rel i_tree = VALUE #( kind = 'C' ) ).
         READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2' INTO ls_class.
         IF sy-subrc <> 0. EXIT. ENDIF.
         cl_name = ls_class-clsname.
