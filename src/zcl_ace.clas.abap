@@ -302,7 +302,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
             end         TYPE i,
             bool        TYPE string,
             block_first TYPE i,
-            els_before  TYPE i.
+            els_before  TYPE i,
+            inserted    type boolean.
 
       DATA: line      TYPE ts_line,
             pre_stack TYPE ts_line,
@@ -444,6 +445,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       CLEAR mo_window->mt_coverage.
 
       LOOP AT  steps INTO step.
+        clear inserted.
 
         READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
         READ TABLE prog-t_keywords WITH KEY line = step-line INTO key.
@@ -463,6 +465,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           <line>-stack = step-stacklevel.
           <line>-include = step-include.
           <line>-class = step-class.
+          inserted = abap_true.
         ENDIF.
 
         CLEAR ind.
@@ -490,7 +493,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
             IF ind = 1.
 
               IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND key-name <> 'FORM' AND
-                key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'ENDMETHOD' AND key-name <> 'MODULE' .
+                key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'ENDMETHOD' AND key-name <> 'MODULE' and inserted = abap_false.
                 line-ev_name = step-eventname.
                 line-stack = step-stacklevel.
                 line-include = step-include.
@@ -507,7 +510,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
         IF sy-subrc <> 0 AND mt_selected_var IS INITIAL.
 
           IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND  key-name <> 'ENDMETHOD' AND
-            key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM'.
+            key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM' and inserted = abap_false.
             READ TABLE results WITH KEY line = step-line include = step-include ev_type = step-eventtype ev_name = step-eventname TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               line-line = step-line.
@@ -670,17 +673,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
           CLEAR results[ lines( results ) ]-arrow .
         ENDIF.
       ENDIF.
-      "remove duplicate lines (same line+include, keep first occurrence) quick fix instead of fixing real bug )) to refactor
-      DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      LOOP AT results ASSIGNING FIELD-SYMBOL(<res>).
-        DATA(lv_key) = |{ <res>-include }:{ <res>-line }|.
-        INSERT lv_key INTO TABLE lt_seen.
-        IF sy-subrc <> 0.
-          <res>-del = abap_true.
-        ENDIF.
-      ENDLOOP.
-      DELETE results WHERE del = abap_true.
-
 
   endmethod.
 
