@@ -811,10 +811,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     CHECK <param> IS NOT INITIAL.
     DATA(lv_param) = CONV string( <param> ).
 
-    " ---- VARS:{class}:{method} ----
+    " ---- VARS:{class}:{method} — vars/params of a method ----
     IF lv_param+0(5) = 'VARS:'.
       SPLIT lv_param AT ':' INTO DATA(lv_pfx) DATA(lv_class) DATA(lv_meth).
-      DATA(lv_prog) = CONV program( <program> ).
       LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_p)
         WHERE class = lv_class AND event = 'METHOD' AND name = lv_meth AND param IS NOT INITIAL.
         DATA(lv_p_icon) = COND salv_de_tree_image(
@@ -824,14 +823,14 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                   i_tree = VALUE #( value = lv_p-line include = lv_p-include ) ).
       ENDLOOP.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_v)
-        WHERE program = lv_prog AND class = lv_class AND eventname = lv_meth.
+        WHERE program = <program> AND class = lv_class AND eventname = lv_meth.
         add_node( i_name = lv_v-name i_icon = lv_v-icon i_rel = node_key
                   i_tree = VALUE #( value = lv_v-line include = lv_v-include ) ).
       ENDLOOP.
       RETURN.
     ENDIF.
 
-    " ---- ATTR:{class} ----
+    " ---- ATTR:{class} — class attributes ----
     IF lv_param+0(5) = 'ATTR:'.
       DATA(lv_attr_class) = lv_param+5.
       READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
@@ -897,20 +896,104 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " ---- LCLASSES:{program} — all local classes ----
+    " ---- LCLASSES:{program} — list of local classes (lazy, no methods yet) ----
     IF strlen( lv_param ) > 9 AND lv_param+0(9) = 'LCLASSES:'.
       DATA(lv_lc_prog) = lv_param+9.
       DATA(lv_lc_prev) = ``.
+      " Extract main class name (before '=')
+      DATA(lv_lc_splits) = VALUE string_table( ).
+      SPLIT lv_lc_prog AT '=' INTO TABLE lv_lc_splits.
+      DATA(lv_main_class) = lv_lc_splits[ 1 ].
       LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_lc)
         WHERE program = lv_lc_prog AND eventtype = 'METHOD'.
-        " skip the main class (first part of program name before '=')
-        DATA(lv_splits) = VALUE string_table( ).
-        SPLIT lv_lc_prog AT '=' INTO TABLE lv_splits.
-        CHECK lv_lc-class <> lv_splits[ 1 ].
+        CHECK lv_lc-class <> lv_main_class.
         IF lv_lc_prev <> lv_lc-class.
-          mo_viewer->add_class( i_class = CONV #( lv_lc-class ) i_refnode = node_key no_locals = abap_true ).
+          " Add class node as lazy — methods load on expand
+          DATA(lv_cls_node) = add_node(
+            i_name = CONV #( lv_lc-class )
+            i_icon = CONV #( icon_folder )
+            i_rel  = node_key
+            i_tree = VALUE #( param = |CLASS:{ lv_lc-class }| program = lv_lc-program ) ).
+          APPEND lv_cls_node TO mt_lazy_nodes.
+          TRY.
+              mo_tree->get_nodes( )->get_node( lv_cls_node )->set_expander( abap_true ).
+            CATCH cx_root.
+          ENDTRY.
         ENDIF.
         lv_lc_prev = lv_lc-class.
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
+    " ---- CLASS:{classname} — methods of one class ----
+    IF strlen( lv_param ) > 6 AND lv_param+0(6) = 'CLASS:'.
+      DATA(lv_cls_name) = lv_param+6.
+      " Add attributes folder (lazy)
+      DATA(lv_attr_cnt) = 0.
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+        WITH KEY class = lv_cls_name eventtype = 'METHOD'
+        INTO DATA(lv_cls_sub).
+      IF sy-subrc = 0.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_ca)
+          WHERE program = lv_cls_sub-program AND class = lv_cls_name AND eventname IS INITIAL.
+          lv_attr_cnt += 1.
+        ENDLOOP.
+        IF lv_attr_cnt > 0.
+          DATA(lv_attr_node) = add_node(
+            i_name = |Attributes ({ lv_attr_cnt })|
+            i_icon = CONV #( icon_folder )
+            i_rel  = node_key
+            i_tree = VALUE #( kind = 'F' param = |ATTR:{ lv_cls_name }| ) ).
+          APPEND lv_attr_node TO mt_lazy_nodes.
+          TRY.
+              mo_tree->get_nodes( )->get_node( lv_attr_node )->set_expander( abap_true ).
+            CATCH cx_root.
+          ENDTRY.
+        ENDIF.
+      ENDIF.
+      " Add each method as lazy (vars/params load on expand)
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_cm)
+        WHERE class = lv_cls_name AND eventtype = 'METHOD'.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_cm-include INTO DATA(lv_cmprog).
+        READ TABLE lv_cmprog-t_keywords WITH KEY index = lv_cm-index INTO DATA(lv_cmkw).
+        " Choose icon
+        DATA(lv_micon) = COND salv_de_tree_image(
+          WHEN lv_cm-redefined = abap_false THEN
+            COND #( WHEN lv_cm-meth_type = 0 OR lv_cm-meth_type = 1 THEN CONV #( icon_led_green )
+                    WHEN lv_cm-meth_type = 2                          THEN CONV #( icon_led_yellow )
+                    WHEN lv_cm-meth_type = 3                          THEN CONV #( icon_led_red )
+                    WHEN lv_cm-eventname = 'CONSTRUCTOR'              THEN CONV #( icon_tools )
+                    ELSE                                                   CONV #( icon_led_green ) )
+          ELSE CONV #( icon_oo_overwrite ) ).
+        DATA(lv_meth_node) = add_node(
+          i_name = lv_cm-eventname i_icon = lv_micon i_rel = node_key
+          i_tree = VALUE #( kind = 'M' value = lv_cmkw-v_line include = lv_cm-include
+                            program = lv_cm-program ev_type = lv_cm-eventtype ev_name = lv_cm-eventname ) ).
+        " Check if method has vars/params — add lazy folder
+        DATA(lv_mv_cnt) = 0.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_mv)
+          WHERE program = lv_cm-program AND class = lv_cls_name AND eventname = lv_cm-eventname.
+          lv_mv_cnt += 1.
+        ENDLOOP.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_mprm)
+          WHERE class = lv_cls_name AND event = 'METHOD' AND name = lv_cm-eventname AND param IS NOT INITIAL.
+          lv_mv_cnt += 1.
+        ENDLOOP.
+        IF lv_mv_cnt > 0.
+          DATA(lv_vars_node) = add_node(
+            i_name = |vars/params ({ lv_mv_cnt })|
+            i_icon = CONV #( icon_folder )
+            i_rel  = lv_meth_node
+            i_tree = VALUE #( kind = 'F' program = lv_cm-program include = lv_cm-include
+                              ev_type = 'VARS' ev_name = lv_cm-eventname
+                              param = |VARS:{ lv_cls_name }:{ lv_cm-eventname }| ) ).
+          APPEND lv_vars_node TO mt_lazy_nodes.
+          TRY.
+              mo_tree->get_nodes( )->get_node( lv_vars_node )->set_expander( abap_true ).
+            CATCH cx_root.
+          ENDTRY.
+        ENDIF.
       ENDLOOP.
       RETURN.
     ENDIF.
