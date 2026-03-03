@@ -787,7 +787,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
       mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
 
-      IF <param> IS NOT INITIAL.
+      IF <param> IS NOT INITIAL AND NOT ( <param>+0(6) = 'CLASS:' OR <param>+0(9) = 'LCLASSES' ).
         READ TABLE mo_viewer->mt_selected_var WITH KEY name = <param> TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
           DELETE mo_viewer->mt_selected_var WHERE name = <param>.
@@ -912,12 +912,22 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         WHERE program = lv_lc_prog AND eventtype = 'METHOD'.
         CHECK lv_lc-class <> lv_main_class.
         IF lv_lc_prev <> lv_lc-class.
-          " Add class node as lazy — methods load on expand
+          " Use def_include/def_line so double-click navigates to CLASS DEFINITION
+          DATA(lv_cls_inc)  = COND program( WHEN lv_lc-def_include IS NOT INITIAL
+                                            THEN lv_lc-def_include
+                                            ELSE lv_lc-include ).
+          DATA(lv_cls_line) = COND i( WHEN lv_lc-def_line > 0
+                                      THEN lv_lc-def_line
+                                      ELSE 0 ).
           DATA(lv_cls_node) = add_node(
             i_name = CONV #( lv_lc-class )
             i_icon = CONV #( icon_folder )
             i_rel  = node_key
-            i_tree = VALUE #( param = |CLASS:{ lv_lc-class }| program = lv_lc-program ) ).
+            i_tree = VALUE #( kind    = 'M'
+                              value   = lv_cls_line
+                              include = lv_cls_inc
+                              program = lv_lc-program
+                              param   = |CLASS:{ lv_lc-class }| ) ).
           APPEND lv_cls_node TO mt_lazy_nodes.
           TRY.
               mo_tree->get_nodes( )->get_node( lv_cls_node )->set_expander( abap_true ).

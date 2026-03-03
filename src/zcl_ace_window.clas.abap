@@ -27,15 +27,16 @@ public section.
     tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
   types:
     BEGIN OF ts_calls_line,
-               program   TYPE program,
-               include   TYPE program,
-               class     TYPE string,
-               eventtype TYPE string,
-               meth_type TYPE i,
-               eventname TYPE string,
-               redefined TYPE boolean,
-               index     TYPE i,
-
+               program     TYPE program,
+               include     TYPE program,
+               class       TYPE string,
+               eventtype   TYPE string,
+               meth_type   TYPE i,
+               eventname   TYPE string,
+               redefined   TYPE boolean,
+               index       TYPE i,
+               def_include TYPE program,  "include of CLASS DEFINITION section
+               def_line    TYPE i,        "line of METHODS statement in definition
              END OF ts_calls_line .
   types:
     tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .
@@ -120,14 +121,14 @@ public section.
     tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY .
   types:
     BEGIN OF ts_enh_block,
-               ev_type     TYPE string,   " FORM / MODULE
-               ev_name     TYPE string,   " subroutine/module name
-               position    TYPE string,   " BEGIN or END
-               enh_name    TYPE string,   " enhancement name
-               enh_include TYPE program,  " EIMP include name
-               enh_id      TYPE i,        " D010ENH-ID for FORM enhancements
-               from_line   TYPE i,        " first inserted line in source_tab (virtual)
-               to_line     TYPE i,        " last inserted line in source_tab (virtual)
+               ev_type     TYPE string,
+               ev_name     TYPE string,
+               position    TYPE string,
+               enh_name    TYPE string,
+               enh_include TYPE program,
+               enh_id      TYPE i,
+               from_line   TYPE i,
+               to_line     TYPE i,
              END OF ts_enh_block .
   types:
     tt_enh_blocks TYPE STANDARD TABLE OF ts_enh_block WITH EMPTY KEY .
@@ -137,8 +138,8 @@ public section.
                program       TYPE program,
                include       TYPE program,
                source_tab    TYPE sci_include,
-               v_source      TYPE sci_include,   " source with FORM enhancements embedded
-               v_keywords    TYPE tt_kword,       " keywords matching v_source
+               v_source      TYPE sci_include,
+               v_keywords    TYPE tt_kword,
                scan          TYPE REF TO cl_ci_scan,
                t_keywords    TYPE tt_kword,
                selected      TYPE boolean,
@@ -310,13 +311,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'RUN' icon = CONV #( icon_execute_object ) quickinfo = 'Run report' )
        ( COND #( WHEN mo_viewer->mv_dest IS NOT INITIAL
         THEN VALUE #( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ) )
-
        ( COND #( WHEN ZCL_ACE_APPL=>I_MERMAID_ACTIVE = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
        ( function = 'CODEMIX' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
        ( function = 'CODE' icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
        ( function = 'DEPTH' icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
-       "( function = 'COVERAGE' icon = CONV #( icon_wizard ) quickinfo = 'Coverage ' text = 'Coverage' )
        ( butn_type = 3  )
        ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
        ( butn_type = 3  )
@@ -325,7 +324,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       mo_toolbar->add_button_group( button ).
 
-*   Register events
       event-eventid = cl_gui_toolbar=>m_id_function_selected.
       event-appl_event = space.
       APPEND event TO events.
@@ -345,69 +343,27 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       super->constructor( ).
       mo_viewer = i_debugger.
-      m_history = m_varhist =  m_zcode  = '01'.
-      m_hist_depth = 3. "it is ok for starting big program
+      m_history = m_varhist = m_zcode = '01'.
+      m_hist_depth = 3.
 
-      mo_box = create( i_name =  text i_width = 1300 i_hight = 350 ).
+      mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
       CREATE OBJECT mo_splitter
-        EXPORTING
-          parent  = mo_box
-          rows    = 3
-          columns = 1
-        EXCEPTIONS
-          OTHERS  = 1.
+        EXPORTING parent = mo_box rows = 3 columns = 1 EXCEPTIONS OTHERS = 1.
 
-      mo_splitter->get_container(
-        EXPORTING
-          row       = 2
-          column    = 1
-        RECEIVING
-          container = mo_code_container ).
-
-      mo_splitter->get_container(
-        EXPORTING
-          row       = 1
-          column    = 1
-        RECEIVING
-          container = mo_toolbar_container ).
-
-      mo_splitter->get_container(
-        EXPORTING
-          row       = 3
-          column    = 1
-        RECEIVING
-          container = mo_tables_container ).
+      mo_splitter->get_container( EXPORTING row = 2 column = 1 RECEIVING container = mo_code_container ).
+      mo_splitter->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_toolbar_container ).
+      mo_splitter->get_container( EXPORTING row = 3 column = 1 RECEIVING container = mo_tables_container ).
 
       mo_splitter->set_row_height( id = 1 height = '4' ).
       mo_splitter->set_row_height( id = 2 height = '70' ).
-
-      mo_splitter->set_row_sash( id    = 1
-                                 type  = 0
-                                 value = 0 ).
+      mo_splitter->set_row_sash( id = 1 type = 0 value = 0 ).
 
       CREATE OBJECT mo_splitter_code
-        EXPORTING
-          parent  = mo_code_container
-          rows    = 1
-          columns = 2
-        EXCEPTIONS
-          OTHERS  = 1.
+        EXPORTING parent = mo_code_container rows = 1 columns = 2 EXCEPTIONS OTHERS = 1.
 
-      mo_splitter_code->get_container(
-        EXPORTING
-          row       = 1
-          column    = 2
-        RECEIVING
-          container = mo_editor_container ).
-
-      mo_splitter_code->get_container(
-        EXPORTING
-          row       = 1
-          column    = 1
-        RECEIVING
-          container = mo_locals_container ).
-
+      mo_splitter_code->get_container( EXPORTING row = 1 column = 2 RECEIVING container = mo_editor_container ).
+      mo_splitter_code->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_locals_container ).
       mo_splitter_code->set_column_width( EXPORTING id = 1 width = '35' ).
 
       SET HANDLER on_box_close FOR mo_box.
@@ -430,19 +386,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       CHECK mo_code_viewer IS INITIAL.
 
       CREATE OBJECT mo_code_viewer
-        EXPORTING
-          parent           = mo_editor_container
-          max_number_chars = 100.
+        EXPORTING parent = mo_editor_container max_number_chars = 100.
 
       mo_code_viewer->init_completer( ).
       mo_code_viewer->upload_properties(
-        EXCEPTIONS
-          dp_error_create  = 1
-          dp_error_general = 2
-          dp_error_send    = 3
-          OTHERS           = 4 ).
+        EXCEPTIONS dp_error_create = 1 dp_error_general = 2 dp_error_send = 3 OTHERS = 4 ).
 
-      event-eventid    = cl_gui_textedit=>event_double_click.
+      event-eventid = cl_gui_textedit=>event_double_click.
       APPEND event TO events.
 
       mo_code_viewer->set_registered_events( events ).
@@ -470,7 +420,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       CASE fcode.
 
         WHEN 'RUN'.
-
           DATA: lt_source TYPE STANDARD TABLE OF text255,
                 lv_prog   TYPE progname VALUE 'Z_SMART_DEBUGGER_SCRIPT'.
 
@@ -478,17 +427,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           DELETE lt_source INDEX 2.
           IF sy-subrc = 0.
             CALL FUNCTION 'CLPB_EXPORT'
-              TABLES
-                data_tab   = lt_source
-              EXCEPTIONS
-                clpb_error = 1
-                OTHERS     = 2.
-
+              TABLES data_tab = lt_source EXCEPTIONS clpb_error = 1 OTHERS = 2.
           ENDIF.
           lv_prog = mo_viewer->mv_prog.
           DATA(lv_count) = 0.
           SELECT COUNT(*) INTO @lv_count FROM reposrc WHERE progname = @lv_prog AND subc = '1'.
-
           IF lv_count = 1.
             SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN.
           ENDIF.
@@ -503,50 +446,38 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
               titel       = 'Set History Depth'
               valuelength = '2'
             IMPORTING
-              answer      = lv_answer
-              value1      = lv_value1
-            EXCEPTIONS
-              OTHERS      = 1.
+              answer = lv_answer value1 = lv_value1
+            EXCEPTIONS OTHERS = 1.
 
           IF sy-subrc <> 0 OR lv_answer <> 'J' OR lv_value1 IS INITIAL.
             RETURN.
           ENDIF.
 
           DATA(lv_new_depth) = CONV i( lv_value1 ).
-          IF lv_new_depth < 0.
-            lv_new_depth = 0.
-          ELSEIF lv_new_depth > 99.
-            lv_new_depth = 99.
+          IF lv_new_depth < 0. lv_new_depth = 0.
+          ELSEIF lv_new_depth > 99. lv_new_depth = 99.
           ENDIF.
           m_hist_depth = lv_new_depth.
 
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+                 mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
-          ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
-          "mo_viewer->mo_window->show_coverage( ).
+          ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER(
+            i_program = source-include i_include = source-include io_debugger = mo_viewer ).
           mo_viewer->mo_window->show_stack( ).
-          IF mo_mermaid IS NOT INITIAL.
-            mo_mermaid->refresh( ).
-          ENDIF.
-
+          IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
           mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
-
-          IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'. "refresh this
+          IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
             mo_viewer->get_code_mix( ).
             mo_viewer->mo_window->show_stack( ).
           ENDIF.
 
         WHEN 'CALLS'.
-          IF mo_mermaid IS INITIAL.
-            mo_mermaid = NEW ZCL_ACE_MERMAID( io_debugger = mo_viewer i_type =  'CALLS' ).
-          ELSE.
-            IF mo_mermaid->mo_box IS INITIAL.
-              mo_mermaid = NEW ZCL_ACE_MERMAID( io_debugger = mo_viewer i_type =  'CALLS' ).
-            ENDIF.
+          IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
+            mo_mermaid = NEW ZCL_ACE_MERMAID( io_debugger = mo_viewer i_type = 'CALLS' ).
           ENDIF.
 
         WHEN 'CODEMIX'.
-
           mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
 
@@ -554,19 +485,16 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           m_zcode = m_zcode BIT-XOR c_mask.
           CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
-          ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+          ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER(
+            i_program = source-include i_include = source-include io_debugger = mo_viewer ).
           IF m_zcode IS INITIAL.
             mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
           ELSE.
             mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Only Z code' ).
           ENDIF.
-          "mo_viewer->mo_window->show_coverage( ).
           mo_viewer->mo_window->show_stack( ).
-          IF mo_mermaid IS NOT INITIAL.
-            mo_mermaid->refresh( ).
-          ENDIF.
-
-          IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'. "refresh this
+          IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+          IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
             mo_viewer->get_code_mix( ).
             mo_viewer->mo_window->show_stack( ).
           ENDIF.
@@ -574,13 +502,12 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         WHEN 'INFO'.
           DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
           CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
-
           l_url = 'https://github.com/ysichov/Smart-Debugger'.
           CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
 
         WHEN 'STEPS'.
-
-          ZCL_ACE_APPL=>OPEN_INT_TABLE( i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
+          ZCL_ACE_APPL=>OPEN_INT_TABLE(
+            i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
       ENDCASE.
 
@@ -601,63 +528,41 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ELSE.
         type = 'E'.
       ENDIF.
+
       IF m_prg-include = 'Code_Flow_Mix'.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' INTO DATA(prog_mix).
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = 'Code_Flow_Mix' INTO DATA(prog_mix).
         READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO DATA(keyword).
       ELSE.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = m_prg-include INTO prog_mix.
-        " Use v_keywords to map v_line→real include/line, then confirm via t_keywords
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = m_prg-include INTO prog_mix.
         IF prog_mix-v_keywords IS NOT INITIAL.
-          LOOP AT prog_mix-v_keywords INTO keyword WHERE v_line = line.
-            EXIT.
-          ENDLOOP.
-          " keyword now has real include+line from v_keywords
+          LOOP AT prog_mix-v_keywords INTO keyword WHERE v_line = line. EXIT. ENDLOOP.
         ELSE.
-          LOOP AT prog_mix-t_keywords INTO keyword WHERE v_line = line.
-            EXIT.
-          ENDLOOP.
+          LOOP AT prog_mix-t_keywords INTO keyword WHERE v_line = line. EXIT. ENDLOOP.
         ENDIF.
       ENDIF.
-      " Separator/comment lines have no keyword - skip
+
       CHECK keyword-include IS NOT INITIAL.
-      "program   = keyword-program.
-       program   = m_prg-program.
+      program   = m_prg-program.
       include   = keyword-include.
       code_line = keyword-line.
       IF include IS INITIAL.
-        program   = m_prg-program.
-        include   = m_prg-include.
-        code_line = line.
+        program = m_prg-program. include = m_prg-include. code_line = line.
       ENDIF.
+
       LOOP AT mt_bpoints ASSIGNING FIELD-SYMBOL(<point>) WHERE line = code_line AND include = include.
         type = <point>-type.
-
         CALL FUNCTION 'RS_DELETE_BREAKPOINT'
-          EXPORTING
-            index        = code_line
-            mainprog     = program
-            program      = include
-            bp_type      = type
-          EXCEPTIONS
-            not_executed = 1
-            OTHERS       = 2.
-
-        IF sy-subrc = 0.
-          <point>-del = abap_true.
-        ENDIF.
+          EXPORTING index = code_line mainprog = program program = include bp_type = type
+          EXCEPTIONS not_executed = 1 OTHERS = 2.
+        IF sy-subrc = 0. <point>-del = abap_true. ENDIF.
       ENDLOOP.
 
-      IF sy-subrc <> 0. "create
+      IF sy-subrc <> 0.
         CALL FUNCTION 'RS_SET_BREAKPOINT'
-          EXPORTING
-            index        = code_line
-            program      = include
-            mainprogram  = program
-            bp_type      = type
-          EXCEPTIONS
-            not_executed = 1
-            OTHERS       = 2.
-
+          EXPORTING index = code_line program = include mainprogram = program bp_type = type
+          EXCEPTIONS not_executed = 1 OTHERS = 2.
       ENDIF.
       DELETE mt_bpoints WHERE del IS NOT INITIAL.
 
@@ -673,8 +578,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
   method ON_EDITOR_DOUBLE_CLICK.
 
-      sender->get_selection_pos( IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos) to_line = DATA(to_line) to_pos = DATA(to_pos) ).
-
+      sender->get_selection_pos(
+        IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos)
+                  to_line   = DATA(to_line)   to_pos = DATA(to_pos) ).
 
   endmethod.
 
@@ -683,12 +589,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
       READ TABLE mo_viewer->mo_window->mt_stack INDEX row INTO DATA(stack).
-
       MOVE-CORRESPONDING stack TO mo_viewer->mo_window->m_prg.
       MOVE-CORRESPONDING stack TO mo_viewer->ms_stack.
-
       mo_viewer->mo_window->m_prg-program = stack-prg.
-
       mo_viewer->show( ).
       CASE stack-eventtype.
         WHEN 'FUNCTION'.
@@ -712,70 +615,47 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->remove_all_marker( 2 ).
       mo_code_viewer->remove_all_marker( 4 ).
 
-      LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(prog) WHERE include <> 'Code_Flow_Mix'.
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(prog)
+        WHERE include <> 'Code_Flow_Mix'.
         COLLECT prog-program INTO programs.
       ENDLOOP.
 
-      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' INTO prog.
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+        WITH KEY include = 'Code_Flow_Mix' INTO prog.
 
       flag = abap_true.
       DO 2 TIMES.
-
         LOOP AT programs INTO DATA(program).
-*    "session breakpoints
           CALL METHOD cl_abap_debugger=>read_breakpoints
-            EXPORTING
-              main_program         = program
-              flag_other_session   = flag
-            IMPORTING
-              breakpoints_complete = DATA(points)
-            EXCEPTIONS
-              c_call_error         = 1
-              generate             = 2
-              wrong_parameters     = 3
-              OTHERS               = 4.
+            EXPORTING main_program = program flag_other_session = flag
+            IMPORTING breakpoints_complete = DATA(points)
+            EXCEPTIONS c_call_error = 1 generate = 2 wrong_parameters = 3 OTHERS = 4.
 
           LOOP AT points INTO DATA(point).
             CLEAR lines.
-            READ TABLE prog-t_keywords WITH KEY include = point-include line = point-line INTO DATA(keyword).
+            READ TABLE prog-t_keywords WITH KEY include = point-include line = point-line
+              INTO DATA(keyword).
             IF sy-subrc = 0.
               APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
               <line> = keyword-v_line.
-
               APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
               MOVE-CORRESPONDING point TO <point>.
-
-              IF flag IS INITIAL.
-                <point>-type = 'S'.
-              ELSE.
-                <point>-type = 'E'.
-              ENDIF.
+              IF flag IS INITIAL. <point>-type = 'S'. ELSE. <point>-type = 'E'. ENDIF.
             ENDIF.
-
           ENDLOOP.
-
         ENDLOOP.
         IF flag IS NOT INITIAL.
-          mo_code_viewer->set_marker( EXPORTING marker_number = 4 marker_lines = lines )."external
+          mo_code_viewer->set_marker( EXPORTING marker_number = 4 marker_lines = lines ).
         ELSE.
-          mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lines )."Session
+          mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lines ).
         ENDIF.
         CLEAR flag.
       ENDDO.
 
       IF i_line IS NOT INITIAL.
-
-        IF i_line IS NOT INITIAL.
-          line_num = i_line.
-        ELSE.
-          line_num = m_prg-line.
-        ENDIF.
-
         CLEAR lines.
-        "blue arrow - current line
         APPEND INITIAL LINE TO lines ASSIGNING <line>.
         <line> = i_line.
-
         mo_code_viewer->set_marker( EXPORTING marker_number = 7 marker_lines = lines ).
         mo_code_viewer->select_lines( EXPORTING from_line = i_line to_line = i_line ).
       ENDIF.
@@ -789,7 +669,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   method SET_PROGRAM.
 
 
-      " Fast path for VIRTUAL - source already built, just display it
       IF i_include = 'VIRTUAL'.
         LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<virt_p>).
           CLEAR <virt_p>-selected.
@@ -802,12 +681,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         RETURN.
       ENDIF.
 
-      ZCL_ACE_SOURCE_PARSER=>PARSE_TOKENS( i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
-      " Note: COLLECT_ENHANCEMENTS is called inside PARSE_TOKENS, no need to call again
+      ZCL_ACE_SOURCE_PARSER=>PARSE_TOKENS(
+        i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
       SORT ms_sources-t_params.
       DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
       IF mo_viewer->m_step IS INITIAL.
-        ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER(  i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+        ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER(
+          i_program = i_include i_include = i_include io_debugger = mo_viewer ).
       ENDIF.
 
       LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
@@ -842,48 +722,34 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
         WITH KEY include = m_prg-include INTO DATA(prog_cur).
 
-      " Use v_keywords if available (FORM include with embedded enhancements)
       DATA(lr_kw) = REF #( prog_cur-t_keywords ).
       IF prog_cur-v_keywords IS NOT INITIAL.
         lr_kw = REF #( prog_cur-v_keywords ).
       ENDIF.
 
-      " Collect all unique includes from v_keywords (main + enh includes)
       DATA lt_includes TYPE STANDARD TABLE OF program WITH EMPTY KEY.
       DATA lv_inc      TYPE program.
       LOOP AT lr_kw->* INTO DATA(lv_kw_inc).
         lv_inc = lv_kw_inc-include.
         IF lv_inc IS NOT INITIAL.
           READ TABLE lt_includes WITH KEY table_line = lv_inc TRANSPORTING NO FIELDS.
-          IF sy-subrc <> 0.
-            APPEND lv_inc TO lt_includes.
-          ENDIF.
+          IF sy-subrc <> 0. APPEND lv_inc TO lt_includes. ENDIF.
         ENDIF.
       ENDLOOP.
       IF lt_includes IS INITIAL.
-        lv_inc = m_prg-include.
-        APPEND lv_inc TO lt_includes.
+        lv_inc = m_prg-include. APPEND lv_inc TO lt_includes.
       ENDIF.
 
-*    "session breakpoints - read for main program (returns all includes + enh includes)
       CALL METHOD cl_abap_debugger=>read_breakpoints
-        EXPORTING
-          main_program         = mo_viewer->mo_window->m_prg-program
-        IMPORTING
-          breakpoints_complete = DATA(points)
-        EXCEPTIONS
-          c_call_error         = 1
-          generate             = 2
-          wrong_parameters     = 3
-          OTHERS               = 4.
+        EXPORTING main_program = mo_viewer->mo_window->m_prg-program
+        IMPORTING breakpoints_complete = DATA(points)
+        EXCEPTIONS c_call_error = 1 generate = 2 wrong_parameters = 3 OTHERS = 4.
 
       LOOP AT points INTO DATA(point).
         READ TABLE lt_includes WITH KEY table_line = point-include TRANSPORTING NO FIELDS.
         CHECK sy-subrc = 0.
         LOOP AT lr_kw->* INTO DATA(bp_kw)
-          WHERE include = point-include AND line = point-line.
-          EXIT.
-        ENDLOOP.
+          WHERE include = point-include AND line = point-line. EXIT. ENDLOOP.
         IF sy-subrc = 0.
           APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
           <line> = bp_kw-v_line.
@@ -898,26 +764,16 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDLOOP.
       mo_code_viewer->set_marker( EXPORTING marker_number = 2 marker_lines = lines ).
 
-*    "external breakpoints - read per include
       CLEAR lines.
       LOOP AT lt_includes INTO lv_inc.
         CALL METHOD cl_abap_debugger=>read_breakpoints
-          EXPORTING
-            main_program         = lv_inc
-            flag_other_session   = abap_true
-          IMPORTING
-            breakpoints_complete = points
-          EXCEPTIONS
-            c_call_error         = 1
-            generate             = 2
-            wrong_parameters     = 3
-            OTHERS               = 4.
+          EXPORTING main_program = lv_inc flag_other_session = abap_true
+          IMPORTING breakpoints_complete = points
+          EXCEPTIONS c_call_error = 1 generate = 2 wrong_parameters = 3 OTHERS = 4.
 
         LOOP AT points INTO point WHERE include = lv_inc.
           LOOP AT lr_kw->* INTO bp_kw
-            WHERE include = point-include AND line = point-line.
-            EXIT.
-          ENDLOOP.
+            WHERE include = point-include AND line = point-line. EXIT. ENDLOOP.
           IF sy-subrc = 0.
             APPEND INITIAL LINE TO lines ASSIGNING <line>.
             <line> = bp_kw-v_line.
@@ -934,18 +790,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->set_marker( EXPORTING marker_number = 4 marker_lines = lines ).
 
       IF i_line IS NOT INITIAL.
-
-        IF i_line IS NOT INITIAL.
-          line_num = i_line.
-        ELSE.
-          line_num = m_prg-line.
-        ENDIF.
-
         CLEAR lines.
-        "blue arrow - current line
         APPEND INITIAL LINE TO lines ASSIGNING <line>.
         <line> = i_line.
-
         mo_code_viewer->set_marker( EXPORTING marker_number = 7 marker_lines = lines ).
         mo_code_viewer->select_lines( EXPORTING from_line = i_line to_line = i_line ).
       ENDIF.
@@ -960,92 +807,64 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
       DATA: split TYPE TABLE OF string.
-      CLEAR: mt_watch, mt_coverage. "mt_stack.
+      CLEAR: mt_watch, mt_coverage.
       LOOP AT mo_viewer->mt_steps INTO DATA(step).
-
         READ TABLE mt_stack WITH KEY include = step-include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           APPEND INITIAL LINE TO mt_stack ASSIGNING FIELD-SYMBOL(<stack>).
           MOVE-CORRESPONDING step TO <stack>.
-
-          SPLIT <stack>-program  AT '=' INTO TABLE split.
+          SPLIT <stack>-program AT '=' INTO TABLE split.
           <stack>-prg = <stack>-program.
           <stack>-program = split[ 1 ].
         ENDIF.
-
-        IF step-include <> mo_viewer->mo_window->m_prg-include.
-          CONTINUE.
-        ENDIF.
-
+        IF step-include <> mo_viewer->mo_window->m_prg-include. CONTINUE. ENDIF.
       ENDLOOP.
-      IF sy-subrc <> 0 AND mt_Stack IS INITIAL . "No steps - show all includes.
+
+      IF sy-subrc <> 0 AND mt_stack IS INITIAL.
         SORT ms_sources-tt_progs BY stack.
         LOOP AT ms_sources-tt_progs INTO DATA(prog).
           CHECK prog-t_keywords IS NOT INITIAL.
           APPEND INITIAL LINE TO mt_stack ASSIGNING <stack>.
           MOVE-CORRESPONDING prog TO <stack>.
-
-          SPLIT <stack>-program  AT '=' INTO TABLE split.
+          SPLIT <stack>-program AT '=' INTO TABLE split.
           <stack>-prg = <stack>-program.
           <stack>-program = split[ 1 ].
-          <Stack>-stacklevel = prog-stack.
+          <stack>-stacklevel = prog-stack.
 
           DATA(pos) = strlen( <stack>-program ).
           pos = pos - 2.
           IF pos > 0.
             DATA(incl) = <stack>-include+pos(2).
             SELECT SINGLE funcname INTO @<stack>-eventname FROM tfdir
-             WHERE pname_main = @<stack>-program
-               AND include = @incl.
-
-            IF sy-subrc = 0.
-              <Stack>-eventtype = 'FUNCTION'.
-              CONTINUE.
-            ENDIF.
+              WHERE pname_main = @<stack>-program AND include = @incl.
+            IF sy-subrc = 0. <stack>-eventtype = 'FUNCTION'. CONTINUE. ENDIF.
           ENDIF.
 
           DATA: cl_key        TYPE seoclskey,
                 meth_includes TYPE seop_methods_w_include.
-
           cl_key = <stack>-program.
-
           CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-            EXPORTING
-              clskey                       = cl_key
-            IMPORTING
-              includes                     = meth_includes
-            EXCEPTIONS
-              _internal_class_not_existing = 1
-              OTHERS                       = 2.
-
+            EXPORTING clskey = cl_key
+            IMPORTING includes = meth_includes
+            EXCEPTIONS _internal_class_not_existing = 1 OTHERS = 2.
           IF sy-subrc = 0.
             READ TABLE meth_includes[] WITH KEY incname = <stack>-include INTO DATA(include).
             IF sy-subrc = 0.
-              <Stack>-eventtype = 'METHOD'.
+              <stack>-eventtype = 'METHOD'.
               <stack>-eventname = include-cpdkey-cpdname.
-
             ENDIF.
-
           ENDIF.
 
-          SPLIT <stack>-include  AT '=' INTO TABLE split.
+          SPLIT <stack>-include AT '=' INTO TABLE split.
           CASE split[ lines( split ) ].
-            WHEN 'CP'.
-              <stack>-eventtype = 'Class Pool'.
-            WHEN 'CU'.
-              <stack>-eventtype = 'Public Section'.
-            WHEN 'CI'.
-              <stack>-eventtype = 'Private Section'.
-            WHEN 'CO'.
-              <stack>-eventtype = 'Protected Section'.
-            WHEN 'IU'.
-              <stack>-eventtype = 'Interface Public Section'.
-            WHEN 'CCAU'.
-              <stack>-eventtype = 'Unit Test Classes'.
-            WHEN 'CCIMP'.
-              <stack>-eventtype = 'Local helper classes'.
+            WHEN 'CP'.   <stack>-eventtype = 'Class Pool'.
+            WHEN 'CU'.   <stack>-eventtype = 'Public Section'.
+            WHEN 'CI'.   <stack>-eventtype = 'Private Section'.
+            WHEN 'CO'.   <stack>-eventtype = 'Protected Section'.
+            WHEN 'IU'.   <stack>-eventtype = 'Interface Public Section'.
+            WHEN 'CCAU'. <stack>-eventtype = 'Unit Test Classes'.
+            WHEN 'CCIMP'.<stack>-eventtype = 'Local helper classes'.
           ENDCASE.
-
         ENDLOOP.
       ENDIF.
 
@@ -1062,46 +881,31 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       IF mo_salv_stack IS INITIAL.
 
         cl_salv_table=>factory(
-          EXPORTING
-            r_container  = mo_tables_container
-          IMPORTING
-            r_salv_table = mo_salv_stack
-          CHANGING
-            t_table      = mt_stack ).
+          EXPORTING r_container = mo_tables_container
+          IMPORTING r_salv_table = mo_salv_stack
+          CHANGING  t_table = mt_stack ).
 
-        DATA:  o_column  TYPE REF TO cl_salv_column.
-
+        DATA: o_column TYPE REF TO cl_salv_column.
         DATA(o_columns) = mo_salv_stack->get_columns( ).
 
         o_column ?= o_columns->get_column( 'STEP' ).
-        o_column->set_output_length( '3' ).
-        o_column->set_short_text( 'STEP' ).
-
+        o_column->set_output_length( '3' ). o_column->set_short_text( 'STEP' ).
         o_column ?= o_columns->get_column( 'STACKLEVEL' ).
         o_column->set_output_length( '5' ).
-
         o_column ?= o_columns->get_column( 'PROGRAM' ).
         o_column->set_output_length( '20' ).
-        o_column->set_long_text( 'Program/Class' ).
-        o_column->set_medium_text( 'Program/Class' ).
-
+        o_column->set_long_text( 'Program/Class' ). o_column->set_medium_text( 'Program/Class' ).
         o_column ?= o_columns->get_column( 'EVENTTYPE' ).
         o_column->set_output_length( '10' ).
-        o_column->set_long_text( 'Code TYPE' ).
-        o_column->set_medium_text( 'Code TYPE' ).
-
+        o_column->set_long_text( 'Code TYPE' ). o_column->set_medium_text( 'Code TYPE' ).
         o_column ?= o_columns->get_column( 'INCLUDE' ).
         o_column->set_output_length( '40' ).
-
         o_column ?= o_columns->get_column( 'EVENTTYPE' ).
         o_column->set_output_length( '20' ).
-
         o_column ?= o_columns->get_column( 'EVENTNAME' ).
         o_column->set_output_length( '30' ).
 
-        DATA(o_event) =  mo_salv_stack->get_event( ).
-
-        " Event double click
+        DATA(o_event) = mo_salv_stack->get_event( ).
         SET HANDLER on_stack_double_click FOR o_event.
         mo_salv_stack->display( ).
       ELSE.

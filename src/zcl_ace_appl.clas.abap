@@ -144,7 +144,6 @@ public section.
                eventtype  TYPE string,
                eventname  TYPE string,
                class      TYPE string,
-
                first      TYPE boolean,
                last       TYPE boolean,
                program    TYPE tpda_program,
@@ -182,14 +181,16 @@ public section.
     tt_kword TYPE STANDARD TABLE OF ts_kword WITH NON-UNIQUE DEFAULT KEY .
   types:
     BEGIN OF ts_calls_line,
-               program   TYPE program,
-               include   TYPE program,
-               class     TYPE string,
-               eventtype TYPE string,
-               meth_type TYPE i,
-               eventname TYPE string,
-               redefined TYPE boolean,
-               index     TYPE i,
+               program     TYPE program,
+               include     TYPE program,
+               class       TYPE string,
+               eventtype   TYPE string,
+               meth_type   TYPE i,
+               eventname   TYPE string,
+               redefined   TYPE boolean,
+               index       TYPE i,
+               def_include TYPE program,  "include of CLASS DEFINITION section
+               def_line    TYPE i,        "line of METHODS statement in definition
              END OF ts_calls_line .
   types:
     tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .

@@ -1973,7 +1973,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         IF sy-index = 2 AND ( cs_state-kw = 'DATA' OR cs_state-kw = 'PARAMETERS' ).
           cs_state-tab-name = cs_state-word.
-
         ENDIF.
 
         IF sy-index = 2 AND cs_state-kw = 'PERFORM'.
@@ -2001,16 +2000,15 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-
         IF sy-index = 2 AND  cs_state-eventtype IS NOT INITIAL AND  cs_state-eventname IS INITIAL.
           IF i_main_prog IS NOT INITIAL AND i_reltype = '1'.
             "cs_state-word = |{ cs_state-class_name }~{ cs_state-word }|.
           ENDIF.
-          cs_state-variable-eventname = cs_state-tab-eventname =  cs_state-eventname = cs_state-param-name = cs_state-word.
+          cs_state-variable-eventname = cs_state-tab-eventname = cs_state-eventname = cs_state-param-name = cs_state-word.
           cs_state-param-line = l_token_row.
 
           MOVE-CORRESPONDING cs_state-tab TO cs_state-call_line.
-          cs_state-call_line-index = o_procedure->statement_index. " + 1.
+          cs_state-call_line-index = o_procedure->statement_index.
           cs_state-call_line-class = cs_state-class_name.
 
           "methods in definition should be overwritten by Implementation section
@@ -2023,12 +2021,21 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDIF.
 
           IF sy-subrc = 0.
-            <call_line>-index = cs_state-call_line-index.
+            " Record already exists (from DEFINITION) — this is IMPLEMENTATION overwriting
+            " Preserve def_include/def_line from first encounter (DEFINITION)
+            IF <call_line>-def_include IS INITIAL.
+              <call_line>-def_include = <call_line>-include.
+              <call_line>-def_line    = <call_line>-index.  " index here is statement_index of METHODS line
+            ENDIF.
+            <call_line>-index   = cs_state-call_line-index.
             <call_line>-include = cs_state-token-include.
           ELSE.
-            cs_state-call_line-program = i_program.
-            cs_state-call_line-include = cs_state-token-include.
-            cs_state-call_line-meth_type = cs_state-method_type.
+            " First encounter = DEFINITION section — store def_include/def_line immediately
+            cs_state-call_line-program     = i_program.
+            cs_state-call_line-include     = cs_state-token-include.
+            cs_state-call_line-meth_type   = cs_state-method_type.
+            cs_state-call_line-def_include = cs_state-token-include.
+            cs_state-call_line-def_line    = l_token_row.
             APPEND cs_state-call_line TO io_debugger->mo_window->ms_sources-tt_calls_line.
           ENDIF.
 
@@ -2083,7 +2090,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           IF sy-subrc = 0.
             <param>-preferred = abap_true.
           ENDIF.
-
           CLEAR  cs_state-preferred.
           CONTINUE.
         ENDIF.
@@ -2091,11 +2097,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         IF cs_state-word <> 'CHANGING' AND cs_state-word <> 'EXPORTING' AND cs_state-word <> 'RETURNING' AND cs_state-word <> 'IMPORTING' AND cs_state-word <> 'USING'.
           IF cs_state-kw = 'FORM' OR cs_state-kw = 'METHODS' OR cs_state-kw = 'CLASS-METHODS'.
             IF  par = abap_true AND  type IS INITIAL AND cs_state-word NE 'TYPE'.
-
               APPEND cs_state-param TO io_debugger->mo_window->ms_sources-t_params.
               CLEAR:  par, cs_state-param-param.
             ENDIF.
-
             IF  par IS INITIAL AND sy-index > 3.
               cs_state-param-param = cs_state-word.
               par = abap_true.
