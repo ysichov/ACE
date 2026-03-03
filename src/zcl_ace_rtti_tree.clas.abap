@@ -207,14 +207,18 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
         CATCH cx_root.
       ENDTRY.
 
-      " Expand all 2nd-level nodes (direct children of root)
+      " Expand 2nd-level nodes — but skip lazy ones
       TRY.
           DATA(o_nodes_obj) = mo_tree->get_nodes( ).
           DATA(lv_child_key) = o_nodes_obj->get_node( main_node_key )->get_first_child( )->get_key( ).
           DO.
             TRY.
                 DATA(o_child) = o_nodes_obj->get_node( lv_child_key ).
-                o_child->expand( ).
+                " Only expand if not in lazy list
+                READ TABLE mt_lazy_nodes WITH KEY table_line = lv_child_key TRANSPORTING NO FIELDS.
+                IF sy-subrc <> 0.
+                  o_child->expand( ).
+                ENDIF.
                 lv_child_key = o_child->get_next_sibling( )->get_key( ).
               CATCH cx_root.
                 EXIT.
