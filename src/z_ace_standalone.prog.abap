@@ -2699,28 +2699,6 @@
 
   ENDCLASS.
 
-  CLASS ZCL_ACE_DATA_TRANSMITTER DEFINITION.
-
-    PUBLIC SECTION.
-      EVENTS: data_changed EXPORTING VALUE(e_row) TYPE ZCL_ACE_APPL=>t_sel_row,
-        col_changed EXPORTING VALUE(e_column) TYPE lvc_fname.
-      METHODS: emit IMPORTING e_row TYPE ZCL_ACE_APPL=>t_sel_row,
-        emit_col IMPORTING e_column TYPE lvc_fname.
-
-  ENDCLASS.
-
-  CLASS ZCL_ACE_DATA_TRANSMITTER IMPLEMENTATION.
-
-    METHOD  emit.
-      RAISE EVENT data_changed EXPORTING e_row = e_row.
-
-    ENDMETHOD.
-
-    METHOD emit_col.
-      RAISE EVENT col_changed EXPORTING e_column = e_column.
-    ENDMETHOD.
-
-  ENDCLASS.
 
 
   CLASS ZCL_ACE_SEL_OPT DEFINITION.
@@ -2760,11 +2738,7 @@
   CLASS ZCL_ACE_TABLE_VIEWER DEFINITION INHERITING FROM ZCL_ACE_POPUP.
 
     PUBLIC SECTION.
-      TYPES: BEGIN OF t_column_emitter,
-               column  TYPE lvc_fname,
-               emitter TYPE REF TO ZCL_ACE_DATA_TRANSMITTER,
-             END OF t_column_emitter,
-             BEGIN OF t_elem,
+      TYPES: BEGIN OF t_elem,
                field TYPE fieldname,
                elem  TYPE ddobjname,
              END OF t_elem.
@@ -2778,7 +2752,6 @@
             mo_alv_parent      TYPE REF TO cl_gui_container,
             mt_alv_catalog     TYPE lvc_t_fcat,
             mt_fields          TYPE TABLE OF t_elem,
-            mo_column_emitters TYPE TABLE OF t_column_emitter,
             mo_sel_width       TYPE i,
             m_visible,
             m_std_tbar         TYPE x,
@@ -3414,9 +3387,6 @@
         ZCL_ACE_ALV_COMMON=>refresh( mo_sel->mo_sel_alv ).
         ZCL_ACE_ALV_COMMON=>refresh( mo_alv ).
         mo_sel->mo_viewer->handle_user_command( 'SHOW' ).
-        LOOP AT mo_column_emitters INTO DATA(l_emit).
-          l_emit-emitter->emit_col( l_emit-column ).
-        ENDLOOP.
       ENDIF.
     ENDMETHOD.
   ENDCLASS.
