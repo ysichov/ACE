@@ -173,9 +173,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
       DATA(o_nodes) = mo_tree->get_nodes( ).
       DATA(l_node) =  o_nodes->get_node( i_key ).
+
       IF l_node IS NOT INITIAL.
         l_node->delete( ).
-
       ENDIF.
 
 

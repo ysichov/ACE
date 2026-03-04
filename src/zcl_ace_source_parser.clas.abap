@@ -878,40 +878,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         WHEN i_meth_pos = 'BEGIN' THEN ls_kw_meth-line + 1
         ELSE ls_kw_end-line ).
 
-*      " Insert source_tab lines - copy full range including comments
-*      DATA(lv_src_tabix) = lv_insert_line.
-*      DATA(lv_offset)    = 0.
-*
-*      " Get line range - METHOD line to ENDMETHOD line
-*      " lt_enh_kw: first=METHOD, last=ENDMETHOD, middle=body keywords
-*      DATA(lv_first_kw_line) = lt_enh_kw[ 1 ]-line.        " METHOD line
-*      DATA(lv_last_kw_line)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line. " ENDMETHOD line
-*      " Safety check: last must be > first
-*      CHECK lv_last_kw_line > lv_first_kw_line.
-*
-*      DATA(lv_sep) = COND string(
-*        WHEN i_meth_pos = 'BEGIN' THEN |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Pre ({ lv_impl_method })|
-*        WHEN i_meth_pos = 'END'   THEN |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Post ({ lv_impl_method })| ).
-*      INSERT lv_sep INTO <prog_m>-source_tab INDEX lv_src_tabix.
-*      ADD 1 TO lv_src_tabix.
-*      ADD 1 TO lv_offset.
-*
-*      DATA(lv_line_idx) = lv_first_kw_line.
-*      WHILE lv_line_idx <= lv_last_kw_line.
-*        READ TABLE ls_eimp_prog-source_tab INDEX lv_line_idx INTO DATA(lv_src_line).
-*        IF sy-subrc = 0.
-*          " Comment out METHOD/ENDMETHOD to avoid confusing the parser
-*          READ TABLE lt_enh_kw WITH KEY line = lv_line_idx INTO DATA(ls_kw_chk).
-*          IF sy-subrc = 0 AND ( ls_kw_chk-name = 'METHOD' OR ls_kw_chk-name = 'ENDMETHOD' ).
-*            lv_src_line = |*{ lv_src_line }|.
-*          ENDIF.
-*          INSERT lv_src_line INTO <prog_m>-source_tab INDEX lv_src_tabix.
-*          ADD 1 TO lv_src_tabix.
-*          ADD 1 TO lv_offset.
-*        ENDIF.
-*        ADD 1 TO lv_line_idx.
-*      ENDWHILE.
-*
 *      " Save enh block for CodeMix/tree
       " Save enh block for tree
       READ TABLE <prog_m>-tt_enh_blocks TRANSPORTING NO FIELDS

@@ -10,7 +10,6 @@ public section.
           field_label TYPE lvc_fname, "label
           int_type(1),
           inherited   TYPE aqadh_type_of_icon,
-          emitter     TYPE aqadh_type_of_icon,
           sign        TYPE tvarv_sign,
           opti        TYPE tvarv_opti,
           option_icon TYPE aqadh_type_of_icon,
@@ -292,7 +291,6 @@ public section.
     mt_obj           TYPE TABLE OF t_obj .
   class-data:
     mt_popups        TYPE TABLE OF t_popup .
-  class-data MO_DRAGDROPALV type ref to CL_DRAGDROP .
   class-data I_MERMAID_ACTIVE type BOOLEAN .
   class-data:
     mt_sel TYPE TABLE OF selection_display_s .
