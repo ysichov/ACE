@@ -698,6 +698,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
       " Post-processing: mark active_root
       mark_active_root( CHANGING ct_results = results ).
 
+      "delete results where active_root is INITIAL.
+
   endmethod.
 
 
@@ -715,21 +717,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
     "   ELSEIF/ELSE/WHEN are active only when their branch AND block are active.
     " ---------------------------------------------------------------
 
-    " Helper type: block stack entry
-    TYPES: BEGIN OF ts_block_entry,
-             if_idx    TYPE i,    " tabix of the IF/CASE row in ct_results
-             end_idx   TYPE i,    " tabix of the ENDIF/ENDCASE row
-             is_active TYPE flag, " at least one branch is active
-           END OF ts_block_entry.
-
-    DATA: lt_block_stack TYPE TABLE OF ts_block_entry WITH EMPTY KEY,
-          ls_block       TYPE ts_block_entry.
-
-    DATA: lv_depth TYPE i,   " current IF nesting depth
-          lv_tabix TYPE i,
-          lv_total TYPE i.
-
-    lv_total = lines( ct_results ).
+    DATA: lv_tabix TYPE i.
 
     " ---------------------------------------------------------------
     " Step 1: mark every plain row (cond IS INITIAL) as active immediately
@@ -751,10 +739,9 @@ CLASS ZCL_ACE IMPLEMENTATION.
              depth   TYPE i,
            END OF ts_pair.
 
-    DATA: lt_pairs TYPE TABLE OF ts_pair WITH EMPTY KEY,
-          ls_pair  TYPE ts_pair.
-
-    DATA: lt_if_stack TYPE TABLE OF i WITH EMPTY KEY.  " stack of IF tabix values
+    DATA: lt_pairs    TYPE TABLE OF ts_pair WITH EMPTY KEY,
+          ls_pair     TYPE ts_pair,
+          lt_if_stack TYPE TABLE OF i WITH EMPTY KEY.
 
     LOOP AT ct_results ASSIGNING <ln>.
       lv_tabix = sy-tabix.
@@ -784,27 +771,36 @@ CLASS ZCL_ACE IMPLEMENTATION.
     " ---------------------------------------------------------------
     SORT lt_pairs BY depth DESCENDING if_idx ASCENDING.
 
+    TYPES: BEGIN OF ts_branch_hdr,
+             tabix TYPE i,
+             cond  TYPE string,
+           END OF ts_branch_hdr.
+
+    " All working variables declared here to ensure clean state each iteration
+    DATA: lt_hdrs          TYPE TABLE OF ts_branch_hdr WITH EMPTY KEY,
+          ls_hdr           TYPE ts_branch_hdr,
+          lv_if_i          TYPE i,
+          lv_end_i         TYPE i,
+          lv_inner_depth   TYPE i,
+          lv_i             TYPE i,
+          lv_block_active  TYPE flag,
+          lv_hdr_cnt       TYPE i,
+          lv_h             TYPE i,
+          lv_branch_active TYPE flag,
+          lv_scan          TYPE i,
+          lv_scan_inner    TYPE i.
+
     LOOP AT lt_pairs INTO ls_pair.
-      DATA(lv_if_i)  = ls_pair-if_idx.
-      DATA(lv_end_i) = ls_pair-end_idx.
+      lv_if_i  = ls_pair-if_idx.
+      lv_end_i = ls_pair-end_idx.
 
       " --- Collect branch headers of this block ---
       " A branch spans from its header (IF/ELSEIF/ELSE/WHEN) up to the next
       " header at the same level or to ENDIF/ENDCASE.
       " We track inner nesting to distinguish our-level headers from nested ones.
-      TYPES: BEGIN OF ts_branch_hdr,
-               tabix     TYPE i,
-               cond      TYPE string,
-               is_active TYPE flag,
-             END OF ts_branch_hdr.
+      CLEAR: lt_hdrs, lv_inner_depth.
 
-      DATA: lt_hdrs TYPE TABLE OF ts_branch_hdr WITH EMPTY KEY,
-            ls_hdr  TYPE ts_branch_hdr.
-
-      DATA: lv_inner_depth TYPE i.
-      CLEAR lv_inner_depth.
-
-      DATA(lv_i) = lv_if_i.
+      lv_i = lv_if_i.
       WHILE lv_i <= lv_end_i.
         READ TABLE ct_results INDEX lv_i ASSIGNING <ln>.
         IF sy-subrc <> 0. EXIT. ENDIF.
@@ -840,19 +836,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDWHILE.
 
       " --- Check activity for each branch [hdr_n .. hdr_n+1) ---
-      DATA: lv_block_active TYPE flag.
       CLEAR lv_block_active.
+      lv_hdr_cnt = lines( lt_hdrs ).
+      lv_h = 1.
 
-      DATA(lv_hdr_cnt) = lines( lt_hdrs ).
-      DATA(lv_h) = 1.
       WHILE lv_h < lv_hdr_cnt.  " last entry is ENDIF/ENDCASE, not used as branch start
+
         DATA(ls_hdr_cur)  = lt_hdrs[ lv_h ].
         DATA(ls_hdr_next) = lt_hdrs[ lv_h + 1 ].
 
         " Scan rows between current and next branch header
-        DATA(lv_branch_active) = abap_false.
-        DATA(lv_scan)       = ls_hdr_cur-tabix + 1.
-        DATA(lv_scan_inner) = 0.
+        " Reset per-branch counters explicitly — inline DATA() is only created once
+        CLEAR: lv_branch_active, lv_scan_inner.
+        lv_scan = ls_hdr_cur-tabix + 1.
+
         WHILE lv_scan < ls_hdr_next-tabix.
           READ TABLE ct_results INDEX lv_scan ASSIGNING FIELD-SYMBOL(<scan_ln>).
           IF sy-subrc <> 0. EXIT. ENDIF.
@@ -864,21 +861,18 @@ CLASS ZCL_ACE IMPLEMENTATION.
               lv_scan_inner -= 1.
             WHEN OTHERS.
               IF lv_scan_inner = 0.
-                " Row at our own nesting level
                 IF <scan_ln>-cond IS INITIAL.
                   " Plain executable row -> branch is active
                   lv_branch_active = abap_true.
                 ELSEIF <scan_ln>-active_root = abap_true AND
                        ( <scan_ln>-cond = 'IF' OR <scan_ln>-cond = 'CASE' ).
-                  " Nested active block (already processed because its depth > ours)
+                  " Nested active block (already processed, depth > ours)
                   lv_branch_active = abap_true.
                 ENDIF.
               ENDIF.
           ENDCASE.
 
-          IF lv_branch_active = abap_true.
-            EXIT.
-          ENDIF.
+          IF lv_branch_active = abap_true. EXIT. ENDIF.
           lv_scan += 1.
         ENDWHILE.
 

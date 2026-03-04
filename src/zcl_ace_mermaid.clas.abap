@@ -268,12 +268,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
   endmethod.
 
 
-  method MAGIC_SEARCH.
+  METHOD magic_search.
 
     DATA: mm_string TYPE string,
           direction TYPE string.
 
-    clear mo_viewer->mt_if.
+    CLEAR mo_viewer->mt_if.
     DATA(lines) = mo_viewer->get_code_flow( ).
     CHECK lines IS NOT INITIAL.
 
@@ -290,10 +290,27 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
     build_edges( EXPORTING it_lines = lines
                  CHANGING  cv_mm_string = mm_string ).
 
+    " --- Highlight active blocks (active_root = X) with a light-blue fill ---
+    DATA: lv_active_ids TYPE string.
+    LOOP AT lines INTO DATA(line) WHERE active_root = abap_true AND cond <> 'ELSE'
+                                                                AND cond <> 'ELSEIF'
+                                                                AND cond <> 'WHEN'.
+      IF lv_active_ids IS INITIAL.
+        lv_active_ids = |{ line-ind }|.
+      ELSE.
+        lv_active_ids = |{ lv_active_ids },{ line-ind }|.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_active_ids IS NOT INITIAL.
+      mm_string = |{ mm_string }\nclassDef activeNode fill:#AEE6FF,stroke:#3399CC,color:#000\n|.
+      mm_string = |{ mm_string }class { lv_active_ids } activeNode\n|.
+    ENDIF.
+
     mm_string = |{ mm_string }\n|.
     open_mermaid( mm_string ).
 
-  endmethod.
+  ENDMETHOD.
 
 
   method ADD_TOOLBAR_BUTTONS.
