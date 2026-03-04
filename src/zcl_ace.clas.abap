@@ -701,39 +701,38 @@ CLASS ZCL_ACE IMPLEMENTATION.
   endmethod.
 
 
-  method MARK_ACTIVE_ROOT.
+  METHOD mark_active_root.
     " ---------------------------------------------------------------
-    " Алгоритм:
-    "   Проходим таблицу один раз. При встрече IF/CASE:
-    "     - запоминаем позицию заголовка блока в стеке
-    "     - ищем соответствующий ENDIF/ENDCASE через вложенный счётчик
-    "     - внутри блока рекурсивно проверяем каждую ветку
-    "   Ветка активна если содержит хотя бы одну строку с cond = '' (обычная)
-    "   или вложенный активный блок.
-    "   Блок активен если хотя бы одна ветка активна.
-    "   IF/ENDIF активны только если блок активен.
-    "   ELSEIF/ELSE/WHEN активны только если их ветка активна И блок активен.
+    " Algorithm:
+    "   Pass the table once. On encountering IF/CASE:
+    "     - push the block header index onto a stack
+    "     - locate the matching ENDIF/ENDCASE using a nesting counter
+    "     - analyse each branch inside the block
+    "   A branch is active if it contains at least one plain row (cond = '')
+    "   or a nested active block.
+    "   A block is active if at least one of its branches is active.
+    "   IF/ENDIF are active only when the block is active.
+    "   ELSEIF/ELSE/WHEN are active only when their branch AND block are active.
     " ---------------------------------------------------------------
 
-    " Вспомогательный тип: элемент стека блока
+    " Helper type: block stack entry
     TYPES: BEGIN OF ts_block_entry,
-             if_idx    TYPE i,   " табикс строки IF/CASE в ct_results
-             end_idx   TYPE i,   " табикс строки ENDIF/ENDCASE
-             is_active TYPE flag, " хотя бы одна ветка активна
+             if_idx    TYPE i,    " tabix of the IF/CASE row in ct_results
+             end_idx   TYPE i,    " tabix of the ENDIF/ENDCASE row
+             is_active TYPE flag, " at least one branch is active
            END OF ts_block_entry.
 
     DATA: lt_block_stack TYPE TABLE OF ts_block_entry WITH EMPTY KEY,
           ls_block       TYPE ts_block_entry.
 
-    DATA: lv_depth    TYPE i,   " текущая глубина вложенности IF
-          lv_tabix    TYPE i,
-          lv_total    TYPE i.
+    DATA: lv_depth TYPE i,   " current IF nesting depth
+          lv_tabix TYPE i,
+          lv_total TYPE i.
 
     lv_total = lines( ct_results ).
 
     " ---------------------------------------------------------------
-    " Шаг 1: для каждой строки с cond IS INITIAL (обычная строка)
-    "         сразу ставим active_root = 'X'
+    " Step 1: mark every plain row (cond IS INITIAL) as active immediately
     " ---------------------------------------------------------------
     LOOP AT ct_results ASSIGNING FIELD-SYMBOL(<ln>).
       IF <ln>-cond IS INITIAL.
@@ -742,28 +741,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
     ENDLOOP.
 
     " ---------------------------------------------------------------
-    " Шаг 2: функция проверки активности блока между позициями
-    "         from_idx (IF) и to_idx (ENDIF) включительно.
-    "         Возвращает true если в блоке есть хотя бы одна активная строка.
-    "         Работает рекурсивно для вложенных IF.
-    " ---------------------------------------------------------------
-    " Реализуем через итеративный однопроходный алгоритм снизу вверх.
-    " Для каждого IF/CASE ищем его ENDIF/ENDCASE,
-    " затем анализируем ветки внутри.
-
-    " ---------------------------------------------------------------
-    " Шаг 2: собираем пары IF→ENDIF используя стек
+    " Step 2: collect IF->ENDIF / CASE->ENDCASE pairs using a stack.
+    "         Record the nesting depth of each pair so we can process
+    "         innermost blocks first in step 3.
     " ---------------------------------------------------------------
     TYPES: BEGIN OF ts_pair,
-             if_idx   TYPE i,
-             end_idx  TYPE i,
-             depth    TYPE i,
+             if_idx  TYPE i,
+             end_idx TYPE i,
+             depth   TYPE i,
            END OF ts_pair.
 
     DATA: lt_pairs TYPE TABLE OF ts_pair WITH EMPTY KEY,
           ls_pair  TYPE ts_pair.
 
-    DATA: lt_if_stack TYPE TABLE OF i WITH EMPTY KEY.  " стек табиксов IF
+    DATA: lt_if_stack TYPE TABLE OF i WITH EMPTY KEY.  " stack of IF tabix values
 
     LOOP AT ct_results ASSIGNING <ln>.
       lv_tabix = sy-tabix.
@@ -776,19 +767,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
             DELETE lt_if_stack INDEX lines( lt_if_stack ).
             ls_pair-if_idx  = lv_if_tabix.
             ls_pair-end_idx = lv_tabix.
-            ls_pair-depth   = lines( lt_if_stack ).  " глубина после pop
+            ls_pair-depth   = lines( lt_if_stack ).  " depth after pop
             APPEND ls_pair TO lt_pairs.
           ENDIF.
       ENDCASE.
     ENDLOOP.
 
     " ---------------------------------------------------------------
-    " Шаг 3: обрабатываем пары изнутри наружу (сортируем по убыванию
-    "         глубины, затем по if_idx).
-    "         Для каждой пары:
-    "           - проверяем есть ли в ней активные строки (cond='' ИЛИ
-    "             уже помеченные вложенные IF/ENDIF)
-    "           - расставляем active_root для заголовков веток
+    " Step 3: process pairs from innermost to outermost
+    "         (sort by depth descending, then by if_idx ascending).
+    "         For each pair:
+    "           - collect branch headers at this block's own level
+    "           - check whether each branch contains active rows
+    "             (plain row OR already-marked nested IF/CASE)
+    "           - set active_root on branch headers, ENDIF and IF accordingly
     " ---------------------------------------------------------------
     SORT lt_pairs BY depth DESCENDING if_idx ASCENDING.
 
@@ -796,20 +788,18 @@ CLASS ZCL_ACE IMPLEMENTATION.
       DATA(lv_if_i)  = ls_pair-if_idx.
       DATA(lv_end_i) = ls_pair-end_idx.
 
-      " --- Находим ветки внутри блока ---
-      " Ветка = участок от заголовка (IF/ELSEIF/ELSE/WHEN) до следующего
-      " заголовка той же глубины или ENDIF.
-      " Для определения "той же глубины" отслеживаем вложенность.
-
-      " Собираем заголовки веток этого блока (IF + ELSEIF/ELSE/WHEN + ENDIF)
+      " --- Collect branch headers of this block ---
+      " A branch spans from its header (IF/ELSEIF/ELSE/WHEN) up to the next
+      " header at the same level or to ENDIF/ENDCASE.
+      " We track inner nesting to distinguish our-level headers from nested ones.
       TYPES: BEGIN OF ts_branch_hdr,
                tabix     TYPE i,
                cond      TYPE string,
                is_active TYPE flag,
              END OF ts_branch_hdr.
 
-      DATA: lt_hdrs  TYPE TABLE OF ts_branch_hdr WITH EMPTY KEY,
-            ls_hdr   TYPE ts_branch_hdr.
+      DATA: lt_hdrs TYPE TABLE OF ts_branch_hdr WITH EMPTY KEY,
+            ls_hdr  TYPE ts_branch_hdr.
 
       DATA: lv_inner_depth TYPE i.
       CLEAR lv_inner_depth.
@@ -822,7 +812,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
         CASE <ln>-cond.
           WHEN 'IF' OR 'CASE'.
             IF lv_i = lv_if_i.
-              " Это сам заголовок блока
+              " Opening header of the current block
               ls_hdr-tabix = lv_i.
               ls_hdr-cond  = <ln>-cond.
               APPEND ls_hdr TO lt_hdrs.
@@ -831,7 +821,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
             ENDIF.
           WHEN 'ENDIF' OR 'ENDCASE'.
             IF lv_i = lv_end_i.
-              " Это ENDIF нашего блока
+              " Closing keyword of the current block
               ls_hdr-tabix = lv_i.
               ls_hdr-cond  = <ln>-cond.
               APPEND ls_hdr TO lt_hdrs.
@@ -840,7 +830,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
             ENDIF.
           WHEN 'ELSEIF' OR 'ELSE' OR 'WHEN'.
             IF lv_inner_depth = 0.
-              " Заголовок ветки на нашем уровне
+              " Branch header at our own nesting level
               ls_hdr-tabix = lv_i.
               ls_hdr-cond  = <ln>-cond.
               APPEND ls_hdr TO lt_hdrs.
@@ -849,19 +839,19 @@ CLASS ZCL_ACE IMPLEMENTATION.
         lv_i += 1.
       ENDWHILE.
 
-      " --- Для каждой пары заголовков [hdr_n, hdr_n+1) проверяем активность ветки ---
+      " --- Check activity for each branch [hdr_n .. hdr_n+1) ---
       DATA: lv_block_active TYPE flag.
       CLEAR lv_block_active.
 
       DATA(lv_hdr_cnt) = lines( lt_hdrs ).
       DATA(lv_h) = 1.
-      WHILE lv_h < lv_hdr_cnt.  " последний элемент — ENDIF, его не берём как начало ветки
+      WHILE lv_h < lv_hdr_cnt.  " last entry is ENDIF/ENDCASE, not used as branch start
         DATA(ls_hdr_cur)  = lt_hdrs[ lv_h ].
         DATA(ls_hdr_next) = lt_hdrs[ lv_h + 1 ].
 
-        " Ищем активные строки между ls_hdr_cur-tabix+1 и ls_hdr_next-tabix-1
+        " Scan rows between current and next branch header
         DATA(lv_branch_active) = abap_false.
-        DATA(lv_scan) = ls_hdr_cur-tabix + 1.
+        DATA(lv_scan)       = ls_hdr_cur-tabix + 1.
         DATA(lv_scan_inner) = 0.
         WHILE lv_scan < ls_hdr_next-tabix.
           READ TABLE ct_results INDEX lv_scan ASSIGNING FIELD-SYMBOL(<scan_ln>).
@@ -874,13 +864,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
               lv_scan_inner -= 1.
             WHEN OTHERS.
               IF lv_scan_inner = 0.
-                " Строка нашего уровня
+                " Row at our own nesting level
                 IF <scan_ln>-cond IS INITIAL.
-                  " Обычная строка — ветка активна
+                  " Plain executable row -> branch is active
                   lv_branch_active = abap_true.
                 ELSEIF <scan_ln>-active_root = abap_true AND
                        ( <scan_ln>-cond = 'IF' OR <scan_ln>-cond = 'CASE' ).
-                  " Вложенный активный блок (уже обработан раньше т.к. depth > нашего)
+                  " Nested active block (already processed because its depth > ours)
                   lv_branch_active = abap_true.
                 ENDIF.
               ENDIF.
@@ -892,7 +882,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           lv_scan += 1.
         ENDWHILE.
 
-        " Помечаем заголовок ветки
+        " Mark the branch header
         ASSIGN ct_results[ ls_hdr_cur-tabix ] TO FIELD-SYMBOL(<hdr_ln>).
         IF sy-subrc = 0.
           IF lv_branch_active = abap_true.
@@ -906,13 +896,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
         lv_h += 1.
       ENDWHILE.
 
-      " --- Помечаем ENDIF ---
+      " --- Mark ENDIF/ENDCASE: active only when the block has an active branch ---
       ASSIGN ct_results[ lv_end_i ] TO FIELD-SYMBOL(<endif_ln>).
       IF sy-subrc = 0.
         <endif_ln>-active_root = lv_block_active.
       ENDIF.
 
-      " --- Если блок неактивен — сбрасываем IF ---
+      " --- Mark IF/CASE: active only when the block has at least one active branch ---
       ASSIGN ct_results[ lv_if_i ] TO FIELD-SYMBOL(<if_ln>).
       IF sy-subrc = 0.
         IF lv_block_active = abap_false.
@@ -924,7 +914,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
     ENDLOOP.
 
-  endmethod.
+  ENDMETHOD.
 
 
   method GET_CODE_MIX.
