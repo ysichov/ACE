@@ -189,7 +189,7 @@ public section.
                redefined   TYPE boolean,
                index       TYPE i,
                def_include TYPE program,  "include of CLASS DEFINITION section
-               def_line    TYPE i,        "line of METHODS statement in definition
+               def_line    TYPE i,        "line of METHODS statement in definition section
              END OF ts_calls_line .
   types:
     tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .
@@ -269,13 +269,14 @@ public section.
   types:
     BEGIN OF ts_tree,
                kind(1),
-               value   TYPE string,
-               param   TYPE string,
-               program TYPE program,
-               include TYPE program,
-               ev_type TYPE string,
-               ev_name TYPE string,
-               enh_id  TYPE i,
+               value    TYPE string,
+               param    TYPE string,
+               program  TYPE program,
+               include  TYPE program,
+               ev_type  TYPE string,
+               ev_name  TYPE string,
+               enh_id   TYPE i,
+               var_name TYPE string,
              END OF ts_tree .
   types:
     BEGIN OF ts_call,

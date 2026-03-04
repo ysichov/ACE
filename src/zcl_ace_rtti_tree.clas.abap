@@ -239,14 +239,15 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
       r_row = o_node->get_data_row( ).
       ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
-      ASSIGN COMPONENT 'KIND'    OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
-      ASSIGN COMPONENT 'VALUE'   OF STRUCTURE <row> TO FIELD-SYMBOL(<value>).
-      ASSIGN COMPONENT 'PARAM'   OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
-      ASSIGN COMPONENT 'PROGRAM' OF STRUCTURE <row> TO FIELD-SYMBOL(<program>).
-      ASSIGN COMPONENT 'INCLUDE' OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
-      ASSIGN COMPONENT 'EV_TYPE' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_type>).
-      ASSIGN COMPONENT 'EV_NAME' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
-      ASSIGN COMPONENT 'ENH_ID'  OF STRUCTURE <row> TO FIELD-SYMBOL(<enh_id>).
+      ASSIGN COMPONENT 'KIND'     OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
+      ASSIGN COMPONENT 'VALUE'    OF STRUCTURE <row> TO FIELD-SYMBOL(<value>).
+      ASSIGN COMPONENT 'PARAM'    OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
+      ASSIGN COMPONENT 'PROGRAM'  OF STRUCTURE <row> TO FIELD-SYMBOL(<program>).
+      ASSIGN COMPONENT 'INCLUDE'  OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
+      ASSIGN COMPONENT 'EV_TYPE'  OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_type>).
+      ASSIGN COMPONENT 'EV_NAME'  OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
+      ASSIGN COMPONENT 'ENH_ID'   OF STRUCTURE <row> TO FIELD-SYMBOL(<enh_id>).
+      ASSIGN COMPONENT 'VAR_NAME' OF STRUCTURE <row> TO FIELD-SYMBOL(<var_name>).
 
       " kind='C' = global class node — no navigation, no highlight
       CHECK <kind> <> 'C'.
@@ -765,16 +766,17 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       ENDIF.
       mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
 
-      " Highlight only for var/param leaf nodes (param is the variable name, no prefix marker)
-      IF <param> IS NOT INITIAL.
-        READ TABLE mo_viewer->mt_selected_var WITH KEY name = <param> TRANSPORTING NO FIELDS.
+      " Highlight only for global var/attr leaf nodes (use var_name to avoid <param> field-symbol)
+      DATA(lv_var_name) = CONV string( <var_name> ).
+      IF lv_var_name IS NOT INITIAL.
+        READ TABLE mo_viewer->mt_selected_var WITH KEY name = lv_var_name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
-          DELETE mo_viewer->mt_selected_var WHERE name = <param>.
+          DELETE mo_viewer->mt_selected_var WHERE name = lv_var_name.
           o_node->set_row_style( if_salv_c_tree_style=>default ).
         ELSE.
           o_node->set_row_style( if_salv_c_tree_style=>emphasized_b ).
           APPEND INITIAL LINE TO mo_viewer->mt_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
-          <sel>-name  = <param>.
+          <sel>-name  = lv_var_name.
           <sel>-i_sel = abap_true.
         ENDIF.
       ENDIF.
@@ -803,12 +805,12 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
           WHEN lv_p-type = 'I' THEN CONV #( icon_parameter_import )
           ELSE                      CONV #( icon_parameter_export ) ).
         add_node( i_name = lv_p-param i_icon = lv_p_icon i_rel = node_key
-                  i_tree = VALUE #( value = lv_p-line include = lv_p-include ) ).
+                  i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
       ENDLOOP.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_v)
         WHERE program = <program> AND class = lv_class AND eventname = lv_meth.
         add_node( i_name = lv_v-name i_icon = lv_v-icon i_rel = node_key
-                  i_tree = VALUE #( value = lv_v-line include = lv_v-include ) ).
+                  i_tree = VALUE #( value = lv_v-line include = lv_v-include var_name = lv_v-name ) ).
       ENDLOOP.
       RETURN.
     ENDIF.
@@ -823,7 +825,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_a)
         WHERE program = lv_sub-program AND class = lv_attr_class AND eventname IS INITIAL.
         add_node( i_name = lv_a-name i_icon = lv_a-icon i_rel = node_key
-                  i_tree = VALUE #( value = lv_a-line include = lv_a-include ) ).
+                  i_tree = VALUE #( value = lv_a-line include = lv_a-include var_name = lv_a-name ) ).
       ENDLOOP.
       RETURN.
     ENDIF.
@@ -833,7 +835,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_g)
         WHERE program = <program> AND eventtype IS INITIAL AND class IS INITIAL.
         add_node( i_name = lv_g-name i_icon = lv_g-icon i_rel = node_key
-                  i_tree = VALUE #( value = lv_g-line include = lv_g-include ) ).
+                  i_tree = VALUE #( value = lv_g-line include = lv_g-include var_name = lv_g-name ) ).
       ENDLOOP.
       RETURN.
     ENDIF.
