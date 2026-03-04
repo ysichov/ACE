@@ -25,21 +25,22 @@ public section.
     tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY .
   types:
     BEGIN OF ts_line,
-               cond       TYPE string,
-               program    TYPE string,
-               include    TYPE string,
-               line       TYPE i,
-               ind        TYPE i,
-               class      TYPE string,
-               ev_name    TYPE string,
-               ev_type    TYPE string,
-               stack      TYPE i,
-               code       TYPE string,
-               arrow      TYPE string,
-               subname    TYPE string,
-               del        TYPE flag,
-               els_before TYPE i,
-               els_after  TYPE i,
+               cond        TYPE string,
+               program     TYPE string,
+               include     TYPE string,
+               line        TYPE i,
+               ind         TYPE i,
+               class       TYPE string,
+               ev_name     TYPE string,
+               ev_type     TYPE string,
+               stack       TYPE i,
+               code        TYPE string,
+               arrow       TYPE string,
+               subname     TYPE string,
+               del         TYPE flag,
+               els_before  TYPE i,
+               els_after   TYPE i,
+               active_root TYPE flag,
              END OF ts_line .
   types:
     tt_line TYPE TABLE OF ts_line WITH EMPTY KEY .
@@ -113,6 +114,9 @@ public section.
     returning
       value(RESULTS) type TT_LINE .
   methods GET_CODE_MIX .
+  methods MARK_ACTIVE_ROOT
+    changing
+      !CT_RESULTS TYPE TT_LINE .
 protected section.
 private section.
 
@@ -690,6 +694,235 @@ CLASS ZCL_ACE IMPLEMENTATION.
           CLEAR results[ lines( results ) ]-arrow .
         ENDIF.
       ENDIF.
+
+      " Post-processing: mark active_root
+      mark_active_root( CHANGING ct_results = results ).
+
+  endmethod.
+
+
+  method MARK_ACTIVE_ROOT.
+    " ---------------------------------------------------------------
+    " Алгоритм:
+    "   Проходим таблицу один раз. При встрече IF/CASE:
+    "     - запоминаем позицию заголовка блока в стеке
+    "     - ищем соответствующий ENDIF/ENDCASE через вложенный счётчик
+    "     - внутри блока рекурсивно проверяем каждую ветку
+    "   Ветка активна если содержит хотя бы одну строку с cond = '' (обычная)
+    "   или вложенный активный блок.
+    "   Блок активен если хотя бы одна ветка активна.
+    "   IF/ENDIF активны только если блок активен.
+    "   ELSEIF/ELSE/WHEN активны только если их ветка активна И блок активен.
+    " ---------------------------------------------------------------
+
+    " Вспомогательный тип: элемент стека блока
+    TYPES: BEGIN OF ts_block_entry,
+             if_idx    TYPE i,   " табикс строки IF/CASE в ct_results
+             end_idx   TYPE i,   " табикс строки ENDIF/ENDCASE
+             is_active TYPE flag, " хотя бы одна ветка активна
+           END OF ts_block_entry.
+
+    DATA: lt_block_stack TYPE TABLE OF ts_block_entry WITH EMPTY KEY,
+          ls_block       TYPE ts_block_entry.
+
+    DATA: lv_depth    TYPE i,   " текущая глубина вложенности IF
+          lv_tabix    TYPE i,
+          lv_total    TYPE i.
+
+    lv_total = lines( ct_results ).
+
+    " ---------------------------------------------------------------
+    " Шаг 1: для каждой строки с cond IS INITIAL (обычная строка)
+    "         сразу ставим active_root = 'X'
+    " ---------------------------------------------------------------
+    LOOP AT ct_results ASSIGNING FIELD-SYMBOL(<ln>).
+      IF <ln>-cond IS INITIAL.
+        <ln>-active_root = abap_true.
+      ENDIF.
+    ENDLOOP.
+
+    " ---------------------------------------------------------------
+    " Шаг 2: функция проверки активности блока между позициями
+    "         from_idx (IF) и to_idx (ENDIF) включительно.
+    "         Возвращает true если в блоке есть хотя бы одна активная строка.
+    "         Работает рекурсивно для вложенных IF.
+    " ---------------------------------------------------------------
+    " Реализуем через итеративный однопроходный алгоритм снизу вверх.
+    " Для каждого IF/CASE ищем его ENDIF/ENDCASE,
+    " затем анализируем ветки внутри.
+
+    " ---------------------------------------------------------------
+    " Шаг 2: собираем пары IF→ENDIF используя стек
+    " ---------------------------------------------------------------
+    TYPES: BEGIN OF ts_pair,
+             if_idx   TYPE i,
+             end_idx  TYPE i,
+             depth    TYPE i,
+           END OF ts_pair.
+
+    DATA: lt_pairs TYPE TABLE OF ts_pair WITH EMPTY KEY,
+          ls_pair  TYPE ts_pair.
+
+    DATA: lt_if_stack TYPE TABLE OF i WITH EMPTY KEY.  " стек табиксов IF
+
+    LOOP AT ct_results ASSIGNING <ln>.
+      lv_tabix = sy-tabix.
+      CASE <ln>-cond.
+        WHEN 'IF' OR 'CASE'.
+          APPEND lv_tabix TO lt_if_stack.
+        WHEN 'ENDIF' OR 'ENDCASE'.
+          IF lt_if_stack IS NOT INITIAL.
+            DATA(lv_if_tabix) = lt_if_stack[ lines( lt_if_stack ) ].
+            DELETE lt_if_stack INDEX lines( lt_if_stack ).
+            ls_pair-if_idx  = lv_if_tabix.
+            ls_pair-end_idx = lv_tabix.
+            ls_pair-depth   = lines( lt_if_stack ).  " глубина после pop
+            APPEND ls_pair TO lt_pairs.
+          ENDIF.
+      ENDCASE.
+    ENDLOOP.
+
+    " ---------------------------------------------------------------
+    " Шаг 3: обрабатываем пары изнутри наружу (сортируем по убыванию
+    "         глубины, затем по if_idx).
+    "         Для каждой пары:
+    "           - проверяем есть ли в ней активные строки (cond='' ИЛИ
+    "             уже помеченные вложенные IF/ENDIF)
+    "           - расставляем active_root для заголовков веток
+    " ---------------------------------------------------------------
+    SORT lt_pairs BY depth DESCENDING if_idx ASCENDING.
+
+    LOOP AT lt_pairs INTO ls_pair.
+      DATA(lv_if_i)  = ls_pair-if_idx.
+      DATA(lv_end_i) = ls_pair-end_idx.
+
+      " --- Находим ветки внутри блока ---
+      " Ветка = участок от заголовка (IF/ELSEIF/ELSE/WHEN) до следующего
+      " заголовка той же глубины или ENDIF.
+      " Для определения "той же глубины" отслеживаем вложенность.
+
+      " Собираем заголовки веток этого блока (IF + ELSEIF/ELSE/WHEN + ENDIF)
+      TYPES: BEGIN OF ts_branch_hdr,
+               tabix     TYPE i,
+               cond      TYPE string,
+               is_active TYPE flag,
+             END OF ts_branch_hdr.
+
+      DATA: lt_hdrs  TYPE TABLE OF ts_branch_hdr WITH EMPTY KEY,
+            ls_hdr   TYPE ts_branch_hdr.
+
+      DATA: lv_inner_depth TYPE i.
+      CLEAR lv_inner_depth.
+
+      DATA(lv_i) = lv_if_i.
+      WHILE lv_i <= lv_end_i.
+        READ TABLE ct_results INDEX lv_i ASSIGNING <ln>.
+        IF sy-subrc <> 0. EXIT. ENDIF.
+
+        CASE <ln>-cond.
+          WHEN 'IF' OR 'CASE'.
+            IF lv_i = lv_if_i.
+              " Это сам заголовок блока
+              ls_hdr-tabix = lv_i.
+              ls_hdr-cond  = <ln>-cond.
+              APPEND ls_hdr TO lt_hdrs.
+            ELSE.
+              lv_inner_depth += 1.
+            ENDIF.
+          WHEN 'ENDIF' OR 'ENDCASE'.
+            IF lv_i = lv_end_i.
+              " Это ENDIF нашего блока
+              ls_hdr-tabix = lv_i.
+              ls_hdr-cond  = <ln>-cond.
+              APPEND ls_hdr TO lt_hdrs.
+            ELSE.
+              lv_inner_depth -= 1.
+            ENDIF.
+          WHEN 'ELSEIF' OR 'ELSE' OR 'WHEN'.
+            IF lv_inner_depth = 0.
+              " Заголовок ветки на нашем уровне
+              ls_hdr-tabix = lv_i.
+              ls_hdr-cond  = <ln>-cond.
+              APPEND ls_hdr TO lt_hdrs.
+            ENDIF.
+        ENDCASE.
+        lv_i += 1.
+      ENDWHILE.
+
+      " --- Для каждой пары заголовков [hdr_n, hdr_n+1) проверяем активность ветки ---
+      DATA: lv_block_active TYPE flag.
+      CLEAR lv_block_active.
+
+      DATA(lv_hdr_cnt) = lines( lt_hdrs ).
+      DATA(lv_h) = 1.
+      WHILE lv_h < lv_hdr_cnt.  " последний элемент — ENDIF, его не берём как начало ветки
+        DATA(ls_hdr_cur)  = lt_hdrs[ lv_h ].
+        DATA(ls_hdr_next) = lt_hdrs[ lv_h + 1 ].
+
+        " Ищем активные строки между ls_hdr_cur-tabix+1 и ls_hdr_next-tabix-1
+        DATA(lv_branch_active) = abap_false.
+        DATA(lv_scan) = ls_hdr_cur-tabix + 1.
+        DATA(lv_scan_inner) = 0.
+        WHILE lv_scan < ls_hdr_next-tabix.
+          READ TABLE ct_results INDEX lv_scan ASSIGNING FIELD-SYMBOL(<scan_ln>).
+          IF sy-subrc <> 0. EXIT. ENDIF.
+
+          CASE <scan_ln>-cond.
+            WHEN 'IF' OR 'CASE'.
+              lv_scan_inner += 1.
+            WHEN 'ENDIF' OR 'ENDCASE'.
+              lv_scan_inner -= 1.
+            WHEN OTHERS.
+              IF lv_scan_inner = 0.
+                " Строка нашего уровня
+                IF <scan_ln>-cond IS INITIAL.
+                  " Обычная строка — ветка активна
+                  lv_branch_active = abap_true.
+                ELSEIF <scan_ln>-active_root = abap_true AND
+                       ( <scan_ln>-cond = 'IF' OR <scan_ln>-cond = 'CASE' ).
+                  " Вложенный активный блок (уже обработан раньше т.к. depth > нашего)
+                  lv_branch_active = abap_true.
+                ENDIF.
+              ENDIF.
+          ENDCASE.
+
+          IF lv_branch_active = abap_true.
+            EXIT.
+          ENDIF.
+          lv_scan += 1.
+        ENDWHILE.
+
+        " Помечаем заголовок ветки
+        ASSIGN ct_results[ ls_hdr_cur-tabix ] TO FIELD-SYMBOL(<hdr_ln>).
+        IF sy-subrc = 0.
+          IF lv_branch_active = abap_true.
+            <hdr_ln>-active_root = abap_true.
+            lv_block_active = abap_true.
+          ELSE.
+            CLEAR <hdr_ln>-active_root.
+          ENDIF.
+        ENDIF.
+
+        lv_h += 1.
+      ENDWHILE.
+
+      " --- Помечаем ENDIF ---
+      ASSIGN ct_results[ lv_end_i ] TO FIELD-SYMBOL(<endif_ln>).
+      IF sy-subrc = 0.
+        <endif_ln>-active_root = lv_block_active.
+      ENDIF.
+
+      " --- Если блок неактивен — сбрасываем IF ---
+      ASSIGN ct_results[ lv_if_i ] TO FIELD-SYMBOL(<if_ln>).
+      IF sy-subrc = 0.
+        IF lv_block_active = abap_false.
+          CLEAR <if_ln>-active_root.
+        ELSE.
+          <if_ln>-active_root = abap_true.
+        ENDIF.
+      ENDIF.
+
+    ENDLOOP.
 
   endmethod.
 
