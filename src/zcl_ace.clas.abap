@@ -550,6 +550,29 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
     DELETE results WHERE del = abap_true.
 
+    " Delete empty cycle pairs (LOOP+ENDLOOP, DO+ENDDO, WHILE+ENDWHILE with nothing between)
+    DATA lv_changed TYPE boolean.
+    DO.
+      lv_changed = abap_false.
+      LOOP AT results ASSIGNING <line>.
+        DATA(lv_ti) = sy-tabix.
+        IF <line>-cond = 'LOOP' OR <line>-cond = 'DO' OR <line>-cond = 'WHILE'.
+          READ TABLE results INDEX lv_ti + 1 ASSIGNING FIELD-SYMBOL(<next>).
+          IF sy-subrc = 0.
+            IF ( <line>-cond = 'LOOP'  AND <next>-cond = 'ENDLOOP' ) OR
+               ( <line>-cond = 'DO'    AND <next>-cond = 'ENDDO'   ) OR
+               ( <line>-cond = 'WHILE' AND <next>-cond = 'ENDWHILE' ).
+              DELETE results INDEX lv_ti + 1.
+              DELETE results INDEX lv_ti.
+              lv_changed = abap_true.
+              EXIT.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+      IF lv_changed = abap_false. EXIT. ENDIF.
+    ENDDO.
+
     "getting code texts and calls params
     LOOP AT results ASSIGNING <line>.
       ind = sy-tabix.

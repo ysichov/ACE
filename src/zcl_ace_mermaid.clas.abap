@@ -79,11 +79,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
   method BUILD_NODES.
 
-    DATA: box_s     TYPE string,
-          box_e     TYPE string,
-          opened    TYPE i,
-          pre_stack TYPE mo_viewer->ts_line,
-          times     TYPE i.
+    DATA: box_s        TYPE string,
+          box_e        TYPE string,
+          opened       TYPE i,
+          pre_stack    TYPE mo_viewer->ts_line,
+          times        TYPE i,
+          lt_sg_opened TYPE TABLE OF flag WITH EMPTY KEY.
 
     LOOP AT CT_LINES ASSIGNING FIELD-SYMBOL(<line>) WHERE cond <> 'ELSE' AND cond <> 'ELSEIF' AND cond <> 'WHEN'.
       DATA(ind) = <line>-ind.
@@ -122,12 +123,17 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
         DATA(name) = format_node_label( i_code = <line>-code ).
 
+        " Only open subgraph if next line is not immediately END*
         READ TABLE CT_LINES INDEX lv_tabix + 1 INTO DATA(line2).
-        IF sy-subrc = 0.
+        IF sy-subrc = 0
+           AND line2-cond <> 'ENDLOOP' AND line2-cond <> 'ENDDO' AND line2-cond <> 'ENDWHILE'.
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ name }"]\n  direction { I_DIRECTION }\n|.
           opened += 1.
-          CONTINUE.
+          APPEND abap_true TO lt_sg_opened.
+        ELSE.
+          APPEND abap_false TO lt_sg_opened.
         ENDIF.
+        CONTINUE.
 
       ENDIF.
 
@@ -149,10 +155,17 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
       ENDIF.
 
-      " END* nodes
+      " END* — only close if subgraph was actually opened
       IF <line>-cond = 'ENDLOOP' OR <line>-cond = 'ENDDO' OR <line>-cond = 'ENDWHILE'.
-        opened -= 1.
-        CV_MM_STRING = |{ CV_MM_STRING } end\n|.
+        DATA(lv_last) = lines( lt_sg_opened ).
+        IF lv_last > 0.
+          READ TABLE lt_sg_opened INDEX lv_last INTO DATA(lv_sg_flag).
+          DELETE lt_sg_opened INDEX lv_last.
+          IF lv_sg_flag = abap_true.
+            opened -= 1.
+            CV_MM_STRING = |{ CV_MM_STRING } end\n|.
+          ENDIF.
+        ENDIF.
         CONTINUE.
       ENDIF.
 
