@@ -593,8 +593,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
     DATA: if_depth   TYPE i,
           when_count TYPE i.
-    LOOP AT results ASSIGNING <line> WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE' AND code <> 'LOOP' AND code <> 'ENDLOOP' .
+
+    " Assign ind to ALL rows first (sequential, no gaps)
+    LOOP AT results ASSIGNING <line>.
       <line>-ind = sy-tabix.
+    ENDLOOP.
+
+    LOOP AT results ASSIGNING <line> WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE' AND code <> 'LOOP' AND code <> 'ENDLOOP' .
 
       FIELD-SYMBOLS: <if> TYPE ts_if.
       IF <line>-cond = 'IF' OR  <line>-cond = 'CASE'.

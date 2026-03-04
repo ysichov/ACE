@@ -86,7 +86,8 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           times     TYPE i.
 
     LOOP AT CT_LINES ASSIGNING FIELD-SYMBOL(<line>) WHERE cond <> 'ELSE' AND cond <> 'ELSEIF' AND cond <> 'WHEN'.
-      DATA(ind) = sy-tabix.
+      DATA(ind) = <line>-ind.
+      DATA(lv_tabix) = sy-tabix.
 
       IF <line>-cond IS INITIAL.
         box_s = '('. box_e = ')'.
@@ -118,13 +119,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
          OR <line>-subname IS NOT INITIAL.
 
         REPLACE ALL OCCURRENCES OF `-` IN <line>-code WITH ` ` IN CHARACTER MODE.
-        CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ <line>-code }"{ box_e }\n|.
         pre_stack = <line>.
 
         DATA(name) = format_node_label( i_code = <line>-code ).
 
-        READ TABLE CT_LINES INDEX ind + 1 INTO DATA(line2).
-        IF sy-subrc = 0 AND <line>-stack <> line2-stack.
+        READ TABLE CT_LINES INDEX lv_tabix + 1 INTO DATA(line2).
+        IF sy-subrc = 0.
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ name }"]\n  direction { I_DIRECTION }\n|.
           opened += 1.
           CONTINUE.
@@ -176,6 +176,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           last_els  TYPE i.            " last els_after handled (to skip duplicate edges)
 
     LOOP AT IT_LINES INTO DATA(line).
+
+      " Skip LOOP/DO/WHILE and their END* — they are subgraphs, not nodes
+      IF line-cond = 'LOOP' OR line-cond = 'DO'    OR line-cond = 'WHILE' OR
+         line-cond = 'ENDLOOP' OR line-cond = 'ENDDO' OR line-cond = 'ENDWHILE'.
+        CONTINUE.
+      ENDIF.
 
       " ----- IF / CASE: push onto stack -----
       IF line-cond = 'IF' OR line-cond = 'CASE'.
