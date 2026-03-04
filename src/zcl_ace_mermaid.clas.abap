@@ -114,9 +114,8 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
         ENDDO.
       ENDIF.
 
-      " Loop/subgraph nodes
-      IF <line>-cond = 'LOOP' OR <line>-cond = 'DO' OR <line>-cond = 'WHILE'
-         OR <line>-subname IS NOT INITIAL.
+      " LOOP/DO/WHILE — only subgraph, no node
+      IF <line>-cond = 'LOOP' OR <line>-cond = 'DO' OR <line>-cond = 'WHILE'.
 
         REPLACE ALL OCCURRENCES OF `-` IN <line>-code WITH ` ` IN CHARACTER MODE.
         pre_stack = <line>.
@@ -129,6 +128,24 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           opened += 1.
           CONTINUE.
         ENDIF.
+
+      ENDIF.
+
+      " PERFORM/CALL FUNCTION etc. — draw node + open subgraph for nested rows
+      IF <line>-subname IS NOT INITIAL.
+
+        REPLACE ALL OCCURRENCES OF `-` IN <line>-code WITH ` ` IN CHARACTER MODE.
+        DATA(name2) = format_node_label( i_code = <line>-subname ).
+
+        CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ <line>-code }"{ box_e }\n|.
+
+        READ TABLE CT_LINES INDEX lv_tabix + 1 INTO line2.
+        IF sy-subrc = 0 AND line2-stack > <line>-stack.
+          CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ name2 }"]\n  direction { I_DIRECTION }\n|.
+          opened += 1.
+        ENDIF.
+        pre_stack = <line>.
+        CONTINUE.
 
       ENDIF.
 
