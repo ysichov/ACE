@@ -46,6 +46,7 @@ public section.
     tt_line TYPE TABLE OF ts_line WITH EMPTY KEY .
 
   data MV_PROG type PROG .
+  data MV_SHOW_PROG type PROG .
   data MV_DEST type TEXT255 .
   data MV_MODEL type TEXT255 .
   data MV_APIKEY type TEXT255 .
@@ -1065,7 +1066,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
       DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
 
       mo_window->show_stack( ).
-      "CHECK mo_tree_local->main_node_key IS INITIAL.
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = mo_window->m_prg-include INTO DATA(ls_prg_check).
+      DATA(lv_show_prog) = COND prog( WHEN ls_prg_check-program IS NOT INITIAL THEN ls_prg_check-program
+                                      ELSE CONV prog( mo_window->m_prg-include ) ).
+      CHECK lv_show_prog <> mv_show_prog.
+      mv_show_prog = lv_show_prog.
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
       CHECK splits_prg IS NOT INITIAL.
