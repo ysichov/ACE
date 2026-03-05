@@ -31,9 +31,7 @@ public section.
 protected section.
 private section.
 
-  methods INIT_FCAT
-    importing
-      !I_DD_HANDLE type I .
+  methods INIT_FCAT .
   methods HANDLE_SEL_TOOLBAR
     for event TOOLBAR of CL_GUI_ALV_GRID
     importing
@@ -85,19 +83,9 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       mo_viewer = io_viewer.
       mo_sel_alv = NEW #( i_parent = io_container ).
       update_sel_tab( ).
-      CREATE OBJECT ZCL_ACE_APPL=>mo_dragdropalv.
-      effect =  cl_dragdrop=>copy. " + cl_dragdrop=>move.
 
-      CALL METHOD ZCL_ACE_APPL=>mo_dragdropalv->add
-        EXPORTING
-          flavor     = 'Line'
-          dragsrc    = abap_true
-          droptarget = abap_true
-          effect     = effect.
-
-      CALL METHOD ZCL_ACE_APPL=>mo_dragdropalv->get_handle IMPORTING handle = handle_alv.
       ms_layout-s_dragdrop-col_ddid = handle_alv.
-      init_fcat( handle_alv ).
+      init_fcat( ).
       ms_layout-cwidth_opt = abap_true.
       ms_layout-col_opt = abap_true.
       ms_layout-ctab_fname = 'COLOR'.
@@ -269,7 +257,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
 
       mt_fcat = VALUE #(
        ( fieldname = 'IND'         coltext = '№'  outputlen = 3 style = '00000003' )
-       ( fieldname = 'FIELD_LABEL' coltext = 'Label'  outputlen = 30 dragdropid = i_dd_handle )
+       ( fieldname = 'FIELD_LABEL' coltext = 'Label'  outputlen = 30  )
        ( fieldname = 'SIGN'        coltext = 'SIGN'   tech = abap_true )
        ( fieldname = 'OPTI'        coltext = 'Option' tech = abap_true )
        ( fieldname = 'OPTION_ICON' coltext = 'Option' icon = abap_true outputlen = 4 style = cl_gui_alv_grid=>mc_style_button )
