@@ -11,6 +11,7 @@ public section.
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
   data MO_DIAGRAM type ref to OBJECT .
   data MV_TYPE type STRING .
+  data MV_CALC_PATH type BOOLEAN .
   data MV_DIRECTION type UI_FUNC .
 
   methods CONSTRUCTOR
@@ -22,7 +23,8 @@ public section.
       !I_DIRECTION type UI_FUNC optional .
   methods MAGIC_SEARCH
     importing
-      !I_DIRECTION type UI_FUNC optional .
+      !I_DIRECTION type UI_FUNC optional
+      !I_CALC_PATH type BOOLEAN optional .
   methods ADD_TOOLBAR_BUTTONS .
   methods HND_TOOLBAR
     for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
@@ -310,7 +312,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           direction TYPE string.
 
     CLEAR mo_viewer->mt_if.
-    DATA(lines) = mo_viewer->get_code_flow( ).
+    DATA(lines) = mo_viewer->get_code_flow( i_calc_path = i_calc_path ).
     CHECK lines IS NOT INITIAL.
 
     direction = COND string(
@@ -361,6 +363,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
        ( butn_type = 3  )
        ( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow' text = 'Calls Flow' )
        ( function = 'FLOW' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
+       ( function = 'CALCPATH' icon = CONV #( icon_workflow_process ) quickinfo = 'Calc Path - only assigned variables' text = 'Calc Path' )
        ( butn_type = 3  )
        ( function = 'TEXT' icon = CONV #( icon_wd_caption ) quickinfo = 'Mermaid Diagram text' text = '' )
                       ).
@@ -438,8 +441,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
       IF fcode = 'LR' OR fcode = 'TB'.
         mv_direction = fcode.
+      ELSEIF fcode = 'CALCPATH'.
+        mv_type = 'CALCPATH'.
+        mv_calc_path = abap_true.
       ELSE.
         mv_type = fcode.
+        CLEAR mv_calc_path.
       ENDIF.
 
       refresh( ).
@@ -468,8 +475,9 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
   method REFRESH.
 
       CASE mv_type.
-        WHEN 'CALLS'. steps_flow( mv_direction ).
-        WHEN 'FLOW'.  magic_search( mv_direction ).
+        WHEN 'CALLS'.    steps_flow( mv_direction ).
+        WHEN 'FLOW'.     magic_search( i_direction = mv_direction ).
+        WHEN 'CALCPATH'. magic_search( i_direction = mv_direction i_calc_path = abap_true ).
       ENDCASE.
 
   endmethod.

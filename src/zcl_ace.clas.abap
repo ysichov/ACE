@@ -111,10 +111,16 @@ public section.
       !I_TREE type ZCL_ACE_APPL=>TS_TREE optional
       !I_TYPE type FLAG optional .
   methods GET_CODE_FLOW
+    importing
+      !I_CALC_PATH type BOOLEAN optional
     returning
       value(RESULTS) type TT_LINE .
-  methods GET_CODE_MIX .
+  methods GET_CODE_MIX
+    importing
+      !I_CALC_PATH type BOOLEAN optional .
   methods MARK_ACTIVE_ROOT
+    importing
+      !I_CALC_PATH type BOOLEAN optional
     changing
       !CT_RESULTS TYPE TT_LINE .
 protected section.
@@ -529,7 +535,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
       ENDLOOP.
       "if no variable - whole CodeMix flow
-      IF sy-subrc <> 0. "AND mt_selected_var IS INITIAL.
+      IF  inserted = abap_false."i_calc_path IS INITIAL.
 
         IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND  key-name <> 'ENDMETHOD' AND
           key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM' AND inserted = abap_false.
@@ -541,10 +547,12 @@ CLASS ZCL_ACE IMPLEMENTATION.
             line-include = step-include.
             line-ev_type = step-eventtype.
             line-class = step-class.
+            line-active_root = abap_false.
             INSERT line INTO results INDEX 1.
           ENDIF.
         ENDIF.
       ENDIF.
+      CLEAR inserted.
 
     ENDLOOP.
 
@@ -725,14 +733,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
     ENDIF.
 
     " Post-processing: mark active_root
-    mark_active_root( CHANGING ct_results = results ).
+    CALL METHOD mark_active_root
+      EXPORTING
+        i_calc_path = i_calc_path
+      CHANGING
+        ct_results  = results.
 
-*    DELETE results WHERE active_root IS INITIAL.
-*
-*    " Recalculate IND as sequential iteration 1, 2, 3, ...
-*    LOOP AT results ASSIGNING <line>.
-*      <line>-ind = sy-tabix.
-*    ENDLOOP.
+    IF i_calc_path = abap_true.
+      DELETE results WHERE active_root IS INITIAL.
+
+      " Recalculate IND as sequential iteration 1, 2, 3, ...
+      LOOP AT results ASSIGNING <line>.
+        <line>-ind = sy-tabix.
+      ENDLOOP.
+    ENDIF.
 
   ENDMETHOD.
 
@@ -754,9 +768,16 @@ CLASS ZCL_ACE IMPLEMENTATION.
     DATA: lv_tabix TYPE i.
 
     " ---------------------------------------------------------------
-    " Step 1: plain rows (cond IS INITIAL) are NOT touched here.
-    "         active_root for plain rows is set upstream by the caller.
+    " Step 1: if not Calc Path — all plain rows (cond IS INITIAL) are active.
+    "         In Calc Path mode active_root is set upstream only where needed.
     " ---------------------------------------------------------------
+*    IF i_calc_path IS INITIAL.
+*      LOOP AT ct_results ASSIGNING FIELD-SYMBOL(<ln_init>).
+*        IF <ln_init>-cond IS INITIAL.
+*          <ln_init>-active_root = abap_true.
+*        ENDIF.
+*      ENDLOOP.
+*    ENDIF.
 
     " ---------------------------------------------------------------
     " Step 2: collect IF->ENDIF / CASE->ENDCASE pairs using a stack.
@@ -945,7 +966,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
             ind        TYPE i,
             prev_line  TYPE ts_line.
 
-      DATA(lines) = get_code_flow( ).
+      DATA(lines) = get_code_flow( i_calc_path = i_calc_path ).
       LOOP AT mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_mix>).
         CLEAR <prog_mix>-selected.
       ENDLOOP.

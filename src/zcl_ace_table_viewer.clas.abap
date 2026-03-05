@@ -241,18 +241,8 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
       set_header( ).
       layout-cwidth_opt = abap_true.
       layout-sel_mode = 'D'.
-      CREATE OBJECT ZCL_ACE_APPL=>mo_dragdropalv.
-      effect = cl_dragdrop=>move + cl_dragdrop=>copy.
 
-      CALL METHOD ZCL_ACE_APPL=>mo_dragdropalv->add
-        EXPORTING
-          flavor     = 'Line' ##NO_TEXT
-          dragsrc    = abap_true
-          droptarget = abap_true
-          effect     = effect.
 
-      CALL METHOD ZCL_ACE_APPL=>mo_dragdropalv->get_handle IMPORTING handle = DATA(handle_alv).
-      layout-s_dragdrop-grid_ddid = handle_alv.
 
       SET HANDLER   before_user_command
                     handle_user_command
