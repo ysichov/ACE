@@ -110,7 +110,9 @@ public section.
       !I_REFNODE type SALV_DE_NODE_KEY
       !NO_LOCALS type BOOLEAN optional
       !I_TREE type ZCL_ACE_APPL=>TS_TREE optional
-      !I_TYPE type FLAG optional .
+      !I_TYPE type FLAG optional
+    returning
+      value(R_NODE) type SALV_DE_NODE_KEY .
   methods GET_CODE_FLOW
     importing
       !I_CALC_PATH type BOOLEAN optional
@@ -291,6 +293,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
           local = subs-class.
         ENDLOOP.
       ENDIF.
+
+      r_node = class_rel.
 
   endmethod.
 
@@ -1083,6 +1087,9 @@ CLASS ZCL_ACE IMPLEMENTATION.
         i_icon = CONV #( icon_folder )
         i_tree = VALUE #( ) ).
 
+      " For global class — program name contains '=' (e.g. ZCL_ACE================CP)
+      DATA(lv_is_global_class) = xsdbool( mo_window->m_prg-program CS '=' ).
+
       " ---- Enhancements ----
       LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh).
         LOOP AT prog_enh-tt_enh_blocks INTO DATA(enh_blk).
@@ -1130,7 +1137,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           i_rel  = events_rel
           i_tree = VALUE #( kind = 'E' value = first_step-line include = first_step-include ) ).
       ENDIF.
-      LOOP AT mo_window->ms_sources-t_events INTO DATA(event) where program = mo_window->m_prg-program.
+      LOOP AT mo_window->ms_sources-t_events INTO DATA(event) WHERE program = mo_window->m_prg-program.
         IF events_rel IS INITIAL.
           events_rel = mo_tree_local->add_node(
             i_name = 'Events' i_icon = CONV #( icon_folder )
@@ -1228,11 +1235,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
         cl_name = ls_class-refclsname.
       ENDDO.
       DO.
-        add_class( i_class = CONV #( cl_name ) i_refnode = classes_rel i_tree = VALUE #( kind = 'C' ) ).
+        DATA(lv_class_node) = add_class( i_class = CONV #( cl_name )
+          i_refnode = COND #( WHEN lv_is_global_class = abap_true THEN VALUE salv_de_node_key( )
+                              ELSE classes_rel )
+          i_tree = VALUE #( kind = 'C' ) ).
         READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2' INTO ls_class.
         IF sy-subrc <> 0. EXIT. ENDIF.
         cl_name = ls_class-clsname.
       ENDDO.
+      " For global class — the node from add_class replaces the temporary root
+      IF lv_is_global_class = abap_true AND lv_class_node IS NOT INITIAL.
+        mo_tree_local->delete_node( mo_tree_local->main_node_key ).
+        mo_tree_local->main_node_key = lv_class_node.
+      ENDIF.
+      MESSAGE |is_global={ lv_is_global_class } class_node={ lv_class_node } splits[1]={ splits_prg[ 1 ] }| TYPE 'I'.
       classes_rel = class_rel = mo_tree_local->main_node_key.
 
       " ---- Subroutines ----
