@@ -344,7 +344,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       super->constructor( ).
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
-      m_hist_depth = 3.
+      m_hist_depth = 1.
 
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
@@ -410,109 +410,121 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   endmethod.
 
 
-  method HND_TOOLBAR.
+  METHOD hnd_toolbar.
 
 
-      CONSTANTS: c_mask TYPE x VALUE '01'.
-      FIELD-SYMBOLS: <any> TYPE any.
-      m_debug_button = fcode.
-      READ TABLE mt_stack INDEX 1 INTO DATA(stack).
-      CASE fcode.
+    CONSTANTS: c_mask TYPE x VALUE '01'.
+    FIELD-SYMBOLS: <any> TYPE any.
+    m_debug_button = fcode.
+    READ TABLE mt_stack INDEX 1 INTO DATA(stack).
+    CASE fcode.
 
-        WHEN 'RUN'.
-          DATA: lt_source TYPE STANDARD TABLE OF text255,
-                lv_prog   TYPE progname VALUE 'Z_SMART_DEBUGGER_SCRIPT'.
+      WHEN 'RUN'.
+        DATA: lt_source TYPE STANDARD TABLE OF text255,
+              lv_prog   TYPE progname VALUE 'Z_SMART_DEBUGGER_SCRIPT'.
 
-          READ REPORT lv_prog INTO lt_source.
-          DELETE lt_source INDEX 2.
-          IF sy-subrc = 0.
-            CALL FUNCTION 'CLPB_EXPORT'
-              TABLES data_tab = lt_source EXCEPTIONS clpb_error = 1 OTHERS = 2.
-          ENDIF.
-          lv_prog = mo_viewer->mv_prog.
-          DATA(lv_count) = 0.
-          SELECT COUNT(*) INTO @lv_count FROM reposrc WHERE progname = @lv_prog AND subc = '1'.
-          IF lv_count = 1.
-            SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN.
-          ENDIF.
+        READ REPORT lv_prog INTO lt_source.
+        DELETE lt_source INDEX 2.
+        IF sy-subrc = 0.
+          CALL FUNCTION 'CLPB_EXPORT'
+            TABLES
+              data_tab   = lt_source
+            EXCEPTIONS
+              clpb_error = 1
+              OTHERS     = 2.
+        ENDIF.
+        lv_prog = mo_viewer->mv_prog.
+        DATA(lv_count) = 0.
+        SELECT COUNT(*) INTO @lv_count FROM reposrc WHERE progname = @lv_prog AND subc = '1'.
+        IF lv_count = 1.
+          SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN.
+        ENDIF.
 
-        WHEN 'DEPTH'.
-          DATA: lv_answer TYPE c LENGTH 1,
-                lv_value1 TYPE spop-varvalue1.
+      WHEN 'DEPTH'.
+        DATA: lv_answer TYPE c LENGTH 1,
+              lv_value1 TYPE spop-varvalue1.
 
-          CALL FUNCTION 'POPUP_TO_GET_ONE_VALUE'
-            EXPORTING
-              textline1   = |Current depth: { m_hist_depth }. Enter new value (0-99):|
-              titel       = 'Set History Depth'
-              valuelength = '2'
-            IMPORTING
-              answer = lv_answer value1 = lv_value1
-            EXCEPTIONS OTHERS = 1.
+        CALL FUNCTION 'POPUP_TO_GET_ONE_VALUE'
+          EXPORTING
+            textline1   = |Current depth: { m_hist_depth }. Enter new value (0-99):|
+            titel       = 'Set History Depth'
+            valuelength = '2'
+          IMPORTING
+            answer      = lv_answer
+            value1      = lv_value1
+          EXCEPTIONS
+            OTHERS      = 1.
 
-          IF sy-subrc <> 0 OR lv_answer <> 'J' OR lv_value1 IS INITIAL.
-            RETURN.
-          ENDIF.
+        IF sy-subrc <> 0 OR lv_answer <> 'J' OR lv_value1 IS INITIAL.
+          RETURN.
+        ENDIF.
 
-          DATA(lv_new_depth) = CONV i( lv_value1 ).
-          IF lv_new_depth < 0. lv_new_depth = 0.
-          ELSEIF lv_new_depth > 99. lv_new_depth = 99.
-          ENDIF.
-          m_hist_depth = lv_new_depth.
+        DATA(lv_new_depth) = CONV i( lv_value1 ).
+        IF lv_new_depth < 0.
+          lv_new_depth = 0.
+        ELSEIF lv_new_depth > 99.
+          lv_new_depth = 99.
+        ENDIF.
+        m_hist_depth = lv_new_depth.
 
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
-                 mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
-          ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER(
-            i_program = source-include i_include = source-include io_debugger = mo_viewer ).
-          mo_viewer->mo_window->show_stack( ).
-          IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
-          mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
-          IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
-            mo_viewer->get_code_mix( ).
-            mo_viewer->mo_window->show_stack( ).
-          ENDIF.
-
-        WHEN 'CALLS'.
-          IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
-            mo_mermaid = NEW ZCL_ACE_MERMAID( io_debugger = mo_viewer i_type = 'CALLS' ).
-          ENDIF.
-
-        WHEN 'CODEMIX'.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+               mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
+        zcl_ace_source_parser=>code_execution_scanner(
+          i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+        mo_viewer->mo_window->show_stack( ).
+        IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+        mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
+        IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
           mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
+        ENDIF.
 
-        WHEN 'CODE'.
-          m_zcode = m_zcode BIT-XOR c_mask.
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
-          ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER(
-            i_program = source-include i_include = source-include io_debugger = mo_viewer ).
-          IF m_zcode IS INITIAL.
-            mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
-          ELSE.
-            mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Only Z code' ).
-          ENDIF.
+      WHEN 'CALLS'.
+        IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
+          mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CALLS' ).
+        ENDIF.
+
+      WHEN 'CODEMIX'.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
+        zcl_ace_source_parser=>code_execution_scanner(
+          i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+
+        mo_viewer->get_code_mix( ).
+        mo_viewer->mo_window->show_stack( ).
+
+      WHEN 'CODE'.
+        m_zcode = m_zcode BIT-XOR c_mask.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
+        zcl_ace_source_parser=>code_execution_scanner(
+          i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+        IF m_zcode IS INITIAL.
+          mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
+        ELSE.
+          mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Only Z code' ).
+        ENDIF.
+        mo_viewer->mo_window->show_stack( ).
+        IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+        IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
+          mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
-          IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
-          IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
-            mo_viewer->get_code_mix( ).
-            mo_viewer->mo_window->show_stack( ).
-          ENDIF.
+        ENDIF.
 
-        WHEN 'INFO'.
-          DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
-          CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
-          l_url = 'https://github.com/ysichov/Smart-Debugger'.
-          CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
+      WHEN 'INFO'.
+        DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
+        CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
+        l_url = 'https://github.com/ysichov/Smart-Debugger'.
+        CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
 
-        WHEN 'STEPS'.
-          ZCL_ACE_APPL=>OPEN_INT_TABLE(
-            i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
+      WHEN 'STEPS'.
+        zcl_ace_appl=>open_int_table(
+          i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
-      ENDCASE.
+    ENDCASE.
 
 
-  endmethod.
+  ENDMETHOD.
 
 
   method ON_EDITOR_BORDER_CLICK.
@@ -666,45 +678,45 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   endmethod.
 
 
-  method SET_PROGRAM.
+  METHOD set_program.
 
 
-      IF i_include = 'VIRTUAL'.
-        LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<virt_p>).
-          CLEAR <virt_p>-selected.
-        ENDLOOP.
-        READ TABLE ms_sources-tt_progs WITH KEY include = 'VIRTUAL' ASSIGNING <virt_p>.
-        IF sy-subrc = 0.
-          <virt_p>-selected = abap_true.
-          mo_code_viewer->set_text( table = <virt_p>-source_tab ).
-        ENDIF.
-        RETURN.
-      ENDIF.
-
-      ZCL_ACE_SOURCE_PARSER=>PARSE_TOKENS(
-        i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
-      SORT ms_sources-t_params.
-      DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
-      IF mo_viewer->m_step IS INITIAL.
-        ZCL_ACE_SOURCE_PARSER=>CODE_EXECUTION_SCANNER(
-          i_program = i_include i_include = i_include io_debugger = mo_viewer ).
-      ENDIF.
-
-      LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
-        CLEAR <prog>-selected.
+    IF i_include = 'VIRTUAL'.
+      LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<virt_p>).
+        CLEAR <virt_p>-selected.
       ENDLOOP.
-
-      READ TABLE ms_sources-tt_progs WITH KEY include = i_include ASSIGNING <prog>.
+      READ TABLE ms_sources-tt_progs WITH KEY include = 'VIRTUAL' ASSIGNING <virt_p>.
       IF sy-subrc = 0.
-        <prog>-selected = abap_true.
-        IF <prog>-v_source IS NOT INITIAL.
-          mo_code_viewer->set_text( table = <prog>-v_source ).
-        ELSE.
-          mo_code_viewer->set_text( table = <prog>-source_tab ).
-        ENDIF.
+        <virt_p>-selected = abap_true.
+        mo_code_viewer->set_text( table = <virt_p>-source_tab ).
       ENDIF.
+      RETURN.
+    ENDIF.
 
-  endmethod.
+    zcl_ace_source_parser=>parse_tokens(
+      i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+    SORT ms_sources-t_params.
+    DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
+    IF mo_viewer->m_step IS INITIAL.
+      zcl_ace_source_parser=>code_execution_scanner(
+        i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+    ENDIF.
+
+    LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
+      CLEAR <prog>-selected.
+    ENDLOOP.
+
+    READ TABLE ms_sources-tt_progs WITH KEY include = i_include ASSIGNING <prog>.
+    IF sy-subrc = 0.
+      <prog>-selected = abap_true.
+      IF <prog>-v_source IS NOT INITIAL.
+        mo_code_viewer->set_text( table = <prog>-v_source ).
+      ELSE.
+        mo_code_viewer->set_text( table = <prog>-source_tab ).
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
 
 
   method SET_PROGRAM_LINE.

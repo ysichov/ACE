@@ -215,7 +215,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
           statement = <event>-stmnt_from + 1.
 
-
         ELSE.
           statement = str-stmnt_from.
           prog = <prog>.

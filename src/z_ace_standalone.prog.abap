@@ -2131,10 +2131,10 @@
         i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
       SORT ms_sources-t_params.
       DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
-      IF mo_viewer->m_step IS INITIAL.
-        zcl_ace_source_parser=>code_execution_scanner(
-          i_program = i_include i_include = i_include io_debugger = mo_viewer ).
-      ENDIF.
+*      IF mo_viewer->m_step IS INITIAL.
+*        zcl_ace_source_parser=>code_execution_scanner(
+*          i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+*      ENDIF.
 
       LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
         CLEAR <prog>-selected.
@@ -2639,7 +2639,9 @@
           ENDIF.
 
         WHEN 'CODEMIX'.
-
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
+          zcl_ace_source_parser=>code_execution_scanner( i_program = source-include i_include = source-include io_debugger = mo_viewer ).
           mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
 
