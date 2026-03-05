@@ -42,6 +42,7 @@
         p_exclude = itab.
 
   AT SELECTION-SCREEN.
+    check sy-ucomm <> 'DUMMY'.
 
     IF p_odata IS NOT INITIAL.
       DATA(serv) = p_odata && '_SRV'.

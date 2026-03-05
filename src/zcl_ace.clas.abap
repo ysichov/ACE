@@ -1065,7 +1065,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
 
       mo_window->show_stack( ).
-      CHECK mo_tree_local->main_node_key IS INITIAL.
+      "CHECK mo_tree_local->main_node_key IS INITIAL.
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
       CHECK splits_prg IS NOT INITIAL.
@@ -1125,7 +1125,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           i_rel  = events_rel
           i_tree = VALUE #( kind = 'E' value = first_step-line include = first_step-include ) ).
       ENDIF.
-      LOOP AT mo_window->ms_sources-t_events INTO DATA(event).
+      LOOP AT mo_window->ms_sources-t_events INTO DATA(event) where program = mo_window->m_prg-program.
         IF events_rel IS INITIAL.
           events_rel = mo_tree_local->add_node(
             i_name = 'Events' i_icon = CONV #( icon_folder )
