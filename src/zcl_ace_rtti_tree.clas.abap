@@ -224,6 +224,12 @@ method DISPLAY.
       ENDTRY.
 
       mo_tree->display( ).
+      IF main_node_key IS NOT INITIAL.
+        TRY.
+            mo_tree->get_nodes( )->set_top_node( main_node_key ).
+          CATCH cx_root.
+        ENDTRY.
+      ENDIF.
 
   endmethod.
 
