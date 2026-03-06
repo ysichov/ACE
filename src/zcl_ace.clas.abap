@@ -1031,7 +1031,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
   method SHOW.
 
-      DATA: tree        TYPE ZCL_ACE_APPL=>ts_tree,
+  DATA: tree        TYPE ZCL_ACE_APPL=>ts_tree,
             cl_name     TYPE string,
             icon        TYPE salv_de_tree_image,
             forms_rel   TYPE salv_de_node_key,
@@ -1070,11 +1070,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
 
       mo_window->show_stack( ).
-      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = mo_window->m_prg-include INTO DATA(ls_prg_check).
-      DATA(lv_show_prog) = COND prog( WHEN ls_prg_check-program IS NOT INITIAL THEN ls_prg_check-program
-                                      ELSE CONV prog( mo_window->m_prg-include ) ).
-      CHECK lv_show_prog <> mv_show_prog.
-      mv_show_prog = lv_show_prog.
+      "CHECK mo_tree_local->main_node_key IS INITIAL.
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
       CHECK splits_prg IS NOT INITIAL.
@@ -1086,9 +1082,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         i_name = CONV #( mo_window->m_prg-program )
         i_icon = CONV #( icon_folder )
         i_tree = VALUE #( ) ).
-
-      " For global class — program name contains '=' (e.g. ZCL_ACE================CP)
-      DATA(lv_is_global_class) = xsdbool( mo_window->m_prg-program CS '=' ).
 
       " ---- Enhancements ----
       LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh).
@@ -1137,7 +1130,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           i_rel  = events_rel
           i_tree = VALUE #( kind = 'E' value = first_step-line include = first_step-include ) ).
       ENDIF.
-      LOOP AT mo_window->ms_sources-t_events INTO DATA(event) WHERE program = mo_window->m_prg-program.
+      LOOP AT mo_window->ms_sources-t_events INTO DATA(event) where program = mo_window->m_prg-program.
         IF events_rel IS INITIAL.
           events_rel = mo_tree_local->add_node(
             i_name = 'Events' i_icon = CONV #( icon_folder )
@@ -1235,20 +1228,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
         cl_name = ls_class-refclsname.
       ENDDO.
       DO.
-        DATA(lv_class_node) = add_class( i_class = CONV #( cl_name )
-          i_refnode = COND #( WHEN lv_is_global_class = abap_true THEN VALUE salv_de_node_key( )
-                              ELSE classes_rel )
-          i_tree = VALUE #( kind = 'C' ) ).
+        add_class( i_class = CONV #( cl_name ) i_refnode = classes_rel i_tree = VALUE #( kind = 'C' ) ).
         READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2' INTO ls_class.
         IF sy-subrc <> 0. EXIT. ENDIF.
         cl_name = ls_class-clsname.
       ENDDO.
-      " For global class — the node from add_class replaces the temporary root
-      IF lv_is_global_class = abap_true AND lv_class_node IS NOT INITIAL.
-        mo_tree_local->delete_node( mo_tree_local->main_node_key ).
-        mo_tree_local->main_node_key = lv_class_node.
-      ENDIF.
-      MESSAGE |is_global={ lv_is_global_class } class_node={ lv_class_node } splits[1]={ splits_prg[ 1 ] }| TYPE 'I'.
       classes_rel = class_rel = mo_tree_local->main_node_key.
 
       " ---- Subroutines ----

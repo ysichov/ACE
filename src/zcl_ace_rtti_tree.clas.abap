@@ -119,10 +119,8 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
   method CLEAR.
 
-
-      mo_tree->get_nodes( )->delete_all( ).
+        mo_tree->get_nodes( )->delete_all( ).
       CLEAR mt_lazy_nodes.
-
 
   endmethod.
 
@@ -182,7 +180,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
   endmethod.
 
 
-  method DISPLAY.
+method DISPLAY.
 
       DATA(o_columns) = mo_tree->get_columns( ).
       o_columns->get_column( 'KIND'    )->set_visible( abap_false ).
