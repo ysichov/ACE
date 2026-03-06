@@ -252,19 +252,26 @@ CLASS ZCL_ACE IMPLEMENTATION.
         DATA(event_node) = mo_tree_local->add_node(
           i_name = subs-eventname i_icon = icon i_rel = class_rel i_tree = tree ).
 
-        " vars/params folder (lazy)
-        DATA(lv_sub_cnt) = 0.
-        LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
-          WHERE program = subs-program AND class = subs-class AND eventname = subs-eventname.
-          lv_sub_cnt += 1.
-        ENDLOOP.
+        " Parameters — added directly under method node (no lazy folder)
         LOOP AT mo_window->ms_sources-t_params INTO DATA(lv_p)
           WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname AND param IS NOT INITIAL.
-          lv_sub_cnt += 1.
+          DATA(lv_p_icon) = COND salv_de_tree_image(
+            WHEN lv_p-type = 'I' THEN CONV #( icon_parameter_import )
+            ELSE                      CONV #( icon_parameter_export ) ).
+          mo_tree_local->add_node(
+            i_name = lv_p-param i_icon = lv_p_icon i_rel = event_node
+            i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
         ENDLOOP.
-        IF lv_sub_cnt > 0.
+
+        " Local vars folder (lazy) — only if vars exist
+        DATA(lv_var_cnt) = 0.
+        LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
+          WHERE program = subs-program AND class = subs-class AND eventname = subs-eventname.
+          lv_var_cnt += 1.
+        ENDLOOP.
+        IF lv_var_cnt > 0.
           DATA(lv_vars_node) = mo_tree_local->add_node(
-            i_name = |vars/params ({ lv_sub_cnt })|
+            i_name = |Local vars ({ lv_var_cnt })|
             i_icon = CONV #( icon_folder )
             i_rel  = event_node
             i_tree = VALUE #( program = subs-program include = subs-include

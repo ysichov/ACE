@@ -961,18 +961,26 @@ method DISPLAY.
           i_name = lv_cm-eventname i_icon = lv_micon i_rel = node_key
           i_tree = VALUE #( kind = 'M' value = lv_cmkw-v_line include = lv_cm-include
                             program = lv_cm-program ev_type = lv_cm-eventtype ev_name = lv_cm-eventname ) ).
+
+        " Parameters — added directly under method node (no lazy folder)
+        LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_mprm)
+          WHERE class = lv_cls_name AND event = 'METHOD' AND name = lv_cm-eventname AND param IS NOT INITIAL.
+          DATA(lv_mpicon) = COND salv_de_tree_image(
+            WHEN lv_mprm-type = 'I' THEN CONV #( icon_parameter_import )
+            ELSE                         CONV #( icon_parameter_export ) ).
+          add_node( i_name = lv_mprm-param i_icon = lv_mpicon i_rel = lv_meth_node
+                    i_tree = VALUE #( value = lv_mprm-line include = lv_mprm-include var_name = lv_mprm-param ) ).
+        ENDLOOP.
+
+        " Local vars folder (lazy) — only if vars exist
         DATA(lv_mv_cnt) = 0.
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_mv)
           WHERE program = lv_cm-program AND class = lv_cls_name AND eventname = lv_cm-eventname.
           lv_mv_cnt += 1.
         ENDLOOP.
-        LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_mprm)
-          WHERE class = lv_cls_name AND event = 'METHOD' AND name = lv_cm-eventname AND param IS NOT INITIAL.
-          lv_mv_cnt += 1.
-        ENDLOOP.
         IF lv_mv_cnt > 0.
           DATA(lv_vars_node) = add_node(
-            i_name = |vars/params ({ lv_mv_cnt })|
+            i_name = |Local vars ({ lv_mv_cnt })|
             i_icon = CONV #( icon_folder )
             i_rel  = lv_meth_node
             i_tree = VALUE #( program = lv_cm-program include = lv_cm-include
