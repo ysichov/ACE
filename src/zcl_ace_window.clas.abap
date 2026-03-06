@@ -315,7 +315,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
        ( function = 'CODEMIX' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
        ( function = 'CODE' icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
+       ( function = 'DEPTH_M' icon = CONV #( icon_arrow_left ) quickinfo = 'Decrease depth' text = '' )
        ( function = 'DEPTH' icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
+       ( function = 'DEPTH_P' icon = CONV #( icon_arrow_right ) quickinfo = 'Increase depth' text = '' )
        ( butn_type = 3  )
        ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
        ( butn_type = 3  )
@@ -344,7 +346,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       super->constructor( ).
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
-      m_hist_depth = 3.
+      m_hist_depth = 1.
 
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
@@ -440,6 +442,30 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN.
         ENDIF.
 
+      WHEN 'DEPTH_M'.
+        IF m_hist_depth > 0. m_hist_depth -= 1. ENDIF.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+               mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source_m).
+        zcl_ace_source_parser=>code_execution_scanner(
+          i_program = source_m-include i_include = source_m-include io_debugger = mo_viewer ).
+        mo_viewer->mo_window->show_coverage( ).
+        mo_viewer->mo_window->show_stack( ).
+        IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+        mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
+
+      WHEN 'DEPTH_P'.
+        IF m_hist_depth < 99. m_hist_depth += 1. ENDIF.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+               mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source_p).
+        zcl_ace_source_parser=>code_execution_scanner(
+          i_program = source_p-include i_include = source_p-include io_debugger = mo_viewer ).
+        mo_viewer->mo_window->show_coverage( ).
+        mo_viewer->mo_window->show_stack( ).
+        IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+        mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
+
       WHEN 'DEPTH'.
         DATA: lv_answer TYPE c LENGTH 1,
               lv_value1 TYPE spop-varvalue1.
@@ -472,6 +498,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
         zcl_ace_source_parser=>code_execution_scanner(
           i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+        mo_viewer->mo_window->show_coverage( ).
         mo_viewer->mo_window->show_stack( ).
         IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
         mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
@@ -832,7 +859,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF step-include <> mo_viewer->mo_window->m_prg-include. CONTINUE. ENDIF.
       ENDLOOP.
 
-      IF sy-subrc <> 0 AND mt_stack IS INITIAL.
+      IF mt_stack IS INITIAL.
         SORT ms_sources-tt_progs BY stack.
         LOOP AT ms_sources-tt_progs INTO DATA(prog).
           CHECK prog-t_keywords IS NOT INITIAL.
