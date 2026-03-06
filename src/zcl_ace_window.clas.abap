@@ -274,6 +274,7 @@ public section.
     importing
       !I_LINE like SY-INDEX optional .
   methods CREATE_CODE_VIEWER .
+  methods APPLY_DEPTH .
   methods SHOW_STACK .
   methods SHOW_COVERAGE .
   methods ON_STACK_DOUBLE_CLICK
@@ -444,27 +445,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'DEPTH_M'.
         IF m_hist_depth > 0. m_hist_depth -= 1. ENDIF.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
-               mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source_m).
-        zcl_ace_source_parser=>code_execution_scanner(
-          i_program = source_m-include i_include = source_m-include io_debugger = mo_viewer ).
-        mo_viewer->mo_window->show_coverage( ).
-        mo_viewer->mo_window->show_stack( ).
-        IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
-        mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
+        apply_depth( ).
 
       WHEN 'DEPTH_P'.
         IF m_hist_depth < 99. m_hist_depth += 1. ENDIF.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
-               mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source_p).
-        zcl_ace_source_parser=>code_execution_scanner(
-          i_program = source_p-include i_include = source_p-include io_debugger = mo_viewer ).
-        mo_viewer->mo_window->show_coverage( ).
-        mo_viewer->mo_window->show_stack( ).
-        IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
-        mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
+        apply_depth( ).
 
       WHEN 'DEPTH'.
         DATA: lv_answer TYPE c LENGTH 1,
@@ -492,20 +477,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           lv_new_depth = 99.
         ENDIF.
         m_hist_depth = lv_new_depth.
-
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
-               mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
-        zcl_ace_source_parser=>code_execution_scanner(
-          i_program = source-include i_include = source-include io_debugger = mo_viewer ).
-        mo_viewer->mo_window->show_coverage( ).
-        mo_viewer->mo_window->show_stack( ).
-        IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
-        mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
-        IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
-          mo_viewer->get_code_mix( ).
-          mo_viewer->mo_window->show_stack( ).
-        ENDIF.
+        apply_depth( ).
 
       WHEN 'CALLS'.
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
@@ -513,7 +485,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'CODEMIX'.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO data(source).
         zcl_ace_source_parser=>code_execution_scanner(
           i_program = source-include i_include = source-include io_debugger = mo_viewer ).
 
@@ -910,6 +882,25 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       SORT mt_coverage.
       DELETE ADJACENT DUPLICATES FROM mt_coverage.
 
+
+  endmethod.
+
+
+  method APPLY_DEPTH.
+
+      CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+             mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
+      zcl_ace_source_parser=>code_execution_scanner(
+        i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+      mo_viewer->mo_window->show_coverage( ).
+      mo_viewer->mo_window->show_stack( ).
+      IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+      mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
+      IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
+        mo_viewer->get_code_mix( ).
+        mo_viewer->mo_window->show_stack( ).
+      ENDIF.
 
   endmethod.
 
