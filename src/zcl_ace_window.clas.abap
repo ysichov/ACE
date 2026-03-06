@@ -322,6 +322,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( butn_type = 3  )
        ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
        ( butn_type = 3  )
+       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Whole Class source' text = 'Whole Class' )
        ( function = 'INFO' icon = CONV #( icon_bw_gis ) quickinfo = 'Documentation' text = '' )
                       ).
 
@@ -519,6 +520,30 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       WHEN 'STEPS'.
         zcl_ace_appl=>open_int_table(
           i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
+
+      WHEN 'WHOLE_CLASS'.
+        DATA: lt_whole_class TYPE sci_include,
+              lv_wc_first    TYPE boolean VALUE abap_true.
+
+        READ TABLE ms_sources-tt_progs INDEX 1 INTO DATA(ls_wc_prog).
+        LOOP AT ms_sources-tt_progs INTO DATA(ls_prog_wc)
+          WHERE program = ls_wc_prog-program.
+          IF lv_wc_first = abap_true.
+            lv_wc_first = abap_false.
+            CONTINUE.
+          ENDIF.
+          CHECK ls_prog_wc-source_tab IS NOT INITIAL.
+          IF lt_whole_class IS NOT INITIAL.
+            APPEND INITIAL LINE TO lt_whole_class.
+            APPEND INITIAL LINE TO lt_whole_class.
+          ENDIF.
+          APPEND LINES OF ls_prog_wc-source_tab TO lt_whole_class.
+        ENDLOOP.
+
+        IF lt_whole_class IS NOT INITIAL.
+          mo_code_viewer->set_text( table = lt_whole_class ).
+          mo_box->set_caption( |Whole Class: { ls_wc_prog-program }| ).
+        ENDIF.
 
     ENDCASE.
 
