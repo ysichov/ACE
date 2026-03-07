@@ -958,9 +958,9 @@ private section.
   ENDCLASS.
 
 
-  CLASS zcl_ace_window DEFINITION INHERITING FROM zcl_ace_popup .
+class ZCL_ACE_WINDOW definition  inheriting from ZCL_ACE_POPUP.
 
-    public section.
+public section.
 
   types:
     BEGIN OF ts_table,
@@ -1250,8 +1250,7 @@ private section.
       !LINE
       !SHIFT_PRESSED_SET .
 
-
-  ENDCLASS.
+ENDCLASS.
 
   CLASS zcl_ace IMPLEMENTATION.
 
@@ -2435,9 +2434,9 @@ private section.
 
   ENDCLASS.                    "zcl_ace IMPLEMENTATION
 
-  CLASS zcl_ace_window IMPLEMENTATION.
+CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
-   method ADD_TOOLBAR_BUTTONS.
+  method ADD_TOOLBAR_BUTTONS.
 
 
       DATA: button TYPE ttb_button,
@@ -2458,7 +2457,7 @@ private section.
        ( butn_type = 3  )
        ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
        ( butn_type = 3  )
-       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Whole Class source' text = 'Whole Class' )
+       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Collect code from class' text = 'Whole Class' )
        ( function = 'INFO' icon = CONV #( icon_bw_gis ) quickinfo = 'Documentation' text = '' )
                       ).
 
@@ -2473,7 +2472,6 @@ private section.
 
 
   endmethod.
-
 
   method CONSTRUCTOR.
 
@@ -2516,7 +2514,6 @@ private section.
 
   endmethod.
 
-
   method CREATE_CODE_VIEWER.
 
 
@@ -2548,7 +2545,6 @@ private section.
 
 
   endmethod.
-
 
   METHOD hnd_toolbar.
 
@@ -2658,34 +2654,106 @@ private section.
           i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
       WHEN 'WHOLE_CLASS'.
-        DATA: lt_whole_class TYPE sci_include,
-              lv_wc_first    TYPE boolean VALUE abap_true.
+        DATA: lt_whole_class  TYPE sci_include,
+              lv_class_name   TYPE string,
+              lv_in_methods   TYPE boolean VALUE abap_false,
+              lv_section_done TYPE boolean VALUE abap_false,
+              lv_cu_first     TYPE boolean VALUE abap_true,
+              lv_header_done  TYPE boolean,
+              lv_header_buf   TYPE string,
+              lv_dot_pos      TYPE i.
 
-        READ TABLE ms_sources-tt_progs INDEX 1 INTO DATA(ls_wc_prog).
-        LOOP AT ms_sources-tt_progs INTO DATA(ls_prog_wc)
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(ls_wc_prog).
+
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_prog_wc)
           WHERE program = ls_wc_prog-program.
-          IF lv_wc_first = abap_true.
-            lv_wc_first = abap_false.
+
+          DATA(lv_include) = to_upper( ls_prog_wc-include ).
+          DATA(lv_is_cp)     = xsdbool( lv_include CP '*CP' ).
+          DATA(lv_is_cu)     = xsdbool( lv_include CP '*CU' ).
+          DATA(lv_is_method) = xsdbool( lv_include CP '*CM*' ).
+
+          " Skip CP include entirely
+          IF lv_is_cp = abap_true.
             CONTINUE.
           ENDIF.
+
           CHECK ls_prog_wc-source_tab IS NOT INITIAL.
-          IF lt_whole_class IS NOT INITIAL.
+
+          " Transition: after sections, before first method
+          IF lv_is_method = abap_true AND lv_in_methods = abap_false.
+            lv_in_methods = abap_true.
             APPEND INITIAL LINE TO lt_whole_class.
+            APPEND |ENDCLASS.| TO lt_whole_class.
+            APPEND INITIAL LINE TO lt_whole_class.
+            APPEND |CLASS { lv_class_name } IMPLEMENTATION.| TO lt_whole_class.
+            APPEND INITIAL LINE TO lt_whole_class.
+            lv_section_done = abap_false.
+          ENDIF.
+
+          " Blank separator between includes
+          IF lv_section_done = abap_true.
             APPEND INITIAL LINE TO lt_whole_class.
           ENDIF.
+          lv_section_done = abap_true.
+
+          " CU include: header CLASS ... DEFINITION ... . may span multiple lines
+          " Collect all lines up to the dot, strip CREATE ... from them
+          IF lv_is_cu = abap_true AND lv_cu_first = abap_true.
+            lv_cu_first    = abap_false.
+            lv_header_done = abap_false.
+            CLEAR lv_header_buf.
+            DATA(lv_eq_pos) = find( val = ls_prog_wc-include sub = '=' ).
+            IF lv_eq_pos > 0.
+              lv_class_name = substring( val = ls_prog_wc-include len = lv_eq_pos ).
+            ENDIF.
+            LOOP AT ls_prog_wc-source_tab INTO DATA(lv_cu_line).
+              DATA(lv_cu_upper) = to_upper( lv_cu_line ).
+              IF lv_header_done = abap_false.
+                " Skip lines containing PUBLIC, PRIVATE or CREATE (not needed in local class)
+                IF lv_cu_upper CS 'PUBLIC' OR lv_cu_upper CS 'PRIVATE' OR lv_cu_upper CS 'CREATE'.
+                  IF lv_cu_upper CS '.'.
+                    lv_dot_pos = find( val = lv_header_buf sub = '.' ).
+                    IF lv_dot_pos >= 0.
+                      lv_header_buf = substring( val = lv_header_buf len = lv_dot_pos ).
+                    ENDIF.
+                    APPEND |{ lv_header_buf }.| TO lt_whole_class.
+                    lv_header_done = abap_true.
+                  ENDIF.
+                  CONTINUE.
+                ELSE.
+                  lv_header_buf = lv_header_buf && lv_cu_line.
+                ENDIF.
+                " Header ends when we see a dot
+                IF lv_cu_upper CS '.'.
+                  lv_dot_pos = find( val = lv_header_buf sub = '.' ).
+                  IF lv_dot_pos >= 0.
+                    lv_header_buf = substring( val = lv_header_buf len = lv_dot_pos ).
+                  ENDIF.
+                  APPEND |{ lv_header_buf }.| TO lt_whole_class.
+                  lv_header_done = abap_true.
+                ENDIF.
+                CONTINUE.
+              ENDIF.
+              APPEND lv_cu_line TO lt_whole_class.
+            ENDLOOP.
+            CONTINUE.
+          ENDIF.
+
           APPEND LINES OF ls_prog_wc-source_tab TO lt_whole_class.
         ENDLOOP.
 
-        IF lt_whole_class IS NOT INITIAL.
-          mo_code_viewer->set_text( table = lt_whole_class ).
-          mo_box->set_caption( |Whole Class: { ls_wc_prog-program }| ).
-        ENDIF.
+        " Close final block
+        APPEND INITIAL LINE TO lt_whole_class.
+        APPEND |ENDCLASS.| TO lt_whole_class.
+
+        mo_code_viewer->set_text( table = lt_whole_class ).
+        mo_box->set_caption( |Whole Class: { lv_class_name }| ).
 
     ENDCASE.
 
 
   ENDMETHOD.
-
 
   method ON_EDITOR_BORDER_CLICK.
 
@@ -2747,7 +2815,6 @@ private section.
 
   endmethod.
 
-
   method ON_EDITOR_DOUBLE_CLICK.
 
       sender->get_selection_pos(
@@ -2755,7 +2822,6 @@ private section.
                   to_line   = DATA(to_line)   to_pos = DATA(to_pos) ).
 
   endmethod.
-
 
   method ON_STACK_DOUBLE_CLICK.
 
@@ -2773,7 +2839,6 @@ private section.
       ENDCASE.
 
   endmethod.
-
 
   method SET_MIXPROG_LINE.
 
@@ -2837,7 +2902,6 @@ private section.
 
   endmethod.
 
-
   METHOD set_program.
 
 
@@ -2877,7 +2941,6 @@ private section.
     ENDIF.
 
   ENDMETHOD.
-
 
   method SET_PROGRAM_LINE.
 
@@ -2974,7 +3037,6 @@ private section.
 
   endmethod.
 
-
   method SHOW_COVERAGE.
 
 
@@ -3046,7 +3108,6 @@ private section.
 
   endmethod.
 
-
   method SHOW_STACK.
 
 
@@ -3087,7 +3148,6 @@ private section.
 
   endmethod.
 
-
   method APPLY_DEPTH.
 
       CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
@@ -3106,8 +3166,7 @@ private section.
 
   endmethod.
 
-  ENDCLASS.
-
+ENDCLASS.
   CLASS zcl_ace_sel_opt DEFINITION DEFERRED.
 
   CLASS zcl_ace_rtti IMPLEMENTATION.

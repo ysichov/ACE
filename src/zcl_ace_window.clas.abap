@@ -526,13 +526,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
               lv_class_name   TYPE string,
               lv_in_methods   TYPE boolean VALUE abap_false,
               lv_section_done TYPE boolean VALUE abap_false,
-              lv_skip_next    TYPE boolean VALUE abap_false,
               lv_cu_first     TYPE boolean VALUE abap_true,
-              lv_slen         TYPE i,
-              lv_slast        TYPE i,
-              lv_before_def   TYPE string,
-              lv_after_def    TYPE string,
-              lv_after_class  TYPE string.
+              lv_header_done  TYPE boolean,
+              lv_header_buf   TYPE string,
+              lv_dot_pos      TYPE i.
 
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(ls_wc_prog).
 
@@ -568,38 +565,44 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           ENDIF.
           lv_section_done = abap_true.
 
-          " CU include: first line has CLASS DEFINITION header - transform it
+          " CU include: header CLASS ... DEFINITION ... . may span multiple lines
+          " Collect all lines up to the dot, strip CREATE ... from them
           IF lv_is_cu = abap_true AND lv_cu_first = abap_true.
-            lv_cu_first  = abap_false.
-            lv_skip_next = abap_false.
-            DATA(lv_cu_idx) = 0.
+            lv_cu_first    = abap_false.
+            lv_header_done = abap_false.
+            CLEAR lv_header_buf.
+            DATA(lv_eq_pos) = find( val = ls_prog_wc-include sub = '=' ).
+            IF lv_eq_pos > 0.
+              lv_class_name = substring( val = ls_prog_wc-include len = lv_eq_pos ).
+            ENDIF.
             LOOP AT ls_prog_wc-source_tab INTO DATA(lv_cu_line).
-              lv_cu_idx += 1.
               DATA(lv_cu_upper) = to_upper( lv_cu_line ).
-
-              IF lv_cu_idx = 1.
-                " First line: append as-is. Extract class name from include name (before '=')
-                DATA(lv_eq_pos) = find( val = ls_prog_wc-include sub = '=' ).
-                IF lv_eq_pos > 0.
-                  lv_class_name = substring( val = ls_prog_wc-include len = lv_eq_pos ).
+              IF lv_header_done = abap_false.
+                " Skip lines containing PUBLIC, PRIVATE or CREATE (not needed in local class)
+                IF lv_cu_upper CS 'PUBLIC' OR lv_cu_upper CS 'PRIVATE' OR lv_cu_upper CS 'CREATE'.
+                  IF lv_cu_upper CS '.'.
+                    lv_dot_pos = find( val = lv_header_buf sub = '.' ).
+                    IF lv_dot_pos >= 0.
+                      lv_header_buf = substring( val = lv_header_buf len = lv_dot_pos ).
+                    ENDIF.
+                    APPEND |{ lv_header_buf }.| TO lt_whole_class.
+                    lv_header_done = abap_true.
+                  ENDIF.
+                  CONTINUE.
+                ELSE.
+                  lv_header_buf = lv_header_buf && lv_cu_line.
                 ENDIF.
-                APPEND lv_cu_line TO lt_whole_class.
-                lv_skip_next = abap_true.
+                " Header ends when we see a dot
+                IF lv_cu_upper CS '.'.
+                  lv_dot_pos = find( val = lv_header_buf sub = '.' ).
+                  IF lv_dot_pos >= 0.
+                    lv_header_buf = substring( val = lv_header_buf len = lv_dot_pos ).
+                  ENDIF.
+                  APPEND |{ lv_header_buf }.| TO lt_whole_class.
+                  lv_header_done = abap_true.
+                ENDIF.
                 CONTINUE.
               ENDIF.
-
-              " Skip line 2 (blank after CLASS DEFINITION)
-              IF lv_skip_next = abap_true.
-                lv_skip_next = abap_false.
-                CONTINUE.
-              ENDIF.
-
-              " Line starting with CREATE: replace with just a dot
-              IF lv_cu_upper CP 'CREATE *'.
-                APPEND '  .' TO lt_whole_class.
-                CONTINUE.
-              ENDIF.
-
               APPEND lv_cu_line TO lt_whole_class.
             ENDLOOP.
             CONTINUE.
