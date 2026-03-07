@@ -322,7 +322,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( butn_type = 3  )
        ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
        ( butn_type = 3  )
-       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Whole Class source' text = 'Whole Class' )
+       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Collect code from class' text = 'Whole Class' )
        ( function = 'INFO' icon = CONV #( icon_bw_gis ) quickinfo = 'Documentation' text = '' )
                       ).
 
@@ -522,28 +522,98 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
       WHEN 'WHOLE_CLASS'.
-        DATA: lt_whole_class TYPE sci_include,
-              lv_wc_first    TYPE boolean VALUE abap_true.
+        DATA: lt_whole_class  TYPE sci_include,
+              lv_class_name   TYPE string,
+              lv_in_methods   TYPE boolean VALUE abap_false,
+              lv_section_done TYPE boolean VALUE abap_false,
+              lv_skip_next    TYPE boolean VALUE abap_false,
+              lv_cu_first     TYPE boolean VALUE abap_true,
+              lv_slen         TYPE i,
+              lv_slast        TYPE i,
+              lv_before_def   TYPE string,
+              lv_after_def    TYPE string,
+              lv_after_class  TYPE string.
 
-        READ TABLE ms_sources-tt_progs INDEX 1 INTO DATA(ls_wc_prog).
-        LOOP AT ms_sources-tt_progs INTO DATA(ls_prog_wc)
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(ls_wc_prog).
+
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_prog_wc)
           WHERE program = ls_wc_prog-program.
-          IF lv_wc_first = abap_true.
-            lv_wc_first = abap_false.
+
+          DATA(lv_include) = to_upper( ls_prog_wc-include ).
+          DATA(lv_is_cp)     = xsdbool( lv_include CP '*CP' ).
+          DATA(lv_is_cu)     = xsdbool( lv_include CP '*CU' ).
+          DATA(lv_is_method) = xsdbool( lv_include CP '*CM*' ).
+
+          " Skip CP include entirely
+          IF lv_is_cp = abap_true.
             CONTINUE.
           ENDIF.
+
           CHECK ls_prog_wc-source_tab IS NOT INITIAL.
-          IF lt_whole_class IS NOT INITIAL.
+
+          " Transition: after sections, before first method
+          IF lv_is_method = abap_true AND lv_in_methods = abap_false.
+            lv_in_methods = abap_true.
             APPEND INITIAL LINE TO lt_whole_class.
+            APPEND |ENDCLASS.| TO lt_whole_class.
+            APPEND INITIAL LINE TO lt_whole_class.
+            APPEND |CLASS { lv_class_name } IMPLEMENTATION.| TO lt_whole_class.
+            APPEND INITIAL LINE TO lt_whole_class.
+            lv_section_done = abap_false.
+          ENDIF.
+
+          " Blank separator between includes
+          IF lv_section_done = abap_true.
             APPEND INITIAL LINE TO lt_whole_class.
           ENDIF.
+          lv_section_done = abap_true.
+
+          " CU include: first line has CLASS DEFINITION header - transform it
+          IF lv_is_cu = abap_true AND lv_cu_first = abap_true.
+            lv_cu_first  = abap_false.
+            lv_skip_next = abap_false.
+            DATA(lv_cu_idx) = 0.
+            LOOP AT ls_prog_wc-source_tab INTO DATA(lv_cu_line).
+              lv_cu_idx += 1.
+              DATA(lv_cu_upper) = to_upper( lv_cu_line ).
+
+              IF lv_cu_idx = 1.
+                " First line: append as-is. Extract class name from include name (before '=')
+                DATA(lv_eq_pos) = find( val = ls_prog_wc-include sub = '=' ).
+                IF lv_eq_pos > 0.
+                  lv_class_name = substring( val = ls_prog_wc-include len = lv_eq_pos ).
+                ENDIF.
+                APPEND lv_cu_line TO lt_whole_class.
+                lv_skip_next = abap_true.
+                CONTINUE.
+              ENDIF.
+
+              " Skip line 2 (blank after CLASS DEFINITION)
+              IF lv_skip_next = abap_true.
+                lv_skip_next = abap_false.
+                CONTINUE.
+              ENDIF.
+
+              " Line starting with CREATE: replace with just a dot
+              IF lv_cu_upper CP 'CREATE *'.
+                APPEND '  .' TO lt_whole_class.
+                CONTINUE.
+              ENDIF.
+
+              APPEND lv_cu_line TO lt_whole_class.
+            ENDLOOP.
+            CONTINUE.
+          ENDIF.
+
           APPEND LINES OF ls_prog_wc-source_tab TO lt_whole_class.
         ENDLOOP.
 
-        IF lt_whole_class IS NOT INITIAL.
-          mo_code_viewer->set_text( table = lt_whole_class ).
-          mo_box->set_caption( |Whole Class: { ls_wc_prog-program }| ).
-        ENDIF.
+        " Close final block
+        APPEND INITIAL LINE TO lt_whole_class.
+        APPEND |ENDCLASS.| TO lt_whole_class.
+
+        mo_code_viewer->set_text( table = lt_whole_class ).
+        mo_box->set_caption( |Whole Class: { lv_class_name }| ).
 
     ENDCASE.
 
