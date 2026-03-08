@@ -322,7 +322,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( butn_type = 3  )
        ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
        ( butn_type = 3  )
-       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Collect code from class' text = 'Whole Class' )
+       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Get local class' text = 'Get local class from Global' )
        ( function = 'INFO' icon = CONV #( icon_bw_gis ) quickinfo = 'Documentation' text = '' )
                       ).
 
