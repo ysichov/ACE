@@ -135,6 +135,11 @@ public section.
       !CT_RESULTS TYPE TT_LINE .
 protected section.
 private section.
+  methods GET_INCLUDE_PREFIX
+    importing
+      !I_CLASS type STRING
+    returning
+      value(RV_PREFIX) type STRING .
 
   constants:
     BEGIN OF c_kind,
@@ -202,7 +207,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
           " Public/Protected/Private sections — global classes only
           IF i_tree-kind = 'C' AND i_type <> 'I' AND i_type <> 'T'.
-            DATA(lv_sec_prefix) = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
+            DATA(lv_sec_prefix) = get_include_prefix( i_class ).
             DATA(lt_sections)   = VALUE string_table(
               ( lv_sec_prefix && `CU` ) ( lv_sec_prefix && `CO` ) ( lv_sec_prefix && `CI` ) ).
             DATA(lt_sec_labels) = VALUE string_table(
@@ -300,7 +305,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDLOOP.
 
       IF no_locals = abap_false.
-        prefix  = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
+        prefix  = get_include_prefix( i_class ).
         include = prefix && 'CP'.
         build_local_classes_node(
           i_program    = include
@@ -313,6 +318,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
   endmethod.
 
 
+  METHOD get_include_prefix.
+    " Returns the SAP include name prefix for a class:
+    "   class < 30 chars  → class padded with '=' to 30 + '======'  (36 total)
+    "   class = 30 chars  → class as-is (no separator needed)
+    IF strlen( i_class ) >= 30.
+      rv_prefix = i_class.
+    ELSE.
+      rv_prefix = i_class
+               && repeat( val = `=` occ = 30 - strlen( i_class ) )
+               && `======`.
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD BUILD_LOCAL_CLASSES_NODE.
     " Renders local classes (CP include) and unit test classes (CCAU include)
     " as child nodes under i_refnode, excluding i_excl_class.
@@ -323,7 +342,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           lv_ccau    TYPE string.
 
     " ---- Local Classes (CP) + Unit Test Classes (CCAU) — single loop ----
-    lv_prefix = i_excl_class && repeat( val = `=` occ = 30 - strlen( i_excl_class ) ).
+    lv_prefix = get_include_prefix( i_excl_class ).
     lv_ccau   = lv_prefix && 'CCAU'.
     LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs)
       WHERE program = i_program AND class <> i_excl_class AND eventtype = 'METHOD'.

@@ -1726,6 +1726,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
               ls_state-call_line-class = ls_state-param-class = ''.
             ENDIF.
 
+            IF ls_state-kw = 'ENDINTERFACE'.
+              ls_state-call_line-class = ls_state-param-class = ls_state-class_name = ''.
+            ENDIF.
+
             IF ls_state-kw = 'ENDFORM' OR ls_state-kw = 'ENDMETHOD' OR ls_state-kw = 'ENDMODULE'.
               CLEAR:  ls_state-eventtype,  ls_state-eventname, ls_state-tabs, ls_state-variable, ls_state-token-sub.
               IF ls_state-param-param IS INITIAL. "No params - save empty row if no params
@@ -1952,6 +1956,12 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         IF sy-index = 2 AND  cs_state-kw = 'CLASS'.
           cs_state-class_name = cs_state-word.
+        ENDIF.
+
+        IF sy-index = 2 AND cs_state-kw = 'INTERFACE'.
+          cs_state-class_name      = cs_state-word.
+          cs_state-call_line-class = cs_state-word.
+          cs_state-param-class     = cs_state-word.
         ENDIF.
 
         IF cs_state-kw = 'CLASS' AND cs_state-word = 'DEFINITION' AND cs_state-class_name IS NOT INITIAL.
