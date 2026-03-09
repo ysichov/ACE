@@ -178,9 +178,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
             " Global class node — kind='C' blocks nav and highlight
             class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
           ELSE.
-            " Local class node — param='CLASS:...' suppresses highlight
+            " Local class node — resolve CLASS DEFINITION line from tt_class_defs
+            READ TABLE mo_window->ms_sources-tt_class_defs
+              WITH KEY class = i_class INTO DATA(ls_cls_def).
+            DATA(lv_cls_inc)  = COND program( WHEN sy-subrc = 0 AND ls_cls_def-include IS NOT INITIAL
+                                              THEN ls_cls_def-include
+                                              WHEN subs-def_include IS NOT INITIAL
+                                              THEN subs-def_include ELSE subs-include ).
+            DATA(lv_cls_line) = COND i( WHEN sy-subrc = 0 AND ls_cls_def-line > 0
+                                        THEN ls_cls_def-line
+                                        WHEN subs-def_line > 0 THEN subs-def_line ELSE 0 ).
             class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
-                          i_tree = VALUE #( param = |CLASS:{ i_class }| ) ).
+                          i_tree = VALUE #( param   = |CLASS:{ i_class }|
+                                           include = lv_cls_inc
+                                           value   = lv_cls_line ) ).
           ENDIF.
 
           " Public/Protected/Private sections — global classes only

@@ -1954,6 +1954,16 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           cs_state-class_name = cs_state-word.
         ENDIF.
 
+        IF cs_state-kw = 'CLASS' AND cs_state-word = 'DEFINITION' AND cs_state-class_name IS NOT INITIAL.
+          " Record CLASS classname DEFINITION line — one entry per local class
+          READ TABLE io_debugger->mo_window->ms_sources-tt_class_defs
+            WITH KEY class = cs_state-class_name TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND VALUE #( class = cs_state-class_name include = i_include line = l_token_row )
+              TO io_debugger->mo_window->ms_sources-tt_class_defs.
+          ENDIF.
+        ENDIF.
+
         "check cs_state-class name
         IF  cs_state-class_name IS INITIAL.
           SPLIT i_program AT '=' INTO TABLE split.

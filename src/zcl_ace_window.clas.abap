@@ -156,6 +156,14 @@ public section.
   types:
     tt_classes TYPE STANDARD TABLE OF ts_meta WITH EMPTY KEY .
   types:
+    BEGIN OF ts_class_def,
+               class   TYPE string,
+               include TYPE program,
+               line    TYPE i,
+             END OF ts_class_def .
+  types:
+    tt_class_defs TYPE STANDARD TABLE OF ts_class_def WITH NON-UNIQUE KEY class .
+  types:
     BEGIN OF ts_source,
                tt_progs      TYPE tt_progs,
                t_events      TYPE tt_events,
@@ -167,6 +175,7 @@ public section.
                t_vars        TYPE tt_vars,
                tt_refvar     TYPE tt_refvar,
                t_classes     TYPE tt_classes,
+               tt_class_defs TYPE tt_class_defs,
                enh_collected TYPE boolean,
              END OF ts_source .
   types:
