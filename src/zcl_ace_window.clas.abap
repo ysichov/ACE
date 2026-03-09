@@ -542,6 +542,15 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(ls_wc_prog).
 
+        " First: add CCMAC (macros) at the very top
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_mac)
+          WHERE program = ls_wc_prog-program.
+          CHECK to_upper( CONV string( ls_mac-include ) ) CP '*CCMAC'.
+          CHECK ls_mac-source_tab IS NOT INITIAL.
+          APPEND LINES OF ls_mac-source_tab TO lt_whole_class.
+          APPEND INITIAL LINE TO lt_whole_class.
+        ENDLOOP.
+
         LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_prog_wc)
           WHERE program = ls_wc_prog-program.
 
@@ -551,8 +560,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           DATA(lv_is_cu)     = xsdbool( lv_include CP '*CU' ).
           DATA(lv_is_method) = xsdbool( lv_include CP '*CM*' ).
 
-          " Skip CP and enhancement includes (enhancement include ends with =E in fixed-len field)
-          IF lv_is_cp = abap_true OR lv_include CP '*====E' OR lv_include CS 'EIMP'.
+          " Skip CP, enhancement and CC* includes (added at the end separately)
+          IF lv_is_cp = abap_true OR lv_include CP '*====E' OR lv_include CS 'EIMP'
+            OR lv_include CP '*CCMAC' OR lv_include CP '*CCIMP' OR lv_include CP '*CCAU'.
             CONTINUE.
           ENDIF.
 
@@ -624,6 +634,16 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         " Close final block
         APPEND INITIAL LINE TO lt_whole_class.
         APPEND |ENDCLASS.| TO lt_whole_class.
+
+        " Append CC* includes at the end: macros, local class impl, test classes
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_cc)
+          WHERE program = ls_wc_prog-program.
+          DATA(lv_cc_inc) = to_upper( CONV string( ls_cc-include ) ).
+          CHECK lv_cc_inc CP '*CCIMP' OR lv_cc_inc CP '*CCAU'.
+          CHECK ls_cc-source_tab IS NOT INITIAL.
+          APPEND INITIAL LINE TO lt_whole_class.
+          APPEND LINES OF ls_cc-source_tab TO lt_whole_class.
+        ENDLOOP.
 
         mo_code_viewer->set_text( table = lt_whole_class ).
         mo_box->set_caption( |Whole Class: { lv_class_name }| ).
@@ -983,6 +1003,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             WHEN 'IU'.   <stack>-eventtype = 'Interface Public Section'.
             WHEN 'CCAU'. <stack>-eventtype = 'Unit Test Classes'.
             WHEN 'CCIMP'.<stack>-eventtype = 'Local helper classes'.
+            WHEN 'CCDEF'.<stack>-eventtype = 'Local Definitions/Implementations'.
+            WHEN 'CCMAC'.<stack>-eventtype = 'Macros'.
           ENDCASE.
         ENDLOOP.
       ENDIF.

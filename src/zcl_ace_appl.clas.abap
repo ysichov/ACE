@@ -130,7 +130,7 @@ public section.
                stacklevel TYPE tpda_stack_level,
                line       TYPE tpda_sc_line,
                program    TYPE tpda_program,
-               eventtype  TYPE tpda_event_type,
+               eventtype  TYPE string,
                eventname  TYPE tpda_event,
                prg        TYPE program,
                include    TYPE tpda_include,
