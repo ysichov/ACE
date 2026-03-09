@@ -335,15 +335,15 @@ CLASS ZCL_ACE IMPLEMENTATION.
               i_rel  = i_refnode
               i_tree = VALUE #( ) ).
           ENDIF.
-          add_class( i_class = CONV #( subs-class ) i_refnode = test_rel no_locals = abap_true i_type = 'T' ).
+          add_class( i_class = subs-class i_refnode = test_rel no_locals = abap_true i_type = 'T' ).
         ELSE.
           IF r_locals_rel IS INITIAL.
             r_locals_rel = mo_tree_local->add_node(
-              i_name = 'Local Classes' i_icon = CONV #( icon_folder )
+              i_name = 'Local Classes' i_icon = conv #( icon_folder )
               i_rel  = i_refnode
               i_tree = VALUE #( ) ).
           ENDIF.
-          add_class( i_class = CONV #( subs-class ) i_refnode = r_locals_rel no_locals = abap_true ).
+          add_class( i_class = subs-class i_refnode = r_locals_rel no_locals = abap_true ).
         ENDIF.
       ENDIF.
       local = subs-class.
@@ -415,16 +415,16 @@ CLASS ZCL_ACE IMPLEMENTATION.
       IF mo_window->ms_sel_call-eventtype = 'FORM'.
         zcl_ace_source_parser=>parse_call_form(
           EXPORTING i_call_name = mo_window->ms_sel_call-eventname
-                    i_program   = CONV #( mo_window->ms_sel_call-program )
-                    i_include   = CONV #( mo_window->ms_sel_call-include )
+                    i_program   = mo_window->ms_sel_call-program
+                    i_include   = mo_window->ms_sel_call-include
                     i_stack     = 0
                     io_debugger = mo_window->mo_viewer ).
       ELSE.
         zcl_ace_source_parser=>parse_call( EXPORTING i_index = mo_window->ms_sel_call-index
                                                   i_e_name = mo_window->ms_sel_call-eventname
                                                   i_e_type = mo_window->ms_sel_call-eventtype
-                                                  i_program = CONV #( mo_window->ms_sel_call-program )
-                                                  i_include = CONV #( mo_window->ms_sel_call-include )
+                                                  i_program = mo_window->ms_sel_call-program
+                                                  i_include = mo_window->ms_sel_call-include
                                                   i_stack   =  0
                                                   io_debugger = mo_window->mo_viewer ).
       ENDIF.
@@ -1064,7 +1064,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
         mo_window->m_prg-program = mo_window->m_prg-include = mv_prog.
       ENDIF.
 
-      mo_window->set_program( CONV #( mo_window->m_prg-include ) ).
+      mo_window->set_program( mo_window->m_prg-include ).
 
       IF mo_window->m_prg-include <> 'Code_Flow_Mix'.
         mo_window->show_coverage( ).
@@ -1227,7 +1227,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
         cl_name = ls_class-refclsname.
       ENDDO.
       DO.
-        add_class( i_class = CONV #( cl_name ) i_refnode = classes_rel i_tree = VALUE #( kind = 'C' ) ).
+        add_class( i_class = cl_name i_refnode = classes_rel i_tree = VALUE #( kind = 'C' ) ).
         READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2' INTO ls_class.
         IF sy-subrc <> 0. EXIT. ENDIF.
         cl_name = ls_class-clsname.
