@@ -331,7 +331,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( butn_type = 3  )
        ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
        ( butn_type = 3  )
-       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Get local class' text = 'Get local class from Global' )
+       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Get local class from Global' text = 'Get whole Class' )
        ( function = 'INFO' icon = CONV #( icon_bw_gis ) quickinfo = 'Documentation' text = '' )
                       ).
 
@@ -545,13 +545,14 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_prog_wc)
           WHERE program = ls_wc_prog-program.
 
-          DATA(lv_include) = to_upper( ls_prog_wc-include ).
+          DATA(lv_include_raw) = ls_prog_wc-include.
+          DATA(lv_include)     = to_upper( CONV string( lv_include_raw ) ).
           DATA(lv_is_cp)     = xsdbool( lv_include CP '*CP' ).
           DATA(lv_is_cu)     = xsdbool( lv_include CP '*CU' ).
           DATA(lv_is_method) = xsdbool( lv_include CP '*CM*' ).
 
-          " Skip CP include entirely
-          IF lv_is_cp = abap_true.
+          " Skip CP and enhancement includes (enhancement include ends with =E in fixed-len field)
+          IF lv_is_cp = abap_true OR lv_include CP '*====E' OR lv_include CS 'EIMP'.
             CONTINUE.
           ENDIF.
 
