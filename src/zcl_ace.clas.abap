@@ -113,6 +113,13 @@ public section.
       !I_TYPE type FLAG optional
     returning
       value(R_NODE) type SALV_DE_NODE_KEY .
+  methods BUILD_LOCAL_CLASSES_NODE
+    importing
+      !I_PROGRAM    type STRING
+      !I_EXCL_CLASS type STRING
+      !I_REFNODE    type SALV_DE_NODE_KEY
+    returning
+      value(R_LOCALS_REL) type SALV_DE_NODE_KEY .
   methods GET_CODE_FLOW
     importing
       !I_CALC_PATH type BOOLEAN optional
@@ -150,7 +157,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       DATA: tree        TYPE ZCL_ACE_APPL=>ts_tree,
             splits_incl TYPE TABLE OF string,
             icon        TYPE salv_de_tree_image,
-            locals_rel  TYPE salv_de_node_key,
             class_rel   TYPE salv_de_node_key,
             attr_rel    TYPE salv_de_node_key,
             include     TYPE string,
@@ -296,25 +302,53 @@ CLASS ZCL_ACE IMPLEMENTATION.
       IF no_locals = abap_false.
         prefix  = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ).
         include = prefix && 'CP'.
-        DATA: local TYPE string.
-        LOOP AT mo_window->ms_sources-tt_calls_line INTO subs
-          WHERE program = include AND class <> i_class AND eventtype = 'METHOD'.
-          IF local <> subs-class.
-            IF locals_rel IS INITIAL.
-              locals_rel = mo_tree_local->add_node(
-                i_name = 'Local Classes' i_icon = CONV #( icon_folder )
-                i_rel  = class_rel
-                i_tree = VALUE #( ) ).
-            ENDIF.
-            add_class( i_class = CONV #( subs-class ) i_refnode = locals_rel no_locals = abap_true ).
-          ENDIF.
-          local = subs-class.
-        ENDLOOP.
+        build_local_classes_node(
+          i_program    = include
+          i_excl_class = i_class
+          i_refnode    = class_rel ).
       ENDIF.
 
       r_node = class_rel.
 
   endmethod.
+
+
+  METHOD BUILD_LOCAL_CLASSES_NODE.
+    " Renders local classes (CP include) and unit test classes (CCAU include)
+    " as child nodes under i_refnode, excluding i_excl_class.
+    " Returns the 'Local Classes' folder node key, or initial if none found.
+    DATA: local      TYPE string,
+          test_rel   TYPE salv_de_node_key,
+          lv_prefix  TYPE string,
+          lv_ccau    TYPE string.
+
+    " ---- Local Classes (CP) + Unit Test Classes (CCAU) — single loop ----
+    lv_prefix = i_excl_class && repeat( val = `=` occ = 30 - strlen( i_excl_class ) ).
+    lv_ccau   = lv_prefix && 'CCAU'.
+    LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs)
+      WHERE program = i_program AND class <> i_excl_class AND eventtype = 'METHOD'.
+      IF local <> subs-class.
+        IF subs-include = lv_ccau.
+          IF test_rel IS INITIAL.
+            test_rel = mo_tree_local->add_node(
+              i_name = 'Unit Test Classes' i_icon = CONV #( icon_folder )
+              i_rel  = i_refnode
+              i_tree = VALUE #( ) ).
+          ENDIF.
+          add_class( i_class = CONV #( subs-class ) i_refnode = test_rel no_locals = abap_true i_type = 'T' ).
+        ELSE.
+          IF r_locals_rel IS INITIAL.
+            r_locals_rel = mo_tree_local->add_node(
+              i_name = 'Local Classes' i_icon = CONV #( icon_folder )
+              i_rel  = i_refnode
+              i_tree = VALUE #( ) ).
+          ENDIF.
+          add_class( i_class = CONV #( subs-class ) i_refnode = r_locals_rel no_locals = abap_true ).
+        ENDIF.
+      ENDIF.
+      local = subs-class.
+    ENDLOOP.
+  ENDMETHOD.
 
 
   method CONSTRUCTOR.
@@ -791,21 +825,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
     DATA: lv_tabix TYPE i.
 
     " ---------------------------------------------------------------
-    " Step 1: if not Calc Path — all plain rows (cond IS INITIAL) are active.
-    "         In Calc Path mode active_root is set upstream only where needed.
-    " ---------------------------------------------------------------
-*    IF i_calc_path IS INITIAL.
-*      LOOP AT ct_results ASSIGNING FIELD-SYMBOL(<ln_init>).
-*        IF <ln_init>-cond IS INITIAL.
-*          <ln_init>-active_root = abap_true.
-*        ENDIF.
-*      ENDLOOP.
-*    ENDIF.
-
-    " ---------------------------------------------------------------
     " Step 2: collect IF->ENDIF / CASE->ENDCASE pairs using a stack.
-    "         Record the nesting depth of each pair so we can process
-    "         innermost blocks first in step 3.
     " ---------------------------------------------------------------
     TYPES: BEGIN OF ts_pair,
              if_idx  TYPE i,
@@ -828,21 +848,12 @@ CLASS ZCL_ACE IMPLEMENTATION.
             DELETE lt_if_stack INDEX lines( lt_if_stack ).
             ls_pair-if_idx  = lv_if_tabix.
             ls_pair-end_idx = lv_tabix.
-            ls_pair-depth   = lines( lt_if_stack ).  " depth after pop
+            ls_pair-depth   = lines( lt_if_stack ).
             APPEND ls_pair TO lt_pairs.
           ENDIF.
       ENDCASE.
     ENDLOOP.
 
-    " ---------------------------------------------------------------
-    " Step 3: process pairs from innermost to outermost
-    "         (sort by depth descending, then by if_idx ascending).
-    "         For each pair:
-    "           - collect branch headers at this block's own level
-    "           - check whether each branch contains active rows
-    "             (plain row OR already-marked nested IF/CASE)
-    "           - set active_root on branch headers, ENDIF and IF accordingly
-    " ---------------------------------------------------------------
     SORT lt_pairs BY depth DESCENDING if_idx ASCENDING.
 
     TYPES: BEGIN OF ts_branch_hdr,
@@ -850,7 +861,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
              cond  TYPE string,
            END OF ts_branch_hdr.
 
-    " All working variables declared here to ensure clean state each iteration
     DATA: lt_hdrs          TYPE TABLE OF ts_branch_hdr WITH EMPTY KEY,
           ls_hdr           TYPE ts_branch_hdr,
           lv_if_i          TYPE i,
@@ -868,10 +878,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       lv_if_i  = ls_pair-if_idx.
       lv_end_i = ls_pair-end_idx.
 
-      " --- Collect branch headers of this block ---
-      " A branch spans from its header (IF/ELSEIF/ELSE/WHEN) up to the next
-      " header at the same level or to ENDIF/ENDCASE.
-      " We track inner nesting to distinguish our-level headers from nested ones.
       CLEAR: lt_hdrs, lv_inner_depth.
 
       lv_i = lv_if_i.
@@ -882,7 +888,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         CASE <ln>-cond.
           WHEN 'IF' OR 'CASE'.
             IF lv_i = lv_if_i.
-              " Opening header of the current block
               ls_hdr-tabix = lv_i.
               ls_hdr-cond  = <ln>-cond.
               APPEND ls_hdr TO lt_hdrs.
@@ -891,7 +896,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             ENDIF.
           WHEN 'ENDIF' OR 'ENDCASE'.
             IF lv_i = lv_end_i.
-              " Closing keyword of the current block
               ls_hdr-tabix = lv_i.
               ls_hdr-cond  = <ln>-cond.
               APPEND ls_hdr TO lt_hdrs.
@@ -900,7 +904,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             ENDIF.
           WHEN 'ELSEIF' OR 'ELSE' OR 'WHEN'.
             IF lv_inner_depth = 0.
-              " Branch header at our own nesting level
               ls_hdr-tabix = lv_i.
               ls_hdr-cond  = <ln>-cond.
               APPEND ls_hdr TO lt_hdrs.
@@ -909,18 +912,15 @@ CLASS ZCL_ACE IMPLEMENTATION.
         lv_i += 1.
       ENDWHILE.
 
-      " --- Check activity for each branch [hdr_n .. hdr_n+1) ---
       CLEAR lv_block_active.
       lv_hdr_cnt = lines( lt_hdrs ).
       lv_h = 1.
 
-      WHILE lv_h < lv_hdr_cnt.  " last entry is ENDIF/ENDCASE, not used as branch start
+      WHILE lv_h < lv_hdr_cnt.
 
         DATA(ls_hdr_cur)  = lt_hdrs[ lv_h ].
         DATA(ls_hdr_next) = lt_hdrs[ lv_h + 1 ].
 
-        " Scan rows between current and next branch header
-        " Reset per-branch counters explicitly — inline DATA() is only created once
         CLEAR: lv_branch_active, lv_scan_inner.
         lv_scan = ls_hdr_cur-tabix + 1.
 
@@ -934,11 +934,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
             WHEN 'ENDIF' OR 'ENDCASE'.
               lv_scan_inner -= 1.
             WHEN OTHERS.
-              IF lv_scan_inner = 0.
-                IF <scan_ln>-active_root = abap_true.
-                  " Row already marked active upstream — branch is active
-                  lv_branch_active = abap_true.
-                ENDIF.
+              IF lv_scan_inner = 0 AND <scan_ln>-active_root = abap_true.
+                lv_branch_active = abap_true.
               ENDIF.
           ENDCASE.
 
@@ -946,7 +943,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
           lv_scan += 1.
         ENDWHILE.
 
-        " Mark the branch header
         ASSIGN ct_results[ ls_hdr_cur-tabix ] TO FIELD-SYMBOL(<hdr_ln>).
         IF sy-subrc = 0.
           IF lv_branch_active = abap_true.
@@ -960,13 +956,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
         lv_h += 1.
       ENDWHILE.
 
-      " --- Mark ENDIF/ENDCASE: active only when the block has an active branch ---
       ASSIGN ct_results[ lv_end_i ] TO FIELD-SYMBOL(<endif_ln>).
       IF sy-subrc = 0.
         <endif_ln>-active_root = lv_block_active.
       ENDIF.
 
-      " --- Mark IF/CASE: active only when the block has at least one active branch ---
       ASSIGN ct_results[ lv_if_i ] TO FIELD-SYMBOL(<if_ln>).
       IF sy-subrc = 0.
         IF lv_block_active = abap_false.
@@ -985,9 +979,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
       DATA: flow_lines TYPE sci_include,
             splits     TYPE TABLE OF string,
-
             ind        TYPE i,
-            prev_line  TYPE ts_line.
+            prev_flow  TYPE ts_line.
 
       DATA(lines) = get_code_flow( i_calc_path = i_calc_path ).
       LOOP AT mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_mix>).
@@ -1000,28 +993,28 @@ CLASS ZCL_ACE IMPLEMENTATION.
         <prog_mix>-include = <stack_mix>-program = <stack_mix>-include = 'Code_Flow_Mix'.
       ENDIF.
 
-      LOOP AT lines INTO DATA(line).
-        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = line-include INTO DATA(prog).
-        READ TABLE prog-t_keywords WITH KEY line = line-line INTO DATA(keyword).
+      LOOP AT lines INTO DATA(flow_line).
+        READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = flow_line-include INTO DATA(prog).
+        READ TABLE prog-t_keywords WITH KEY line = flow_line-line INTO DATA(keyword).
 
         APPEND INITIAL LINE TO <prog_mix>-t_keywords ASSIGNING FIELD-SYMBOL(<keyword_mix>).
         <keyword_mix> = keyword.
-        <keyword_mix>-include = line-include.
-        <keyword_mix>-program = line-program.
+        <keyword_mix>-include = flow_line-include.
+        <keyword_mix>-program = flow_line-program.
 
         DATA(from_row) = prog-scan->tokens[ keyword-from ]-row.
         DATA(to_row) = prog-scan->tokens[ keyword-to ]-row.
-        DATA(spaces) = repeat( val = | | occ = ( line-stack - 1 ) * 3 ).
-        DATA(dashes) = repeat( val = |-| occ = ( line-stack ) ).
-        IF prev_line-ev_name <> line-ev_name OR prev_line-ev_type <> line-ev_type OR prev_line-class <> line-class OR prev_line-stack <> line-stack. "new event
-          SPLIT line-include AT '=' INTO TABLE splits.
-
+        DATA(spaces) = repeat( val = | | occ = ( flow_line-stack - 1 ) * 3 ).
+        DATA(dashes) = repeat( val = |-| occ = ( flow_line-stack ) ).
+        IF prev_flow-ev_name <> flow_line-ev_name OR prev_flow-ev_type <> flow_line-ev_type
+        OR prev_flow-class  <> flow_line-class    OR prev_flow-stack  <> flow_line-stack.
+          SPLIT flow_line-include AT '=' INTO TABLE splits.
           APPEND INITIAL LINE TO flow_lines ASSIGNING FIELD-SYMBOL(<flow>).
           ind  = sy-tabix.
-          IF line-class IS INITIAL.
-            <flow> =  |"{ dashes } { line-ev_type } { line-ev_name } in { splits[ 1 ] }|.
+          IF flow_line-class IS INITIAL.
+            <flow> =  |"{ dashes } { flow_line-ev_type } { flow_line-ev_name } in { splits[ 1 ] }|.
           ELSE.
-            <flow> =  |"{ dashes } { line-ev_type } { line-ev_name } in { line-class }|.
+            <flow> =  |"{ dashes } { flow_line-ev_type } { flow_line-ev_name } in { flow_line-class }|.
           ENDIF.
         ENDIF.
 
@@ -1032,7 +1025,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           ind = sy-tabix.
           <flow> = |{ spaces }{ source_line }|.
         ENDLOOP.
-        prev_line = line.
+        prev_flow = flow_line.
       ENDLOOP.
 
       mo_window->mo_code_viewer->set_text( table = flow_lines ).
@@ -1042,7 +1035,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       mo_window->set_mixprog_line( ).
       mo_window->show_stack( ).
       mo_window->mo_box->set_caption( |Code Mix: { lines( lines ) } statements| ).
-
 
   endmethod.
 
@@ -1062,7 +1054,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             globals_rel TYPE salv_de_node_key,
             enh_rel     TYPE salv_de_node_key,
             locals_rel  TYPE salv_de_node_key,
-            local       TYPE string,
             keyword     TYPE ZCL_ACE_APPL=>ts_kword,
             splits_prg  TYPE TABLE OF string,
             splits_incl TYPE TABLE OF string.
@@ -1088,7 +1079,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
 
       mo_window->show_stack( ).
-      "CHECK mo_tree_local->main_node_key IS INITIAL.
       mo_tree_local->clear( ).
       SPLIT mo_window->m_prg-program AT '=' INTO TABLE splits_prg.
       CHECK splits_prg IS NOT INITIAL.
@@ -1210,19 +1200,10 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDLOOP.
         IF lv_loc_cnt > 0.
           IF lv_loc_cnt <= c_lazy_threshold.
-            LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs)
-              WHERE program = mv_prog AND eventtype = 'METHOD' AND class <> splits_prg[ 1 ].
-              IF local <> subs-class.
-                IF locals_rel IS INITIAL.
-                  locals_rel = mo_tree_local->add_node(
-                    i_name = 'Local Classes' i_icon = CONV #( icon_folder )
-                    i_rel  = mo_tree_local->main_node_key
-                    i_tree = VALUE #( ) ).
-                ENDIF.
-                add_class( i_class = CONV #( subs-class ) i_refnode = locals_rel no_locals = abap_true ).
-              ENDIF.
-              local = subs-class.
-            ENDLOOP.
+            locals_rel = build_local_classes_node(
+              i_program    = CONV #( mv_prog )
+              i_excl_class = splits_prg[ 1 ]
+              i_refnode    = mo_tree_local->main_node_key ).
           ELSE.
             locals_rel = mo_tree_local->add_node(
               i_name = |Local Classes ({ lv_loc_cnt })|
