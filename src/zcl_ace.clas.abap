@@ -248,7 +248,14 @@ CLASS ZCL_ACE IMPLEMENTATION.
         READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
 
         tree-kind    = 'M'.
-        tree-value   = keyword-v_line.
+        " For local interfaces: def_line holds the exact source line of the METHODS
+        " statement (set correctly by PARSE_TOKENS via lv_token_row fix).
+        " For local/global classes: use keyword-v_line from t_keywords as before.
+        IF subs-is_intf = abap_true AND subs-def_line > 0.
+          tree-value = subs-def_line.
+        ELSE.
+          tree-value = keyword-v_line.
+        ENDIF.
         tree-include = subs-include.
         tree-program = subs-program.
         tree-ev_type = subs-eventtype.
