@@ -26,22 +26,6 @@ public section.
   types:
     tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
   types:
-    BEGIN OF ts_calls_line,
-               program     TYPE program,
-               include     TYPE program,
-               class       TYPE string,
-               eventtype   TYPE string,
-               meth_type   TYPE i,
-               eventname   TYPE string,
-               redefined   TYPE boolean,
-               index       TYPE i,
-               def_include TYPE program,  "include of CLASS DEFINITION section
-               def_line    TYPE i,        "line of METHODS statement in definition
-               is_intf     TYPE boolean,  "true if the class is a local INTERFACE (not CLASS)
-             END OF ts_calls_line .
-  types:
-    tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .
-  types:
     BEGIN OF ts_vars,
                program   TYPE program,
                include   TYPE program,
@@ -172,7 +156,7 @@ public section.
                t_composed    TYPE tt_composed,
                t_params      TYPE tt_params,
                tt_tabs       TYPE tt_tabs,
-               tt_calls_line TYPE tt_calls_line,
+               tt_calls_line TYPE ZCL_ACE_APPL=>tt_calls_line,
                t_vars        TYPE tt_vars,
                tt_refvar     TYPE tt_refvar,
                t_classes     TYPE tt_classes,
@@ -263,7 +247,7 @@ public section.
     mt_locals_set          TYPE STANDARD TABLE OF ts_locals .
   data:
     mt_globals_set         TYPE STANDARD TABLE OF ts_globals .
-  data MS_SEL_CALL type TS_CALLS_LINE .
+  data MS_SEL_CALL type ZCL_ACE_APPL=>TS_CALLS_LINE .
 
   methods CONSTRUCTOR
     importing

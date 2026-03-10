@@ -142,7 +142,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       "code execution scanner
       DATA: max       TYPE i,
-            call_line TYPE ZCL_ACE_WINDOW=>ts_calls_line,
+            call_line TYPE ZCL_ACE_APPL=>ts_calls_line,
             program   TYPE program,
             include   TYPE program,
             prefix    TYPE string,
