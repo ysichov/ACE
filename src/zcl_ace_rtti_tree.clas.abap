@@ -391,6 +391,7 @@ method DISPLAY.
       IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'METHOD' AND <include> IS NOT INITIAL.
         DATA(lv_cm_include) = CONV program( <include> ).
         DATA(lv_cm_method)  = CONV string( <ev_name> ).
+        DATA(lv_cm_value)   = CONV i( <value> ).  " exact line from tree — always use this
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
@@ -407,13 +408,33 @@ method DISPLAY.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include INTO DATA(ls_cm_prog2).
         IF sy-subrc = 0.
+          " Check if there are enhancements for this method
+          READ TABLE ls_cm_prog2-tt_enh_blocks TRANSPORTING NO FIELDS
+            WITH KEY ev_type = 'METHOD' ev_name = lv_cm_method.
+          IF sy-subrc <> 0.
+            " No enhancements — navigate directly to the line stored in the tree node
+            mo_viewer->mo_window->set_program( lv_cm_include ).
+            mo_viewer->mo_window->m_prg-include = lv_cm_include.
+            mo_viewer->mo_window->set_program_line( lv_cm_value ).
+            RETURN.
+          ENDIF.
+          " Has enhancements — find method boundaries and build virtual buffer
           DATA(lv_cm_meth_line) = 0.
           DATA(lv_cm_endm_line) = 0.
           LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_cm_kw) WHERE name = 'METHOD'.
             DATA(ls_cm_stmt) = ls_cm_prog2-scan->statements[ ls_cm_kw-index ].
             DATA(ls_cm_tok)  = ls_cm_prog2-scan->tokens[ ls_cm_stmt-from + 1 ].
-            IF ls_cm_tok-str = lv_cm_method. lv_cm_meth_line = ls_cm_kw-line. EXIT. ENDIF.
+            IF ls_cm_tok-str = lv_cm_method AND ls_cm_kw-line = lv_cm_value.
+              lv_cm_meth_line = ls_cm_kw-line. EXIT.
+            ENDIF.
           ENDLOOP.
+          IF lv_cm_meth_line = 0.  " fallback: name-only match (e.g. global class CM-include)
+            LOOP AT ls_cm_prog2-t_keywords INTO ls_cm_kw WHERE name = 'METHOD'.
+              ls_cm_stmt = ls_cm_prog2-scan->statements[ ls_cm_kw-index ].
+              ls_cm_tok  = ls_cm_prog2-scan->tokens[ ls_cm_stmt-from + 1 ].
+              IF ls_cm_tok-str = lv_cm_method. lv_cm_meth_line = ls_cm_kw-line. EXIT. ENDIF.
+            ENDLOOP.
+          ENDIF.
           IF lv_cm_meth_line > 0.
             LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_cm_kw2)
               WHERE name = 'ENDMETHOD' AND line > lv_cm_meth_line.
@@ -421,14 +442,6 @@ method DISPLAY.
             ENDLOOP.
           ENDIF.
           IF lv_cm_meth_line > 0 AND lv_cm_endm_line > 0.
-            READ TABLE ls_cm_prog2-tt_enh_blocks TRANSPORTING NO FIELDS
-              WITH KEY ev_type = 'METHOD' ev_name = lv_cm_method.
-            IF sy-subrc <> 0.
-              mo_viewer->mo_window->set_program( lv_cm_include ).
-              mo_viewer->mo_window->m_prg-include = lv_cm_include.
-              mo_viewer->mo_window->set_program_line( lv_cm_meth_line ).
-              RETURN.
-            ENDIF.
             DATA lt_cm_src  TYPE sci_include.
             DATA lt_virt_kw TYPE ZCL_ACE_APPL=>tt_kword.
             LOOP AT ls_cm_prog2-source_tab INTO DATA(lv_cm_line)
@@ -622,7 +635,7 @@ method DISPLAY.
           ENDIF.
         ENDIF.
         mo_viewer->mo_window->set_program( lv_cm_include ).
-        mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
+        mo_viewer->mo_window->set_program_line( lv_cm_value ).
         RETURN.
       ENDIF.
 
