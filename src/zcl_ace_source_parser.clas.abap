@@ -1674,11 +1674,22 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
           READ TABLE o_scan->tokens INDEX statement-from INTO DATA(l_token).
           ls_state-token-line = ls_state-calculated-line = ls_state-composed-line = l_token-row.
-          ls_state-token-v_line = l_token-row.  " initialize v_line = line (adjusted if enhancements inserted later)
+          ls_state-token-v_line = l_token-row.
           ls_state-token-program = i_program.
+
+          " For METHODS/CLASS-METHODS in a chained statement (METHODS: a, b.)
+          " statement-from points to the shared METHODS keyword token whose row
+          " may be wrong for non-first entries. Use the method-name token row instead.
+          DATA(lv_token_row) = l_token-row.
+          IF ls_state-kw = 'METHODS' OR ls_state-kw = 'CLASS-METHODS'.
+            READ TABLE o_scan->tokens INDEX statement-from + 1 INTO DATA(l_name_tok).
+            IF sy-subrc = 0 AND l_name_tok-row > 0.
+              lv_token_row = l_name_tok-row.
+            ENDIF.
+          ENDIF.
+
           READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
-          "IF level-type <> 'D'. "Define Macros
-          IF i_include <> level-name. "includes will be processed separately
+          IF i_include <> level-name.
             ZCL_ACE_SOURCE_PARSER=>parse_tokens( i_class = i_class i_reltype = i_reltype i_main_prog = i_main_prog i_stack = stack i_program = CONV #( ls_state-token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
             ls_state-token-include = level-name.
 
@@ -1722,7 +1733,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
 
             IF ls_state-kw = 'ENDCLASS'.
-              ls_state-call_line-class = ls_state-param-class = ''.
+              " Reset all class-related state so next CLASS block starts clean
+              CLEAR: ls_state-call_line-class, ls_state-param-class, ls_state-class_name.
             ENDIF.
 
             IF ls_state-kw = 'ENDINTERFACE'.
@@ -1733,11 +1745,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
             IF ls_state-kw = 'ENDFORM' OR ls_state-kw = 'ENDMETHOD' OR ls_state-kw = 'ENDMODULE'.
               CLEAR:  ls_state-eventtype,  ls_state-eventname, ls_state-tabs, ls_state-variable, ls_state-token-sub.
-              IF ls_state-param-param IS INITIAL. "No params - save empty row if no params
+              IF ls_state-param-param IS INITIAL.
                 READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = ls_state-param-event name = ls_state-param-name TRANSPORTING NO FIELDS.
                 IF sy-subrc <> 0.
                   CLEAR ls_state-param-type.
-                  "APPEND param TO io_debugger->mo_window->ms_sources-t_params.
                 ENDIF.
               ENDIF.
             ENDIF.
@@ -1748,7 +1759,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
             CLEAR ls_state-new.
 
-
             IF ls_state-eventname IS  NOT INITIAL OR ls_state-class IS NOT INITIAL AND ls_state-eventtype <> 'EVENT' OR ls_state-kw = 'INCLUDE' OR ls_state-kw = 'CLASS-POOL' OR ls_state-kw = 'INTERFACE-POOL'.
               ls_state-token-sub = abap_true.
             ENDIF.
@@ -1756,8 +1766,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             IF ls_state-kw = 'START-OF-SELECTION' OR ls_state-kw = 'INITIALISATION' OR ls_state-kw = 'END-OF-SELECTION'.
               CLEAR ls_state-token-sub.
             ENDIF.
-
-
 
             ZCL_ACE_SOURCE_PARSER=>process_words(
               EXPORTING
@@ -1767,7 +1775,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                 i_main_prog = i_main_prog
                 i_reltype   = i_reltype
                 io_debugger = io_debugger
-                l_token_row = l_token-row
+                l_token_row = lv_token_row
                 o_procedure = o_procedure
               CHANGING
                 cs_state    = ls_state ).
@@ -1792,12 +1800,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         ENDDO.
 
-        "Fill keyword links for calls
         ZCL_ACE_SOURCE_PARSER=>link_calls_to_params(
           EXPORTING io_debugger = io_debugger
           CHANGING  ct_tokens   = tokens ).
 
-        "clear value(var) to var.
         LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING FIELD-SYMBOL(<param>).
           REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.
           REPLACE ALL OCCURRENCES OF ')' IN <param>-param WITH ''.
@@ -1811,11 +1817,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         prog-t_keywords = tokens.
         prog-program = i_program.
         prog-stack = stack.
-        " Initialize v_source/v_keywords from source before enhancements
         prog-v_source   = prog-source_tab.
         prog-v_keywords = tokens.
         APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
-        " Build v_source/v_keywords with FORM enhancements embedded (once, at parse time)
         ZCL_ACE_SOURCE_PARSER=>COLLECT_ENHANCEMENTS(
           i_program   = i_program
           io_debugger = io_debugger ).
@@ -1957,18 +1961,17 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         IF sy-index = 2 AND  cs_state-kw = 'CLASS'.
           cs_state-class_name          = cs_state-word.
-          cs_state-call_line-is_intf   = abap_false.  " entering a CLASS block — clear interface flag
+          cs_state-call_line-is_intf   = abap_false.
         ENDIF.
 
         IF sy-index = 2 AND cs_state-kw = 'INTERFACE'.
           cs_state-class_name          = cs_state-word.
           cs_state-call_line-class     = cs_state-word.
-          cs_state-call_line-is_intf   = abap_true.   " entering an INTERFACE block
+          cs_state-call_line-is_intf   = abap_true.
           cs_state-param-class         = cs_state-word.
         ENDIF.
 
         IF cs_state-kw = 'CLASS' AND cs_state-word = 'DEFINITION' AND cs_state-class_name IS NOT INITIAL.
-          " Record CLASS classname DEFINITION line — one entry per local class
           READ TABLE io_debugger->mo_window->ms_sources-tt_class_defs
             WITH KEY class = cs_state-class_name TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
@@ -1977,7 +1980,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-        "check cs_state-class name
         IF  cs_state-class_name IS INITIAL.
           SPLIT i_program AT '=' INTO TABLE split.
           IF lines( split ) > 1.
@@ -1995,14 +1997,12 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           cs_state-variable-eventname = cs_state-tab-eventname = cs_state-eventname = cs_state-param-name = cs_state-word.
           cs_state-param-line = l_token_row.
 
-          " Save is_intf across MOVE-CORRESPONDING (ts_int_tabs has no such field)
           DATA(lv_is_intf) = cs_state-call_line-is_intf.
           MOVE-CORRESPONDING cs_state-tab TO cs_state-call_line.
           cs_state-call_line-is_intf = lv_is_intf.
           cs_state-call_line-index = o_procedure->statement_index.
           cs_state-call_line-class = cs_state-class_name.
 
-          "methods in definition should be overwritten by Implementation section
           IF  cs_state-call_line-class IS NOT INITIAL.
             READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
              WITH KEY class = cs_state-call_line-class eventname = cs_state-call_line-eventname eventtype = cs_state-call_line-eventtype ASSIGNING <call_line>.
@@ -2012,16 +2012,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDIF.
 
           IF sy-subrc = 0.
-            " Record already exists (from DEFINITION) — this is IMPLEMENTATION overwriting
-            " Preserve def_include/def_line from first encounter (DEFINITION)
             IF <call_line>-def_include IS INITIAL.
               <call_line>-def_include = <call_line>-include.
-              <call_line>-def_line    = <call_line>-index.  " index here is statement_index of METHODS line
+              <call_line>-def_line    = <call_line>-index.
             ENDIF.
             <call_line>-index   = cs_state-call_line-index.
             <call_line>-include = cs_state-token-include.
           ELSE.
-            " First encounter = DEFINITION section — store def_include/def_line immediately
             cs_state-call_line-program     = i_program.
             cs_state-call_line-include     = cs_state-token-include.
             cs_state-call_line-meth_type   = cs_state-method_type.
@@ -2043,7 +2040,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                 cs_state-composed-name =  cs_state-prev.
                 APPEND  cs_state-composed TO cs_state-composed_vars.
               ENDIF.
-            WHEN 'CLEAR' OR 'SORT' OR 'CONDENSE'."no logic
+            WHEN 'CLEAR' OR 'SORT' OR 'CONDENSE'.
             WHEN 'FORM'.
               IF cs_state-param-name IS NOT INITIAL.
                 APPEND cs_state-param TO io_debugger->mo_window->ms_sources-t_params.
@@ -2061,12 +2058,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           cs_state-param-type = 'I'.
           CLEAR:  type,  par.
         ELSEIF cs_state-word = 'CHANGING' OR cs_state-word = 'EXPORTING' OR cs_state-word = 'RETURNING'.
-
           IF cs_state-param-param IS NOT INITIAL.
             APPEND cs_state-param TO io_debugger->mo_window->ms_sources-t_params.
             CLEAR:  type,  par, cs_state-param-param.
           ENDIF.
-
           cs_state-param-type = 'E'.
           CLEAR:  type,  par.
         ELSEIF cs_state-word = 'OPTIONAL' OR cs_state-word = 'PREFERRED' OR cs_state-word = 'REF' OR cs_state-word = 'TO'.
