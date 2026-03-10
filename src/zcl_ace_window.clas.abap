@@ -37,6 +37,7 @@ public section.
                index       TYPE i,
                def_include TYPE program,  "include of CLASS DEFINITION section
                def_line    TYPE i,        "line of METHODS statement in definition
+               is_intf     TYPE boolean,  "true if the class is a local INTERFACE (not CLASS)
              END OF ts_calls_line .
   types:
     tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .

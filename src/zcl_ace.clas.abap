@@ -335,9 +335,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
   METHOD BUILD_LOCAL_CLASSES_NODE.
     " Renders local classes (CP include) and unit test classes (CCAU include)
     " as child nodes under i_refnode, excluding i_excl_class.
+    " Interfaces (is_intf = true) are placed in a separate 'Interfaces' branch.
     " Returns the 'Local Classes' folder node key, or initial if none found.
     DATA: local      TYPE string,
           test_rel   TYPE salv_de_node_key,
+          intf_rel   TYPE salv_de_node_key,
           lv_prefix  TYPE string,
           lv_ccau    TYPE string.
 
@@ -348,6 +350,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       WHERE program = i_program AND class <> i_excl_class AND eventtype = 'METHOD'.
       IF local <> subs-class.
         IF subs-include = lv_ccau.
+          " Unit Test class branch
           IF test_rel IS INITIAL.
             test_rel = mo_tree_local->add_node(
               i_name = 'Unit Test Classes' i_icon = CONV #( icon_folder )
@@ -355,10 +358,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
               i_tree = VALUE #( ) ).
           ENDIF.
           add_class( i_class = subs-class i_refnode = test_rel no_locals = abap_true i_type = 'T' ).
+        ELSEIF subs-is_intf = abap_true.
+          " Local Interface — separate Interfaces branch
+          IF intf_rel IS INITIAL.
+            intf_rel = mo_tree_local->add_node(
+              i_name = 'Interfaces' i_icon = CONV #( icon_oo_connection )
+              i_rel  = i_refnode
+              i_tree = VALUE #( ) ).
+          ENDIF.
+          add_class( i_class = subs-class i_refnode = intf_rel no_locals = abap_true i_type = 'I' ).
         ELSE.
+          " Regular local class branch
           IF r_locals_rel IS INITIAL.
             r_locals_rel = mo_tree_local->add_node(
-              i_name = 'Local Classes' i_icon = conv #( icon_folder )
+              i_name = 'Local Classes' i_icon = CONV #( icon_folder )
               i_rel  = i_refnode
               i_tree = VALUE #( ) ).
           ENDIF.
@@ -1208,28 +1221,47 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
-      " ---- Local Classes ----
+      " ---- Local Classes + Interfaces ----
       IF lines( splits_prg ) = 1.
-        DATA(lv_loc_cnt)  = 0.
+        DATA(lv_cls_cnt)  = 0.
+        DATA(lv_intf_cnt) = 0.
         DATA(lv_loc_prev) = ``.
         LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs_cnt)
           WHERE program = mv_prog AND eventtype = 'METHOD' AND class <> splits_prg[ 1 ].
-          IF lv_loc_prev <> subs_cnt-class. lv_loc_cnt += 1. ENDIF.
+          IF lv_loc_prev <> subs_cnt-class.
+            IF subs_cnt-is_intf = abap_true.
+              lv_intf_cnt += 1.
+            ELSE.
+              lv_cls_cnt += 1.
+            ENDIF.
+          ENDIF.
           lv_loc_prev = subs_cnt-class.
         ENDLOOP.
-        IF lv_loc_cnt > 0.
-          IF lv_loc_cnt <= c_lazy_threshold.
-            locals_rel = build_local_classes_node(
-              i_program    = CONV #( mv_prog )
-              i_excl_class = splits_prg[ 1 ]
-              i_refnode    = mo_tree_local->main_node_key ).
-          ELSE.
+
+        DATA(lv_loc_cnt) = lv_cls_cnt + lv_intf_cnt.
+        IF lv_loc_cnt <= c_lazy_threshold.
+          " Small enough — build eagerly (with Interface/Class split inside)
+          locals_rel = build_local_classes_node(
+            i_program    = CONV #( mv_prog )
+            i_excl_class = splits_prg[ 1 ]
+            i_refnode    = mo_tree_local->main_node_key ).
+        ELSE.
+          " Large — two independent lazy folders
+          IF lv_cls_cnt > 0.
             locals_rel = mo_tree_local->add_node(
-              i_name = |Local Classes ({ lv_loc_cnt })|
+              i_name = |Local Classes ({ lv_cls_cnt })|
               i_icon = CONV #( icon_folder )
               i_rel  = mo_tree_local->main_node_key
               i_tree = VALUE #( param = |LCLASSES:{ mv_prog }| program = mv_prog ) ).
             APPEND locals_rel TO mo_tree_local->mt_lazy_nodes.
+          ENDIF.
+          IF lv_intf_cnt > 0.
+            DATA(lv_intf_rel) = mo_tree_local->add_node(
+              i_name = |Interfaces ({ lv_intf_cnt })|
+              i_icon = CONV #( icon_oo_connection )
+              i_rel  = mo_tree_local->main_node_key
+              i_tree = VALUE #( param = |LINTFS:{ mv_prog }| program = mv_prog ) ).
+            APPEND lv_intf_rel TO mo_tree_local->mt_lazy_nodes.
           ENDIF.
         ENDIF.
       ENDIF.

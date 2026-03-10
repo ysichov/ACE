@@ -885,7 +885,7 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
-    " ---- LCLASSES:{program} ----
+    " ---- LCLASSES:{program} — only non-interface local classes ----
     IF strlen( lv_param ) > 9 AND lv_param+0(9) = 'LCLASSES:'.
       DATA(lv_lc_prog) = lv_param+9.
       DATA(lv_lc_prev) = ``.
@@ -893,7 +893,7 @@ method DISPLAY.
       SPLIT lv_lc_prog AT '=' INTO TABLE lv_lc_splits.
       DATA(lv_main_class) = lv_lc_splits[ 1 ].
       LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_lc)
-        WHERE program = lv_lc_prog AND eventtype = 'METHOD'.
+        WHERE program = lv_lc_prog AND eventtype = 'METHOD' AND is_intf = abap_false.
         CHECK lv_lc-class <> lv_main_class.
         IF lv_lc_prev <> lv_lc-class.
           DATA(lv_cls_inc)  = COND program( WHEN lv_lc-def_include IS NOT INITIAL
@@ -915,6 +915,40 @@ method DISPLAY.
           ENDTRY.
         ENDIF.
         lv_lc_prev = lv_lc-class.
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
+    " ---- LINTFS:{program} — only local interfaces ----
+    IF strlen( lv_param ) > 7 AND lv_param+0(7) = 'LINTFS:'.
+      DATA(lv_li_prog) = lv_param+7.
+      DATA(lv_li_prev) = ``.
+      DATA(lv_li_splits) = VALUE string_table( ).
+      SPLIT lv_li_prog AT '=' INTO TABLE lv_li_splits.
+      DATA(lv_li_main) = lv_li_splits[ 1 ].
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_li)
+        WHERE program = lv_li_prog AND eventtype = 'METHOD' AND is_intf = abap_true.
+        CHECK lv_li-class <> lv_li_main.
+        IF lv_li_prev <> lv_li-class.
+          DATA(lv_li_inc)  = COND program( WHEN lv_li-def_include IS NOT INITIAL
+                                           THEN lv_li-def_include ELSE lv_li-include ).
+          DATA(lv_li_line) = COND i( WHEN lv_li-def_line > 0 THEN lv_li-def_line ELSE 0 ).
+          DATA(lv_li_node) = add_node(
+            i_name = CONV #( lv_li-class )
+            i_icon = CONV #( icon_oo_connection )
+            i_rel  = node_key
+            i_tree = VALUE #( kind    = 'M'
+                              value   = lv_li_line
+                              include = lv_li_inc
+                              program = lv_li-program
+                              param   = |CLASS:{ lv_li-class }| ) ).
+          APPEND lv_li_node TO mt_lazy_nodes.
+          TRY.
+              mo_tree->get_nodes( )->get_node( lv_li_node )->set_expander( abap_true ).
+            CATCH cx_root.
+          ENDTRY.
+        ENDIF.
+        lv_li_prev = lv_li-class.
       ENDLOOP.
       RETURN.
     ENDIF.
@@ -957,6 +991,10 @@ method DISPLAY.
                     WHEN lv_cm-eventname = 'CONSTRUCTOR'              THEN CONV #( icon_tools )
                     ELSE                                                   CONV #( icon_led_green ) )
           ELSE CONV #( icon_oo_overwrite ) ).
+        " Use interface method icon if this is an interface
+        IF lv_cm-is_intf = abap_true.
+          lv_micon = icon_oo_inst_method.
+        ENDIF.
         DATA(lv_meth_node) = add_node(
           i_name = lv_cm-eventname i_icon = lv_micon i_rel = node_key
           i_tree = VALUE #( kind = 'M' value = lv_cmkw-v_line include = lv_cm-include

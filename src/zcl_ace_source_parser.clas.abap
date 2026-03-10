@@ -1689,10 +1689,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
             CLEAR ls_state-new.
 
-            IF ls_state-kw = 'CLASS'.
+            IF ls_state-kw = 'CLASS' OR ls_state-kw = 'INTERFACE'.
               ls_state-class = abap_true.
             ENDIF.
-
 
             IF ls_state-kw = 'PUBLIC'.
               ls_state-method_type = 1.
@@ -1727,7 +1726,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
 
             IF ls_state-kw = 'ENDINTERFACE'.
-              ls_state-call_line-class = ls_state-param-class = ls_state-class_name = ''.
+              ls_state-call_line-class   = ls_state-param-class = ls_state-class_name = ''.
+              ls_state-call_line-is_intf = abap_false.
+              CLEAR ls_state-class.
             ENDIF.
 
             IF ls_state-kw = 'ENDFORM' OR ls_state-kw = 'ENDMETHOD' OR ls_state-kw = 'ENDMODULE'.
@@ -1955,13 +1956,15 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDIF.
 
         IF sy-index = 2 AND  cs_state-kw = 'CLASS'.
-          cs_state-class_name = cs_state-word.
+          cs_state-class_name          = cs_state-word.
+          cs_state-call_line-is_intf   = abap_false.  " entering a CLASS block — clear interface flag
         ENDIF.
 
         IF sy-index = 2 AND cs_state-kw = 'INTERFACE'.
-          cs_state-class_name      = cs_state-word.
-          cs_state-call_line-class = cs_state-word.
-          cs_state-param-class     = cs_state-word.
+          cs_state-class_name          = cs_state-word.
+          cs_state-call_line-class     = cs_state-word.
+          cs_state-call_line-is_intf   = abap_true.   " entering an INTERFACE block
+          cs_state-param-class         = cs_state-word.
         ENDIF.
 
         IF cs_state-kw = 'CLASS' AND cs_state-word = 'DEFINITION' AND cs_state-class_name IS NOT INITIAL.
@@ -1992,7 +1995,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           cs_state-variable-eventname = cs_state-tab-eventname = cs_state-eventname = cs_state-param-name = cs_state-word.
           cs_state-param-line = l_token_row.
 
+          " Save is_intf across MOVE-CORRESPONDING (ts_int_tabs has no such field)
+          DATA(lv_is_intf) = cs_state-call_line-is_intf.
           MOVE-CORRESPONDING cs_state-tab TO cs_state-call_line.
+          cs_state-call_line-is_intf = lv_is_intf.
           cs_state-call_line-index = o_procedure->statement_index.
           cs_state-call_line-class = cs_state-class_name.
 
