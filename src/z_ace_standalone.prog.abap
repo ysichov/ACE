@@ -1,4 +1,5 @@
-  REPORT z_ace_standalone. " ACE - Abap Code Explorer
+  REPORT z_ace. " ACE - Abap Code Explorer
+INTERFACE zif_ace_constants DEFERRED.
 CLASS zcl_ace_window DEFINITION DEFERRED.
 CLASS zcl_ace_text_viewer DEFINITION DEFERRED.
 CLASS zcl_ace_table_viewer DEFINITION DEFERRED.
@@ -11,7 +12,601 @@ CLASS zcl_ace_mermaid DEFINITION DEFERRED.
 CLASS zcl_ace_appl DEFINITION DEFERRED.
 CLASS zcl_ace_alv_common DEFINITION DEFERRED.
 CLASS zcl_ace DEFINITION DEFERRED.
+INTERFACE zif_ace_constants.
 
+  CONSTANTS enh_mode_dynamic TYPE char1 VALUE 'D'.
+  CONSTANTS enh_mode_form    TYPE char1 VALUE 'F'.
+
+  CONSTANTS enh_pos_begin     TYPE string VALUE 'BEGIN'.
+  CONSTANTS enh_pos_end       TYPE string VALUE 'END'.
+  CONSTANTS enh_pos_overwrite TYPE string VALUE 'OVERWRITE'.
+
+  CONSTANTS enh_pattern_method_pre    TYPE string VALUE '%_BEGIN'.
+  CONSTANTS enh_pattern_method_post   TYPE string VALUE '%_END'.
+  CONSTANTS enh_pattern_form_begin    TYPE string VALUE '\SE:BEGIN'.
+  CONSTANTS enh_pattern_form_end      TYPE string VALUE '\SE:END'.
+
+  CONSTANTS type_interface   TYPE char1 VALUE 'I'.
+  CONSTANTS type_testclass   TYPE char1 VALUE 'T'.
+
+  CONSTANTS inc_class_pool    TYPE string VALUE 'CP'.
+  CONSTANTS inc_class_def     TYPE string VALUE 'CU'.
+  CONSTANTS inc_class_priv    TYPE string VALUE 'CI'.
+  CONSTANTS inc_class_prot    TYPE string VALUE 'CO'.
+  CONSTANTS inc_interface     TYPE string VALUE 'IU'.
+  CONSTANTS inc_class_test    TYPE string VALUE 'CCAU'.
+  CONSTANTS inc_class_helper  TYPE string VALUE 'CCIMP'.
+
+  CONSTANTS inc_code_flow_mix TYPE string VALUE 'Code_Flow_Mix'.
+  CONSTANTS inc_virtual       TYPE string VALUE 'VIRTUAL'.
+
+  CONSTANTS kw_if       TYPE string VALUE 'IF'.
+  CONSTANTS kw_elseif   TYPE string VALUE 'ELSEIF'.
+  CONSTANTS kw_else     TYPE string VALUE 'ELSE'.
+  CONSTANTS kw_endif    TYPE string VALUE 'ENDIF'.
+  CONSTANTS kw_case     TYPE string VALUE 'CASE'.
+  CONSTANTS kw_when     TYPE string VALUE 'WHEN'.
+  CONSTANTS kw_endcase  TYPE string VALUE 'ENDCASE'.
+  CONSTANTS kw_do       TYPE string VALUE 'DO'.
+  CONSTANTS kw_enddo    TYPE string VALUE 'ENDDO'.
+  CONSTANTS kw_loop     TYPE string VALUE 'LOOP'.
+  CONSTANTS kw_endloop  TYPE string VALUE 'ENDLOOP'.
+  CONSTANTS kw_while    TYPE string VALUE 'WHILE'.
+  CONSTANTS kw_endwhile TYPE string VALUE 'ENDWHILE'.
+
+  CONSTANTS kw_data       TYPE string VALUE 'DATA'.
+  CONSTANTS kw_types      TYPE string VALUE 'TYPES'.
+  CONSTANTS kw_constants  TYPE string VALUE 'CONSTANTS'.
+  CONSTANTS kw_parameters TYPE string VALUE 'PARAMETERS'.
+  CONSTANTS kw_include    TYPE string VALUE 'INCLUDE'.
+  CONSTANTS kw_report     TYPE string VALUE 'REPORT'.
+  CONSTANTS kw_program    TYPE string VALUE 'PROGRAM'.
+
+  CONSTANTS kw_public    TYPE string VALUE 'PUBLIC'.
+  CONSTANTS kw_protected TYPE string VALUE 'PROTECTED'.
+  CONSTANTS kw_private   TYPE string VALUE 'PRIVATE'.
+
+  CONSTANTS kw_form        TYPE string VALUE 'FORM'.
+  CONSTANTS kw_endform     TYPE string VALUE 'ENDFORM'.
+  CONSTANTS kw_method      TYPE string VALUE 'METHOD'.
+  CONSTANTS kw_endmethod   TYPE string VALUE 'ENDMETHOD'.
+  CONSTANTS kw_methods     TYPE string VALUE 'METHODS'.
+  CONSTANTS kw_class_method TYPE string VALUE 'CLASS-METHODS'.
+  CONSTANTS kw_module      TYPE string VALUE 'MODULE'.
+  CONSTANTS kw_endmodule   TYPE string VALUE 'ENDMODULE'.
+
+  CONSTANTS kw_class     TYPE string VALUE 'CLASS'.
+  CONSTANTS kw_endclass  TYPE string VALUE 'ENDCLASS'.
+  CONSTANTS kw_interface TYPE string VALUE 'INTERFACE'.
+
+  CONSTANTS kw_enhancement    TYPE string VALUE 'ENHANCEMENT'.
+  CONSTANTS kw_endenhancement TYPE string VALUE 'ENDENHANCEMENT'.
+
+  CONSTANTS param_importing  TYPE string VALUE 'IMPORTING'.
+  CONSTANTS param_exporting  TYPE string VALUE 'EXPORTING'.
+  CONSTANTS param_changing   TYPE string VALUE 'CHANGING'.
+  CONSTANTS param_using      TYPE string VALUE 'USING'.
+  CONSTANTS param_returning  TYPE string VALUE 'RETURNING'.
+
+  CONSTANTS param_type_import TYPE char1 VALUE 'I'.
+  CONSTANTS param_type_export TYPE char1 VALUE 'E'.
+
+  CONSTANTS call_type_method    TYPE string VALUE 'METHOD'.
+  CONSTANTS call_type_form      TYPE string VALUE 'FORM'.
+  CONSTANTS call_type_function  TYPE string VALUE 'FUNCTION'.
+  CONSTANTS call_type_module    TYPE string VALUE 'MODULE'.
+  CONSTANTS call_type_screen    TYPE string VALUE 'SCREEN'.
+  CONSTANTS call_type_event     TYPE string VALUE 'EVENT'.
+
+  CONSTANTS call_dir_import  TYPE char1 VALUE '>'.
+  CONSTANTS call_dir_export  TYPE char1 VALUE '<'.
+
+  CONSTANTS max_history_depth     TYPE i VALUE 9.
+  CONSTANTS default_history_depth TYPE i VALUE 9.
+
+  CONSTANTS filter_z_code_only TYPE x VALUE '01'.
+  CONSTANTS filter_all_code    TYPE x VALUE '00'.
+
+  CONSTANTS marker_breakpoint_session  TYPE i VALUE 2.
+  CONSTANTS marker_breakpoint_external TYPE i VALUE 4.
+  CONSTANTS marker_current_line        TYPE i VALUE 7.
+
+  CONSTANTS struct_type_event     TYPE char1 VALUE 'E'.
+  CONSTANTS struct_type_call      TYPE char1 VALUE 'C'.
+  CONSTANTS struct_type_procedure TYPE char1 VALUE 'P'.
+
+  CONSTANTS stmt_type_include TYPE char1 VALUE '1'.
+  CONSTANTS stmt_type_report  TYPE char1 VALUE '2'.
+  CONSTANTS stmt_type_program TYPE char1 VALUE '3'.
+
+  CONSTANTS method_type_public    TYPE i VALUE 1.
+  CONSTANTS method_type_protected TYPE i VALUE 2.
+  CONSTANTS method_type_private   TYPE i VALUE 3.
+
+  CONSTANTS reltype_interface_impl TYPE seoreltype VALUE '0'.
+  CONSTANTS reltype_interface_used TYPE seoreltype VALUE '1'.
+  CONSTANTS reltype_inheritance    TYPE seoreltype VALUE '2'.
+
+ENDINTERFACE.
+
+CLASS zcl_ace DEFINITION
+  create public .
+
+public section.
+
+  types:
+    BEGIN OF selection_display_s,
+          ind         TYPE i,
+          field_label TYPE lvc_fname,
+          int_type(1),
+          inherited   TYPE aqadh_type_of_icon,
+          sign        TYPE tvarv_sign,
+          opti        TYPE tvarv_opti,
+          option_icon TYPE aqadh_type_of_icon,
+          low         TYPE string,
+          high        TYPE string,
+          more_icon   TYPE aqadh_type_of_icon,
+          range       TYPE aqadh_t_ranges,
+          name        TYPE reptext,
+          element     TYPE text60,
+          domain      TYPE text60,
+          datatype    TYPE string,
+          length      TYPE i,
+          color       TYPE lvc_t_scol,
+          style       TYPE lvc_t_styl,
+        END OF selection_display_s .
+  types:
+    BEGIN OF t_sel_row,
+          sign        TYPE tvarv_sign,
+          opti        TYPE tvarv_opti,
+          option_icon TYPE aqadh_type_of_icon,
+          low         TYPE string,
+          high        TYPE string,
+          more_icon   TYPE aqadh_type_of_icon,
+          range       TYPE aqadh_t_ranges,
+        END OF t_sel_row .
+  types:
+    BEGIN OF sign_option_icon_s,
+               sign          TYPE tvarv_sign,
+               option        TYPE tvarv_opti,
+               icon_name(64) TYPE c,
+               icon          TYPE aqadh_type_of_icon,
+             END OF sign_option_icon_s .
+  types:
+    BEGIN OF var_table,
+               step          TYPE i,
+               stack         TYPE i,
+               program(40)   TYPE c,
+               eventtype(30) TYPE c,
+               eventname(61) TYPE c,
+               first         TYPE boolean,
+               i_appear      TYPE boolean,
+               del           TYPE boolean,
+               leaf          TYPE string,
+               name(1000)               ,
+               path          TYPE string,
+               short         TYPE string,
+               key           TYPE salv_de_node_key,
+               parent        TYPE string,
+               cl_leaf       TYPE int4,
+               ref           TYPE REF TO data,
+               type          TYPE string,
+               instance      TYPE string,
+               objname       TYPE string,
+               done          TYPE boolean,
+             END OF var_table .
+  types:
+    t_var_table TYPE STANDARD TABLE OF var_table WITH NON-UNIQUE DEFAULT KEY .
+  types:
+    BEGIN OF var_table_temp,
+               step          TYPE i,
+               stack         TYPE i,
+               eventtype(30) TYPE c,
+               eventname(61) TYPE c,
+               name          TYPE string,
+               value         TYPE string,
+               first         TYPE boolean,
+               i_appear      TYPE boolean,
+               del           TYPE boolean,
+               program(40)   TYPE c,
+               leaf          TYPE string,
+               path          TYPE string,
+               type          TYPE string,
+               instance      TYPE string,
+               objname       TYPE string,
+               ref           TYPE REF TO data,
+             END OF var_table_temp .
+  types:
+    BEGIN OF var_table_h,
+               step          TYPE i,
+               program(40)   TYPE c,
+               eventtype(30) TYPE c,
+               eventname(61) TYPE c,
+               leaf          TYPE string,
+               name          TYPE string,
+               path          TYPE string,
+               parent        TYPE string,
+               short         TYPE string,
+               cl_leaf       TYPE int4,
+               ref           TYPE REF TO data,
+               tree          TYPE REF TO ZCL_ACE_RTTI_TREE,
+               time          LIKE sy-uname,
+             END OF var_table_h .
+  types:
+    BEGIN OF t_obj,
+               name       TYPE string,
+               alv_viewer TYPE REF TO ZCL_ACE_TABLE_VIEWER,
+             END OF t_obj .
+  types:
+    BEGIN OF t_popup,
+               parent TYPE REF TO cl_gui_dialogbox_container,
+               child  TYPE REF TO cl_gui_dialogbox_container,
+             END OF t_popup .
+  types:
+    BEGIN OF t_classes_types,
+               name TYPE string,
+               full TYPE string,
+               type TYPE char1,
+               key  TYPE salv_de_node_key,
+             END OF t_classes_types .
+  types:
+    BEGIN OF t_lang,
+               spras(4),
+               sptxt    TYPE sptxt,
+             END OF t_lang .
+  types:
+    BEGIN OF t_stack,
+               step       TYPE i,
+               stacklevel TYPE tpda_stack_level,
+               line       TYPE tpda_sc_line,
+               program    TYPE tpda_program,
+               eventtype  TYPE string,
+               eventname  TYPE tpda_event,
+               prg        TYPE program,
+               include    TYPE tpda_include,
+             END OF t_stack .
+  types:
+    BEGIN OF t_step_counter,
+               step       TYPE i,
+               stacklevel TYPE tpda_stack_level,
+               line       TYPE tpda_sc_line,
+               eventtype  TYPE string,
+               eventname  TYPE string,
+               class      TYPE string,
+               first      TYPE boolean,
+               last       TYPE boolean,
+               program    TYPE tpda_program,
+               include    TYPE tpda_include,
+               time       LIKE sy-uzeit,
+             END OF t_step_counter .
+  types:
+    BEGIN OF ts_calls,
+               class TYPE string,
+               event TYPE string,
+               type  TYPE string,
+               name  TYPE string,
+               outer TYPE string,
+               inner TYPE string,
+               super TYPE boolean,
+             END OF ts_calls .
+  types:
+    tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
+  types:
+    BEGIN OF ts_kword,
+               program    TYPE string,
+               include    TYPE string,
+               index      TYPE i,
+               line       TYPE i,
+               v_line     TYPE i,
+               v_from_row TYPE i,
+               v_to_row   TYPE i,
+               sub        TYPE boolean,
+               name       TYPE string,
+               from       TYPE i,
+               to         TYPE i,
+               tt_calls   TYPE tt_calls,
+             END OF ts_kword .
+  types:
+    tt_kword TYPE STANDARD TABLE OF ts_kword WITH NON-UNIQUE DEFAULT KEY .
+  types:
+    BEGIN OF ts_calls_line,
+               program     TYPE program,
+               include     TYPE program,
+               class       TYPE string,
+               eventtype   TYPE string,
+               meth_type   TYPE i,
+               eventname   TYPE string,
+               redefined   TYPE boolean,
+               index       TYPE i,
+               def_include TYPE program,
+               def_line    TYPE i,
+               is_intf     TYPE boolean,
+             END OF ts_calls_line .
+  types:
+    tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .
+  types:
+    BEGIN OF ts_vars,
+               program   TYPE program,
+               include   TYPE program,
+               class     TYPE string,
+               eventtype TYPE string,
+               eventname TYPE string,
+               line      TYPE i,
+               name      TYPE string,
+               type      TYPE string,
+               icon      TYPE salv_de_tree_image,
+             END OF ts_vars .
+  types:
+    BEGIN OF ts_var,
+               program   TYPE string,
+               include   TYPE string,
+               line      TYPE i,
+               name(100) TYPE c,
+               type      TYPE string,
+             END OF ts_var .
+  types:
+    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+  types:
+    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+  types:
+    BEGIN OF ts_int_tabs,
+               eventtype TYPE string,
+               eventname TYPE string,
+               name      TYPE string,
+               type      TYPE string,
+             END OF ts_int_tabs .
+  types:
+    tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY .
+  types:
+    BEGIN OF ts_params,
+               program   TYPE program,
+               include   TYPE program,
+               class     TYPE string,
+               event     TYPE string,
+               name      TYPE string,
+               type      TYPE char1,
+               param     TYPE string,
+               preferred TYPE char1,
+               line      TYPE i,
+             END OF ts_params .
+  types:
+    BEGIN OF ts_parse_state,
+               prev            TYPE string,
+               change          TYPE string,
+               kw              TYPE string,
+               word            TYPE string,
+               new             TYPE boolean,
+               count           TYPE i,
+               lv_default      TYPE boolean,
+               ref             TYPE boolean,
+               class           TYPE boolean,
+               preferred       TYPE boolean,
+               method_type     TYPE i,
+               class_name      TYPE string,
+               eventtype       TYPE string,
+               eventname       TYPE string,
+               token           TYPE ts_kword,
+               call            TYPE ts_calls,
+               call_line       TYPE ts_calls_line,
+               variable        TYPE ts_vars,
+               tab             TYPE ts_int_tabs,
+               tabs            TYPE tt_tabs,
+               composed        TYPE ts_var,
+               composed_vars   TYPE tt_composed,
+               calculated      TYPE ts_var,
+               calculated_vars TYPE tt_calculated,
+               param           TYPE ts_params,
+             END OF ts_parse_state .
+  types:
+    BEGIN OF ts_tree,
+               kind(1),
+               value    TYPE string,
+               param    TYPE string,
+               program  TYPE program,
+               include  TYPE program,
+               ev_type  TYPE string,
+               ev_name  TYPE string,
+               enh_id   TYPE i,
+               var_name TYPE string,
+             END OF ts_tree .
+  types:
+    BEGIN OF ts_call,
+               include TYPE string,
+               ev_name TYPE string,
+             END OF ts_call .
+
+  " --- types from ZCL_ACE (instance-specific) ---
+  types:
+    BEGIN OF t_sel_var,
+               name   TYPE string,
+               i_sel  TYPE boolean,
+               refval TYPE REF TO data,
+             END OF t_sel_var .
+  types:
+    BEGIN OF ts_if,
+               if_ind      TYPE i,
+               end_ind     TYPE i,
+               before_else TYPE i,
+             END OF ts_if .
+  types:
+    tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY .
+  types:
+    BEGIN OF ts_line,
+               cond        TYPE string,
+               program     TYPE string,
+               include     TYPE string,
+               line        TYPE i,
+               ind         TYPE i,
+               class       TYPE string,
+               ev_name     TYPE string,
+               ev_type     TYPE string,
+               stack       TYPE i,
+               code        TYPE string,
+               arrow       TYPE string,
+               subname     TYPE string,
+               del         TYPE flag,
+               els_before  TYPE i,
+               els_after   TYPE i,
+               active_root TYPE flag,
+             END OF ts_line .
+  types:
+    tt_line TYPE TABLE OF ts_line WITH EMPTY KEY .
+
+  " --- class-data (formerly ZCL_ACE_APPL static) ---
+  class-data:
+    m_option_icons   TYPE TABLE OF sign_option_icon_s .
+  class-data:
+    mt_lang          TYPE TABLE OF t_lang .
+  class-data:
+    mt_obj           TYPE TABLE OF t_obj .
+  class-data:
+    mt_popups        TYPE TABLE OF t_popup .
+  class-data I_MERMAID_ACTIVE type BOOLEAN .
+  class-data:
+    mt_sel TYPE TABLE OF selection_display_s .
+
+  " --- instance data ---
+  data MV_PROG type PROG .
+  data MV_SHOW_PROG type PROG .
+  data MV_DEST type TEXT255 .
+  data MV_MODEL type TEXT255 .
+  data MV_APIKEY type TEXT255 .
+  data:
+    mt_compo          TYPE TABLE OF scompo .
+  data MT_LOCALS type TPDA_SCR_LOCALS_IT .
+  data MT_GLOBALS type TPDA_SCR_GLOBALS_IT .
+  data MT_RET_EXP type TPDA_SCR_LOCALS_IT .
+  data M_COUNTER type I .
+  data:
+    mt_steps          TYPE  TABLE OF ZCL_ACE=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname .
+  data:
+    mt_var_step       TYPE  TABLE OF ZCL_ACE=>var_table_h .
+  data M_STEP type I .
+  data M_I_FIND type BOOLEAN .
+  data M_STOP_STACK type I .
+  data M_DEBUG type X .
+  data M_REFRESH type BOOLEAN .
+  data M_UPDATE type BOOLEAN .
+  data I_STEP type BOOLEAN .
+  data MS_STACK_PREV type ZCL_ACE=>T_STACK .
+  data MS_STACK type ZCL_ACE=>T_STACK .
+  data I_HISTORY type BOOLEAN .
+  data M_HIST_STEP type I .
+  data M_STEP_DELTA type I .
+  data:
+    mt_vars_hist_view TYPE STANDARD TABLE OF ZCL_ACE=>var_table .
+  data:
+    mt_vars_hist      TYPE STANDARD TABLE OF ZCL_ACE=>var_table .
+  data:
+    mt_state          TYPE STANDARD TABLE OF ZCL_ACE=>var_table .
+  data MV_RECURSE type I .
+  data:
+    mt_classes_types  TYPE TABLE OF ZCL_ACE=>t_classes_types .
+  data MO_WINDOW type ref to ZCL_ACE_WINDOW .
+  data MV_F7_STOP type BOOLEAN .
+  data M_F6_LEVEL type I .
+  data M_TARGET_STACK type I .
+  data MO_TREE_LOCAL type ref to ZCL_ACE_RTTI_TREE .
+  data:
+    mt_selected_var   TYPE TABLE OF t_sel_var .
+  data MV_STACK_CHANGED type BOOLEAN .
+  data M_VARIABLE type ref to DATA .
+  data:
+    mt_new_string     TYPE TABLE OF  string .
+  data M_QUICK type TPDA_SCR_QUICK_INFO .
+  data:
+    mr_statements     TYPE RANGE OF string .
+  data MS_IF type TS_IF .
+  data MT_IF type TT_IF .
+
+  " --- class-methods (formerly ZCL_ACE_APPL static) ---
+  class-methods INIT_ICONS_TABLE .
+  class-methods CHECK_MERMAID .
+  class-methods OPEN_INT_TABLE
+    importing
+      !IT_TAB type ANY TABLE optional
+      !IT_REF type ref to DATA optional
+      !I_NAME type STRING
+      !IO_WINDOW type ref to ZCL_ACE_WINDOW .
+
+  " --- instance methods ---
+  methods CONSTRUCTOR
+    importing
+      !I_PROG type PROG .
+  methods SHOW .
+  methods ADD_CLASS
+    importing
+      !I_CLASS type STRING
+      !I_REFNODE type SALV_DE_NODE_KEY
+      !NO_LOCALS type BOOLEAN optional
+      !I_TREE type ZCL_ACE=>TS_TREE optional
+      !I_TYPE type FLAG optional
+    returning
+      value(R_NODE) type SALV_DE_NODE_KEY .
+  methods BUILD_LOCAL_CLASSES_NODE
+    importing
+      !I_PROGRAM    type STRING
+      !I_EXCL_CLASS type STRING
+      !I_REFNODE    type SALV_DE_NODE_KEY
+    returning
+      value(R_LOCALS_REL) type SALV_DE_NODE_KEY .
+  methods GET_CODE_FLOW
+    importing
+      !I_CALC_PATH type BOOLEAN optional
+    returning
+      value(RESULTS) type TT_LINE .
+  methods GET_CODE_MIX
+    importing
+      !I_CALC_PATH type BOOLEAN optional .
+  methods MARK_ACTIVE_ROOT
+    importing
+      !I_CALC_PATH type BOOLEAN optional
+    changing
+      !CT_RESULTS TYPE TT_LINE .
+protected section.
+private section.
+  methods GET_INCLUDE_PREFIX
+    importing
+      !I_CLASS type STRING
+    returning
+      value(RV_PREFIX) type STRING .
+
+  constants:
+    BEGIN OF c_kind,
+                   struct LIKE cl_abap_typedescr=>kind_struct VALUE cl_abap_typedescr=>kind_struct,
+                   table  LIKE cl_abap_typedescr=>kind_table VALUE cl_abap_typedescr=>kind_table,
+                   elem   LIKE cl_abap_typedescr=>kind_elem VALUE cl_abap_typedescr=>kind_elem,
+                   class  LIKE cl_abap_typedescr=>kind_class VALUE cl_abap_typedescr=>kind_class,
+                   intf   LIKE cl_abap_typedescr=>kind_intf VALUE cl_abap_typedescr=>kind_intf,
+                   ref    LIKE cl_abap_typedescr=>kind_ref VALUE cl_abap_typedescr=>kind_ref,
+                 END OF c_kind .
+ENDCLASS.
+CLASS zcl_ace_alv_common DEFINITION
+  create public .
+
+public section.
+
+  constants:
+    c_white(4) TYPE x value '00000001' ##NO_TEXT.
+
+  class-methods REFRESH
+    importing
+      !I_OBJ type ref to CL_GUI_ALV_GRID
+      !I_LAYOUT type LVC_S_LAYO optional
+      !I_SOFT type CHAR01 optional .
+  class-methods TRANSLATE_FIELD
+    importing
+      !I_LANG type DDLANGUAGE optional
+    changing
+      !C_FLD type LVC_S_FCAT .
+  class-methods GET_SELECTED
+    importing
+      !I_OBJ type ref to CL_GUI_ALV_GRID
+    returning
+      value(E_INDEX) type I .
+protected section.
+private section.
+ENDCLASS.
 CLASS zcl_ace_appl DEFINITION
   create public .
 
@@ -321,186 +916,6 @@ public section.
 protected section.
 private section.
 ENDCLASS.
-
-
-CLASS zcl_ace DEFINITION
-  create public .
-
-public section.
-
-  types:
-    BEGIN OF t_obj,
-               name TYPE string,
-               obj  TYPE string,
-             END OF t_obj .
-  types:
-    BEGIN OF t_sel_var,
-               name   TYPE string,
-               i_sel  TYPE boolean,
-               refval TYPE REF TO data,
-             END OF t_sel_var .
-  types:
-    BEGIN OF ts_if,
-               if_ind      TYPE i,
-               end_ind     TYPE i,
-               before_else TYPE i,
-             END OF ts_if .
-  types:
-    tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY .
-  types:
-    BEGIN OF ts_line,
-               cond        TYPE string,
-               program     TYPE string,
-               include     TYPE string,
-               line        TYPE i,
-               ind         TYPE i,
-               class       TYPE string,
-               ev_name     TYPE string,
-               ev_type     TYPE string,
-               stack       TYPE i,
-               code        TYPE string,
-               arrow       TYPE string,
-               subname     TYPE string,
-               del         TYPE flag,
-               els_before  TYPE i,
-               els_after   TYPE i,
-               active_root TYPE flag,
-             END OF ts_line .
-  types:
-    tt_line TYPE TABLE OF ts_line WITH EMPTY KEY .
-
-  data MV_PROG type PROG .
-  data MV_SHOW_PROG type PROG .
-  data MV_DEST type TEXT255 .
-  data MV_MODEL type TEXT255 .
-  data MV_APIKEY type TEXT255 .
-  data:
-    mt_obj            TYPE TABLE OF t_obj .
-  data:
-    mt_compo          TYPE TABLE OF scompo .
-  data MT_LOCALS type TPDA_SCR_LOCALS_IT .
-  data MT_GLOBALS type TPDA_SCR_GLOBALS_IT .
-  data MT_RET_EXP type TPDA_SCR_LOCALS_IT .
-  data M_COUNTER type I .
-  data:
-    mt_steps          TYPE  TABLE OF ZCL_ACE_APPL=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname .
-  data:
-    mt_var_step       TYPE  TABLE OF ZCL_ACE_APPL=>var_table_h .
-  data M_STEP type I .
-  data M_I_FIND type BOOLEAN .
-  data M_STOP_STACK type I .
-  data M_DEBUG type X .
-  data M_REFRESH type BOOLEAN .
-  data M_UPDATE type BOOLEAN .
-  data I_STEP type BOOLEAN .
-  data MS_STACK_PREV type ZCL_ACE_APPL=>T_STACK .
-  data MS_STACK type ZCL_ACE_APPL=>T_STACK .
-  data I_HISTORY type BOOLEAN .
-  data M_HIST_STEP type I .
-  data M_STEP_DELTA type I .
-  data:
-    mt_vars_hist_view TYPE STANDARD TABLE OF ZCL_ACE_APPL=>var_table .
-  data:
-    mt_vars_hist      TYPE STANDARD TABLE OF ZCL_ACE_APPL=>var_table .
-  data:
-    mt_state          TYPE STANDARD TABLE OF ZCL_ACE_APPL=>var_table .
-  data MV_RECURSE type I .
-  data:
-    mt_classes_types  TYPE TABLE OF ZCL_ACE_APPL=>t_classes_types .
-  data MO_WINDOW type ref to ZCL_ACE_WINDOW .
-  data MV_F7_STOP type BOOLEAN .
-  data M_F6_LEVEL type I .
-  data M_TARGET_STACK type I .
-  data MO_TREE_LOCAL type ref to ZCL_ACE_RTTI_TREE .
-  data:
-    mt_selected_var   TYPE TABLE OF t_sel_var .
-  data MV_STACK_CHANGED type BOOLEAN .
-  data M_VARIABLE type ref to DATA .
-  data:
-    mt_new_string     TYPE TABLE OF  string .
-  data M_QUICK type TPDA_SCR_QUICK_INFO .
-  data:
-    mr_statements     TYPE RANGE OF string .
-  data MS_IF type TS_IF .
-  data MT_IF type TT_IF .
-
-  methods CONSTRUCTOR
-    importing
-      !I_PROG type PROG .
-  methods SHOW .
-  methods ADD_CLASS
-    importing
-      !I_CLASS type STRING
-      !I_REFNODE type SALV_DE_NODE_KEY
-      !NO_LOCALS type BOOLEAN optional
-      !I_TREE type ZCL_ACE_APPL=>TS_TREE optional
-      !I_TYPE type FLAG optional
-    returning
-      value(R_NODE) type SALV_DE_NODE_KEY .
-  methods BUILD_LOCAL_CLASSES_NODE
-    importing
-      !I_PROGRAM    type STRING
-      !I_EXCL_CLASS type STRING
-      !I_REFNODE    type SALV_DE_NODE_KEY
-    returning
-      value(R_LOCALS_REL) type SALV_DE_NODE_KEY .
-  methods GET_CODE_FLOW
-    importing
-      !I_CALC_PATH type BOOLEAN optional
-    returning
-      value(RESULTS) type TT_LINE .
-  methods GET_CODE_MIX
-    importing
-      !I_CALC_PATH type BOOLEAN optional .
-  methods MARK_ACTIVE_ROOT
-    importing
-      !I_CALC_PATH type BOOLEAN optional
-    changing
-      !CT_RESULTS TYPE TT_LINE .
-protected section.
-private section.
-  methods GET_INCLUDE_PREFIX
-    importing
-      !I_CLASS type STRING
-    returning
-      value(RV_PREFIX) type STRING .
-
-  constants:
-    BEGIN OF c_kind,
-                   struct LIKE cl_abap_typedescr=>kind_struct VALUE cl_abap_typedescr=>kind_struct,
-                   table  LIKE cl_abap_typedescr=>kind_table VALUE cl_abap_typedescr=>kind_table,
-                   elem   LIKE cl_abap_typedescr=>kind_elem VALUE cl_abap_typedescr=>kind_elem,
-                   class  LIKE cl_abap_typedescr=>kind_class VALUE cl_abap_typedescr=>kind_class,
-                   intf   LIKE cl_abap_typedescr=>kind_intf VALUE cl_abap_typedescr=>kind_intf,
-                   ref    LIKE cl_abap_typedescr=>kind_ref VALUE cl_abap_typedescr=>kind_ref,
-                 END OF c_kind .
-ENDCLASS.
-CLASS zcl_ace_alv_common DEFINITION
-  create public .
-
-public section.
-
-  constants:
-    c_white(4) TYPE x value '00000001' ##NO_TEXT.
-
-  class-methods REFRESH
-    importing
-      !I_OBJ type ref to CL_GUI_ALV_GRID
-      !I_LAYOUT type LVC_S_LAYO optional
-      !I_SOFT type CHAR01 optional .
-  class-methods TRANSLATE_FIELD
-    importing
-      !I_LANG type DDLANGUAGE optional
-    changing
-      !C_FLD type LVC_S_FCAT .
-  class-methods GET_SELECTED
-    importing
-      !I_OBJ type ref to CL_GUI_ALV_GRID
-    returning
-      value(E_INDEX) type I .
-protected section.
-private section.
-ENDCLASS.
 CLASS zcl_ace_popup DEFINITION
   create public .
 
@@ -617,7 +1032,7 @@ CLASS zcl_ace_rtti_tree DEFINITION
 public section.
 
   types:
-    tt_table TYPE STANDARD TABLE OF ZCL_ACE_APPL=>ts_tree
+    tt_table TYPE STANDARD TABLE OF ZCL_ACE=>ts_tree
             WITH NON-UNIQUE DEFAULT KEY .
 
   data MAIN_NODE_KEY type SALV_DE_NODE_KEY .
@@ -641,7 +1056,7 @@ public section.
       !I_NAME type STRING
       !I_REL type SALV_DE_NODE_KEY optional
       !I_ICON type SALV_DE_TREE_IMAGE optional
-      !I_TREE type ZCL_ACE_APPL=>TS_TREE optional
+      !I_TREE type ZCL_ACE=>TS_TREE optional
     returning
       value(RV_NODE) type SALV_DE_NODE_KEY .
   methods DELETE_NODE
@@ -686,7 +1101,7 @@ public section.
   data MO_SEL_ALV type ref to CL_GUI_ALV_GRID .
   data MT_FCAT type LVC_T_FCAT .
   data:
-    mt_sel_tab TYPE TABLE OF ZCL_ACE_APPL=>selection_display_s .
+    mt_sel_tab TYPE TABLE OF ZCL_ACE=>selection_display_s .
   data MS_LAYOUT type LVC_S_LAYO .
 
   events SELECTION_DONE .
@@ -705,7 +1120,7 @@ public section.
       !I_CLEAR type BOOLEAN default ABAP_TRUE .
   methods UPDATE_SEL_ROW
     changing
-      !C_SEL_ROW type ZCL_ACE_APPL=>SELECTION_DISPLAY_S .
+      !C_SEL_ROW type ZCL_ACE=>SELECTION_DISPLAY_S .
 protected section.
 private section.
 
@@ -782,16 +1197,16 @@ public section.
       !IO_DEBUGGER type ref to ZCL_ACE .
   class-methods PARSE_CLASS
     importing
-      !KEY type ZCL_ACE_APPL=>TS_KWORD
+      !KEY type ZCL_ACE=>TS_KWORD
       !I_INCLUDE type PROGRAM
-      !I_CALL type ZCL_ACE_APPL=>TS_CALLS
+      !I_CALL type ZCL_ACE=>TS_CALLS
       !I_STACK type I
       !IO_DEBUGGER type ref to ZCL_ACE .
   class-methods PARSE_SCREEN
     importing
-      !KEY type ZCL_ACE_APPL=>TS_KWORD
+      !KEY type ZCL_ACE=>TS_KWORD
       !I_STACK type I
-      !I_CALL type ZCL_ACE_APPL=>TS_CALLS
+      !I_CALL type ZCL_ACE=>TS_CALLS
       !IO_DEBUGGER type ref to ZCL_ACE .
   class-methods CODE_EXECUTION_SCANNER
     importing
@@ -805,7 +1220,7 @@ public section.
     importing
       !IO_DEBUGGER type ref to ZCL_ACE
     changing
-      !CT_TOKENS type ZCL_ACE_APPL=>TT_KWORD .
+      !CT_TOKENS type ZCL_ACE=>TT_KWORD .
   class-methods PROCESS_SUPER_AND_INTERFACES
     importing
       !I_CLASS type STRING
@@ -821,7 +1236,7 @@ public section.
       !IO_DEBUGGER type ref to ZCL_ACE
       !L_TOKEN_ROW type I
     changing
-      !CS_STATE type ZCL_ACE_APPL=>TS_PARSE_STATE
+      !CS_STATE type ZCL_ACE=>TS_PARSE_STATE
     returning
       value(RV_CONTINUE) type BOOLEAN .
   class-methods DETECT_METHOD_CALL
@@ -834,18 +1249,18 @@ public section.
       !L_TOKEN_ROW type I
       !NEW type BOOLEAN
     changing
-      !CALL type ZCL_ACE_APPL=>TS_CALLS
-      !CALL_LINE type ZCL_ACE_APPL=>TS_CALLS_LINE
-      !CALCULATED type ZCL_ACE_APPL=>TS_VAR
-      !CALCULATED_VARS type ZCL_ACE_APPL=>TT_CALCULATED
+      !CALL type ZCL_ACE=>TS_CALLS
+      !CALL_LINE type ZCL_ACE=>TS_CALLS_LINE
+      !CALCULATED type ZCL_ACE=>TS_VAR
+      !CALCULATED_VARS type ZCL_ACE=>TT_CALCULATED
       !CLASS_NAME type STRING
-      !TOKEN type ZCL_ACE_APPL=>TS_KWORD .
+      !TOKEN type ZCL_ACE=>TS_KWORD .
   class-methods REGISTER_FIELD_SYMBOL
     importing
       !I_INCLUDE type PROGRAM
       !IO_DEBUGGER type ref to ZCL_ACE
     changing
-      !CS_STATE type ZCL_ACE_APPL=>TS_PARSE_STATE .
+      !CS_STATE type ZCL_ACE=>TS_PARSE_STATE .
   class-methods COLLECT_EVENTS
     importing
       !IO_SCAN type ref to CL_CI_SCAN
@@ -876,7 +1291,7 @@ public section.
       !L_TOKEN_ROW type I
       !O_PROCEDURE type ref to IF_CI_KZN_STATEMENT_ITERATOR
     changing
-      !CS_STATE type ZCL_ACE_APPL=>TS_PARSE_STATE .
+      !CS_STATE type ZCL_ACE=>TS_PARSE_STATE .
 protected section.
 private section.
 ENDCLASS.
@@ -1029,7 +1444,7 @@ public section.
                class   TYPE string,
              END OF ts_refvar .
   types:
-    tt_kword      TYPE STANDARD TABLE OF ZCL_ACE_APPL=>TS_KWORD WITH EMPTY KEY .
+    tt_kword      TYPE STANDARD TABLE OF ZCL_ACE=>TS_KWORD WITH EMPTY KEY .
   types:
     tt_vars       TYPE STANDARD TABLE OF ts_vars WITH EMPTY KEY .
   types:
@@ -1122,7 +1537,7 @@ public section.
                t_composed    TYPE tt_composed,
                t_params      TYPE tt_params,
                tt_tabs       TYPE tt_tabs,
-               tt_calls_line TYPE ZCL_ACE_APPL=>tt_calls_line,
+               tt_calls_line TYPE ZCL_ACE=>tt_calls_line,
                t_vars        TYPE tt_vars,
                tt_refvar     TYPE tt_refvar,
                t_classes     TYPE tt_classes,
@@ -1192,7 +1607,7 @@ public section.
   data MO_HIST_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_CODE_VIEWER type ref to CL_GUI_ABAPEDIT .
   data:
-    mt_stack               TYPE TABLE OF ZCL_ACE_APPL=>T_STACK .
+    mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
   data MO_SALV_STACK type ref to CL_SALV_TABLE .
   data MO_SALV_STEPS type ref to CL_SALV_TABLE .
@@ -1201,7 +1616,7 @@ public section.
   data MT_WATCH type TT_WATCH .
   data MT_COVERAGE type TT_WATCH .
   data:
-    mt_calls               TYPE TABLE OF ZCL_ACE_APPL=>TS_CALL .
+    mt_calls               TYPE TABLE OF ZCL_ACE=>TS_CALL .
   data M_HIST_DEPTH type I .
   data M_START_STACK type I .
   data:
@@ -1213,7 +1628,7 @@ public section.
     mt_locals_set          TYPE STANDARD TABLE OF ts_locals .
   data:
     mt_globals_set         TYPE STANDARD TABLE OF ts_globals .
-  data MS_SEL_CALL type ZCL_ACE_APPL=>TS_CALLS_LINE .
+  data MS_SEL_CALL type ZCL_ACE=>TS_CALLS_LINE .
 
   methods CONSTRUCTOR
     importing
@@ -1265,7 +1680,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'RUN' icon = CONV #( icon_execute_object ) quickinfo = 'Run report' )
        ( COND #( WHEN mo_viewer->mv_dest IS NOT INITIAL
         THEN VALUE #( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ) )
-       ( COND #( WHEN ZCL_ACE_APPL=>I_MERMAID_ACTIVE = abap_true
+       ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
        ( function = 'CODEMIX' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
        ( function = 'CODE' icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
@@ -1453,7 +1868,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
 
       WHEN 'STEPS'.
-        zcl_ace_appl=>open_int_table(
+        zcl_ace=>open_int_table(
           i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
       WHEN 'WHOLE_CLASS'.
@@ -1461,10 +1876,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
               lv_class_name   TYPE string,
               lv_in_methods   TYPE boolean VALUE abap_false,
               lv_section_done TYPE boolean VALUE abap_false,
-              lv_cu_first     TYPE boolean VALUE abap_true,
-              lv_header_done  TYPE boolean,
-              lv_header_buf   TYPE string,
-              lv_dot_pos      TYPE i.
+              lv_cu_first     TYPE boolean VALUE abap_true.
 
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(ls_wc_prog).
 
@@ -1511,47 +1923,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           ENDIF.
           lv_section_done = abap_true.
 
-          " CU include: header CLASS ... DEFINITION ... . may span multiple lines
-          " Collect all lines up to the dot, strip CREATE ... from them
+          " CU include: extract class name for caption, then append lines as-is
           IF lv_is_cu = abap_true AND lv_cu_first = abap_true.
-            lv_cu_first    = abap_false.
-            lv_header_done = abap_false.
-            CLEAR lv_header_buf.
+            lv_cu_first = abap_false.
             DATA(lv_eq_pos) = find( val = ls_prog_wc-include sub = '=' ).
             IF lv_eq_pos > 0.
               lv_class_name = substring( val = ls_prog_wc-include len = lv_eq_pos ).
             ENDIF.
-            LOOP AT ls_prog_wc-source_tab INTO DATA(lv_cu_line).
-              DATA(lv_cu_upper) = to_upper( lv_cu_line ).
-              IF lv_header_done = abap_false.
-                " Skip lines containing PUBLIC, PRIVATE or CREATE (not needed in local class)
-                IF lv_cu_upper CS 'PUBLIC' OR lv_cu_upper CS 'PRIVATE' OR lv_cu_upper CS 'CREATE'.
-                  IF lv_cu_upper CS '.'.
-                    lv_dot_pos = find( val = lv_header_buf sub = '.' ).
-                    IF lv_dot_pos >= 0.
-                      lv_header_buf = substring( val = lv_header_buf len = lv_dot_pos ).
-                    ENDIF.
-                    APPEND |{ lv_header_buf }.| TO lt_whole_class.
-                    lv_header_done = abap_true.
-                  ENDIF.
-                  CONTINUE.
-                ELSE.
-                  lv_header_buf = lv_header_buf && lv_cu_line.
-                ENDIF.
-                " Header ends when we see a dot
-                IF lv_cu_upper CS '.'.
-                  lv_dot_pos = find( val = lv_header_buf sub = '.' ).
-                  IF lv_dot_pos >= 0.
-                    lv_header_buf = substring( val = lv_header_buf len = lv_dot_pos ).
-                  ENDIF.
-                  APPEND |{ lv_header_buf }.| TO lt_whole_class.
-                  lv_header_done = abap_true.
-                ENDIF.
-                CONTINUE.
-              ENDIF.
-              APPEND lv_cu_line TO lt_whole_class.
-            ENDLOOP.
-            CONTINUE.
           ENDIF.
 
           APPEND LINES OF ls_prog_wc-source_tab TO lt_whole_class.
@@ -2516,9 +2894,8 @@ ENDCLASS.
 CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   method CODE_EXECUTION_SCANNER.
 
-      "code execution scanner
       DATA: max       TYPE i,
-            call_line TYPE ZCL_ACE_APPL=>ts_calls_line,
+            call_line TYPE ZCL_ACE=>ts_calls_line,
             program   TYPE program,
             include   TYPE program,
             prefix    TYPE string,
@@ -2571,7 +2948,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       LOOP AT structures INTO str.
 
         IF str-type = 'E'.
-          "get event name.
           READ TABLE io_debugger->mo_window->ms_sources-t_events WITH KEY program = i_program stmnt_type = str-stmnt_type  stmnt_from = str-stmnt_from ASSIGNING FIELD-SYMBOL(<event>).
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = <event>-include INTO prog.
 
@@ -2664,9 +3040,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
                   code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = call-event i_evname = call-name io_debugger = io_debugger ).
                 ENDIF.
-              ELSEIF call-event = 'METHOD'. "Method call
+              ELSEIF call-event = 'METHOD'.
                 parse_class( i_include = i_include i_call = call i_stack = stack io_debugger = io_debugger key = key ).
-              ELSEIF call-event = 'SCREEN'. "Method call
+              ELSEIF call-event = 'SCREEN'.
                 parse_screen( i_stack = stack i_call = call io_debugger = io_debugger key = key ).
               ENDIF.
             ENDIF.
@@ -2683,19 +3059,14 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             enh_prog     TYPE program,
             tabix        TYPE i.
 
-      " Per-FORM accumulated offset (top-down processing)
       TYPES: BEGIN OF ts_form_offset,
                form_name TYPE string,
                include   TYPE program,
                offset    TYPE i,
              END OF ts_form_offset.
       DATA lt_form_offsets TYPE STANDARD TABLE OF ts_form_offset.
-      DATA lv_offset       TYPE i.  " current FORM's accumulated offset
+      DATA lv_offset       TYPE i.
 
-      " (offset tracking removed: insertions are processed bottom-up)
-
-      " For class method includes (CM*), D010ENH stores enhancements under the CP program.
-      " Resolve the master program via D010INC.
       DATA(lv_enh_prog) = i_program.
       SELECT SINGLE master FROM d010inc
         INTO @DATA(lv_master)
@@ -2704,7 +3075,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         lv_enh_prog = lv_master.
       ENDIF.
 
-      " Check if enhancements already collected for this include - do this FIRST
       DATA(lv_prog_enh_tabix) = 0.
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = i_program
@@ -2716,19 +3086,14 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      " Read all enhancements for the given program
       SELECT programname, enhname, enhinclude, id, full_name, enhmode
         FROM d010enh
         INTO TABLE @DATA(lt_enh)
         WHERE programname = @lv_enh_prog
           AND version = 'A'.
 
-      " DEBUG: show what program we're searching enhancements for
-
       CHECK lt_enh IS NOT INITIAL.
 
-      " Add enhtype: 1=BEGIN, 2=END for correct insertion order within same form
-      " (BEGIN inserted first = after FORM, END inserted second = before ENDFORM)
       TYPES: BEGIN OF ts_enh_ext,
                programname  TYPE d010enh-programname,
                enhname      TYPE d010enh-enhname,
@@ -2737,22 +3102,20 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                full_name    TYPE d010enh-full_name,
                enhmode      TYPE d010enh-enhmode,
                enhtype      TYPE i,
-               full_name_30 TYPE c LENGTH 30,  " for sorting (STRING offset not allowed)
+               full_name_30 TYPE c LENGTH 30,
              END OF ts_enh_ext.
       DATA lt_enh_ext TYPE STANDARD TABLE OF ts_enh_ext.
       LOOP AT lt_enh INTO DATA(ls_enh_raw).
         DATA(ls_ext) = CORRESPONDING ts_enh_ext( ls_enh_raw ).
         ls_ext-enhtype = COND i(
-          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_BEGIN'    THEN 1  " Method PRE
-          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_END'      THEN 2  " Method POST
-          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:BEGIN' THEN 1  " FORM PRE
-          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:END'   THEN 2  " FORM POST
+          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_BEGIN'    THEN 1
+          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_END'      THEN 2
+          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:BEGIN' THEN 1
+          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:END'   THEN 2
           ELSE 1 ).
-        ls_ext-full_name_30 = ls_ext-full_name.  " truncate STRING to C(30) for sort
+        ls_ext-full_name_30 = ls_ext-full_name.
         APPEND ls_ext TO lt_enh_ext.
       ENDLOOP.
-      " Sort top-down: PRE (enhtype=1) before POST (enhtype=2).
-      " We process enhancements in file order (ascending) and accumulate offset as we go.
       SORT lt_enh_ext BY full_name_30 ASCENDING enhtype ASCENDING.
 
       LOOP AT lt_enh_ext INTO DATA(ls_enh).
@@ -2761,7 +3124,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         DATA(lv_full) = ls_enh-full_name.
 
         IF ls_enh-enhmode = 'D'.
-          " Method enhancement: \TY:CLASSNAME\ME:METHODNAME\SE:%_BEGIN|%_END\EI
           DATA(lv_class_name) = ``.
           DATA(lv_method_name) = ``.
           FIND FIRST OCCURRENCE OF REGEX '\\TY:([^\\]+)' IN lv_full SUBMATCHES lv_class_name.
@@ -2769,7 +3131,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
           CHECK lv_class_name IS NOT INITIAL AND lv_method_name IS NOT INITIAL AND position IS NOT INITIAL.
 
-          " Map position
           DATA(lv_meth_pos) = SWITCH string(
             position
             WHEN '%_BEGIN' THEN 'BEGIN'
@@ -2777,7 +3138,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ELSE `` ).
           CHECK lv_meth_pos IS NOT INITIAL.
 
-          " First check for OVERWRITE (IOW_) - if found, skip PRE/POST
           DATA(lv_has_overwrite) = abap_false.
           IF lv_meth_pos = 'BEGIN'.
             collect_method_enhancements(
@@ -2788,7 +3148,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                         i_meth_pos   = 'OVERWRITE'
                         i_id         = CONV #( ls_enh-id )
                         io_debugger  = io_debugger ).
-            " Check if OVERWRITE was actually registered
             READ TABLE io_debugger->mo_window->ms_sources-tt_progs TRANSPORTING NO FIELDS
               WITH KEY program = lv_class_name.
             LOOP AT io_debugger->mo_window->ms_sources-tt_progs INTO DATA(ls_prog_ow).
@@ -2801,7 +3160,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDLOOP.
           ENDIF.
 
-          " Only add PRE/POST if no OVERWRITE exists for this method
           IF lv_has_overwrite = abap_false.
             collect_method_enhancements(
               EXPORTING i_enhname    = CONV #( ls_enh-enhname )
@@ -2814,7 +3172,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDIF.
 
         ELSE.
-          " FORM enhancement: \PR:...\FO:FORMNAME\SE:BEGIN|END\EI
           FIND FIRST OCCURRENCE OF REGEX '\\FO:([^\\]+)' IN lv_full SUBMATCHES form_name.
           FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
           CHECK form_name IS NOT INITIAL AND position IS NOT INITIAL.
@@ -2827,24 +3184,20 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
               io_debugger = io_debugger ).
           ENDIF.
 
-          " Find the program that contains this FORM
           READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
             WITH KEY eventtype = 'FORM' eventname = form_name
             INTO DATA(ls_call_line).
           CHECK sy-subrc = 0.
 
-          " Find t_keywords entry for the target program
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs
             WITH KEY include = ls_call_line-include
             ASSIGNING FIELD-SYMBOL(<prog>).
           CHECK sy-subrc = 0.
 
-          " top-down: save offset before this insertion to compute delta
           DATA(lv_offset_before) = lv_offset.
 
-          " Find FORM position in t_keywords iteratively by name = 'FORM' and index
           DATA(lv_form_tabix) = 0.
-          DATA ls_kw_form TYPE ZCL_ACE_APPL=>ts_kword.
+          DATA ls_kw_form TYPE ZCL_ACE=>ts_kword.
           LOOP AT <prog>-t_keywords INTO ls_kw_form.
             IF ls_kw_form-name = 'FORM' AND ls_kw_form-index = ls_call_line-index.
               lv_form_tabix = sy-tabix.
@@ -2852,31 +3205,26 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
           ENDLOOP.
           CHECK lv_form_tabix > 0.
-          " Refresh v_line from v_keywords (t_keywords v_line is not updated by bottom-up shifts)
           READ TABLE <prog>-v_keywords WITH KEY include = ls_kw_form-include
             index = ls_kw_form-index INTO DATA(ls_vkw_form).
           IF sy-subrc = 0. ls_kw_form-v_line = ls_vkw_form-v_line. ENDIF.
 
-          " Read enhancement include keywords
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs
             WITH KEY include = ls_enh-enhinclude
             INTO DATA(ls_enh_prog).
           CHECK sy-subrc = 0.
 
-          " Collect keywords of the ENHANCEMENT N...ENDENHANCEMENT block matching the ID
           DATA lt_enh_kw TYPE ZCL_ACE_WINDOW=>tt_kword.
           DATA lv_in_block TYPE boolean.
           CLEAR: lt_enh_kw, lv_in_block.
           LOOP AT ls_enh_prog-t_keywords INTO DATA(ls_kw).
             IF ls_kw-name = 'ENHANCEMENT'.
-              " Check that this is the correct ID: next token = ls_enh-id
               DATA(lv_enh_id) = CONV i( ls_enh-id ).
-              " ID is not in token-line, check via scan at token offset=2
               READ TABLE ls_enh_prog-scan->statements INDEX ls_kw-index INTO DATA(ls_stmt).
               READ TABLE ls_enh_prog-scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
               IF CONV i( ls_tok-str ) = lv_enh_id.
                 lv_in_block = abap_true.
-                APPEND ls_kw TO lt_enh_kw.  " include ENHANCEMENT of the matching block only
+                APPEND ls_kw TO lt_enh_kw.
               ELSE.
                 lv_in_block = abap_false.
               ENDIF.
@@ -2884,7 +3232,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
             IF ls_kw-name = 'ENDENHANCEMENT'.
               IF lv_in_block = abap_true.
-                APPEND ls_kw TO lt_enh_kw.  " include ENDENHANCEMENT
+                APPEND ls_kw TO lt_enh_kw.
               ENDIF.
               CLEAR lv_in_block.
               CONTINUE.
@@ -2896,13 +3244,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
           CHECK lt_enh_kw IS NOT INITIAL.
 
-          " Determine insertion point
-          DATA ls_kw_end TYPE ZCL_ACE_APPL=>ts_kword.  " always fresh
+          DATA ls_kw_end TYPE ZCL_ACE=>ts_kword.
           CLEAR ls_kw_end.
           IF position = 'BEGIN'.
-            " After FORM statement
             tabix = lv_form_tabix + 1.
-          ELSE. " END - before ENDFORM
+          ELSE.
             tabix = lv_form_tabix + 1.
             LOOP AT <prog>-t_keywords INTO ls_kw_end FROM tabix.
               IF ls_kw_end-name = 'ENDFORM'.
@@ -2911,27 +3257,19 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
               ENDIF.
               CLEAR ls_kw_end.
             ENDLOOP.
-            " Refresh v_line from v_keywords for ENDFORM
             READ TABLE <prog>-v_keywords WITH KEY include = ls_kw_end-include
               index = ls_kw_end-index INTO DATA(ls_vkw_end).
             IF sy-subrc = 0. ls_kw_end-v_line = ls_vkw_end-v_line. ENDIF.
           ENDIF.
 
-          " Insert enhancement keywords into t_keywords at the target position.
-          " lv_insert_line = original source line (for v_keywords shift condition).
-          " lv_vsrc_tabix  = index into v_source (accounts for already-inserted lines).
           DATA(lv_insert_line) = COND i(
             WHEN position = 'BEGIN' THEN ls_kw_form-line + 1
             ELSE ls_kw_end-line ).
 
-          " Use v_line from v_keywords - it already reflects all prior insertions
-          " (updated by the shift loop after each previous enhancement insertion).
           DATA(lv_vsrc_tabix) = COND i(
             WHEN position = 'BEGIN' THEN ls_kw_form-v_line + 1
             ELSE ls_kw_end-v_line ).
 
-          " Find insertion point in v_keywords (mirrors t_keywords logic but for v_keywords)
-          " Anchor = FORM or ENDFORM keyword by include+index
           DATA(lv_vkw_tabix) = 0.
           IF position = 'BEGIN'.
             LOOP AT <prog>-v_keywords INTO DATA(ls_vkw_anchor)
@@ -2950,22 +3288,18 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             lv_vkw_tabix = lines( <prog>-v_keywords ) + 1.
           ENDIF.
 
-          " Step 1: compute how many lines will be inserted
-          " (1 separator + ENH source lines + 1 end-separator after ENDENHANCEMENT)
-          DATA(lv_enh_inserted) = 1.  " separator line
+          DATA(lv_enh_inserted) = 1.
           DATA(lv_tmp_line) = lt_enh_kw[ 1 ]-line.
           DATA(lv_tmp_last) = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
           WHILE lv_tmp_line <= lv_tmp_last.
-            ADD 1 TO lv_enh_inserted.  " source line
+            ADD 1 TO lv_enh_inserted.
             READ TABLE lt_enh_kw WITH KEY line = lv_tmp_line INTO DATA(ls_ins_pre).
             IF sy-subrc = 0 AND ls_ins_pre-name = 'ENDENHANCEMENT'.
-              ADD 1 TO lv_enh_inserted.  " end-separator after ENDENHANCEMENT
+              ADD 1 TO lv_enh_inserted.
             ENDIF.
             ADD 1 TO lv_tmp_line.
           ENDWHILE.
 
-          " Step 2: shift ALL existing v_keywords at or after insertion point BEFORE inserting.
-          " This way new keywords are inserted after shift - no need to skip anything.
           LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
             WHERE v_line >= lv_vsrc_tabix.
             ADD lv_enh_inserted TO <kw_v>-v_line.
@@ -2973,7 +3307,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ADD lv_enh_inserted TO <kw_v>-v_to_row.
           ENDLOOP.
 
-          " Step 3: insert ENH keywords into v_keywords with correct v_line
           DATA(lv_vkw_vline) = lv_vsrc_tabix + 1.
           LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
             ls_vkw_ins-v_line     = lv_vkw_vline.
@@ -2984,7 +3317,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ADD 1 TO lv_vkw_vline.
           ENDLOOP.
 
-          " Step 4: insert enhancement lines into v_source
           DATA(lv_src_tabix) = lv_vsrc_tabix.
           DATA lv_sep TYPE string.
           IF position = 'BEGIN'.
@@ -3016,9 +3348,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ADD 1 TO lv_cur_line.
           ENDWHILE.
 
-*
-*        " Save enhancement block position for CodeMix
-          " Save enhancement block position for CodeMix/tree
           APPEND INITIAL LINE TO <prog>-tt_enh_blocks ASSIGNING FIELD-SYMBOL(<enh_blk>).
           <enh_blk>-ev_type    = ls_call_line-eventtype.
           <enh_blk>-ev_name    = form_name.
@@ -3029,11 +3358,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           <enh_blk>-from_line  = 0.
           <enh_blk>-to_line    = 0.
 
-        ENDIF. " ENHMODE = 'D' / FORM
+        ENDIF.
 
       ENDLOOP.
 
-      " Mark enhancements as collected for this include
       IF lv_prog_enh_tabix > 0.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           INDEX lv_prog_enh_tabix
@@ -3055,20 +3383,17 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
   endmethod.
   method COLLECT_METHOD_ENHANCEMENTS.
-      " Build EIMP include name: enhinclude ends with ==E, replace E -> EIMP
       DATA(lv_enhname_trimmed)  = condense( val = CONV string( i_enhname ) ).
       DATA(lv_enhinclude_str)   = condense( val = CONV string( i_enhinclude ) ).
       DATA(lv_eimp_include) = CONV program(
         substring( val = lv_enhinclude_str len = strlen( lv_enhinclude_str ) - 1 ) && 'EIMP' ).
 
-      " IPR_ = pre (%_BEGIN), IPO_ = post (%_END), IOW_ = overwrite
       DATA(lv_impl_prefix) = COND string(
         WHEN i_meth_pos = 'BEGIN'     THEN 'IPR_'
         WHEN i_meth_pos = 'END'       THEN 'IPO_'
         WHEN i_meth_pos = 'OVERWRITE' THEN 'IOW_' ).
       DATA(lv_impl_method) = lv_impl_prefix && lv_enhname_trimmed && '~' && i_method.
 
-      " Parse EIMP include if not yet done
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = lv_eimp_include TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
@@ -3082,7 +3407,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         INTO DATA(ls_eimp_prog).
       CHECK sy-subrc = 0.
 
-      " Find and parse all CM* includes of the class program
       DATA(lv_class_prog) = CONV program(
         i_class && repeat( val = '=' occ = 30 - strlen( i_class ) ) && 'CP' ).
       DATA(lv_cm_pattern) = lv_class_prog(28) && 'CM%'.
@@ -3101,8 +3425,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
-      " Find the method in tt_calls_line
-      DATA ls_call_line_m TYPE ZCL_ACE_APPL=>ts_calls_line.
+      DATA ls_call_line_m TYPE ZCL_ACE=>ts_calls_line.
       LOOP AT io_debugger->mo_window->ms_sources-tt_calls_line
         INTO ls_call_line_m
         WHERE eventtype = 'METHOD'
@@ -3112,15 +3435,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDLOOP.
       CHECK sy-subrc = 0.
 
-      " Find prog containing this method
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = ls_call_line_m-include
         ASSIGNING FIELD-SYMBOL(<prog_m>).
       CHECK sy-subrc = 0.
 
-      " Find METHOD keyword by index
       DATA(lv_meth_tabix) = 0.
-      DATA ls_kw_meth TYPE ZCL_ACE_APPL=>ts_kword.
+      DATA ls_kw_meth TYPE ZCL_ACE=>ts_kword.
       LOOP AT <prog_m>-t_keywords INTO ls_kw_meth.
         IF ls_kw_meth-name = 'METHOD' AND ls_kw_meth-index = ls_call_line_m-index.
           lv_meth_tabix = sy-tabix.
@@ -3129,7 +3450,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDLOOP.
       CHECK lv_meth_tabix > 0.
 
-      " Collect METHOD IPR/IPO_...~METHOD ... ENDMETHOD from EIMP
       DATA lt_enh_kw TYPE ZCL_ACE_WINDOW=>tt_kword.
       DATA lv_in_block TYPE boolean.
       LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_kw).
@@ -3147,7 +3467,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         IF ls_kw-name = 'ENDMETHOD'.
           IF lv_in_block = abap_true.
             APPEND ls_kw TO lt_enh_kw.
-            EXIT. " stop after first ENDMETHOD of our block
+            EXIT.
           ENDIF.
           CLEAR lv_in_block.
           CONTINUE.
@@ -3157,11 +3477,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
       CHECK lt_enh_kw IS NOT INITIAL.
-      " Determine insertion tabix and line
       DATA(lv_ins_tabix) = COND i(
         WHEN i_meth_pos = 'BEGIN' THEN lv_meth_tabix + 1
         ELSE lv_meth_tabix + 1 ).
-      DATA ls_kw_end TYPE ZCL_ACE_APPL=>ts_kword.
+      DATA ls_kw_end TYPE ZCL_ACE=>ts_kword.
       IF i_meth_pos = 'END' OR i_meth_pos = 'OVERWRITE'.
         LOOP AT <prog_m>-t_keywords INTO ls_kw_end FROM lv_ins_tabix.
           IF ls_kw_end-name = 'ENDMETHOD'.
@@ -3171,49 +3490,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDLOOP.
       ENDIF.
 
-*      " OVERWRITE: replace method body (between METHOD and ENDMETHOD)
-*      IF i_meth_pos = 'OVERWRITE'.
-*        " Find line range of original method body in source_tab
-*        DATA(lv_body_first) = ls_kw_meth-line + 1.
-*        DATA(lv_body_last)  = ls_kw_end-line - 1.
-*        " Delete original body lines
-*        DATA(lv_del_count) = lv_body_last - lv_body_first + 1.
-*        DATA(lv_del_idx) = lv_body_first.
-*        DO lv_del_count TIMES.
-*          DELETE <prog_m>-source_tab INDEX lv_del_idx.
-*        ENDDO.
-*        " Shift keywords that were after deleted lines
-*        LOOP AT <prog_m>-t_keywords ASSIGNING FIELD-SYMBOL(<kw_del>).
-*          IF <kw_del>-line > ls_kw_meth-line AND <kw_del>-line <= ls_kw_end-line.
-*            <kw_del>-line = ls_kw_meth-line + 1. " collapse to METHOD line+1
-*          ELSEIF <kw_del>-line > ls_kw_end-line.
-*            <kw_del>-line = <kw_del>-line - lv_del_count.
-*          ENDIF.
-*        ENDLOOP.
-*        " Now insert overwrite body at lv_body_first
-*        DATA(lv_ow_sep) = |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Overwrite ({ lv_impl_method })|.
-*        DATA(lv_ow_tabix) = lv_body_first.
-*        INSERT lv_ow_sep INTO <prog_m>-source_tab INDEX lv_ow_tabix.
-*        ADD 1 TO lv_ow_tabix.
-*        DATA(lv_ow_first) = lt_enh_kw[ 1 ]-line.
-*        DATA(lv_ow_last)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
-*        DATA(lv_ow_idx)   = lv_ow_first.
-*        WHILE lv_ow_idx <= lv_ow_last.
-*          READ TABLE ls_eimp_prog-source_tab INDEX lv_ow_idx INTO DATA(lv_ow_line).
-*          IF sy-subrc = 0.
-*            " Comment out METHOD/ENDMETHOD to avoid confusing the parser
-*            READ TABLE lt_enh_kw WITH KEY line = lv_ow_idx INTO DATA(ls_ow_kw_chk).
-*            IF sy-subrc = 0 AND ( ls_ow_kw_chk-name = 'METHOD' OR ls_ow_kw_chk-name = 'ENDMETHOD' ).
-*              lv_ow_line = |*{ lv_ow_line }|.
-*            ENDIF.
-*            INSERT lv_ow_line INTO <prog_m>-source_tab INDEX lv_ow_tabix.
-*            ADD 1 TO lv_ow_tabix.
-*          ENDIF.
-*          ADD 1 TO lv_ow_idx.
-*        ENDWHILE.
-*        " Save enh block
       IF i_meth_pos = 'OVERWRITE'.
-        " Save enh block for tree only (display handled via lt_cm_src / lt_iow_lines)
         READ TABLE <prog_m>-tt_enh_blocks TRANSPORTING NO FIELDS
           WITH KEY ev_type = 'METHOD' ev_name = i_method position = 'OVERWRITE' enh_name = i_enhname.
         IF sy-subrc <> 0.
@@ -3233,8 +3510,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         WHEN i_meth_pos = 'BEGIN' THEN ls_kw_meth-line + 1
         ELSE ls_kw_end-line ).
 
-*      " Save enh block for CodeMix/tree
-      " Save enh block for tree
       READ TABLE <prog_m>-tt_enh_blocks TRANSPORTING NO FIELDS
         WITH KEY ev_type = 'METHOD' ev_name = i_method position = i_meth_pos enh_name = i_enhname.
       IF sy-subrc <> 0.
@@ -3325,13 +3600,12 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   endmethod.
   method LINK_CALLS_TO_PARAMS.
 
-      FIELD-SYMBOLS: <s_token> TYPE ZCL_ACE_APPL=>ts_kword,
-                     <call>    TYPE ZCL_ACE_APPL=>ts_calls.
-      DATA: call  TYPE ZCL_ACE_APPL=>ts_calls,
+      FIELD-SYMBOLS: <s_token> TYPE ZCL_ACE=>ts_kword,
+                     <call>    TYPE ZCL_ACE=>ts_calls.
+      DATA: call  TYPE ZCL_ACE=>ts_calls,
             param TYPE ZCL_ACE_WINDOW=>ts_params,
             index TYPE i.
 
-      "Link parameters to calls for the current token list
       LOOP AT ct_tokens ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
         READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
         index = 0.
@@ -3380,12 +3654,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             meth_includes TYPE seop_methods_w_include.
       cl_key = i_class.
 
-      " Check if this class is already known as local (parsed from program source)
       READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
         WITH KEY class = i_class
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
-        " Local class - skip global lookup, use i_index directly
         statement = i_index.
       ELSE.
         CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
@@ -3479,7 +3751,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                 code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = call-event i_evname = call-name io_debugger = io_debugger ).
               ENDIF.
 
-            ELSEIF call-event = 'METHOD'. "Method call
+            ELSEIF call-event = 'METHOD'.
 
               DATA inlude TYPE program.
               IF i_include IS INITIAL.
@@ -3491,7 +3763,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                 call-class = i_class.
               ENDIF.
               parse_class( i_include = include i_call = call i_stack = stack io_debugger = io_debugger key = key ).
-            ELSEIF call-event = 'SCREEN'. "Method call
+            ELSEIF call-event = 'SCREEN'.
               parse_screen( i_stack = stack i_call = call io_debugger = io_debugger key = key ).
 
             ENDIF.
@@ -3509,8 +3781,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   endmethod.
   method PARSE_CALL_FORM.
 
-      " Lookup FORM definition in tt_calls_line
-      DATA call_line TYPE ZCL_ACE_APPL=>ts_calls_line.
+      DATA call_line TYPE ZCL_ACE=>ts_calls_line.
       READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
         WITH KEY eventname = i_call_name eventtype = 'FORM'
         INTO call_line.
@@ -3519,7 +3790,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       DATA(lv_inc) = CONV program( call_line-include ).
       IF lv_inc IS INITIAL. lv_inc = i_include. ENDIF.
 
-      " Ensure include is parsed
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = lv_inc TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
@@ -3527,10 +3797,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           i_stack = i_stack i_program = lv_inc i_include = lv_inc io_debugger = io_debugger ).
       ENDIF.
 
-      " Insert PRE/POST enhancement keywords into v_keywords of lv_inc
       ZCL_ACE_SOURCE_PARSER=>collect_enhancements( i_program = lv_inc io_debugger = io_debugger ).
 
-      " Anti-recursion check
       READ TABLE io_debugger->mo_window->mt_calls
         WITH KEY include = lv_inc ev_name = i_call_name TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
@@ -3551,19 +3819,15 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         RETURN.
       ENDIF.
 
-      " Read prog AFTER collect_enhancements
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = lv_inc INTO DATA(prog).
       CHECK sy-subrc = 0.
 
-      " Use v_keywords if available — it contains inserted enhancement keywords.
-      " Fall back to t_keywords if v_keywords is empty.
       DATA(lv_use_vkw) = abap_false.
       IF prog-v_keywords IS NOT INITIAL.
         lv_use_vkw = abap_true.
       ENDIF.
 
-      " Find FORM start tabix
       DATA(lv_tabix) = 0.
       IF lv_use_vkw = abap_true.
         LOOP AT prog-v_keywords INTO DATA(kw).
@@ -3582,18 +3846,15 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDIF.
       CHECK lv_tabix > 0.
 
-      " Check if PRE enhancement exists
       DATA(lv_has_pre) = abap_false.
       READ TABLE prog-tt_enh_blocks TRANSPORTING NO FIELDS
         WITH KEY ev_name = i_call_name position = 'BEGIN'.
       IF sy-subrc = 0. lv_has_pre = abap_true. ENDIF.
       DATA(lv_body_stack) = COND i( WHEN lv_has_pre = abap_true THEN lv_stack + 1 ELSE lv_stack ).
 
-      " Track current active enhancement block while iterating keywords
       DATA ls_cur_enh TYPE ZCL_ACE_WINDOW=>ts_enh_block.
       CLEAR ls_cur_enh.
 
-      " Iterate keywords from FORM to ENDFORM using v_keywords (includes inserted enhancements)
       FIELD-SYMBOLS <kw_tab> TYPE ZCL_ACE_WINDOW=>tt_kword.
       IF lv_use_vkw = abap_true.
         ASSIGN prog-v_keywords TO <kw_tab>.
@@ -3606,7 +3867,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           EXIT.
         ENDIF.
 
-        " Detect entering/leaving enhancement block
         IF kw-name = 'ENHANCEMENT'.
           DATA(lv_enh_id_cur) = 0.
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs
@@ -3664,7 +3924,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-        " Recurse into nested calls
         LOOP AT kw-tt_calls INTO DATA(call).
           IF call-name IS NOT INITIAL AND NOT ( call-event = 'METHOD' AND call-class IS INITIAL ).
             IF call-event = 'FORM'.
@@ -3708,12 +3967,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             program       TYPE program,
             include       TYPE progname,
             stack         TYPE i,
-            class_call    TYPE ZCL_ACE_APPL=>ts_calls.
+            class_call    TYPE ZCL_ACE=>ts_calls.
 
       cl_key = i_call-class.
-      stack = i_stack." + 1.
+      stack = i_stack.
 
-      " Check if this class is already known as local (parsed from program source)
       DATA(lv_local_exists) = abap_false.
       READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
         WITH KEY class = i_call-class
@@ -3739,7 +3997,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         IF lines( meth_includes ) > 0 AND lv_local_exists = abap_false.
           prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
-          include = program = prefix && 'CP'."Class Program
+          include = program = prefix && 'CP'.
 
           ZCL_ACE_SOURCE_PARSER=>parse_tokens( i_main = abap_true i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
@@ -3755,7 +4013,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         IF i_call-super IS INITIAL.
           READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
-          "check inherited methods in super classes
         ELSE.
           sy-subrc = 1.
         ENDIF.
@@ -3830,7 +4087,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         FIND '"' IN <code> MATCH OFFSET DATA(pos).
 
         IF pos <> 0.
-          <code> = <code>+0(pos).  " обрезаем до кавычки
+          <code> = <code>+0(pos).
         ENDIF.
       ENDLOOP.
 
@@ -3846,7 +4103,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       SPLIT code_str AT '.' INTO TABLE scr_code.
 
-      "PBO
       LOOP AT scr_code INTO code.
         CONDENSE code-line.
         IF code-line = 'PROCESS BEFORE OUTPUT'.
@@ -3887,14 +4143,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       ENDLOOP.
 
-      "PAI
       LOOP AT scr_code INTO code.
         CONDENSE code-line.
         IF code-line = 'PROCESS AFTER INPUT'.
           CLEAR pbo.
           pai = abap_true.
-          "READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = key-program include = key-include TRANSPORTING NO FIELDS.
-          "IF sy-subrc <> 0.
           APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING <step>.
           ADD 1 TO  io_debugger->m_step.
           <step>-step = io_debugger->m_step.
@@ -3903,7 +4156,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           <step>-eventtype = i_call-event. <step>-stacklevel =  stack.
           <step>-program = key-program.
           <step>-include = key-include.
-          "ENDIF.
           CONTINUE.
         ENDIF.
         IF code-line = 'PROCESS BEFORE OUTPUT'.
@@ -3934,10 +4186,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             o_scan      TYPE REF TO cl_ci_scan,
             o_statement TYPE REF TO if_ci_kzn_statement_iterator,
             o_procedure TYPE REF TO if_ci_kzn_statement_iterator,
-            tokens      TYPE ZCL_ACE_APPL=>tt_kword,
+            tokens      TYPE ZCL_ACE=>tt_kword,
             main_prog   TYPE program,
             stack       TYPE i,
-            ls_state    TYPE ZCL_ACE_APPL=>ts_parse_state.
+            ls_state    TYPE ZCL_ACE=>ts_parse_state.
 
       IF i_main = abap_true.
         main_prog = i_program.
@@ -3965,7 +4217,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         o_statement = cl_cikzn_scan_iterator_factory=>get_statement_iterator( ciscan = o_scan ).
         o_procedure = cl_cikzn_scan_iterator_factory=>get_procedure_iterator( ciscan = o_scan ).
 
-        "methods in definition should be overwritten by Implementation section
         IF i_class IS NOT INITIAL.
           ls_state-class = abap_true.
           IF i_main_prog IS INITIAL.
@@ -4003,9 +4254,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ls_state-token-v_line = l_token-row.
           ls_state-token-program = i_program.
 
-          " For METHODS/CLASS-METHODS in a chained statement (METHODS: a, b.)
-          " statement-from points to the shared METHODS keyword token whose row
-          " may be wrong for non-first entries. Use the method-name token row instead.
           DATA(lv_token_row) = l_token-row.
           IF ls_state-kw = 'METHODS' OR ls_state-kw = 'CLASS-METHODS'.
             READ TABLE o_scan->tokens INDEX statement-from + 1 INTO DATA(l_name_tok).
@@ -4059,7 +4307,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
 
             IF ls_state-kw = 'ENDCLASS'.
-              " Reset all class-related state so next CLASS block starts clean
               CLEAR: ls_state-call_line-class, ls_state-param-class, ls_state-class_name.
             ENDIF.
 
@@ -4174,12 +4421,12 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       LOOP AT lt_classes INTO DATA(interface).
         prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
         CASE interface-reltype.
-          WHEN '0' OR '1'. "Interface
+          WHEN '0' OR '1'.
             suffix = 'IU'.
-          WHEN '2'. "Inheritance
+          WHEN '2'.
             suffix = 'CP'.
           WHEN OTHERS.
-            RETURN. "todo: implement other reltype logic
+            RETURN.
         ENDCASE.
         include = program = prefix && suffix.
         ZCL_ACE_SOURCE_PARSER=>parse_tokens(
@@ -4312,7 +4559,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         IF sy-index = 2 AND  cs_state-eventtype IS NOT INITIAL AND  cs_state-eventname IS INITIAL.
           IF i_main_prog IS NOT INITIAL AND i_reltype = '1'.
-            "cs_state-word = |{ cs_state-class_name }~{ cs_state-word }|.
           ENDIF.
           cs_state-variable-eventname = cs_state-tab-eventname = cs_state-eventname = cs_state-param-name = cs_state-word.
           cs_state-param-line = l_token_row.
@@ -4502,7 +4748,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       DATA: split TYPE TABLE OF string.
       SPLIT  cs_state-change AT '-' INTO TABLE split.
       cs_state-change = split[ 1 ].
-      IF  cs_state-eventtype IS INITIAL. "Global fs
+      IF  cs_state-eventtype IS INITIAL.
         READ TABLE io_debugger->mo_window->mt_globals_set WITH KEY program = i_include ASSIGNING FIELD-SYMBOL(<globals_set>).
         IF sy-subrc <> 0.
           APPEND INITIAL LINE TO io_debugger->mo_window->mt_globals_set ASSIGNING <globals_set>.
@@ -4513,7 +4759,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           APPEND INITIAL LINE TO <globals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<gl_fs>).
           <gl_fs>-name = cs_state-change.
         ENDIF.
-      ELSE. "local fs
+      ELSE.
         READ TABLE io_debugger->mo_window->mt_locals_set
           WITH KEY program = i_include eventtype = cs_state-eventtype eventname = cs_state-eventname
           ASSIGNING FIELD-SYMBOL(<locals_set>).
@@ -4732,7 +4978,6 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       ms_layout-ctab_fname = 'COLOR'.
       ms_layout-stylefname = 'STYLE'.
 
-      "fields for F4 event handling
       DATA(gt_f4) = VALUE  lvc_t_f4( register   = abap_true chngeafter = abap_true
                                ( fieldname  = 'LOW'  )
                                ( fieldname  = 'HIGH'  ) ).
@@ -4771,7 +5016,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
         READ TABLE mt_sel_tab INTO DATA(l_sel) INDEX l_index.
       ENDIF.
 
-      e_object->get_functions( IMPORTING fcodes = DATA(fcodes) ). "Inactivate all standard functions
+      e_object->get_functions( IMPORTING fcodes = DATA(fcodes) ).
 
       LOOP AT fcodes INTO DATA(fcode) WHERE fcode NE '&OPTIMIZE'.
         func = fcode-fcode.
@@ -4826,7 +5071,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
   method HANDLE_USER_COMMAND.
       DATA:  sel_width TYPE i.
 
-      IF e_ucomm = 'SEL_OFF'. "Hide select-options alv
+      IF e_ucomm = 'SEL_OFF'.
 
         mo_viewer->m_visible = ''.
 
@@ -4849,7 +5094,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
         RETURN.
       ENDIF.
 
-      IF e_ucomm = 'SEL_CLEAR' OR e_ucomm = 'DELR'. "clear all selections
+      IF e_ucomm = 'SEL_CLEAR' OR e_ucomm = 'DELR'.
         mo_sel_alv->get_selected_rows( IMPORTING et_index_rows = DATA(sel_rows) ).
 
         LOOP AT sel_rows INTO DATA(l_row).
@@ -4990,7 +5235,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       READ TABLE mt_sel_tab ASSIGNING FIELD-SYMBOL(<sel>) INDEX es_row_no-row_id.
       DATA(l_fname) =  <sel>-field_label.
 
-      ZCL_ACE_APPL=>mt_sel[] = mt_sel_tab[].
+      ZCL_ACE=>mt_sel[] = mt_sel_tab[].
       IF <sel>-element = 'HROBJID'.
         READ TABLE mt_sel_tab INTO DATA(l_sel) WITH KEY field_label = 'OTYPE'.
         l_otype = l_sel-low.
@@ -5043,7 +5288,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
             tabname           = mo_viewer->m_tabname
             fieldname         = l_fname
             callback_program  = sy-repid
-            callback_form     = 'CALLBACK_F4_SEL' "callback_method - doesn't work for local class
+            callback_form     = 'CALLBACK_F4_SEL'
             multiple_choice   = l_multiple
           TABLES
             return_tab        = return_tab
@@ -5079,7 +5324,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
 
       READ TABLE mt_sel_tab INDEX es_row_no-row_id ASSIGNING FIELD-SYMBOL(<tab>).
       CASE es_col_id.
-        WHEN 'OPTION_ICON'. "edit select logical expression type
+        WHEN 'OPTION_ICON'.
           CALL FUNCTION 'SELECT_OPTION_OPTIONS'
             EXPORTING
               selctext     = 'nnnn'
@@ -5098,7 +5343,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
           ELSEIF sy-subrc = 1.
             CLEAR: <tab>-low, <tab>-high,<tab>-sign, <tab>-opti, <tab>-range.
           ENDIF.
-        WHEN 'MORE_ICON'. "edit ranges
+        WHEN 'MORE_ICON'.
           l_tabfield-tablename = mo_viewer->m_tabname.
           l_tabfield-fieldname = <tab>-field_label.
 
@@ -5127,7 +5372,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       RAISE EVENT selection_done.
   endmethod.
   method RAISE_SELECTION_DONE.
-      DATA: row TYPE ZCL_ACE_APPL=>t_sel_row.
+      DATA: row TYPE ZCL_ACE=>t_sel_row.
 
       ZCL_ACE_ALV_COMMON=>refresh( mo_sel_alv ).
       RAISE EVENT selection_done.
@@ -5156,7 +5401,6 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       ENDIF.
   endmethod.
   method UPDATE_SEL_ROW.
- "select patterns rules
 
       IF c_sel_row-high IS INITIAL AND c_sel_row-opti = 'BT'.
         CLEAR c_sel_row-opti.
@@ -5185,7 +5429,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       ENDIF.
 
       TRY.
-          c_sel_row-option_icon = ZCL_ACE_APPL=>m_option_icons[ sign = c_sel_row-sign option = c_sel_row-opti ]-icon_name.
+          c_sel_row-option_icon = ZCL_ACE=>m_option_icons[ sign = c_sel_row-sign option = c_sel_row-opti ]-icon_name.
         CATCH cx_sy_itab_line_not_found.                "#EC NO_HANDLER
       ENDTRY.
 
@@ -5397,7 +5641,7 @@ method DISPLAY.
       DATA(o_nodes) = mo_tree->get_nodes( ).
       DATA(o_node)  = o_nodes->get_node( node_key ).
       DATA r_row TYPE REF TO data.
-      DATA ls_clear_row TYPE ZCL_ACE_APPL=>ts_tree.
+      DATA ls_clear_row TYPE ZCL_ACE=>ts_tree.
 
       r_row = o_node->get_data_row( ).
       ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
@@ -5433,13 +5677,13 @@ method DISPLAY.
             WHEN lv_ep-type = 'I' THEN CONV #( icon_parameter_import )
             ELSE                       CONV #( icon_parameter_export ) ).
           add_node( i_name = lv_ep-param i_icon = lv_ep_icon i_rel = node_key
-                    i_tree = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ep-line include = lv_ep-include ) ).
+                    i_tree = VALUE ZCL_ACE=>ts_tree( value = lv_ep-line include = lv_ep-include ) ).
           lv_added = lv_added + 1.
         ENDLOOP.
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_ev)
           WHERE program = lv_lazy_prog AND class = lv_lazy_class AND eventname = lv_lazy_meth.
           add_node( i_name = lv_ev-name i_icon = lv_ev-icon i_rel = node_key
-                    i_tree = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ev-line include = lv_ev-include ) ).
+                    i_tree = VALUE ZCL_ACE=>ts_tree( value = lv_ev-line include = lv_ev-include ) ).
           lv_added = lv_added + 1.
         ENDLOOP.
         IF lv_added > 0.
@@ -5457,7 +5701,7 @@ method DISPLAY.
           LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_av)
             WHERE program = lv_attr_sub-program AND class = lv_attr_class AND eventname IS INITIAL.
             add_node( i_name = lv_av-name i_icon = lv_av-icon i_rel = node_key
-                      i_tree = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_av-line include = lv_av-include ) ).
+                      i_tree = VALUE ZCL_ACE=>ts_tree( value = lv_av-line include = lv_av-include ) ).
           ENDLOOP.
         ENDIF.
         CLEAR ls_clear_row.
@@ -5549,7 +5793,7 @@ method DISPLAY.
       IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'METHOD' AND <include> IS NOT INITIAL.
         DATA(lv_cm_include) = CONV program( <include> ).
         DATA(lv_cm_method)  = CONV string( <ev_name> ).
-        DATA(lv_cm_value)   = CONV i( <value> ).  " exact line from tree — always use this
+        DATA(lv_cm_value)   = CONV i( <value> ).
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
@@ -5566,17 +5810,14 @@ method DISPLAY.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include INTO DATA(ls_cm_prog2).
         IF sy-subrc = 0.
-          " Check if there are enhancements for this method
           READ TABLE ls_cm_prog2-tt_enh_blocks TRANSPORTING NO FIELDS
             WITH KEY ev_type = 'METHOD' ev_name = lv_cm_method.
           IF sy-subrc <> 0.
-            " No enhancements — navigate directly to the line stored in the tree node
             mo_viewer->mo_window->set_program( lv_cm_include ).
             mo_viewer->mo_window->m_prg-include = lv_cm_include.
             mo_viewer->mo_window->set_program_line( lv_cm_value ).
             RETURN.
           ENDIF.
-          " Has enhancements — find method boundaries and build virtual buffer
           DATA(lv_cm_meth_line) = 0.
           DATA(lv_cm_endm_line) = 0.
           LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_cm_kw) WHERE name = 'METHOD'.
@@ -5586,7 +5827,7 @@ method DISPLAY.
               lv_cm_meth_line = ls_cm_kw-line. EXIT.
             ENDIF.
           ENDLOOP.
-          IF lv_cm_meth_line = 0.  " fallback: name-only match (e.g. global class CM-include)
+          IF lv_cm_meth_line = 0.
             LOOP AT ls_cm_prog2-t_keywords INTO ls_cm_kw WHERE name = 'METHOD'.
               ls_cm_stmt = ls_cm_prog2-scan->statements[ ls_cm_kw-index ].
               ls_cm_tok  = ls_cm_prog2-scan->tokens[ ls_cm_stmt-from + 1 ].
@@ -5601,7 +5842,7 @@ method DISPLAY.
           ENDIF.
           IF lv_cm_meth_line > 0 AND lv_cm_endm_line > 0.
             DATA lt_cm_src  TYPE sci_include.
-            DATA lt_virt_kw TYPE ZCL_ACE_APPL=>tt_kword.
+            DATA lt_virt_kw TYPE ZCL_ACE=>tt_kword.
             LOOP AT ls_cm_prog2-source_tab INTO DATA(lv_cm_line)
               FROM lv_cm_meth_line TO lv_cm_endm_line.
               APPEND lv_cm_line TO lt_cm_src.
@@ -5616,8 +5857,8 @@ method DISPLAY.
             ENDLOOP.
             DATA: lt_cm_pre     TYPE sci_include,
                   lt_cm_post    TYPE sci_include,
-                  lt_cm_pre_kw  TYPE ZCL_ACE_APPL=>tt_kword,
-                  lt_cm_post_kw TYPE ZCL_ACE_APPL=>tt_kword.
+                  lt_cm_pre_kw  TYPE ZCL_ACE=>tt_kword,
+                  lt_cm_post_kw TYPE ZCL_ACE=>tt_kword.
             LOOP AT ls_cm_prog2-tt_enh_blocks INTO DATA(ls_cm_eb)
               WHERE ev_type = 'METHOD' AND ev_name = lv_cm_method
                 AND ( position = 'BEGIN' OR position = 'END' OR position = 'OVERWRITE' ).
@@ -5693,7 +5934,7 @@ method DISPLAY.
                 WHEN ls_cm_eb-position = 'BEGIN' THEN 'IPR_' ELSE 'IPO_' ).
               DATA(lv_impl_nm2) = lv_impl_pfx2 && ls_cm_eb-enh_name && '~' && lv_cm_method.
               DATA: lv_in_eb2 TYPE boolean, lt_eb2_lines TYPE sci_include,
-                    lt_eb2_kw TYPE ZCL_ACE_APPL=>tt_kword.
+                    lt_eb2_kw TYPE ZCL_ACE=>tt_kword.
               DATA lv_eb2_first TYPE i.
               DATA lv_eb2_last  TYPE i.
               CLEAR: lv_in_eb2, lt_eb2_lines, lt_eb2_kw, lv_eb2_first, lv_eb2_last.
@@ -5811,7 +6052,7 @@ method DISPLAY.
           WITH KEY include = lv_enh_include_f INTO DATA(ls_form_enh_prog).
         IF sy-subrc = 0.
           DATA lt_form_virt_src  TYPE sci_include.
-          DATA lt_form_virt_kw   TYPE ZCL_ACE_APPL=>tt_kword.
+          DATA lt_form_virt_kw   TYPE ZCL_ACE=>tt_kword.
           DATA lv_in_enh_block   TYPE boolean.
           DATA lv_enh_start_line TYPE i.
           DATA lv_enh_end_line   TYPE i.
@@ -5900,7 +6141,7 @@ method DISPLAY.
             ENDLOOP.
             IF lv_endm_line > 0.
               DATA lt_meth_src TYPE sci_include.
-              DATA lt_meth_kw  TYPE ZCL_ACE_APPL=>tt_kword.
+              DATA lt_meth_kw  TYPE ZCL_ACE=>tt_kword.
               LOOP AT ls_eimp_prog-source_tab INTO DATA(lv_src_line)
                 FROM lv_meth_line TO lv_endm_line.
                 APPEND lv_src_line TO lt_meth_src.
@@ -5941,7 +6182,6 @@ method DISPLAY.
       ENDIF.
       mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
 
-      " Highlight only for global var/attr leaf nodes (use var_name to avoid <param> field-symbol)
       DATA(lv_var_name) = CONV string( <var_name> ).
       IF lv_var_name IS NOT INITIAL.
         READ TABLE mo_viewer->mt_selected_var WITH KEY name = lv_var_name TRANSPORTING NO FIELDS.
@@ -6054,7 +6294,7 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
-    " ---- LCLASSES:{program} — only non-interface local classes ----
+    " ---- LCLASSES:{program} ----
     IF strlen( lv_param ) > 9 AND lv_param+0(9) = 'LCLASSES:'.
       DATA(lv_lc_prog) = lv_param+9.
       DATA(lv_lc_prev) = ``.
@@ -6088,7 +6328,7 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
-    " ---- LINTFS:{program} — only local interfaces ----
+    " ---- LINTFS:{program} ----
     IF strlen( lv_param ) > 7 AND lv_param+0(7) = 'LINTFS:'.
       DATA(lv_li_prog) = lv_param+7.
       DATA(lv_li_prev) = ``.
@@ -6160,7 +6400,6 @@ method DISPLAY.
                     WHEN lv_cm-eventname = 'CONSTRUCTOR'              THEN CONV #( icon_tools )
                     ELSE                                                   CONV #( icon_led_green ) )
           ELSE CONV #( icon_oo_overwrite ) ).
-        " Use interface method icon if this is an interface
         IF lv_cm-is_intf = abap_true.
           lv_micon = icon_oo_inst_method.
         ENDIF.
@@ -6169,7 +6408,6 @@ method DISPLAY.
           i_tree = VALUE #( kind = 'M' value = lv_cmkw-v_line include = lv_cm-include
                             program = lv_cm-program ev_type = lv_cm-eventtype ev_name = lv_cm-eventname ) ).
 
-        " Parameters — added directly under method node (no lazy folder)
         LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_mprm)
           WHERE class = lv_cls_name AND event = 'METHOD' AND name = lv_cm-eventname AND param IS NOT INITIAL.
           DATA(lv_mpicon) = COND salv_de_tree_image(
@@ -6179,7 +6417,6 @@ method DISPLAY.
                     i_tree = VALUE #( value = lv_mprm-line include = lv_mprm-include var_name = lv_mprm-param ) ).
         ENDLOOP.
 
-        " Local vars folder (lazy) — only if vars exist
         DATA(lv_mv_cnt) = 0.
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_mv)
           WHERE program = lv_cm-program AND class = lv_cls_name AND eventname = lv_cm-eventname.
@@ -6277,14 +6514,14 @@ CLASS ZCL_ACE_POPUP IMPLEMENTATION.
   endmethod.
   method ON_BOX_CLOSE.
 
-      LOOP AT ZCL_ACE_APPL=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>) WHERE parent = sender .
+      LOOP AT ZCL_ACE=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>) WHERE parent = sender .
         <popup>-child->free( ).
         CLEAR <popup>-child.
       ENDLOOP.
       IF sy-subrc <> 0.
-        DELETE  ZCL_ACE_APPL=>mt_popups WHERE child = sender.
+        DELETE  ZCL_ACE=>mt_popups WHERE child = sender.
       ENDIF.
-      DELETE ZCL_ACE_APPL=>mt_popups WHERE child IS INITIAL.
+      DELETE ZCL_ACE=>mt_popups WHERE child IS INITIAL.
       sender->free( ).
       CLEAR mo_box.
 
@@ -6607,7 +6844,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       mo_viewer = io_debugger.
       mv_type = i_type.
 
-      CHECK ZCL_ACE_APPL=>i_mermaid_active = abap_true.
+      CHECK ZCL_ACE=>i_mermaid_active = abap_true.
 
       CASE mv_type.
         WHEN 'CALLS'. text = 'Calls flow'.
@@ -6617,7 +6854,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       IF mo_box IS INITIAL.
         mo_box = create( i_name = text i_width = 1000 i_hight = 300 ).
 
-        APPEND INITIAL LINE TO ZCL_ACE_APPL=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+        APPEND INITIAL LINE TO ZCL_ACE=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
         <popup>-parent = mo_viewer->mo_window->mo_box.
         <popup>-child = mo_box.
 
@@ -6670,7 +6907,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
   endmethod.
   method OPEN_MERMAID.
 
-      CHECK ZCL_ACE_APPL=>i_mermaid_active = abap_true.
+      CHECK ZCL_ACE=>i_mermaid_active = abap_true.
 
       TRY.
           IF mo_diagram IS INITIAL.
@@ -6920,9 +7157,62 @@ CLASS ZCL_ACE_ALV_COMMON IMPLEMENTATION.
 ENDCLASS.
 
 CLASS ZCL_ACE IMPLEMENTATION.
-  method ADD_CLASS.
 
-      DATA: tree        TYPE ZCL_ACE_APPL=>ts_tree,
+  method CHECK_MERMAID.
+      CALL FUNCTION 'SEO_CLASS_EXISTENCE_CHECK'
+        EXPORTING
+          clskey        = 'ZCL_WD_GUI_MERMAID_JS_DIAGRAM '
+        EXCEPTIONS
+          not_specified = 1
+          not_existing  = 2
+          i_interface   = 3
+          no_text       = 4
+          inconsistent  = 5
+          OTHERS        = 6.
+      IF sy-subrc = 0.
+        i_mermaid_active = abap_true.
+      ENDIF.
+  endmethod.
+
+  method INIT_ICONS_TABLE.
+      m_option_icons = VALUE #(
+       ( sign = space option = space  icon_name = icon_led_inactive )
+       ( sign = 'I'   option = 'EQ'   icon_name = icon_equal_green )
+       ( sign = 'I'   option = 'NE'   icon_name = icon_not_equal_green )
+       ( sign = 'I'   option = 'LT'   icon_name = icon_less_green )
+       ( sign = 'I'   option = 'LE'   icon_name = icon_less_equal_green )
+       ( sign = 'I'   option = 'GT'   icon_name = icon_greater_green )
+       ( sign = 'I'   option = 'GE'   icon_name = icon_greater_equal_green )
+       ( sign = 'I'   option = 'CP'   icon_name = icon_pattern_include_green )
+       ( sign = 'I'   option = 'NP'   icon_name = icon_pattern_exclude_green )
+       ( sign = 'I'   option = 'BT'   icon_name = icon_interval_include_green )
+       ( sign = 'I'   option = 'NB'   icon_name = icon_interval_exclude_green )
+       ( sign = 'E'   option = 'EQ'   icon_name = icon_equal_red )
+       ( sign = 'E'   option = 'NE'   icon_name = icon_not_equal_red )
+       ( sign = 'E'   option = 'LT'   icon_name = icon_less_red )
+       ( sign = 'E'   option = 'LE'   icon_name = icon_less_equal_red )
+       ( sign = 'E'   option = 'GT'   icon_name = icon_greater_red )
+       ( sign = 'E'   option = 'GE'   icon_name = icon_greater_equal_red )
+       ( sign = 'E'   option = 'CP'   icon_name = icon_pattern_include_red )
+       ( sign = 'E'   option = 'NP'   icon_name = icon_pattern_exclude_red )
+       ( sign = 'E'   option = 'BT'   icon_name = icon_interval_include_red )
+       ( sign = 'E'   option = 'NB'   icon_name = icon_interval_exclude_red ) ).
+  endmethod.
+
+  method OPEN_INT_TABLE.
+      DATA r_tab TYPE REF TO data.
+      IF it_ref IS BOUND.
+        r_tab = it_ref.
+      ELSE.
+        GET REFERENCE OF it_tab INTO r_tab.
+      ENDIF.
+      APPEND INITIAL LINE TO ZCL_ACE=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>).
+      <obj>-alv_viewer = NEW #(  i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
+      <obj>-alv_viewer->mo_sel->raise_selection_done( ).
+  endmethod.
+
+  method ADD_CLASS.
+      DATA: tree        TYPE ZCL_ACE=>ts_tree,
             splits_incl TYPE TABLE OF string,
             icon        TYPE salv_de_tree_image,
             class_rel   TYPE salv_de_node_key,
@@ -6938,7 +7228,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         icon = icon_folder.
       ENDIF.
 
-      " Interfaces
       LOOP AT mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = i_class AND reltype = '1'.
         IF class_rel IS INITIAL.
           class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
@@ -6949,10 +7238,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
       LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = i_class AND eventtype = 'METHOD'.
         IF class_rel IS INITIAL.
           IF i_tree-kind = 'C'.
-            " Global class node — kind='C' blocks nav and highlight
             class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
           ELSE.
-            " Local class node — resolve CLASS DEFINITION line from tt_class_defs
             READ TABLE mo_window->ms_sources-tt_class_defs
               WITH KEY class = i_class INTO DATA(ls_cls_def).
             DATA(lv_cls_inc)  = COND program( WHEN sy-subrc = 0 AND ls_cls_def-include IS NOT INITIAL
@@ -6968,7 +7255,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
                                            value   = lv_cls_line ) ).
           ENDIF.
 
-          " Public/Protected/Private sections — global classes only
           IF i_tree-kind = 'C' AND i_type <> 'I' AND i_type <> 'T'.
             DATA(lv_sec_prefix) = get_include_prefix( i_class ).
             DATA(lt_sections)   = VALUE string_table(
@@ -6990,7 +7276,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             ENDLOOP.
           ENDIF.
 
-          " Attributes folder (lazy)
           DATA(lv_attr_cnt) = 0.
           LOOP AT mo_window->ms_sources-t_vars INTO DATA(var_cnt)
             WHERE program = subs-program AND class = subs-class AND eventname IS INITIAL.
@@ -7011,9 +7296,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
 
         tree-kind    = 'M'.
-        " For local interfaces: def_line holds the exact source line of the METHODS
-        " statement (set correctly by PARSE_TOKENS via lv_token_row fix).
-        " For local/global classes: use keyword-v_line from t_keywords as before.
         IF subs-is_intf = abap_true AND subs-def_line > 0.
           tree-value = subs-def_line.
         ELSE.
@@ -7044,7 +7326,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         DATA(event_node) = mo_tree_local->add_node(
           i_name = subs-eventname i_icon = icon i_rel = class_rel i_tree = tree ).
 
-        " Parameters — added directly under method node (no lazy folder)
         LOOP AT mo_window->ms_sources-t_params INTO DATA(lv_p)
           WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname AND param IS NOT INITIAL.
           DATA(lv_p_icon) = COND salv_de_tree_image(
@@ -7055,7 +7336,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
         ENDLOOP.
 
-        " Local vars folder (lazy) — only if vars exist
         DATA(lv_var_cnt) = 0.
         LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
           WHERE program = subs-program AND class = subs-class AND eventname = subs-eventname.
@@ -7084,12 +7364,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDIF.
 
       r_node = class_rel.
-
   endmethod.
   METHOD get_include_prefix.
-    " Returns the SAP include name prefix for a class:
-    "   class < 30 chars  → class padded with '=' to 30 + '======'  (36 total)
-    "   class = 30 chars  → class as-is (no separator needed)
     IF strlen( i_class ) >= 30.
       rv_prefix = i_class.
     ELSE.
@@ -7099,24 +7375,18 @@ CLASS ZCL_ACE IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
   METHOD BUILD_LOCAL_CLASSES_NODE.
-    " Renders local classes (CP include) and unit test classes (CCAU include)
-    " as child nodes under i_refnode, excluding i_excl_class.
-    " Interfaces (is_intf = true) are placed in a separate 'Interfaces' branch.
-    " Returns the 'Local Classes' folder node key, or initial if none found.
     DATA: local      TYPE string,
           test_rel   TYPE salv_de_node_key,
           intf_rel   TYPE salv_de_node_key,
           lv_prefix  TYPE string,
           lv_ccau    TYPE string.
 
-    " ---- Local Classes (CP) + Unit Test Classes (CCAU) — single loop ----
     lv_prefix = get_include_prefix( i_excl_class ).
     lv_ccau   = lv_prefix && 'CCAU'.
     LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs)
       WHERE program = i_program AND class <> i_excl_class AND eventtype = 'METHOD'.
       IF local <> subs-class.
         IF subs-include = lv_ccau.
-          " Unit Test class branch
           IF test_rel IS INITIAL.
             test_rel = mo_tree_local->add_node(
               i_name = 'Unit Test Classes' i_icon = CONV #( icon_folder )
@@ -7125,7 +7395,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
           ENDIF.
           add_class( i_class = subs-class i_refnode = test_rel no_locals = abap_true i_type = 'T' ).
         ELSEIF subs-is_intf = abap_true.
-          " Local Interface — separate Interfaces branch
           IF intf_rel IS INITIAL.
             intf_rel = mo_tree_local->add_node(
               i_name = 'Interfaces' i_icon = CONV #( icon_oo_connection )
@@ -7134,7 +7403,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
           ENDIF.
           add_class( i_class = subs-class i_refnode = intf_rel no_locals = abap_true i_type = 'I' ).
         ELSE.
-          " Regular local class branch
           IF r_locals_rel IS INITIAL.
             r_locals_rel = mo_tree_local->add_node(
               i_name = 'Local Classes' i_icon = CONV #( icon_folder )
@@ -7149,19 +7417,15 @@ CLASS ZCL_ACE IMPLEMENTATION.
   ENDMETHOD.
   method CONSTRUCTOR.
       CONSTANTS: c_mask TYPE x VALUE '01'.
-
       mv_prog = i_prog.
       i_step = abap_on.
-      ZCL_ACE_APPL=>check_mermaid( ).
-      ZCL_ACE_APPL=>init_icons_table( ).
-
+      ZCL_ACE=>check_mermaid( ).
+      ZCL_ACE=>init_icons_table( ).
       mo_window = NEW ZCL_ACE_WINDOW( me ).
-
       mo_tree_local = NEW ZCL_ACE_RTTI_TREE( i_header   = 'Objects & Code Flow'
                                          i_type     = 'L'
                                          i_cont     = mo_window->mo_locals_container
                                          i_debugger = me ).
-
       show( ).
   endmethod.
   METHOD get_code_flow.
@@ -7181,15 +7445,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
           pre_stack TYPE ts_line,
           opened    TYPE i.
 
-    "delete mt_if.
     DELETE mo_window->ms_sources-t_calculated WHERE name+0(1) = ''''.
     DELETE mo_window->ms_sources-t_composed WHERE name+0(1) = ''''.
-
     DELETE mo_window->ms_sources-t_calculated WHERE name+0(1) = '='.
     DELETE mo_window->ms_sources-t_composed WHERE name+0(1) = '='.
+
     SORT mo_window->ms_sources-t_calculated.
     DELETE ADJACENT DUPLICATES FROM mo_window->ms_sources-t_calculated.
-
     SORT mo_window->ms_sources-t_composed.
     DELETE ADJACENT DUPLICATES FROM mo_window->ms_sources-t_composed.
 
@@ -7225,12 +7487,10 @@ CLASS ZCL_ACE IMPLEMENTATION.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(keyword).
       LOOP AT keyword-tt_calls INTO DATA(call).
-
         READ TABLE lt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
         IF sy-subrc = 0 OR mt_selected_var IS INITIAL.
           yes = abap_true.
         ENDIF.
-
         READ TABLE lt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
         IF sy-subrc = 0 OR mt_selected_var IS INITIAL.
           yes = abap_true.
@@ -7243,7 +7503,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             APPEND INITIAL LINE TO  lt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
             <selected>-name = call-outer.
           ENDIF.
-
           READ TABLE lt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
             APPEND INITIAL LINE TO  lt_selected_var ASSIGNING <selected>.
@@ -7253,7 +7512,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    "deleting empty cycles.
     DATA: prev    LIKE LINE OF mt_steps,
           pre_key TYPE string.
 
@@ -7265,7 +7523,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       IF prev IS NOT INITIAL.
         IF ( key-name = 'ENDDO' OR key-name = 'ENDWHILE' OR key-name = 'ENDLOOP' OR key-name = 'ENDIF' )  AND
            ( pre_key = 'DO' OR pre_key = 'LOOP'  OR pre_key = 'WHILE'  OR pre_key = 'IF' ).
-          <step>-first = 'D'."to delete
+          <step>-first = 'D'.
           READ TABLE mt_steps INDEX ind - 1 ASSIGNING FIELD-SYMBOL(<step_prev>).
           <step_prev>-first = 'D'.
         ENDIF.
@@ -7275,18 +7533,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
     ENDLOOP.
 
     DELETE steps WHERE first = 'D'.
-
     SORT steps BY step DESCENDING.
 
-    "collecting dependents variables
     LOOP AT steps INTO step.
-
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
-
       LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calculated_var) WHERE line = step-line.
         READ TABLE lt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
-
           LOOP AT mo_window->ms_sources-t_composed INTO DATA(composed_var) WHERE line = step-line.
             READ TABLE lt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
@@ -7299,24 +7552,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
       LOOP AT keyword-tt_calls INTO call.
-
         READ TABLE lt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
           APPEND INITIAL LINE TO  lt_selected_var ASSIGNING <selected>.
           <selected>-name = call-inner.
         ENDIF.
       ENDLOOP.
-
     ENDLOOP.
+
     SORT lt_selected_var.
     DELETE ADJACENT DUPLICATES FROM lt_selected_var.
-
-    "collecting watchpoints
     CLEAR mo_window->mt_coverage.
 
     LOOP AT  steps INTO step.
       CLEAR inserted.
-
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO key.
 
@@ -7325,10 +7574,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
          key-name = 'CASE' OR key-name = 'WHEN' OR key-name = 'ENDCASE' OR
           key-name = 'DO' OR key-name = 'ENDDO'  OR key-name = 'LOOP'  OR key-name = 'ENDLOOP' OR key-name = 'WHILE' OR key-name = 'ENDWHILE'.
         APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING FIELD-SYMBOL(<watch>).
-
         <watch>-program = step-program.
         <watch>-line = line-line = step-line.
-
         INSERT line INTO results INDEX 1 ASSIGNING FIELD-SYMBOL(<line>).
         <line>-cond = key-name.
         <line>-ev_name = step-eventname.
@@ -7351,17 +7598,10 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
         READ TABLE lt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0 OR mt_selected_var IS INITIAL.
-
           APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING <watch>.
           <watch>-program = step-program.
           <watch>-line = line-line = step-line.
-
-          "should be commented for Smart debugger
-*          LOOP AT lines ASSIGNING <line> WHERE line = line-line AND event = step-eventname AND stack = step-stacklevel .
-*            <line>-del = abap_true.
-*          ENDLOOP.
           IF ind = 1.
-
             IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND key-name <> 'FORM' AND
               key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'ENDMETHOD' AND key-name <> 'MODULE' AND inserted = abap_false.
               line-ev_name = step-eventname.
@@ -7372,14 +7612,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
               line-active_root = abap_true.
               INSERT line INTO results INDEX 1.
             ENDIF.
-
           ENDIF.
         ENDIF.
-
       ENDLOOP.
-      "if no variable - whole CodeMix flow
-      IF  inserted = abap_false."i_calc_path IS INITIAL.
 
+      IF  inserted = abap_false.
         IF key-name <> 'PUBLIC' AND key-name <> 'ENDCLASS' AND  key-name <> 'ENDFORM' AND  key-name <> 'ENDMETHOD' AND
           key-name <> 'METHOD' AND key-name <> 'METHODS' AND key-name <> 'MODULE' AND  key-name <> 'FORM' AND inserted = abap_false.
           READ TABLE results WITH KEY line = step-line include = step-include ev_type = step-eventtype ev_name = step-eventname TRANSPORTING NO FIELDS.
@@ -7396,12 +7633,10 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDIF.
       ENDIF.
       CLEAR inserted.
-
     ENDLOOP.
 
     DELETE results WHERE del = abap_true.
 
-    " Delete empty cycle pairs (LOOP+ENDLOOP, DO+ENDDO, WHILE+ENDWHILE with nothing between)
     DATA lv_changed TYPE boolean.
     DO.
       lv_changed = abap_false.
@@ -7424,10 +7659,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
       IF lv_changed = abap_false. EXIT. ENDIF.
     ENDDO.
 
-    "getting code texts and calls params
     LOOP AT results ASSIGNING <line>.
       ind = sy-tabix.
-
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = <line>-include INTO prog.
       READ TABLE prog-t_keywords WITH KEY line = <line>-line INTO keyword.
       LOOP AT prog-scan->tokens FROM keyword-from TO keyword-to INTO DATA(token).
@@ -7451,7 +7684,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             <line>-arrow = |{ <line>-arrow }, |.
           ENDIF.
           <line>-arrow  = |{ <line>-arrow  } { call-outer } { call-type } { call-inner }|.
-
           REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
           REPLACE ALL OCCURRENCES OF '"' IN  <line>-code WITH ''.
         ENDLOOP.
@@ -7463,25 +7695,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
     ENDLOOP.
 
-    "check subform execution steps existance and if/case structures build
-
     DATA: if_depth   TYPE i,
           when_count TYPE i.
 
-    " Assign ind to ALL rows first (sequential, no gaps)
     LOOP AT results ASSIGNING <line>.
       <line>-ind = sy-tabix.
     ENDLOOP.
 
     LOOP AT results ASSIGNING <line> WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE' AND code <> 'LOOP' AND code <> 'ENDLOOP' .
-
       FIELD-SYMBOLS: <if> TYPE ts_if.
       IF <line>-cond = 'IF' OR  <line>-cond = 'CASE'.
         ADD 1 TO if_depth.
         CLEAR when_count.
         APPEND INITIAL LINE TO mt_if  ASSIGNING <if>.
         <if>-if_ind = <line>-ind.
-
       ENDIF.
 
       IF <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE'.
@@ -7498,7 +7725,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDIF.
 
       IF <line>-cond = 'ELSE' OR <line>-cond = 'ELSEIF'.
-
         <line>-els_before = els_before.
         <line>-els_after = <line>-ind.
         DATA(counter) = <line>-ind + 1.
@@ -7508,7 +7734,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             CLEAR <line>-els_after.
             EXIT.
           ENDIF.
-
           IF line-cond = 'ELSE' OR line-cond = 'ELSEIF'.
             CLEAR <line>-els_after.
             EXIT.
@@ -7517,17 +7742,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
             EXIT.
           ELSE.
             ADD 1 TO counter.
-
           ENDIF.
         ENDDO.
-        IF when_count = 1. "to refactor
-*          <if>-if_ind = els_before.
-*          CLEAR <line>-els_before.
+        IF when_count = 1.
         ENDIF.
       ENDIF.
 
       IF <line>-cond = 'WHEN'.
-
         <line>-els_before = els_before.
         <line>-els_after = <line>-ind.
         counter = <line>-ind + 1.
@@ -7537,7 +7758,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             CLEAR <line>-els_after.
             EXIT.
           ENDIF.
-
           IF line-cond = 'WHEN'.
             CLEAR <line>-els_after.
             EXIT.
@@ -7546,11 +7766,10 @@ CLASS ZCL_ACE IMPLEMENTATION.
             EXIT.
           ELSE.
             ADD 1 TO counter.
-
           ENDIF.
         ENDDO.
         IF when_count = 1.
-          IF <if> IS ASSIGNED. "to refactor
+          IF <if> IS ASSIGNED.
             <if>-if_ind = els_before.
           ENDIF.
           CLEAR <line>-els_before.
@@ -7562,7 +7781,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ELSE.
         CLEAR   els_before.
       ENDIF.
-
     ENDLOOP.
 
     IF mt_if IS INITIAL AND ms_if-if_ind IS NOT INITIAL.
@@ -7575,7 +7793,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    " Post-processing: mark active_root
     CALL METHOD mark_active_root
       EXPORTING
         i_calc_path = i_calc_path
@@ -7584,8 +7801,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
     IF i_calc_path = abap_true.
       DELETE results WHERE active_root IS INITIAL.
-
-      " Recalculate IND as sequential iteration 1, 2, 3, ...
       LOOP AT results ASSIGNING <line>.
         <line>-ind = sy-tabix.
       ENDLOOP.
@@ -7593,24 +7808,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
   ENDMETHOD.
   METHOD mark_active_root.
-    " ---------------------------------------------------------------
-    " Algorithm:
-    "   Pass the table once. On encountering IF/CASE:
-    "     - push the block header index onto a stack
-    "     - locate the matching ENDIF/ENDCASE using a nesting counter
-    "     - analyse each branch inside the block
-    "   A branch is active if it contains at least one plain row (cond = '')
-    "   or a nested active block.
-    "   A block is active if at least one of its branches is active.
-    "   IF/ENDIF are active only when the block is active.
-    "   ELSEIF/ELSE/WHEN are active only when their branch AND block are active.
-    " ---------------------------------------------------------------
-
     DATA: lv_tabix TYPE i.
 
-    " ---------------------------------------------------------------
-    " Step 2: collect IF->ENDIF / CASE->ENDCASE pairs using a stack.
-    " ---------------------------------------------------------------
     TYPES: BEGIN OF ts_pair,
              if_idx  TYPE i,
              end_idx TYPE i,
@@ -7661,14 +7860,12 @@ CLASS ZCL_ACE IMPLEMENTATION.
     LOOP AT lt_pairs INTO ls_pair.
       lv_if_i  = ls_pair-if_idx.
       lv_end_i = ls_pair-end_idx.
-
       CLEAR: lt_hdrs, lv_inner_depth.
 
       lv_i = lv_if_i.
       WHILE lv_i <= lv_end_i.
         READ TABLE ct_results INDEX lv_i ASSIGNING <ln>.
         IF sy-subrc <> 0. EXIT. ENDIF.
-
         CASE <ln>-cond.
           WHEN 'IF' OR 'CASE'.
             IF lv_i = lv_if_i.
@@ -7701,17 +7898,14 @@ CLASS ZCL_ACE IMPLEMENTATION.
       lv_h = 1.
 
       WHILE lv_h < lv_hdr_cnt.
-
         DATA(ls_hdr_cur)  = lt_hdrs[ lv_h ].
         DATA(ls_hdr_next) = lt_hdrs[ lv_h + 1 ].
-
         CLEAR: lv_branch_active, lv_scan_inner.
         lv_scan = ls_hdr_cur-tabix + 1.
 
         WHILE lv_scan < ls_hdr_next-tabix.
           READ TABLE ct_results INDEX lv_scan ASSIGNING FIELD-SYMBOL(<scan_ln>).
           IF sy-subrc <> 0. EXIT. ENDIF.
-
           CASE <scan_ln>-cond.
             WHEN 'IF' OR 'CASE'.
               lv_scan_inner += 1.
@@ -7722,7 +7916,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
                 lv_branch_active = abap_true.
               ENDIF.
           ENDCASE.
-
           IF lv_branch_active = abap_true. EXIT. ENDIF.
           lv_scan += 1.
         ENDWHILE.
@@ -7736,7 +7929,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             CLEAR <hdr_ln>-active_root.
           ENDIF.
         ENDIF.
-
         lv_h += 1.
       ENDWHILE.
 
@@ -7753,12 +7945,9 @@ CLASS ZCL_ACE IMPLEMENTATION.
           <if_ln>-active_root = abap_true.
         ENDIF.
       ENDIF.
-
     ENDLOOP.
-
   ENDMETHOD.
   method GET_CODE_MIX.
-
       DATA: flow_lines TYPE sci_include,
             splits     TYPE TABLE OF string,
             ind        TYPE i,
@@ -7817,11 +8006,9 @@ CLASS ZCL_ACE IMPLEMENTATION.
       mo_window->set_mixprog_line( ).
       mo_window->show_stack( ).
       mo_window->mo_box->set_caption( |Code Mix: { lines( lines ) } statements| ).
-
   endmethod.
   method SHOW.
-
-  DATA: tree        TYPE ZCL_ACE_APPL=>ts_tree,
+    DATA: tree        TYPE ZCL_ACE=>ts_tree,
             cl_name     TYPE string,
             icon        TYPE salv_de_tree_image,
             forms_rel   TYPE salv_de_node_key,
@@ -7834,7 +8021,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
             globals_rel TYPE salv_de_node_key,
             enh_rel     TYPE salv_de_node_key,
             locals_rel  TYPE salv_de_node_key,
-            keyword     TYPE ZCL_ACE_APPL=>ts_kword,
+            keyword     TYPE ZCL_ACE=>ts_kword,
             splits_prg  TYPE TABLE OF string,
             splits_incl TYPE TABLE OF string.
 
@@ -7988,13 +8175,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
         DATA(lv_loc_cnt) = lv_cls_cnt + lv_intf_cnt.
         IF lv_loc_cnt <= c_lazy_threshold.
-          " Small enough — build eagerly (with Interface/Class split inside)
           locals_rel = build_local_classes_node(
             i_program    = CONV #( mv_prog )
             i_excl_class = splits_prg[ 1 ]
             i_refnode    = mo_tree_local->main_node_key ).
         ELSE.
-          " Large — two independent lazy folders
           IF lv_cls_cnt > 0.
             locals_rel = mo_tree_local->add_node(
               i_name = |Local Classes ({ lv_cls_cnt })|
@@ -8111,8 +8296,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDIF.
 
       mo_tree_local->display( ).
-
   endmethod.
+
 ENDCLASS.
 
   " & Multi-windows program for ABAP code analysis
@@ -8240,8 +8425,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-03-11T11:26:28.819Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-11T11:26:28.819Z`.
+* abapmerge 0.16.7 - 2026-03-11T14:52:12.080Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-11T14:52:12.080Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
