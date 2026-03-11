@@ -389,7 +389,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       mo_viewer = io_debugger.
       mv_type = i_type.
 
-      CHECK ZCL_ACE_APPL=>i_mermaid_active = abap_true.
+      CHECK ZCL_ACE=>i_mermaid_active = abap_true.
 
       CASE mv_type.
         WHEN 'CALLS'. text = 'Calls flow'.
@@ -399,7 +399,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       IF mo_box IS INITIAL.
         mo_box = create( i_name = text i_width = 1000 i_hight = 300 ).
 
-        APPEND INITIAL LINE TO ZCL_ACE_APPL=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+        APPEND INITIAL LINE TO ZCL_ACE=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
         <popup>-parent = mo_viewer->mo_window->mo_box.
         <popup>-child = mo_box.
 
@@ -456,7 +456,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
   method OPEN_MERMAID.
 
-      CHECK ZCL_ACE_APPL=>i_mermaid_active = abap_true.
+      CHECK ZCL_ACE=>i_mermaid_active = abap_true.
 
       TRY.
           IF mo_diagram IS INITIAL.

@@ -8,7 +8,7 @@ public section.
   data MO_SEL_ALV type ref to CL_GUI_ALV_GRID .
   data MT_FCAT type LVC_T_FCAT .
   data:
-    mt_sel_tab TYPE TABLE OF ZCL_ACE_APPL=>selection_display_s .
+    mt_sel_tab TYPE TABLE OF ZCL_ACE=>selection_display_s .
   data MS_LAYOUT type LVC_S_LAYO .
 
   events SELECTION_DONE .
@@ -27,7 +27,7 @@ public section.
       !I_CLEAR type BOOLEAN default ABAP_TRUE .
   methods UPDATE_SEL_ROW
     changing
-      !C_SEL_ROW type ZCL_ACE_APPL=>SELECTION_DISPLAY_S .
+      !C_SEL_ROW type ZCL_ACE=>SELECTION_DISPLAY_S .
 protected section.
 private section.
 
@@ -91,7 +91,6 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       ms_layout-ctab_fname = 'COLOR'.
       ms_layout-stylefname = 'STYLE'.
 
-      "fields for F4 event handling
       DATA(gt_f4) = VALUE  lvc_t_f4( register   = abap_true chngeafter = abap_true
                                ( fieldname  = 'LOW'  )
                                ( fieldname  = 'HIGH'  ) ).
@@ -136,7 +135,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
         READ TABLE mt_sel_tab INTO DATA(l_sel) INDEX l_index.
       ENDIF.
 
-      e_object->get_functions( IMPORTING fcodes = DATA(fcodes) ). "Inactivate all standard functions
+      e_object->get_functions( IMPORTING fcodes = DATA(fcodes) ).
 
       LOOP AT fcodes INTO DATA(fcode) WHERE fcode NE '&OPTIMIZE'.
         func = fcode-fcode.
@@ -209,7 +208,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
 
       DATA:  sel_width TYPE i.
 
-      IF e_ucomm = 'SEL_OFF'. "Hide select-options alv
+      IF e_ucomm = 'SEL_OFF'.
 
         mo_viewer->m_visible = ''.
 
@@ -232,7 +231,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
         RETURN.
       ENDIF.
 
-      IF e_ucomm = 'SEL_CLEAR' OR e_ucomm = 'DELR'. "clear all selections
+      IF e_ucomm = 'SEL_CLEAR' OR e_ucomm = 'DELR'.
         mo_sel_alv->get_selected_rows( IMPORTING et_index_rows = DATA(sel_rows) ).
 
         LOOP AT sel_rows INTO DATA(l_row).
@@ -397,7 +396,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       READ TABLE mt_sel_tab ASSIGNING FIELD-SYMBOL(<sel>) INDEX es_row_no-row_id.
       DATA(l_fname) =  <sel>-field_label.
 
-      ZCL_ACE_APPL=>mt_sel[] = mt_sel_tab[].
+      ZCL_ACE=>mt_sel[] = mt_sel_tab[].
       IF <sel>-element = 'HROBJID'.
         READ TABLE mt_sel_tab INTO DATA(l_sel) WITH KEY field_label = 'OTYPE'.
         l_otype = l_sel-low.
@@ -450,7 +449,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
             tabname           = mo_viewer->m_tabname
             fieldname         = l_fname
             callback_program  = sy-repid
-            callback_form     = 'CALLBACK_F4_SEL' "callback_method - doesn't work for local class
+            callback_form     = 'CALLBACK_F4_SEL'
             multiple_choice   = l_multiple
           TABLES
             return_tab        = return_tab
@@ -492,7 +491,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
 
       READ TABLE mt_sel_tab INDEX es_row_no-row_id ASSIGNING FIELD-SYMBOL(<tab>).
       CASE es_col_id.
-        WHEN 'OPTION_ICON'. "edit select logical expression type
+        WHEN 'OPTION_ICON'.
           CALL FUNCTION 'SELECT_OPTION_OPTIONS'
             EXPORTING
               selctext     = 'nnnn'
@@ -511,7 +510,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
           ELSEIF sy-subrc = 1.
             CLEAR: <tab>-low, <tab>-high,<tab>-sign, <tab>-opti, <tab>-range.
           ENDIF.
-        WHEN 'MORE_ICON'. "edit ranges
+        WHEN 'MORE_ICON'.
           l_tabfield-tablename = mo_viewer->m_tabname.
           l_tabfield-fieldname = <tab>-field_label.
 
@@ -546,7 +545,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
   method RAISE_SELECTION_DONE.
 
 
-      DATA: row TYPE ZCL_ACE_APPL=>t_sel_row.
+      DATA: row TYPE ZCL_ACE=>t_sel_row.
 
       ZCL_ACE_ALV_COMMON=>refresh( mo_sel_alv ).
       RAISE EVENT selection_done.
@@ -585,7 +584,6 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
 
 
   method UPDATE_SEL_ROW.
- "select patterns rules
 
       IF c_sel_row-high IS INITIAL AND c_sel_row-opti = 'BT'.
         CLEAR c_sel_row-opti.
@@ -614,7 +612,7 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       ENDIF.
 
       TRY.
-          c_sel_row-option_icon = ZCL_ACE_APPL=>m_option_icons[ sign = c_sel_row-sign option = c_sel_row-opti ]-icon_name.
+          c_sel_row-option_icon = ZCL_ACE=>m_option_icons[ sign = c_sel_row-sign option = c_sel_row-opti ]-icon_name.
         CATCH cx_sy_itab_line_not_found.                "#EC NO_HANDLER
       ENDTRY.
 

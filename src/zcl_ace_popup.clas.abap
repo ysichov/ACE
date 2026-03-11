@@ -79,14 +79,14 @@ CLASS ZCL_ACE_POPUP IMPLEMENTATION.
 
   method ON_BOX_CLOSE.
 
-      LOOP AT ZCL_ACE_APPL=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>) WHERE parent = sender .
+      LOOP AT ZCL_ACE=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>) WHERE parent = sender .
         <popup>-child->free( ).
         CLEAR <popup>-child.
       ENDLOOP.
       IF sy-subrc <> 0.
-        DELETE  ZCL_ACE_APPL=>mt_popups WHERE child = sender.
+        DELETE  ZCL_ACE=>mt_popups WHERE child = sender.
       ENDIF.
-      DELETE ZCL_ACE_APPL=>mt_popups WHERE child IS INITIAL.
+      DELETE ZCL_ACE=>mt_popups WHERE child IS INITIAL.
       sender->free( ).
       CLEAR mo_box.
 

@@ -63,7 +63,7 @@ public section.
                class   TYPE string,
              END OF ts_refvar .
   types:
-    tt_kword      TYPE STANDARD TABLE OF ZCL_ACE_APPL=>TS_KWORD WITH EMPTY KEY .
+    tt_kword      TYPE STANDARD TABLE OF ZCL_ACE=>TS_KWORD WITH EMPTY KEY .
   types:
     tt_vars       TYPE STANDARD TABLE OF ts_vars WITH EMPTY KEY .
   types:
@@ -156,7 +156,7 @@ public section.
                t_composed    TYPE tt_composed,
                t_params      TYPE tt_params,
                tt_tabs       TYPE tt_tabs,
-               tt_calls_line TYPE ZCL_ACE_APPL=>tt_calls_line,
+               tt_calls_line TYPE ZCL_ACE=>tt_calls_line,
                t_vars        TYPE tt_vars,
                tt_refvar     TYPE tt_refvar,
                t_classes     TYPE tt_classes,
@@ -226,7 +226,7 @@ public section.
   data MO_HIST_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_CODE_VIEWER type ref to CL_GUI_ABAPEDIT .
   data:
-    mt_stack               TYPE TABLE OF ZCL_ACE_APPL=>T_STACK .
+    mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
   data MO_SALV_STACK type ref to CL_SALV_TABLE .
   data MO_SALV_STEPS type ref to CL_SALV_TABLE .
@@ -235,7 +235,7 @@ public section.
   data MT_WATCH type TT_WATCH .
   data MT_COVERAGE type TT_WATCH .
   data:
-    mt_calls               TYPE TABLE OF ZCL_ACE_APPL=>TS_CALL .
+    mt_calls               TYPE TABLE OF ZCL_ACE=>TS_CALL .
   data M_HIST_DEPTH type I .
   data M_START_STACK type I .
   data:
@@ -247,7 +247,7 @@ public section.
     mt_locals_set          TYPE STANDARD TABLE OF ts_locals .
   data:
     mt_globals_set         TYPE STANDARD TABLE OF ts_globals .
-  data MS_SEL_CALL type ZCL_ACE_APPL=>TS_CALLS_LINE .
+  data MS_SEL_CALL type ZCL_ACE=>TS_CALLS_LINE .
 
   methods CONSTRUCTOR
     importing
@@ -306,7 +306,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'RUN' icon = CONV #( icon_execute_object ) quickinfo = 'Run report' )
        ( COND #( WHEN mo_viewer->mv_dest IS NOT INITIAL
         THEN VALUE #( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ) )
-       ( COND #( WHEN ZCL_ACE_APPL=>I_MERMAID_ACTIVE = abap_true
+       ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
        ( function = 'CODEMIX' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
        ( function = 'CODE' icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
@@ -512,7 +512,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
 
       WHEN 'STEPS'.
-        zcl_ace_appl=>open_int_table(
+        zcl_ace=>open_int_table(
           i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
       WHEN 'WHOLE_CLASS'.

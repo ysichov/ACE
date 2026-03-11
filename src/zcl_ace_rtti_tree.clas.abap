@@ -6,7 +6,7 @@ class ZCL_ACE_RTTI_TREE definition
 public section.
 
   types:
-    tt_table TYPE STANDARD TABLE OF ZCL_ACE_APPL=>ts_tree
+    tt_table TYPE STANDARD TABLE OF ZCL_ACE=>ts_tree
             WITH NON-UNIQUE DEFAULT KEY .
 
   data MAIN_NODE_KEY type SALV_DE_NODE_KEY .
@@ -30,7 +30,7 @@ public section.
       !I_NAME type STRING
       !I_REL type SALV_DE_NODE_KEY optional
       !I_ICON type SALV_DE_TREE_IMAGE optional
-      !I_TREE type ZCL_ACE_APPL=>TS_TREE optional
+      !I_TREE type ZCL_ACE=>TS_TREE optional
     returning
       value(RV_NODE) type SALV_DE_NODE_KEY .
   methods DELETE_NODE
@@ -239,7 +239,7 @@ method DISPLAY.
       DATA(o_nodes) = mo_tree->get_nodes( ).
       DATA(o_node)  = o_nodes->get_node( node_key ).
       DATA r_row TYPE REF TO data.
-      DATA ls_clear_row TYPE ZCL_ACE_APPL=>ts_tree.
+      DATA ls_clear_row TYPE ZCL_ACE=>ts_tree.
 
       r_row = o_node->get_data_row( ).
       ASSIGN r_row->* TO FIELD-SYMBOL(<row>).
@@ -275,13 +275,13 @@ method DISPLAY.
             WHEN lv_ep-type = 'I' THEN CONV #( icon_parameter_import )
             ELSE                       CONV #( icon_parameter_export ) ).
           add_node( i_name = lv_ep-param i_icon = lv_ep_icon i_rel = node_key
-                    i_tree = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ep-line include = lv_ep-include ) ).
+                    i_tree = VALUE ZCL_ACE=>ts_tree( value = lv_ep-line include = lv_ep-include ) ).
           lv_added = lv_added + 1.
         ENDLOOP.
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_ev)
           WHERE program = lv_lazy_prog AND class = lv_lazy_class AND eventname = lv_lazy_meth.
           add_node( i_name = lv_ev-name i_icon = lv_ev-icon i_rel = node_key
-                    i_tree = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_ev-line include = lv_ev-include ) ).
+                    i_tree = VALUE ZCL_ACE=>ts_tree( value = lv_ev-line include = lv_ev-include ) ).
           lv_added = lv_added + 1.
         ENDLOOP.
         IF lv_added > 0.
@@ -299,7 +299,7 @@ method DISPLAY.
           LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_av)
             WHERE program = lv_attr_sub-program AND class = lv_attr_class AND eventname IS INITIAL.
             add_node( i_name = lv_av-name i_icon = lv_av-icon i_rel = node_key
-                      i_tree = VALUE ZCL_ACE_APPL=>ts_tree( value = lv_av-line include = lv_av-include ) ).
+                      i_tree = VALUE ZCL_ACE=>ts_tree( value = lv_av-line include = lv_av-include ) ).
           ENDLOOP.
         ENDIF.
         CLEAR ls_clear_row.
@@ -391,7 +391,7 @@ method DISPLAY.
       IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'METHOD' AND <include> IS NOT INITIAL.
         DATA(lv_cm_include) = CONV program( <include> ).
         DATA(lv_cm_method)  = CONV string( <ev_name> ).
-        DATA(lv_cm_value)   = CONV i( <value> ).  " exact line from tree — always use this
+        DATA(lv_cm_value)   = CONV i( <value> ).
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
@@ -408,17 +408,14 @@ method DISPLAY.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include INTO DATA(ls_cm_prog2).
         IF sy-subrc = 0.
-          " Check if there are enhancements for this method
           READ TABLE ls_cm_prog2-tt_enh_blocks TRANSPORTING NO FIELDS
             WITH KEY ev_type = 'METHOD' ev_name = lv_cm_method.
           IF sy-subrc <> 0.
-            " No enhancements — navigate directly to the line stored in the tree node
             mo_viewer->mo_window->set_program( lv_cm_include ).
             mo_viewer->mo_window->m_prg-include = lv_cm_include.
             mo_viewer->mo_window->set_program_line( lv_cm_value ).
             RETURN.
           ENDIF.
-          " Has enhancements — find method boundaries and build virtual buffer
           DATA(lv_cm_meth_line) = 0.
           DATA(lv_cm_endm_line) = 0.
           LOOP AT ls_cm_prog2-t_keywords INTO DATA(ls_cm_kw) WHERE name = 'METHOD'.
@@ -428,7 +425,7 @@ method DISPLAY.
               lv_cm_meth_line = ls_cm_kw-line. EXIT.
             ENDIF.
           ENDLOOP.
-          IF lv_cm_meth_line = 0.  " fallback: name-only match (e.g. global class CM-include)
+          IF lv_cm_meth_line = 0.
             LOOP AT ls_cm_prog2-t_keywords INTO ls_cm_kw WHERE name = 'METHOD'.
               ls_cm_stmt = ls_cm_prog2-scan->statements[ ls_cm_kw-index ].
               ls_cm_tok  = ls_cm_prog2-scan->tokens[ ls_cm_stmt-from + 1 ].
@@ -443,7 +440,7 @@ method DISPLAY.
           ENDIF.
           IF lv_cm_meth_line > 0 AND lv_cm_endm_line > 0.
             DATA lt_cm_src  TYPE sci_include.
-            DATA lt_virt_kw TYPE ZCL_ACE_APPL=>tt_kword.
+            DATA lt_virt_kw TYPE ZCL_ACE=>tt_kword.
             LOOP AT ls_cm_prog2-source_tab INTO DATA(lv_cm_line)
               FROM lv_cm_meth_line TO lv_cm_endm_line.
               APPEND lv_cm_line TO lt_cm_src.
@@ -458,8 +455,8 @@ method DISPLAY.
             ENDLOOP.
             DATA: lt_cm_pre     TYPE sci_include,
                   lt_cm_post    TYPE sci_include,
-                  lt_cm_pre_kw  TYPE ZCL_ACE_APPL=>tt_kword,
-                  lt_cm_post_kw TYPE ZCL_ACE_APPL=>tt_kword.
+                  lt_cm_pre_kw  TYPE ZCL_ACE=>tt_kword,
+                  lt_cm_post_kw TYPE ZCL_ACE=>tt_kword.
             LOOP AT ls_cm_prog2-tt_enh_blocks INTO DATA(ls_cm_eb)
               WHERE ev_type = 'METHOD' AND ev_name = lv_cm_method
                 AND ( position = 'BEGIN' OR position = 'END' OR position = 'OVERWRITE' ).
@@ -535,7 +532,7 @@ method DISPLAY.
                 WHEN ls_cm_eb-position = 'BEGIN' THEN 'IPR_' ELSE 'IPO_' ).
               DATA(lv_impl_nm2) = lv_impl_pfx2 && ls_cm_eb-enh_name && '~' && lv_cm_method.
               DATA: lv_in_eb2 TYPE boolean, lt_eb2_lines TYPE sci_include,
-                    lt_eb2_kw TYPE ZCL_ACE_APPL=>tt_kword.
+                    lt_eb2_kw TYPE ZCL_ACE=>tt_kword.
               DATA lv_eb2_first TYPE i.
               DATA lv_eb2_last  TYPE i.
               CLEAR: lv_in_eb2, lt_eb2_lines, lt_eb2_kw, lv_eb2_first, lv_eb2_last.
@@ -653,7 +650,7 @@ method DISPLAY.
           WITH KEY include = lv_enh_include_f INTO DATA(ls_form_enh_prog).
         IF sy-subrc = 0.
           DATA lt_form_virt_src  TYPE sci_include.
-          DATA lt_form_virt_kw   TYPE ZCL_ACE_APPL=>tt_kword.
+          DATA lt_form_virt_kw   TYPE ZCL_ACE=>tt_kword.
           DATA lv_in_enh_block   TYPE boolean.
           DATA lv_enh_start_line TYPE i.
           DATA lv_enh_end_line   TYPE i.
@@ -742,7 +739,7 @@ method DISPLAY.
             ENDLOOP.
             IF lv_endm_line > 0.
               DATA lt_meth_src TYPE sci_include.
-              DATA lt_meth_kw  TYPE ZCL_ACE_APPL=>tt_kword.
+              DATA lt_meth_kw  TYPE ZCL_ACE=>tt_kword.
               LOOP AT ls_eimp_prog-source_tab INTO DATA(lv_src_line)
                 FROM lv_meth_line TO lv_endm_line.
                 APPEND lv_src_line TO lt_meth_src.
@@ -783,7 +780,6 @@ method DISPLAY.
       ENDIF.
       mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
 
-      " Highlight only for global var/attr leaf nodes (use var_name to avoid <param> field-symbol)
       DATA(lv_var_name) = CONV string( <var_name> ).
       IF lv_var_name IS NOT INITIAL.
         READ TABLE mo_viewer->mt_selected_var WITH KEY name = lv_var_name TRANSPORTING NO FIELDS.
@@ -898,7 +894,7 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
-    " ---- LCLASSES:{program} — only non-interface local classes ----
+    " ---- LCLASSES:{program} ----
     IF strlen( lv_param ) > 9 AND lv_param+0(9) = 'LCLASSES:'.
       DATA(lv_lc_prog) = lv_param+9.
       DATA(lv_lc_prev) = ``.
@@ -932,7 +928,7 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
-    " ---- LINTFS:{program} — only local interfaces ----
+    " ---- LINTFS:{program} ----
     IF strlen( lv_param ) > 7 AND lv_param+0(7) = 'LINTFS:'.
       DATA(lv_li_prog) = lv_param+7.
       DATA(lv_li_prev) = ``.
@@ -1004,7 +1000,6 @@ method DISPLAY.
                     WHEN lv_cm-eventname = 'CONSTRUCTOR'              THEN CONV #( icon_tools )
                     ELSE                                                   CONV #( icon_led_green ) )
           ELSE CONV #( icon_oo_overwrite ) ).
-        " Use interface method icon if this is an interface
         IF lv_cm-is_intf = abap_true.
           lv_micon = icon_oo_inst_method.
         ENDIF.
@@ -1013,7 +1008,6 @@ method DISPLAY.
           i_tree = VALUE #( kind = 'M' value = lv_cmkw-v_line include = lv_cm-include
                             program = lv_cm-program ev_type = lv_cm-eventtype ev_name = lv_cm-eventname ) ).
 
-        " Parameters — added directly under method node (no lazy folder)
         LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_mprm)
           WHERE class = lv_cls_name AND event = 'METHOD' AND name = lv_cm-eventname AND param IS NOT INITIAL.
           DATA(lv_mpicon) = COND salv_de_tree_image(
@@ -1023,7 +1017,6 @@ method DISPLAY.
                     i_tree = VALUE #( value = lv_mprm-line include = lv_mprm-include var_name = lv_mprm-param ) ).
         ENDLOOP.
 
-        " Local vars folder (lazy) — only if vars exist
         DATA(lv_mv_cnt) = 0.
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_mv)
           WHERE program = lv_cm-program AND class = lv_cls_name AND eventname = lv_cm-eventname.

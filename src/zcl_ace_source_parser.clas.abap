@@ -34,16 +34,16 @@ public section.
       !IO_DEBUGGER type ref to ZCL_ACE .
   class-methods PARSE_CLASS
     importing
-      !KEY type ZCL_ACE_APPL=>TS_KWORD
+      !KEY type ZCL_ACE=>TS_KWORD
       !I_INCLUDE type PROGRAM
-      !I_CALL type ZCL_ACE_APPL=>TS_CALLS
+      !I_CALL type ZCL_ACE=>TS_CALLS
       !I_STACK type I
       !IO_DEBUGGER type ref to ZCL_ACE .
   class-methods PARSE_SCREEN
     importing
-      !KEY type ZCL_ACE_APPL=>TS_KWORD
+      !KEY type ZCL_ACE=>TS_KWORD
       !I_STACK type I
-      !I_CALL type ZCL_ACE_APPL=>TS_CALLS
+      !I_CALL type ZCL_ACE=>TS_CALLS
       !IO_DEBUGGER type ref to ZCL_ACE .
   class-methods CODE_EXECUTION_SCANNER
     importing
@@ -57,7 +57,7 @@ public section.
     importing
       !IO_DEBUGGER type ref to ZCL_ACE
     changing
-      !CT_TOKENS type ZCL_ACE_APPL=>TT_KWORD .
+      !CT_TOKENS type ZCL_ACE=>TT_KWORD .
   class-methods PROCESS_SUPER_AND_INTERFACES
     importing
       !I_CLASS type STRING
@@ -73,7 +73,7 @@ public section.
       !IO_DEBUGGER type ref to ZCL_ACE
       !L_TOKEN_ROW type I
     changing
-      !CS_STATE type ZCL_ACE_APPL=>TS_PARSE_STATE
+      !CS_STATE type ZCL_ACE=>TS_PARSE_STATE
     returning
       value(RV_CONTINUE) type BOOLEAN .
   class-methods DETECT_METHOD_CALL
@@ -86,18 +86,18 @@ public section.
       !L_TOKEN_ROW type I
       !NEW type BOOLEAN
     changing
-      !CALL type ZCL_ACE_APPL=>TS_CALLS
-      !CALL_LINE type ZCL_ACE_APPL=>TS_CALLS_LINE
-      !CALCULATED type ZCL_ACE_APPL=>TS_VAR
-      !CALCULATED_VARS type ZCL_ACE_APPL=>TT_CALCULATED
+      !CALL type ZCL_ACE=>TS_CALLS
+      !CALL_LINE type ZCL_ACE=>TS_CALLS_LINE
+      !CALCULATED type ZCL_ACE=>TS_VAR
+      !CALCULATED_VARS type ZCL_ACE=>TT_CALCULATED
       !CLASS_NAME type STRING
-      !TOKEN type ZCL_ACE_APPL=>TS_KWORD .
+      !TOKEN type ZCL_ACE=>TS_KWORD .
   class-methods REGISTER_FIELD_SYMBOL
     importing
       !I_INCLUDE type PROGRAM
       !IO_DEBUGGER type ref to ZCL_ACE
     changing
-      !CS_STATE type ZCL_ACE_APPL=>TS_PARSE_STATE .
+      !CS_STATE type ZCL_ACE=>TS_PARSE_STATE .
   class-methods COLLECT_EVENTS
     importing
       !IO_SCAN type ref to CL_CI_SCAN
@@ -128,7 +128,7 @@ public section.
       !L_TOKEN_ROW type I
       !O_PROCEDURE type ref to IF_CI_KZN_STATEMENT_ITERATOR
     changing
-      !CS_STATE type ZCL_ACE_APPL=>TS_PARSE_STATE .
+      !CS_STATE type ZCL_ACE=>TS_PARSE_STATE .
 protected section.
 private section.
 ENDCLASS.
@@ -140,9 +140,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
   method CODE_EXECUTION_SCANNER.
 
-      "code execution scanner
       DATA: max       TYPE i,
-            call_line TYPE ZCL_ACE_APPL=>ts_calls_line,
+            call_line TYPE ZCL_ACE=>ts_calls_line,
             program   TYPE program,
             include   TYPE program,
             prefix    TYPE string,
@@ -195,7 +194,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       LOOP AT structures INTO str.
 
         IF str-type = 'E'.
-          "get event name.
           READ TABLE io_debugger->mo_window->ms_sources-t_events WITH KEY program = i_program stmnt_type = str-stmnt_type  stmnt_from = str-stmnt_from ASSIGNING FIELD-SYMBOL(<event>).
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = <event>-include INTO prog.
 
@@ -288,9 +286,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
                   code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = call-event i_evname = call-name io_debugger = io_debugger ).
                 ENDIF.
-              ELSEIF call-event = 'METHOD'. "Method call
+              ELSEIF call-event = 'METHOD'.
                 parse_class( i_include = i_include i_call = call i_stack = stack io_debugger = io_debugger key = key ).
-              ELSEIF call-event = 'SCREEN'. "Method call
+              ELSEIF call-event = 'SCREEN'.
                 parse_screen( i_stack = stack i_call = call io_debugger = io_debugger key = key ).
               ENDIF.
             ENDIF.
@@ -313,19 +311,14 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             enh_prog     TYPE program,
             tabix        TYPE i.
 
-      " Per-FORM accumulated offset (top-down processing)
       TYPES: BEGIN OF ts_form_offset,
                form_name TYPE string,
                include   TYPE program,
                offset    TYPE i,
              END OF ts_form_offset.
       DATA lt_form_offsets TYPE STANDARD TABLE OF ts_form_offset.
-      DATA lv_offset       TYPE i.  " current FORM's accumulated offset
+      DATA lv_offset       TYPE i.
 
-      " (offset tracking removed: insertions are processed bottom-up)
-
-      " For class method includes (CM*), D010ENH stores enhancements under the CP program.
-      " Resolve the master program via D010INC.
       DATA(lv_enh_prog) = i_program.
       SELECT SINGLE master FROM d010inc
         INTO @DATA(lv_master)
@@ -334,7 +327,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         lv_enh_prog = lv_master.
       ENDIF.
 
-      " Check if enhancements already collected for this include - do this FIRST
       DATA(lv_prog_enh_tabix) = 0.
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = i_program
@@ -346,19 +338,14 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      " Read all enhancements for the given program
       SELECT programname, enhname, enhinclude, id, full_name, enhmode
         FROM d010enh
         INTO TABLE @DATA(lt_enh)
         WHERE programname = @lv_enh_prog
           AND version = 'A'.
 
-      " DEBUG: show what program we're searching enhancements for
-
       CHECK lt_enh IS NOT INITIAL.
 
-      " Add enhtype: 1=BEGIN, 2=END for correct insertion order within same form
-      " (BEGIN inserted first = after FORM, END inserted second = before ENDFORM)
       TYPES: BEGIN OF ts_enh_ext,
                programname  TYPE d010enh-programname,
                enhname      TYPE d010enh-enhname,
@@ -367,22 +354,20 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                full_name    TYPE d010enh-full_name,
                enhmode      TYPE d010enh-enhmode,
                enhtype      TYPE i,
-               full_name_30 TYPE c LENGTH 30,  " for sorting (STRING offset not allowed)
+               full_name_30 TYPE c LENGTH 30,
              END OF ts_enh_ext.
       DATA lt_enh_ext TYPE STANDARD TABLE OF ts_enh_ext.
       LOOP AT lt_enh INTO DATA(ls_enh_raw).
         DATA(ls_ext) = CORRESPONDING ts_enh_ext( ls_enh_raw ).
         ls_ext-enhtype = COND i(
-          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_BEGIN'    THEN 1  " Method PRE
-          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_END'      THEN 2  " Method POST
-          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:BEGIN' THEN 1  " FORM PRE
-          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:END'   THEN 2  " FORM POST
+          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_BEGIN'    THEN 1
+          WHEN ls_ext-enhmode = 'D' AND ls_ext-full_name CS '%_END'      THEN 2
+          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:BEGIN' THEN 1
+          WHEN ls_ext-enhmode <> 'D' AND ls_ext-full_name CS '\SE:END'   THEN 2
           ELSE 1 ).
-        ls_ext-full_name_30 = ls_ext-full_name.  " truncate STRING to C(30) for sort
+        ls_ext-full_name_30 = ls_ext-full_name.
         APPEND ls_ext TO lt_enh_ext.
       ENDLOOP.
-      " Sort top-down: PRE (enhtype=1) before POST (enhtype=2).
-      " We process enhancements in file order (ascending) and accumulate offset as we go.
       SORT lt_enh_ext BY full_name_30 ASCENDING enhtype ASCENDING.
 
       LOOP AT lt_enh_ext INTO DATA(ls_enh).
@@ -391,7 +376,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         DATA(lv_full) = ls_enh-full_name.
 
         IF ls_enh-enhmode = 'D'.
-          " Method enhancement: \TY:CLASSNAME\ME:METHODNAME\SE:%_BEGIN|%_END\EI
           DATA(lv_class_name) = ``.
           DATA(lv_method_name) = ``.
           FIND FIRST OCCURRENCE OF REGEX '\\TY:([^\\]+)' IN lv_full SUBMATCHES lv_class_name.
@@ -399,7 +383,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
           CHECK lv_class_name IS NOT INITIAL AND lv_method_name IS NOT INITIAL AND position IS NOT INITIAL.
 
-          " Map position
           DATA(lv_meth_pos) = SWITCH string(
             position
             WHEN '%_BEGIN' THEN 'BEGIN'
@@ -407,7 +390,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ELSE `` ).
           CHECK lv_meth_pos IS NOT INITIAL.
 
-          " First check for OVERWRITE (IOW_) - if found, skip PRE/POST
           DATA(lv_has_overwrite) = abap_false.
           IF lv_meth_pos = 'BEGIN'.
             collect_method_enhancements(
@@ -418,7 +400,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                         i_meth_pos   = 'OVERWRITE'
                         i_id         = CONV #( ls_enh-id )
                         io_debugger  = io_debugger ).
-            " Check if OVERWRITE was actually registered
             READ TABLE io_debugger->mo_window->ms_sources-tt_progs TRANSPORTING NO FIELDS
               WITH KEY program = lv_class_name.
             LOOP AT io_debugger->mo_window->ms_sources-tt_progs INTO DATA(ls_prog_ow).
@@ -431,7 +412,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDLOOP.
           ENDIF.
 
-          " Only add PRE/POST if no OVERWRITE exists for this method
           IF lv_has_overwrite = abap_false.
             collect_method_enhancements(
               EXPORTING i_enhname    = CONV #( ls_enh-enhname )
@@ -444,7 +424,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDIF.
 
         ELSE.
-          " FORM enhancement: \PR:...\FO:FORMNAME\SE:BEGIN|END\EI
           FIND FIRST OCCURRENCE OF REGEX '\\FO:([^\\]+)' IN lv_full SUBMATCHES form_name.
           FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
           CHECK form_name IS NOT INITIAL AND position IS NOT INITIAL.
@@ -457,24 +436,20 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
               io_debugger = io_debugger ).
           ENDIF.
 
-          " Find the program that contains this FORM
           READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
             WITH KEY eventtype = 'FORM' eventname = form_name
             INTO DATA(ls_call_line).
           CHECK sy-subrc = 0.
 
-          " Find t_keywords entry for the target program
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs
             WITH KEY include = ls_call_line-include
             ASSIGNING FIELD-SYMBOL(<prog>).
           CHECK sy-subrc = 0.
 
-          " top-down: save offset before this insertion to compute delta
           DATA(lv_offset_before) = lv_offset.
 
-          " Find FORM position in t_keywords iteratively by name = 'FORM' and index
           DATA(lv_form_tabix) = 0.
-          DATA ls_kw_form TYPE ZCL_ACE_APPL=>ts_kword.
+          DATA ls_kw_form TYPE ZCL_ACE=>ts_kword.
           LOOP AT <prog>-t_keywords INTO ls_kw_form.
             IF ls_kw_form-name = 'FORM' AND ls_kw_form-index = ls_call_line-index.
               lv_form_tabix = sy-tabix.
@@ -482,31 +457,26 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
           ENDLOOP.
           CHECK lv_form_tabix > 0.
-          " Refresh v_line from v_keywords (t_keywords v_line is not updated by bottom-up shifts)
           READ TABLE <prog>-v_keywords WITH KEY include = ls_kw_form-include
             index = ls_kw_form-index INTO DATA(ls_vkw_form).
           IF sy-subrc = 0. ls_kw_form-v_line = ls_vkw_form-v_line. ENDIF.
 
-          " Read enhancement include keywords
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs
             WITH KEY include = ls_enh-enhinclude
             INTO DATA(ls_enh_prog).
           CHECK sy-subrc = 0.
 
-          " Collect keywords of the ENHANCEMENT N...ENDENHANCEMENT block matching the ID
           DATA lt_enh_kw TYPE ZCL_ACE_WINDOW=>tt_kword.
           DATA lv_in_block TYPE boolean.
           CLEAR: lt_enh_kw, lv_in_block.
           LOOP AT ls_enh_prog-t_keywords INTO DATA(ls_kw).
             IF ls_kw-name = 'ENHANCEMENT'.
-              " Check that this is the correct ID: next token = ls_enh-id
               DATA(lv_enh_id) = CONV i( ls_enh-id ).
-              " ID is not in token-line, check via scan at token offset=2
               READ TABLE ls_enh_prog-scan->statements INDEX ls_kw-index INTO DATA(ls_stmt).
               READ TABLE ls_enh_prog-scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
               IF CONV i( ls_tok-str ) = lv_enh_id.
                 lv_in_block = abap_true.
-                APPEND ls_kw TO lt_enh_kw.  " include ENHANCEMENT of the matching block only
+                APPEND ls_kw TO lt_enh_kw.
               ELSE.
                 lv_in_block = abap_false.
               ENDIF.
@@ -514,7 +484,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
             IF ls_kw-name = 'ENDENHANCEMENT'.
               IF lv_in_block = abap_true.
-                APPEND ls_kw TO lt_enh_kw.  " include ENDENHANCEMENT
+                APPEND ls_kw TO lt_enh_kw.
               ENDIF.
               CLEAR lv_in_block.
               CONTINUE.
@@ -526,13 +496,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
           CHECK lt_enh_kw IS NOT INITIAL.
 
-          " Determine insertion point
-          DATA ls_kw_end TYPE ZCL_ACE_APPL=>ts_kword.  " always fresh
+          DATA ls_kw_end TYPE ZCL_ACE=>ts_kword.
           CLEAR ls_kw_end.
           IF position = 'BEGIN'.
-            " After FORM statement
             tabix = lv_form_tabix + 1.
-          ELSE. " END - before ENDFORM
+          ELSE.
             tabix = lv_form_tabix + 1.
             LOOP AT <prog>-t_keywords INTO ls_kw_end FROM tabix.
               IF ls_kw_end-name = 'ENDFORM'.
@@ -541,27 +509,19 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
               ENDIF.
               CLEAR ls_kw_end.
             ENDLOOP.
-            " Refresh v_line from v_keywords for ENDFORM
             READ TABLE <prog>-v_keywords WITH KEY include = ls_kw_end-include
               index = ls_kw_end-index INTO DATA(ls_vkw_end).
             IF sy-subrc = 0. ls_kw_end-v_line = ls_vkw_end-v_line. ENDIF.
           ENDIF.
 
-          " Insert enhancement keywords into t_keywords at the target position.
-          " lv_insert_line = original source line (for v_keywords shift condition).
-          " lv_vsrc_tabix  = index into v_source (accounts for already-inserted lines).
           DATA(lv_insert_line) = COND i(
             WHEN position = 'BEGIN' THEN ls_kw_form-line + 1
             ELSE ls_kw_end-line ).
 
-          " Use v_line from v_keywords - it already reflects all prior insertions
-          " (updated by the shift loop after each previous enhancement insertion).
           DATA(lv_vsrc_tabix) = COND i(
             WHEN position = 'BEGIN' THEN ls_kw_form-v_line + 1
             ELSE ls_kw_end-v_line ).
 
-          " Find insertion point in v_keywords (mirrors t_keywords logic but for v_keywords)
-          " Anchor = FORM or ENDFORM keyword by include+index
           DATA(lv_vkw_tabix) = 0.
           IF position = 'BEGIN'.
             LOOP AT <prog>-v_keywords INTO DATA(ls_vkw_anchor)
@@ -580,22 +540,18 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             lv_vkw_tabix = lines( <prog>-v_keywords ) + 1.
           ENDIF.
 
-          " Step 1: compute how many lines will be inserted
-          " (1 separator + ENH source lines + 1 end-separator after ENDENHANCEMENT)
-          DATA(lv_enh_inserted) = 1.  " separator line
+          DATA(lv_enh_inserted) = 1.
           DATA(lv_tmp_line) = lt_enh_kw[ 1 ]-line.
           DATA(lv_tmp_last) = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
           WHILE lv_tmp_line <= lv_tmp_last.
-            ADD 1 TO lv_enh_inserted.  " source line
+            ADD 1 TO lv_enh_inserted.
             READ TABLE lt_enh_kw WITH KEY line = lv_tmp_line INTO DATA(ls_ins_pre).
             IF sy-subrc = 0 AND ls_ins_pre-name = 'ENDENHANCEMENT'.
-              ADD 1 TO lv_enh_inserted.  " end-separator after ENDENHANCEMENT
+              ADD 1 TO lv_enh_inserted.
             ENDIF.
             ADD 1 TO lv_tmp_line.
           ENDWHILE.
 
-          " Step 2: shift ALL existing v_keywords at or after insertion point BEFORE inserting.
-          " This way new keywords are inserted after shift - no need to skip anything.
           LOOP AT <prog>-v_keywords ASSIGNING FIELD-SYMBOL(<kw_v>)
             WHERE v_line >= lv_vsrc_tabix.
             ADD lv_enh_inserted TO <kw_v>-v_line.
@@ -603,7 +559,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ADD lv_enh_inserted TO <kw_v>-v_to_row.
           ENDLOOP.
 
-          " Step 3: insert ENH keywords into v_keywords with correct v_line
           DATA(lv_vkw_vline) = lv_vsrc_tabix + 1.
           LOOP AT lt_enh_kw INTO DATA(ls_vkw_ins).
             ls_vkw_ins-v_line     = lv_vkw_vline.
@@ -614,7 +569,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ADD 1 TO lv_vkw_vline.
           ENDLOOP.
 
-          " Step 4: insert enhancement lines into v_source
           DATA(lv_src_tabix) = lv_vsrc_tabix.
           DATA lv_sep TYPE string.
           IF position = 'BEGIN'.
@@ -646,9 +600,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ADD 1 TO lv_cur_line.
           ENDWHILE.
 
-*
-*        " Save enhancement block position for CodeMix
-          " Save enhancement block position for CodeMix/tree
           APPEND INITIAL LINE TO <prog>-tt_enh_blocks ASSIGNING FIELD-SYMBOL(<enh_blk>).
           <enh_blk>-ev_type    = ls_call_line-eventtype.
           <enh_blk>-ev_name    = form_name.
@@ -659,11 +610,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           <enh_blk>-from_line  = 0.
           <enh_blk>-to_line    = 0.
 
-        ENDIF. " ENHMODE = 'D' / FORM
+        ENDIF.
 
       ENDLOOP.
 
-      " Mark enhancements as collected for this include
       IF lv_prog_enh_tabix > 0.
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           INDEX lv_prog_enh_tabix
@@ -693,20 +643,17 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   method COLLECT_METHOD_ENHANCEMENTS.
 
 
-      " Build EIMP include name: enhinclude ends with ==E, replace E -> EIMP
       DATA(lv_enhname_trimmed)  = condense( val = CONV string( i_enhname ) ).
       DATA(lv_enhinclude_str)   = condense( val = CONV string( i_enhinclude ) ).
       DATA(lv_eimp_include) = CONV program(
         substring( val = lv_enhinclude_str len = strlen( lv_enhinclude_str ) - 1 ) && 'EIMP' ).
 
-      " IPR_ = pre (%_BEGIN), IPO_ = post (%_END), IOW_ = overwrite
       DATA(lv_impl_prefix) = COND string(
         WHEN i_meth_pos = 'BEGIN'     THEN 'IPR_'
         WHEN i_meth_pos = 'END'       THEN 'IPO_'
         WHEN i_meth_pos = 'OVERWRITE' THEN 'IOW_' ).
       DATA(lv_impl_method) = lv_impl_prefix && lv_enhname_trimmed && '~' && i_method.
 
-      " Parse EIMP include if not yet done
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = lv_eimp_include TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
@@ -722,7 +669,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       CHECK sy-subrc = 0.
 
-      " Find and parse all CM* includes of the class program
       DATA(lv_class_prog) = CONV program(
         i_class && repeat( val = '=' occ = 30 - strlen( i_class ) ) && 'CP' ).
       DATA(lv_cm_pattern) = lv_class_prog(28) && 'CM%'.
@@ -741,8 +687,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
-      " Find the method in tt_calls_line
-      DATA ls_call_line_m TYPE ZCL_ACE_APPL=>ts_calls_line.
+      DATA ls_call_line_m TYPE ZCL_ACE=>ts_calls_line.
       LOOP AT io_debugger->mo_window->ms_sources-tt_calls_line
         INTO ls_call_line_m
         WHERE eventtype = 'METHOD'
@@ -754,15 +699,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       CHECK sy-subrc = 0.
 
-      " Find prog containing this method
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = ls_call_line_m-include
         ASSIGNING FIELD-SYMBOL(<prog_m>).
       CHECK sy-subrc = 0.
 
-      " Find METHOD keyword by index
       DATA(lv_meth_tabix) = 0.
-      DATA ls_kw_meth TYPE ZCL_ACE_APPL=>ts_kword.
+      DATA ls_kw_meth TYPE ZCL_ACE=>ts_kword.
       LOOP AT <prog_m>-t_keywords INTO ls_kw_meth.
         IF ls_kw_meth-name = 'METHOD' AND ls_kw_meth-index = ls_call_line_m-index.
           lv_meth_tabix = sy-tabix.
@@ -771,7 +714,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDLOOP.
       CHECK lv_meth_tabix > 0.
 
-      " Collect METHOD IPR/IPO_...~METHOD ... ENDMETHOD from EIMP
       DATA lt_enh_kw TYPE ZCL_ACE_WINDOW=>tt_kword.
       DATA lv_in_block TYPE boolean.
       LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_kw).
@@ -789,7 +731,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         IF ls_kw-name = 'ENDMETHOD'.
           IF lv_in_block = abap_true.
             APPEND ls_kw TO lt_enh_kw.
-            EXIT. " stop after first ENDMETHOD of our block
+            EXIT.
           ENDIF.
           CLEAR lv_in_block.
           CONTINUE.
@@ -801,11 +743,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       CHECK lt_enh_kw IS NOT INITIAL.
 
 
-      " Determine insertion tabix and line
       DATA(lv_ins_tabix) = COND i(
         WHEN i_meth_pos = 'BEGIN' THEN lv_meth_tabix + 1
         ELSE lv_meth_tabix + 1 ).
-      DATA ls_kw_end TYPE ZCL_ACE_APPL=>ts_kword.
+      DATA ls_kw_end TYPE ZCL_ACE=>ts_kword.
       IF i_meth_pos = 'END' OR i_meth_pos = 'OVERWRITE'.
         LOOP AT <prog_m>-t_keywords INTO ls_kw_end FROM lv_ins_tabix.
           IF ls_kw_end-name = 'ENDMETHOD'.
@@ -815,49 +756,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDLOOP.
       ENDIF.
 
-*      " OVERWRITE: replace method body (between METHOD and ENDMETHOD)
-*      IF i_meth_pos = 'OVERWRITE'.
-*        " Find line range of original method body in source_tab
-*        DATA(lv_body_first) = ls_kw_meth-line + 1.
-*        DATA(lv_body_last)  = ls_kw_end-line - 1.
-*        " Delete original body lines
-*        DATA(lv_del_count) = lv_body_last - lv_body_first + 1.
-*        DATA(lv_del_idx) = lv_body_first.
-*        DO lv_del_count TIMES.
-*          DELETE <prog_m>-source_tab INDEX lv_del_idx.
-*        ENDDO.
-*        " Shift keywords that were after deleted lines
-*        LOOP AT <prog_m>-t_keywords ASSIGNING FIELD-SYMBOL(<kw_del>).
-*          IF <kw_del>-line > ls_kw_meth-line AND <kw_del>-line <= ls_kw_end-line.
-*            <kw_del>-line = ls_kw_meth-line + 1. " collapse to METHOD line+1
-*          ELSEIF <kw_del>-line > ls_kw_end-line.
-*            <kw_del>-line = <kw_del>-line - lv_del_count.
-*          ENDIF.
-*        ENDLOOP.
-*        " Now insert overwrite body at lv_body_first
-*        DATA(lv_ow_sep) = |"{ repeat( val = `"` occ = 40 ) }$"$\\SE:({ i_id }) Method { i_method }, Overwrite ({ lv_impl_method })|.
-*        DATA(lv_ow_tabix) = lv_body_first.
-*        INSERT lv_ow_sep INTO <prog_m>-source_tab INDEX lv_ow_tabix.
-*        ADD 1 TO lv_ow_tabix.
-*        DATA(lv_ow_first) = lt_enh_kw[ 1 ]-line.
-*        DATA(lv_ow_last)  = lt_enh_kw[ lines( lt_enh_kw ) ]-line.
-*        DATA(lv_ow_idx)   = lv_ow_first.
-*        WHILE lv_ow_idx <= lv_ow_last.
-*          READ TABLE ls_eimp_prog-source_tab INDEX lv_ow_idx INTO DATA(lv_ow_line).
-*          IF sy-subrc = 0.
-*            " Comment out METHOD/ENDMETHOD to avoid confusing the parser
-*            READ TABLE lt_enh_kw WITH KEY line = lv_ow_idx INTO DATA(ls_ow_kw_chk).
-*            IF sy-subrc = 0 AND ( ls_ow_kw_chk-name = 'METHOD' OR ls_ow_kw_chk-name = 'ENDMETHOD' ).
-*              lv_ow_line = |*{ lv_ow_line }|.
-*            ENDIF.
-*            INSERT lv_ow_line INTO <prog_m>-source_tab INDEX lv_ow_tabix.
-*            ADD 1 TO lv_ow_tabix.
-*          ENDIF.
-*          ADD 1 TO lv_ow_idx.
-*        ENDWHILE.
-*        " Save enh block
       IF i_meth_pos = 'OVERWRITE'.
-        " Save enh block for tree only (display handled via lt_cm_src / lt_iow_lines)
         READ TABLE <prog_m>-tt_enh_blocks TRANSPORTING NO FIELDS
           WITH KEY ev_type = 'METHOD' ev_name = i_method position = 'OVERWRITE' enh_name = i_enhname.
         IF sy-subrc <> 0.
@@ -877,8 +776,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         WHEN i_meth_pos = 'BEGIN' THEN ls_kw_meth-line + 1
         ELSE ls_kw_end-line ).
 
-*      " Save enh block for CodeMix/tree
-      " Save enh block for tree
       READ TABLE <prog_m>-tt_enh_blocks TRANSPORTING NO FIELDS
         WITH KEY ev_type = 'METHOD' ev_name = i_method position = i_meth_pos enh_name = i_enhname.
       IF sy-subrc <> 0.
@@ -977,13 +874,12 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
   method LINK_CALLS_TO_PARAMS.
 
-      FIELD-SYMBOLS: <s_token> TYPE ZCL_ACE_APPL=>ts_kword,
-                     <call>    TYPE ZCL_ACE_APPL=>ts_calls.
-      DATA: call  TYPE ZCL_ACE_APPL=>ts_calls,
+      FIELD-SYMBOLS: <s_token> TYPE ZCL_ACE=>ts_kword,
+                     <call>    TYPE ZCL_ACE=>ts_calls.
+      DATA: call  TYPE ZCL_ACE=>ts_calls,
             param TYPE ZCL_ACE_WINDOW=>ts_params,
             index TYPE i.
 
-      "Link parameters to calls for the current token list
       LOOP AT ct_tokens ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
         READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
         index = 0.
@@ -1034,12 +930,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             meth_includes TYPE seop_methods_w_include.
       cl_key = i_class.
 
-      " Check if this class is already known as local (parsed from program source)
       READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
         WITH KEY class = i_class
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
-        " Local class - skip global lookup, use i_index directly
         statement = i_index.
       ELSE.
         CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
@@ -1135,7 +1029,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                 code_execution_scanner( i_program =  include i_include =  include i_stack =  stack i_evtype = call-event i_evname = call-name io_debugger = io_debugger ).
               ENDIF.
 
-            ELSEIF call-event = 'METHOD'. "Method call
+            ELSEIF call-event = 'METHOD'.
 
               DATA inlude TYPE program.
               IF i_include IS INITIAL.
@@ -1147,7 +1041,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
                 call-class = i_class.
               ENDIF.
               parse_class( i_include = include i_call = call i_stack = stack io_debugger = io_debugger key = key ).
-            ELSEIF call-event = 'SCREEN'. "Method call
+            ELSEIF call-event = 'SCREEN'.
               parse_screen( i_stack = stack i_call = call io_debugger = io_debugger key = key ).
 
             ENDIF.
@@ -1167,8 +1061,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
   method PARSE_CALL_FORM.
 
-      " Lookup FORM definition in tt_calls_line
-      DATA call_line TYPE ZCL_ACE_APPL=>ts_calls_line.
+      DATA call_line TYPE ZCL_ACE=>ts_calls_line.
       READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
         WITH KEY eventname = i_call_name eventtype = 'FORM'
         INTO call_line.
@@ -1177,7 +1070,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       DATA(lv_inc) = CONV program( call_line-include ).
       IF lv_inc IS INITIAL. lv_inc = i_include. ENDIF.
 
-      " Ensure include is parsed
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = lv_inc TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
@@ -1185,10 +1077,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           i_stack = i_stack i_program = lv_inc i_include = lv_inc io_debugger = io_debugger ).
       ENDIF.
 
-      " Insert PRE/POST enhancement keywords into v_keywords of lv_inc
       ZCL_ACE_SOURCE_PARSER=>collect_enhancements( i_program = lv_inc io_debugger = io_debugger ).
 
-      " Anti-recursion check
       READ TABLE io_debugger->mo_window->mt_calls
         WITH KEY include = lv_inc ev_name = i_call_name TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
@@ -1209,19 +1099,15 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         RETURN.
       ENDIF.
 
-      " Read prog AFTER collect_enhancements
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = lv_inc INTO DATA(prog).
       CHECK sy-subrc = 0.
 
-      " Use v_keywords if available — it contains inserted enhancement keywords.
-      " Fall back to t_keywords if v_keywords is empty.
       DATA(lv_use_vkw) = abap_false.
       IF prog-v_keywords IS NOT INITIAL.
         lv_use_vkw = abap_true.
       ENDIF.
 
-      " Find FORM start tabix
       DATA(lv_tabix) = 0.
       IF lv_use_vkw = abap_true.
         LOOP AT prog-v_keywords INTO DATA(kw).
@@ -1240,18 +1126,15 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDIF.
       CHECK lv_tabix > 0.
 
-      " Check if PRE enhancement exists
       DATA(lv_has_pre) = abap_false.
       READ TABLE prog-tt_enh_blocks TRANSPORTING NO FIELDS
         WITH KEY ev_name = i_call_name position = 'BEGIN'.
       IF sy-subrc = 0. lv_has_pre = abap_true. ENDIF.
       DATA(lv_body_stack) = COND i( WHEN lv_has_pre = abap_true THEN lv_stack + 1 ELSE lv_stack ).
 
-      " Track current active enhancement block while iterating keywords
       DATA ls_cur_enh TYPE ZCL_ACE_WINDOW=>ts_enh_block.
       CLEAR ls_cur_enh.
 
-      " Iterate keywords from FORM to ENDFORM using v_keywords (includes inserted enhancements)
       FIELD-SYMBOLS <kw_tab> TYPE ZCL_ACE_WINDOW=>tt_kword.
       IF lv_use_vkw = abap_true.
         ASSIGN prog-v_keywords TO <kw_tab>.
@@ -1264,7 +1147,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           EXIT.
         ENDIF.
 
-        " Detect entering/leaving enhancement block
         IF kw-name = 'ENHANCEMENT'.
           DATA(lv_enh_id_cur) = 0.
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs
@@ -1322,7 +1204,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-        " Recurse into nested calls
         LOOP AT kw-tt_calls INTO DATA(call).
           IF call-name IS NOT INITIAL AND NOT ( call-event = 'METHOD' AND call-class IS INITIAL ).
             IF call-event = 'FORM'.
@@ -1370,12 +1251,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             program       TYPE program,
             include       TYPE progname,
             stack         TYPE i,
-            class_call    TYPE ZCL_ACE_APPL=>ts_calls.
+            class_call    TYPE ZCL_ACE=>ts_calls.
 
       cl_key = i_call-class.
-      stack = i_stack." + 1.
+      stack = i_stack.
 
-      " Check if this class is already known as local (parsed from program source)
       DATA(lv_local_exists) = abap_false.
       READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
         WITH KEY class = i_call-class
@@ -1401,7 +1281,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         IF lines( meth_includes ) > 0 AND lv_local_exists = abap_false.
           prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
-          include = program = prefix && 'CP'."Class Program
+          include = program = prefix && 'CP'.
 
           ZCL_ACE_SOURCE_PARSER=>parse_tokens( i_main = abap_true i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
 
@@ -1417,7 +1297,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         IF i_call-super IS INITIAL.
           READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
-          "check inherited methods in super classes
         ELSE.
           sy-subrc = 1.
         ENDIF.
@@ -1498,7 +1377,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         FIND '"' IN <code> MATCH OFFSET DATA(pos).
 
         IF pos <> 0.
-          <code> = <code>+0(pos).  " обрезаем до кавычки
+          <code> = <code>+0(pos).
         ENDIF.
       ENDLOOP.
 
@@ -1514,7 +1393,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       SPLIT code_str AT '.' INTO TABLE scr_code.
 
-      "PBO
       LOOP AT scr_code INTO code.
         CONDENSE code-line.
         IF code-line = 'PROCESS BEFORE OUTPUT'.
@@ -1555,14 +1433,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       ENDLOOP.
 
-      "PAI
       LOOP AT scr_code INTO code.
         CONDENSE code-line.
         IF code-line = 'PROCESS AFTER INPUT'.
           CLEAR pbo.
           pai = abap_true.
-          "READ TABLE io_debugger->mt_steps WITH KEY line = key-line program = key-program include = key-include TRANSPORTING NO FIELDS.
-          "IF sy-subrc <> 0.
           APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING <step>.
           ADD 1 TO  io_debugger->m_step.
           <step>-step = io_debugger->m_step.
@@ -1571,7 +1446,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           <step>-eventtype = i_call-event. <step>-stacklevel =  stack.
           <step>-program = key-program.
           <step>-include = key-include.
-          "ENDIF.
           CONTINUE.
         ENDIF.
         IF code-line = 'PROCESS BEFORE OUTPUT'.
@@ -1608,10 +1482,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             o_scan      TYPE REF TO cl_ci_scan,
             o_statement TYPE REF TO if_ci_kzn_statement_iterator,
             o_procedure TYPE REF TO if_ci_kzn_statement_iterator,
-            tokens      TYPE ZCL_ACE_APPL=>tt_kword,
+            tokens      TYPE ZCL_ACE=>tt_kword,
             main_prog   TYPE program,
             stack       TYPE i,
-            ls_state    TYPE ZCL_ACE_APPL=>ts_parse_state.
+            ls_state    TYPE ZCL_ACE=>ts_parse_state.
 
       IF i_main = abap_true.
         main_prog = i_program.
@@ -1639,7 +1513,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         o_statement = cl_cikzn_scan_iterator_factory=>get_statement_iterator( ciscan = o_scan ).
         o_procedure = cl_cikzn_scan_iterator_factory=>get_procedure_iterator( ciscan = o_scan ).
 
-        "methods in definition should be overwritten by Implementation section
         IF i_class IS NOT INITIAL.
           ls_state-class = abap_true.
           IF i_main_prog IS INITIAL.
@@ -1677,9 +1550,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ls_state-token-v_line = l_token-row.
           ls_state-token-program = i_program.
 
-          " For METHODS/CLASS-METHODS in a chained statement (METHODS: a, b.)
-          " statement-from points to the shared METHODS keyword token whose row
-          " may be wrong for non-first entries. Use the method-name token row instead.
           DATA(lv_token_row) = l_token-row.
           IF ls_state-kw = 'METHODS' OR ls_state-kw = 'CLASS-METHODS'.
             READ TABLE o_scan->tokens INDEX statement-from + 1 INTO DATA(l_name_tok).
@@ -1733,7 +1603,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ENDIF.
 
             IF ls_state-kw = 'ENDCLASS'.
-              " Reset all class-related state so next CLASS block starts clean
               CLEAR: ls_state-call_line-class, ls_state-param-class, ls_state-class_name.
             ENDIF.
 
@@ -1852,12 +1721,12 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       LOOP AT lt_classes INTO DATA(interface).
         prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
         CASE interface-reltype.
-          WHEN '0' OR '1'. "Interface
+          WHEN '0' OR '1'.
             suffix = 'IU'.
-          WHEN '2'. "Inheritance
+          WHEN '2'.
             suffix = 'CP'.
           WHEN OTHERS.
-            RETURN. "todo: implement other reltype logic
+            RETURN.
         ENDCASE.
         include = program = prefix && suffix.
         ZCL_ACE_SOURCE_PARSER=>parse_tokens(
@@ -1992,7 +1861,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
         IF sy-index = 2 AND  cs_state-eventtype IS NOT INITIAL AND  cs_state-eventname IS INITIAL.
           IF i_main_prog IS NOT INITIAL AND i_reltype = '1'.
-            "cs_state-word = |{ cs_state-class_name }~{ cs_state-word }|.
           ENDIF.
           cs_state-variable-eventname = cs_state-tab-eventname = cs_state-eventname = cs_state-param-name = cs_state-word.
           cs_state-param-line = l_token_row.
@@ -2184,7 +2052,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       DATA: split TYPE TABLE OF string.
       SPLIT  cs_state-change AT '-' INTO TABLE split.
       cs_state-change = split[ 1 ].
-      IF  cs_state-eventtype IS INITIAL. "Global fs
+      IF  cs_state-eventtype IS INITIAL.
         READ TABLE io_debugger->mo_window->mt_globals_set WITH KEY program = i_include ASSIGNING FIELD-SYMBOL(<globals_set>).
         IF sy-subrc <> 0.
           APPEND INITIAL LINE TO io_debugger->mo_window->mt_globals_set ASSIGNING <globals_set>.
@@ -2195,7 +2063,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           APPEND INITIAL LINE TO <globals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<gl_fs>).
           <gl_fs>-name = cs_state-change.
         ENDIF.
-      ELSE. "local fs
+      ELSE.
         READ TABLE io_debugger->mo_window->mt_locals_set
           WITH KEY program = i_include eventtype = cs_state-eventtype eventname = cs_state-eventname
           ASSIGNING FIELD-SYMBOL(<locals_set>).
