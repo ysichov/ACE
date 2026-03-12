@@ -402,7 +402,8 @@ public section.
   " --- instance methods ---
   methods CONSTRUCTOR
     importing
-      !I_PROG type PROG .
+      !I_PROG       type PROG
+      !I_NEW_PARSER type ABAP_BOOL default ABAP_FALSE .
   methods SHOW .
   methods ADD_CLASS
     importing
@@ -726,6 +727,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ZCL_ACE=>check_mermaid( ).
       ZCL_ACE=>init_icons_table( ).
       mo_window = NEW ZCL_ACE_WINDOW( me ).
+      mo_window->mv_new_parser = i_new_parser.
       mo_tree_local = NEW ZCL_ACE_RTTI_TREE( i_header   = 'Objects & Code Flow'
                                          i_type     = 'L'
                                          i_cont     = mo_window->mo_locals_container

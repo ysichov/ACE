@@ -27,6 +27,8 @@
     PARAMETERS: p_wdc  TYPE string.
   SELECTION-SCREEN END OF BLOCK s1.
 
+  PARAMETERS: n_parser AS CHECKBOX DEFAULT ' '.
+
   SELECTION-SCREEN SKIP.
 
   INITIALIZATION.
@@ -42,7 +44,7 @@
         p_exclude = itab.
 
   AT SELECTION-SCREEN.
-    check sy-ucomm <> 'DUMMY'.
+    CHECK sy-ucomm <> 'DUMMY'.
 
     IF p_odata IS NOT INITIAL.
       DATA(serv) = p_odata && '_SRV'.
@@ -86,7 +88,7 @@
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
     IF sy-dbcnt <> 0.
-      DATA(gv_ace) = NEW zcl_ace( i_prog = p_prog ).
+      DATA(gv_ace) = NEW zcl_ace( i_prog = p_prog i_new_parser = n_parser ).
     ELSE.
       MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
     ENDIF.

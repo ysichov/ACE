@@ -248,10 +248,11 @@ public section.
   data:
     mt_globals_set         TYPE STANDARD TABLE OF ts_globals .
   data MS_SEL_CALL type ZCL_ACE=>TS_CALLS_LINE .
+  data MV_NEW_PARSER type ABAP_BOOL .
 
   methods CONSTRUCTOR
     importing
-      !I_DEBUGGER type ref to ZCL_ACE
+      !I_DEBUGGER        type ref to ZCL_ACE
       !I_ADDITIONAL_NAME type STRING optional .
   methods ADD_TOOLBAR_BUTTONS .
   methods HND_TOOLBAR
@@ -768,8 +769,18 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    zcl_ace_source_parser=>parse_tokens(
-      i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+    IF mv_new_parser = abap_true.
+      CALL METHOD zcl_ace_parser=>parse_tokens
+        EXPORTING
+          i_program = i_include
+          i_include = i_include
+        CHANGING
+          cs_source = ms_sources.
+    ELSE.
+      zcl_ace_source_parser=>parse_tokens(
+        i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+    ENDIF.
+
     SORT ms_sources-t_params.
     DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
     IF mo_viewer->m_step IS INITIAL.

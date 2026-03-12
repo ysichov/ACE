@@ -41,9 +41,9 @@
     </item>
     <item>
      <ID>S</ID>
-     <KEY>P_APIKEY</KEY>
-     <ENTRY>AI Api Key</ENTRY>
-     <LENGTH>18</LENGTH>
+     <KEY>N_PARSER</KEY>
+     <ENTRY>New Parser: Constructing phase</ENTRY>
+     <LENGTH>38</LENGTH>
     </item>
     <item>
      <ID>S</ID>
@@ -53,21 +53,9 @@
     </item>
     <item>
      <ID>S</ID>
-     <KEY>P_DEST</KEY>
-     <ENTRY>Destination name (from SM 59)</ENTRY>
-     <LENGTH>37</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
      <KEY>P_FUNC</KEY>
      <ENTRY>Function Module</ENTRY>
      <LENGTH>23</LENGTH>
-    </item>
-    <item>
-     <ID>S</ID>
-     <KEY>P_MODEL</KEY>
-     <ENTRY>AI model name</ENTRY>
-     <LENGTH>21</LENGTH>
     </item>
     <item>
      <ID>S</ID>

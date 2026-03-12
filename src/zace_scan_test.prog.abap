@@ -4,6 +4,14 @@ data gv type i.
 
 gv = gv + 1.
 
+INTERFACE lif_abapmerge.
+  METHODS: test_int2.
+* abapmerge 0.16.7 - 2026-03-06T16:29:01.742Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-06T16:29:01.742Z`.
+  CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
+ENDINTERFACE.
+****************************************************
+
 CLASS lcl_demo DEFINITION.
   PUBLIC SECTION.
     METHODS: run, helper.
@@ -26,6 +34,16 @@ CLASS lcl_demo IMPLEMENTATION.
     z = 3.
   ENDMETHOD.
 ENDCLASS.
+
+****************************************************
+INTERFACE lif_abapmerge_marker.
+  METHODS: test_int.
+* abapmerge 0.16.7 - 2026-03-06T16:29:01.742Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-06T16:29:01.742Z`.
+  CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
+ENDINTERFACE.
+****************************************************
+
 
 FORM my_form USING p_val TYPE i.
   DATA a TYPE i.

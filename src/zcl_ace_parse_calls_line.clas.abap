@@ -16,29 +16,34 @@ private section.
            END OF ts_meth_def .
 
   data MV_CLASS_NAME type STRING .
-  data MV_IN_IMPL type ABAP_BOOL .
+  data MV_IN_IMPL    type ABAP_BOOL .
+  data MV_IS_INTF    type ABAP_BOOL .
   data:
     mt_meth_defs TYPE STANDARD TABLE OF ts_meth_def
                       WITH NON-UNIQUE KEY name .
 
   methods ON_CLASS_KW
     importing
-      !IO_SCAN type ref to CL_CI_SCAN
-      !I_STMT_IDX type I .
+      !IO_SCAN    TYPE REF TO cl_ci_scan
+      !I_STMT_IDX TYPE i
+      !I_KW       TYPE string .
   methods ON_METHODS_SIG
     importing
-      !IO_SCAN type ref to CL_CI_SCAN
-      !I_STMT_IDX type I
-      !I_INCLUDE type PROGRAM .
+      !IO_SCAN    TYPE REF TO cl_ci_scan
+      !I_STMT_IDX TYPE i
+      !I_PROGRAM  TYPE program
+      !I_INCLUDE  TYPE program
+    changing
+      !CS_SOURCE  TYPE zcl_ace_window=>ts_source .
   methods ON_BLOCK_START
     importing
-      !IO_SCAN type ref to CL_CI_SCAN
-      !I_STMT_IDX type I
-      !I_PROGRAM type PROGRAM
-      !I_INCLUDE type PROGRAM
-      !I_KW type STRING
+      !IO_SCAN    TYPE REF TO cl_ci_scan
+      !I_STMT_IDX TYPE i
+      !I_PROGRAM  TYPE program
+      !I_INCLUDE  TYPE program
+      !I_KW       TYPE string
     changing
-      !CS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE .
+      !CS_SOURCE  TYPE zcl_ace_window=>ts_source .
 ENDCLASS.
 
 
@@ -46,7 +51,71 @@ ENDCLASS.
 CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
 
 
-  method ON_BLOCK_START.
+  METHOD on_class_kw.
+
+    READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
+    READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(name_tok).
+    CHECK sy-subrc = 0.
+
+    mv_class_name = name_tok-str.
+    mv_in_impl    = abap_false.
+    mv_is_intf    = COND #( WHEN i_kw = 'INTERFACE' THEN abap_true ELSE abap_false ).
+
+    IF i_kw = 'CLASS'.
+      LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(tok).
+        IF tok-str = 'IMPLEMENTATION'.
+          mv_in_impl = abap_true.
+          RETURN.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD on_methods_sig.
+
+    READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
+    READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(name_tok).
+    CHECK sy-subrc = 0.
+    DATA(lv_line) = io_scan->tokens[ stmt-from ]-row.
+
+    READ TABLE mt_meth_defs WITH KEY name = name_tok-str TRANSPORTING NO FIELDS.
+    IF sy-subrc <> 0.
+      APPEND VALUE ts_meth_def(
+        name        = name_tok-str
+        def_include = i_include
+        def_line    = lv_line
+      ) TO mt_meth_defs.
+    ENDIF.
+
+    " Если внутри INTERFACE — сразу пишем в tt_calls_line с is_intf=true
+    " (у интерфейсов нет METHOD...ENDMETHOD, только METHODS в сигнатуре)
+    CHECK mv_is_intf = abap_true.
+
+    READ TABLE cs_source-tt_calls_line
+      WITH KEY class     = mv_class_name
+               eventtype = 'METHOD'
+               eventname = name_tok-str
+      TRANSPORTING NO FIELDS.
+    CHECK sy-subrc <> 0.
+
+    APPEND INITIAL LINE TO cs_source-tt_calls_line
+      ASSIGNING FIELD-SYMBOL(<cl>).
+    <cl>-program     = i_program.
+    <cl>-include     = i_include.
+    <cl>-class       = mv_class_name.
+    <cl>-eventtype   = 'METHOD'.
+    <cl>-eventname   = name_tok-str.
+    <cl>-is_intf     = abap_true.
+    <cl>-def_include = i_include.
+    <cl>-def_line    = lv_line.
+    <cl>-index       = i_stmt_idx.
+
+  ENDMETHOD.
+
+
+  METHOD on_block_start.
 
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
     READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(name_tok).
@@ -82,6 +151,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     <cl>-class     = mv_class_name.
     <cl>-eventtype = lv_evtype.
     <cl>-eventname = name_tok-str.
+    <cl>-is_intf   = mv_is_intf.
     <cl>-index     = i_stmt_idx.
 
     IF i_kw = 'METHOD'.
@@ -95,50 +165,10 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-  endmethod.
+  ENDMETHOD.
 
 
-  method ON_CLASS_KW.
-
-    READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
-    READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(name_tok).
-    IF sy-subrc = 0.
-      mv_class_name = name_tok-str.
-    ENDIF.
-    DATA lv_from TYPE i.
-    DATA lv_to   TYPE i.
-    lv_from = stmt-from.
-    lv_to   = stmt-to.
-    mv_in_impl = abap_false.
-    LOOP AT io_scan->tokens FROM lv_from TO lv_to INTO DATA(tok).
-      IF tok-str = 'IMPLEMENTATION'.
-        mv_in_impl = abap_true.
-        RETURN.
-      ENDIF.
-    ENDLOOP.
-
-  endmethod.
-
-
-  method ON_METHODS_SIG.
-
-    READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
-    READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(name_tok).
-    CHECK sy-subrc = 0.
-    DATA(lv_line) = io_scan->tokens[ stmt-from ]-row.
-    READ TABLE mt_meth_defs WITH KEY name = name_tok-str TRANSPORTING NO FIELDS.
-    IF sy-subrc <> 0.
-      APPEND VALUE ts_meth_def(
-        name        = name_tok-str
-        def_include = i_include
-        def_line    = lv_line
-      ) TO mt_meth_defs.
-    ENDIF.
-
-  endmethod.
-
-
-  method ZIF_ACE_STMT_HANDLER~HANDLE.
+  METHOD zif_ace_stmt_handler~handle.
 
     CHECK i_stmt_idx > 0.
 
@@ -150,28 +180,31 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
 
     CASE lv_kw.
       WHEN 'CLASS' OR 'INTERFACE'.
-        on_class_kw( io_scan = io_scan i_stmt_idx = i_stmt_idx ).
+        on_class_kw( io_scan    = io_scan
+                     i_stmt_idx = i_stmt_idx
+                     i_kw       = lv_kw ).
 
       WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
-        CLEAR: mv_class_name, mv_in_impl.
+        CLEAR: mv_class_name, mv_in_impl, mv_is_intf.
         CLEAR mt_meth_defs.
 
       WHEN 'METHODS' OR 'CLASS-METHODS'.
         IF mv_in_impl = abap_false.
-          on_methods_sig( io_scan    = io_scan
-                          i_stmt_idx = i_stmt_idx
-                          i_include  = i_include ).
+          on_methods_sig( EXPORTING io_scan    = io_scan
+                                    i_stmt_idx = i_stmt_idx
+                                    i_program  = i_program
+                                    i_include  = i_include
+                          CHANGING  cs_source  = cs_source ).
         ENDIF.
 
       WHEN 'FORM' OR 'METHOD' OR 'MODULE' OR 'FUNCTION'.
-        CALL METHOD on_block_start
-          EXPORTING io_scan    = io_scan
-                    i_stmt_idx = i_stmt_idx
-                    i_program  = i_program
-                    i_include  = i_include
-                    i_kw       = lv_kw
-          CHANGING  cs_source  = cs_source.
+        on_block_start( EXPORTING io_scan    = io_scan
+                                  i_stmt_idx = i_stmt_idx
+                                  i_program  = i_program
+                                  i_include  = i_include
+                                  i_kw       = lv_kw
+                        CHANGING  cs_source  = cs_source ).
     ENDCASE.
 
-  endmethod.
+  ENDMETHOD.
 ENDCLASS.
