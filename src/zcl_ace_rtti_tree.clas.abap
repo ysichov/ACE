@@ -269,17 +269,8 @@ method DISPLAY.
         ls_clear_row-ev_name = <ev_name>.
         o_node->set_data_row( REF #( ls_clear_row ) ).
         DATA(lv_added) = 0.
-        LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_ep)
-          WHERE class = lv_lazy_class AND event = 'METHOD' AND name = lv_lazy_meth AND param IS NOT INITIAL.
-          DATA(lv_ep_icon) = COND salv_de_tree_image(
-            WHEN lv_ep-type = 'I' THEN CONV #( icon_parameter_import )
-            ELSE                       CONV #( icon_parameter_export ) ).
-          add_node( i_name = lv_ep-param i_icon = lv_ep_icon i_rel = node_key
-                    i_tree = VALUE ZCL_ACE=>ts_tree( value = lv_ep-line include = lv_ep-include ) ).
-          lv_added = lv_added + 1.
-        ENDLOOP.
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_ev)
-          WHERE program = lv_lazy_prog AND class = lv_lazy_class AND eventname = lv_lazy_meth.
+          WHERE program = lv_lazy_prog AND class = lv_lazy_class AND eventtype = 'METHOD' AND eventname = lv_lazy_meth.
           add_node( i_name = lv_ev-name i_icon = lv_ev-icon i_rel = node_key
                     i_tree = VALUE ZCL_ACE=>ts_tree( value = lv_ev-line include = lv_ev-include ) ).
           lv_added = lv_added + 1.
@@ -812,16 +803,8 @@ method DISPLAY.
     " ---- VARS:{class}:{method} ----
     IF lv_param+0(5) = 'VARS:'.
       SPLIT lv_param AT ':' INTO DATA(lv_pfx) DATA(lv_class) DATA(lv_meth).
-      LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_p)
-        WHERE class = lv_class AND event = 'METHOD' AND name = lv_meth AND param IS NOT INITIAL.
-        DATA(lv_p_icon) = COND salv_de_tree_image(
-          WHEN lv_p-type = 'I' THEN CONV #( icon_parameter_import )
-          ELSE                      CONV #( icon_parameter_export ) ).
-        add_node( i_name = lv_p-param i_icon = lv_p_icon i_rel = node_key
-                  i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
-      ENDLOOP.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_v)
-        WHERE program = <program> AND class = lv_class AND eventname = lv_meth.
+        WHERE program = <program> AND class = lv_class AND eventtype = 'METHOD' AND eventname = lv_meth.
         add_node( i_name = lv_v-name i_icon = lv_v-icon i_rel = node_key
                   i_tree = VALUE #( value = lv_v-line include = lv_v-include var_name = lv_v-name ) ).
       ENDLOOP.

@@ -639,7 +639,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
         DATA(lv_var_cnt) = 0.
         LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
-          WHERE program = subs-program AND class = subs-class AND eventname = subs-eventname.
+          WHERE program = subs-program AND class = subs-class
+            AND eventtype = subs-eventtype AND eventname = subs-eventname.
           lv_var_cnt += 1.
         ENDLOOP.
         IF lv_var_cnt > 0.

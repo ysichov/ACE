@@ -126,18 +126,19 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     ENDLOOP.
 
     " ---------------------------------------------------------------
-    " Dispatch map: keyword -> handler  (HASHED TABLE = O(1) lookup)
+    " Dispatch map: keyword -> handlers  (multiple per keyword ok)
     " ---------------------------------------------------------------
     TYPES: BEGIN OF ts_dispatch,
              keyword TYPE string,
              handler TYPE REF TO zif_ace_stmt_handler,
            END OF ts_dispatch.
-    DATA lt_dispatch TYPE HASHED TABLE OF ts_dispatch
-                     WITH UNIQUE KEY keyword.
+    DATA lt_dispatch TYPE SORTED TABLE OF ts_dispatch
+                     WITH NON-UNIQUE KEY keyword.
 
-    DATA(lo_events)     = CAST zif_ace_stmt_handler( NEW Zcl_ace_parse_events( ) ).
-    DATA(lo_calls_line) = CAST zif_ace_stmt_handler( NEW Zcl_ace_parse_calls_line( ) ).
-    DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW Zcl_ace_parse_params( ) ).
+    DATA(lo_events)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_events( ) ).
+    DATA(lo_calls_line) = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls_line( ) ).
+    DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_params( ) ).
+    DATA(lo_vars)       = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_vars( ) ).
 
     LOOP AT VALUE string_table(
            ( `CLASS` )        ( `INTERFACE` )
@@ -147,6 +148,20 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
            ( `MODULE` )       ( `FUNCTION` )
          ) INTO DATA(lv_kw).
       INSERT VALUE ts_dispatch( keyword = lv_kw handler = lo_calls_line )
+        INTO TABLE lt_dispatch.
+    ENDLOOP.
+
+    " vars: CLASS/ENDCLASS + METHOD/FORM/... context + DATA/CLASS-DATA/PARAMETERS/SELECT-OPTIONS
+    LOOP AT VALUE string_table(
+           ( `CLASS` )          ( `ENDCLASS` )
+           ( `METHOD` )         ( `ENDMETHOD` )
+           ( `FORM` )           ( `ENDFORM` )
+           ( `MODULE` )         ( `ENDMODULE` )
+           ( `FUNCTION` )       ( `ENDFUNCTION` )
+           ( `DATA` )           ( `CLASS-DATA` )
+           ( `PARAMETERS` )     ( `SELECT-OPTIONS` )
+         ) INTO lv_kw.
+      INSERT VALUE ts_dispatch( keyword = lv_kw handler = lo_vars )
         INTO TABLE lt_dispatch.
     ENDLOOP.
 
@@ -182,17 +197,14 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lo_scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw_tok).
       CHECK sy-subrc = 0.
 
-      READ TABLE lt_dispatch
-        WITH TABLE KEY keyword = ls_kw_tok-str
-        INTO DATA(ls_disp).
-      IF sy-subrc = 0.
+      LOOP AT lt_dispatch INTO DATA(ls_disp) WHERE keyword = ls_kw_tok-str.
         ls_disp-handler->handle(
           EXPORTING io_scan    = lo_scan
                     i_stmt_idx = lv_idx
                     i_program  = i_program
                     i_include  = i_include
           CHANGING  cs_source  = cs_source ).
-      ENDIF.
+      ENDLOOP.
 
       " lo_params обрабатывает CLASS/INTERFACE/ENDCLASS/ENDINTERFACE/METHODS/FORM
       READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str

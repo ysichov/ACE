@@ -1813,7 +1813,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           CONTINUE.
         ENDIF.
 
-        IF sy-index = 2 AND ( cs_state-kw = 'DATA' OR cs_state-kw = 'PARAMETERS' ).
+        IF sy-index = 2 AND ( cs_state-kw = 'DATA' OR cs_state-kw = 'PARAMETERS'
+                           OR cs_state-kw = 'CLASS-DATA' OR cs_state-kw = 'SELECT-OPTIONS' ).
           cs_state-tab-name = cs_state-word.
         ENDIF.
 
@@ -2089,7 +2090,27 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       CASE cs_state-kw.
 
-        WHEN 'DATA' OR 'PARAMETERS'.
+        WHEN 'DATA' OR 'PARAMETERS' OR 'CLASS-DATA' OR 'SELECT-OPTIONS'.
+          IF cs_state-kw = 'PARAMETERS' AND cs_state-prev = 'CHECKBOX'.
+            cs_state-variable-name = cs_state-tab-name.
+            cs_state-variable-type = 'CHECKBOX'.
+            cs_state-variable-line = l_token_row.
+            cs_state-variable-icon = icon_checked.
+            cs_state-variable-program = i_program.
+            cs_state-variable-include = i_include.
+            cs_state-variable-class = cs_state-class_name.
+            APPEND cs_state-variable TO io_debugger->mo_window->ms_sources-t_vars.
+          ENDIF.
+          IF cs_state-kw = 'SELECT-OPTIONS' AND cs_state-prev = 'FOR'.
+            cs_state-variable-name = cs_state-tab-name.
+            cs_state-variable-type = temp.
+            cs_state-variable-line = l_token_row.
+            cs_state-variable-icon = icon_select_all.
+            cs_state-variable-program = i_program.
+            cs_state-variable-include = i_include.
+            cs_state-variable-class = cs_state-class_name.
+            APPEND cs_state-variable TO io_debugger->mo_window->ms_sources-t_vars.
+          ENDIF.
           IF ( cs_state-prev = 'OF' ) AND temp <> 'TABLE' AND temp <> 'OF'.
             cs_state-tab-type = temp.
             APPEND cs_state-tab TO cs_state-tabs.
