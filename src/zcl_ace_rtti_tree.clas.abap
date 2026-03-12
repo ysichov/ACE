@@ -811,6 +811,17 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
+    " ---- LVARS:FORM:{formname} ----
+    IF strlen( lv_param ) > 10 AND lv_param+0(10) = 'LVARS:FORM'.
+      SPLIT lv_param AT ':' INTO DATA(lv_lv_pfx) DATA(lv_lv_type) DATA(lv_lv_form).
+      LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_fv)
+        WHERE program = <program> AND eventtype = 'FORM' AND eventname = lv_lv_form.
+        add_node( i_name = lv_fv-name i_icon = lv_fv-icon i_rel = node_key
+                  i_tree = VALUE #( value = lv_fv-line include = lv_fv-include var_name = lv_fv-name ) ).
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
     " ---- ATTR:{class} ----
     IF lv_param+0(5) = 'ATTR:'.
       DATA(lv_attr_class) = lv_param+5.
@@ -857,6 +868,24 @@ method DISPLAY.
           add_node( i_name = lv_fprm-param i_icon = lv_ficon i_rel = lv_fn
                     i_tree = VALUE #( param = lv_fprm-param ) ).
         ENDLOOP.
+        " ---- Local vars for FORM (lazy) ----
+        DATA(lv_fvar_cnt) = 0.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_fvc)
+          WHERE program = lv_fs-program AND eventtype = 'FORM' AND eventname = lv_fs-eventname.
+          lv_fvar_cnt += 1.
+        ENDLOOP.
+        IF lv_fvar_cnt > 0.
+          DATA(lv_fvn) = add_node(
+            i_name = |Local vars ({ lv_fvar_cnt })|
+            i_icon = CONV #( icon_header )
+            i_rel  = lv_fn
+            i_tree = VALUE #( param = |LVARS:FORM:{ lv_fs-eventname }| program = lv_fs-program ) ).
+          APPEND lv_fvn TO mt_lazy_nodes.
+          TRY.
+              mo_tree->get_nodes( )->get_node( lv_fvn )->set_expander( abap_true ).
+            CATCH cx_root.
+          ENDTRY.
+        ENDIF.
       ENDLOOP.
       RETURN.
     ENDIF.

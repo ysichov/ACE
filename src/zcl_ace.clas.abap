@@ -1562,6 +1562,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
               i_rel  = forms_rel
               i_tree = VALUE #( kind = 'M' value = keyword-v_line include = subs2-include
                                 program = subs2-program ev_type = subs2-eventtype ev_name = subs2-eventname ) ).
+            " ---- Parameters first ----
             LOOP AT mo_window->ms_sources-t_params INTO DATA(param)
               WHERE event = 'FORM' AND name = subs2-eventname AND param IS NOT INITIAL.
               CASE param-type.
@@ -1572,6 +1573,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
               mo_tree_local->add_node( i_name = param-param i_icon = icon i_rel = event_node
                 i_tree = VALUE #( param = param-param ) ).
             ENDLOOP.
+            " ---- Local Vars for FORM (lazy) — after params ----
+            DATA(lv_form_var_cnt) = 0.
+            LOOP AT mo_window->ms_sources-t_vars INTO DATA(form_var)
+              WHERE program = subs2-program AND eventtype = 'FORM' AND eventname = subs2-eventname.
+              lv_form_var_cnt += 1.
+            ENDLOOP.
+            IF lv_form_var_cnt > 0.
+              DATA(form_locals_rel) = mo_tree_local->add_node(
+                i_name = |Local vars ({ lv_form_var_cnt })|
+                i_icon = CONV #( icon_header )
+                i_rel  = event_node
+                i_tree = VALUE #( param = |LVARS:FORM:{ subs2-eventname }| program = subs2-program ) ).
+              APPEND form_locals_rel TO mo_tree_local->mt_lazy_nodes.
+            ENDIF.
           ENDLOOP.
         ELSE.
           forms_rel = mo_tree_local->add_node(
