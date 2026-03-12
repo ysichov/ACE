@@ -73,9 +73,14 @@ CLASS ZCL_ACE_PARSE_VARS IMPLEMENTATION.
         RETURN.
     ENDCASE.
 
-    " Inside a class definition (not IMPLEMENTATION) — skip
+    " Inside a class definition (not IMPLEMENTATION)
+    " — обрабатываем только DATA/CLASS-DATA как атрибуты класса
     IF mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
-      RETURN.
+      IF lv_kw <> 'DATA' AND lv_kw <> 'CLASS-DATA'.
+        RETURN.
+      ENDIF.
+      " Атрибут класса — сохраняем с пустым eventtype/eventname
+      " (mv_eventtype/mv_eventname уже пустые — мы в definition)
     ENDIF.
 
     DATA(lv_line) = io_scan->tokens[ stmt-from ]-row.

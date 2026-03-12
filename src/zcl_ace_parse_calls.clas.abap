@@ -206,16 +206,19 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
         APPEND lv_call TO lt_new_calls.
 
       WHEN 'COMPUTE'.
-        " lo = NEW ClassName( ) — ищем NEW в токенах стейтмента
-        DATA lv_ci TYPE i.
+        " Ищем NEW ClassName( ) — вызов конструктора
+        DATA lv_ci  TYPE i.
+        DATA ls_ct  LIKE LINE OF io_scan->tokens.
+        DATA ls_cn  LIKE LINE OF io_scan->tokens.
+        DATA lv_cn  TYPE string.
         lv_ci = ls_stmt-from.
         WHILE lv_ci <= ls_stmt-to.
-          READ TABLE io_scan->tokens INDEX lv_ci INTO DATA(ls_ct).
+          READ TABLE io_scan->tokens INDEX lv_ci INTO ls_ct.
           IF sy-subrc <> 0. EXIT. ENDIF.
           IF ls_ct-str = 'NEW'.
-            READ TABLE io_scan->tokens INDEX lv_ci + 1 INTO DATA(ls_cn).
+            READ TABLE io_scan->tokens INDEX lv_ci + 1 INTO ls_cn.
             IF sy-subrc = 0 AND ls_cn-str CS '('.
-              DATA(lv_cn) = ls_cn-str.
+              lv_cn = ls_cn-str.
               REPLACE ALL OCCURRENCES OF '(' IN lv_cn WITH ''.
               CONDENSE lv_cn NO-GAPS.
               IF lv_cn IS NOT INITIAL.
@@ -281,6 +284,16 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
               CONDENSE lv_left_str NO-GAPS.
               lv_right_name = 'CONSTRUCTOR'.
               lv_tok_idx += 1.
+            ENDIF.
+          " show( ) — implicit me-> : токен заканчивается на ( без стрелки
+          ELSEIF lv_tstr CA '(' AND NOT lv_tstr CS '->' AND NOT lv_tstr CS '=>'.
+            " Первый токен стейтмента — это сам вызов
+            IF lv_tok_idx = ls_stmt-from.
+              lv_arrow      = '->'.
+              lv_left_str   = 'ME'.
+              lv_right_name = lv_tstr.
+              REPLACE ALL OCCURRENCES OF '(' IN lv_right_name WITH ''.
+              CONDENSE lv_right_name NO-GAPS.
             ENDIF.
           ENDIF.
 
