@@ -137,7 +137,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
     DATA(lo_events)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_events( ) ).
     DATA(lo_calls_line) = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls_line( ) ).
-    DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_params( ) ).
+    "DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_params( ) ).
     DATA(lo_vars)       = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_vars( ) ).
 
     LOOP AT VALUE string_table(
@@ -210,12 +210,12 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
-        lo_params->handle(
-          EXPORTING io_scan    = lo_scan
-                    i_stmt_idx = lv_idx
-                    i_program  = i_program
-                    i_include  = i_include
-          CHANGING  cs_source  = cs_source ).
+*        lo_params->handle(
+*          EXPORTING io_scan    = lo_scan
+*                    i_stmt_idx = lv_idx
+*                    i_program  = i_program
+*                    i_include  = i_include
+*          CHANGING  cs_source  = cs_source ).
       ENDIF.
     ENDDO.
 
