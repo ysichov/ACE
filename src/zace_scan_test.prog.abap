@@ -1,49 +1,32 @@
-REPORT zace_scan_test.
-
-data gv type i.
-
-gv = gv + 1.
-
-INTERFACE lif_abapmerge.
-  METHODS: test_int2.
-* abapmerge 0.16.7 - 2026-03-06T16:29:01.742Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-06T16:29:01.742Z`.
-  CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
-ENDINTERFACE.
-****************************************************
+REPORT zace_calls_test_data.
 
 CLASS lcl_demo DEFINITION.
   PUBLIC SECTION.
-    METHODS: run IMPORTING iv_i type i exporting eo_ref type ref to zcl_ace RETURNING VALUE(rv) type string, helper.
+    CLASS-METHODS cls_meth.
+     METHODS constructor .
+    METHODS run IMPORTING iv_i TYPE i.
   PRIVATE SECTION.
-    METHODS: internal_calc.
+    DATA mo_ref TYPE REF TO lcl_demo.
 ENDCLASS.
+
 CLASS lcl_demo IMPLEMENTATION.
+  METHOD cls_meth.
+  ENDMETHOD.
+
+  method constructor.
+  ENDMETHOD.
+
   METHOD run.
-    DATA x TYPE i.
-    x = 1.
-  ENDMETHOD.
-
-  METHOD helper.
-    DATA y TYPE i.
-    y = 2.
-  ENDMETHOD.
-
-  METHOD internal_calc.
-    DATA z TYPE i.
-    z = 3.
+    DATA lo TYPE REF TO lcl_demo.
+    lo = NEW lcl_demo( ).
+    lo->run( iv_i = 1 ).
+    me->run( iv_i = 2 ).
+    lcl_demo=>cls_meth( ).
+    PERFORM my_form USING 42.
+    CALL FUNCTION 'POPUP_TO_CONFIRM'.
+    CALL METHOD lo->run( iv_i = 3 ).
   ENDMETHOD.
 ENDCLASS.
-
-****************************************************
-INTERFACE lif_abapmerge_marker.
-  METHODS: test_int.
-* abapmerge 0.16.7 - 2026-03-06T16:29:01.742Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-06T16:29:01.742Z`.
-  CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
-ENDINTERFACE.
-****************************************************
-
 
 FORM my_form USING p_val TYPE i.
   DATA a TYPE i.
@@ -51,8 +34,5 @@ FORM my_form USING p_val TYPE i.
 ENDFORM.
 
 START-OF-SELECTION.
-  " dummy - real logic in ZADT_SCAN_DEBUG FM below
-  WRITE: / 'run ZADT_SCAN_DEBUG via RFC'.
-
-  DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
-        CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
+  lcl_demo=>cls_meth( ).
+  PERFORM my_form USING 1.
