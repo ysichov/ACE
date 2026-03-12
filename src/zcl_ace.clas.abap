@@ -338,6 +338,7 @@ public section.
   " --- instance data ---
   data MV_PROG type PROG .
   data MV_SHOW_PROG type PROG .
+  data MV_SHOW_PARSE_TIME type ABAP_BOOL .
   data MV_DEST type TEXT255 .
   data MV_MODEL type TEXT255 .
   data MV_APIKEY type TEXT255 .
@@ -402,8 +403,9 @@ public section.
   " --- instance methods ---
   methods CONSTRUCTOR
     importing
-      !I_PROG       type PROG
-      !I_NEW_PARSER type ABAP_BOOL default ABAP_FALSE .
+      !I_PROG             type PROG
+      !I_NEW_PARSER       type ABAP_BOOL default ABAP_FALSE
+      !I_SHOW_PARSE_TIME  type ABAP_BOOL default ABAP_FALSE .
   methods SHOW .
   methods ADD_CLASS
     importing
@@ -723,6 +725,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
   method CONSTRUCTOR.
       CONSTANTS: c_mask TYPE x VALUE '01'.
       mv_prog = i_prog.
+      mv_show_parse_time = i_show_parse_time.
       i_step = abap_on.
       ZCL_ACE=>check_mermaid( ).
       ZCL_ACE=>init_icons_table( ).

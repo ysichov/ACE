@@ -249,6 +249,7 @@ public section.
     mt_globals_set         TYPE STANDARD TABLE OF ts_globals .
   data MS_SEL_CALL type ZCL_ACE=>TS_CALLS_LINE .
   data MV_NEW_PARSER type ABAP_BOOL .
+  data MV_SHOW_PARSE_TIME type ABAP_BOOL .
 
   methods CONSTRUCTOR
     importing
@@ -259,6 +260,9 @@ public section.
     for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
     importing
       !FCODE .
+  methods SHOW_PARSE_TIME
+    importing
+      !I_TS1 type TIMESTAMPL .
   methods SET_PROGRAM
     importing
       !I_INCLUDE type PROGRAM .
@@ -754,6 +758,20 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   endmethod.
 
 
+  METHOD show_parse_time.
+    DATA: lv_ts2 TYPE timestampl,
+          lv_sec TYPE tzntstmpl,
+          lv_str(20) TYPE c.
+    GET TIME STAMP FIELD lv_ts2.
+    CALL METHOD cl_abap_tstmp=>subtract
+      EXPORTING tstmp1 = lv_ts2 tstmp2 = i_ts1
+      RECEIVING r_secs = lv_sec.
+    WRITE lv_sec TO lv_str LEFT-JUSTIFIED DECIMALS 3.
+    CONDENSE lv_str NO-GAPS.
+    MESSAGE |parse_tokens: { lv_str } sec| TYPE 'I'.
+  ENDMETHOD.
+
+
   METHOD set_program.
 
 
@@ -769,6 +787,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    DATA lv_ts1 TYPE timestampl.
+    IF mo_viewer->mv_show_parse_time = abap_true.
+      GET TIME STAMP FIELD lv_ts1.
+    ENDIF.
+
     IF mv_new_parser = abap_true.
       CALL METHOD zcl_ace_parser=>parse_tokens
         EXPORTING
@@ -779,6 +802,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     ELSE.
       zcl_ace_source_parser=>parse_tokens(
         i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+    ENDIF.
+
+    IF mo_viewer->mv_show_parse_time = abap_true.
+      show_parse_time( lv_ts1 ).
     ENDIF.
 
     SORT ms_sources-t_params.

@@ -1477,7 +1477,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
   method PARSE_TOKENS.
 
-
       DATA: lr_scan     TYPE REF TO cl_ci_scan,
             o_scan      TYPE REF TO cl_ci_scan,
             o_statement TYPE REF TO if_ci_kzn_statement_iterator,

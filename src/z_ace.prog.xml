@@ -47,6 +47,12 @@
     </item>
     <item>
      <ID>S</ID>
+     <KEY>N_TIME</KEY>
+     <ENTRY>Parse Time measure</ENTRY>
+     <LENGTH>26</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
      <KEY>P_CLASS</KEY>
      <ENTRY>Class/Interface</ENTRY>
      <LENGTH>23</LENGTH>

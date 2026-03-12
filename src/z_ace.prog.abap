@@ -28,6 +28,7 @@
   SELECTION-SCREEN END OF BLOCK s1.
 
   PARAMETERS: n_parser AS CHECKBOX DEFAULT ' '.
+  PARAMETERS: n_time   AS CHECKBOX DEFAULT ' '.
 
   SELECTION-SCREEN SKIP.
 
@@ -88,7 +89,7 @@
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
     IF sy-dbcnt <> 0.
-      DATA(gv_ace) = NEW zcl_ace( i_prog = p_prog i_new_parser = n_parser ).
+      DATA(gv_ace) = NEW zcl_ace( i_prog = p_prog i_new_parser = n_parser i_show_parse_time = n_time ).
     ELSE.
       MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
     ENDIF.
