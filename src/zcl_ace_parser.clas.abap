@@ -137,6 +137,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
     DATA(lo_events)     = CAST zif_ace_stmt_handler( NEW Zcl_ace_parse_events( ) ).
     DATA(lo_calls_line) = CAST zif_ace_stmt_handler( NEW Zcl_ace_parse_calls_line( ) ).
+    DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW Zcl_ace_parse_params( ) ).
 
     LOOP AT VALUE string_table(
            ( `CLASS` )        ( `INTERFACE` )
@@ -148,6 +149,16 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       INSERT VALUE ts_dispatch( keyword = lv_kw handler = lo_calls_line )
         INTO TABLE lt_dispatch.
     ENDLOOP.
+
+    " params: второй dispatch-проход после основного (METHOD/FORM/FUNCTION)
+    DATA lt_params_kws TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+    INSERT `CLASS`        INTO TABLE lt_params_kws.
+    INSERT `INTERFACE`    INTO TABLE lt_params_kws.
+    INSERT `ENDCLASS`     INTO TABLE lt_params_kws.
+    INSERT `ENDINTERFACE` INTO TABLE lt_params_kws.
+    INSERT `METHODS`      INTO TABLE lt_params_kws.
+    INSERT `CLASS-METHODS` INTO TABLE lt_params_kws.
+    INSERT `FORM`         INTO TABLE lt_params_kws.
 
     " events: один раз по структурам, без цикла по стейтментам
     lo_events->handle(
@@ -174,14 +185,26 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lt_dispatch
         WITH TABLE KEY keyword = ls_kw_tok-str
         INTO DATA(ls_disp).
-      CHECK sy-subrc = 0.
+      IF sy-subrc = 0.
+        ls_disp-handler->handle(
+          EXPORTING io_scan    = lo_scan
+                    i_stmt_idx = lv_idx
+                    i_program  = i_program
+                    i_include  = i_include
+          CHANGING  cs_source  = cs_source ).
+      ENDIF.
 
-      ls_disp-handler->handle(
-        EXPORTING io_scan    = lo_scan
-                  i_stmt_idx = lv_idx
-                  i_program  = i_program
-                  i_include  = i_include
-        CHANGING  cs_source  = cs_source ).
+      " lo_params обрабатывает CLASS/INTERFACE/ENDCLASS/ENDINTERFACE/METHODS/FORM
+      READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str
+        TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        lo_params->handle(
+          EXPORTING io_scan    = lo_scan
+                    i_stmt_idx = lv_idx
+                    i_program  = i_program
+                    i_include  = i_include
+          CHANGING  cs_source  = cs_source ).
+      ENDIF.
     ENDDO.
 
   endmethod.

@@ -14,7 +14,7 @@ ENDINTERFACE.
 
 CLASS lcl_demo DEFINITION.
   PUBLIC SECTION.
-    METHODS: run, helper.
+    METHODS: run IMPORTING iv_i type i exporting eo_ref type ref to zcl_ace RETURNING VALUE(rv) type string, helper.
   PRIVATE SECTION.
     METHODS: internal_calc.
 ENDCLASS.
