@@ -12,6 +12,10 @@ CLASS zcl_ace_parse_calls DEFINITION
     DATA mv_event_name TYPE string.
     DATA mv_in_impl    TYPE abap_bool.
 
+    " Superclass cache — valid for mv_class_name
+    DATA mv_super_cls  TYPE string.
+    DATA mv_super      TYPE string.
+
     CLASS-METHODS resolve_var_type
       IMPORTING
         is_source      TYPE zcl_ace_window=>ts_source
@@ -21,6 +25,12 @@ CLASS zcl_ace_parse_calls DEFINITION
         i_varname      TYPE string
       RETURNING
         VALUE(rv_type) TYPE string.
+
+    METHODS get_super
+      IMPORTING
+        is_source       TYPE zcl_ace_window=>ts_source
+      RETURNING
+        VALUE(rv_super) TYPE string.
 
     METHODS parse_stmt_calls
       IMPORTING
@@ -50,6 +60,9 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
       WHEN 'CLASS' OR 'INTERFACE'.
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_name).
         IF sy-subrc = 0.
+          IF mv_class_name <> ls_name-str.
+            CLEAR: mv_super_cls, mv_super.
+          ENDIF.
           mv_class_name = ls_name-str.
           mv_in_impl    = abap_false.
           IF ls_kw-str = 'CLASS'.
@@ -62,6 +75,7 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
 
       WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
         CLEAR: mv_class_name, mv_in_impl, mv_event_type, mv_event_name.
+        CLEAR: mv_super_cls, mv_super.
         RETURN.
 
       WHEN 'METHOD'.
@@ -107,7 +121,6 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
         CLEAR: mv_event_type, mv_event_name.
         RETURN.
 
-      " Event blocks — не процедуры, но содержат исполняемый код
       WHEN 'START-OF-SELECTION' OR 'END-OF-SELECTION'
         OR 'INITIALIZATION' OR 'TOP-OF-PAGE' OR 'END-OF-PAGE'
         OR 'AT' OR 'GET'.
@@ -117,8 +130,6 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
 
     ENDCASE.
 
-    " Parse calls в любом исполняемом контексте
-    " (процедуры: METHOD/FORM/FUNCTION/MODULE, события: START-OF-SELECTION и др.)
     CHECK mv_event_type IS NOT INITIAL.
 
     parse_stmt_calls(
@@ -128,6 +139,70 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
                 i_include  = i_include
       CHANGING  cs_source  = cs_source ).
 
+  ENDMETHOD.
+
+
+  METHOD get_super.
+    CHECK mv_class_name IS NOT INITIAL.
+    IF mv_super_cls = mv_class_name.
+      rv_super = mv_super.
+      RETURN.
+    ENDIF.
+    READ TABLE is_source-tt_class_defs WITH KEY class = mv_class_name
+      INTO DATA(ls_cd).
+    IF sy-subrc = 0 AND ls_cd-super IS NOT INITIAL.
+      rv_super = ls_cd-super.
+    ELSE.
+      SELECT SINGLE refclsname FROM seometarel INTO @rv_super
+        WHERE clsname = @mv_class_name AND reltype = '1'.
+    ENDIF.
+    mv_super_cls = mv_class_name.
+    mv_super     = rv_super.
+  ENDMETHOD.
+
+
+  METHOD resolve_var_type.
+    " t_vars is pre-sorted by (program, eventtype, eventname, name)
+    " before this pass runs — so READ with BINARY SEARCH is O(log n).
+
+    " 1. Local scope
+    READ TABLE is_source-t_vars
+      WITH KEY program   = i_program
+               eventtype = i_evtype
+               eventname = i_evname
+               name      = i_varname
+      INTO DATA(ls_var)
+      BINARY SEARCH.
+    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL.
+      rv_type = ls_var-type.
+      RETURN.
+    ENDIF.
+
+    " 2. Class attributes (eventtype = '', eventname = '')
+    READ TABLE is_source-t_vars
+      WITH KEY program   = i_program
+               eventtype = ''
+               eventname = ''
+               name      = i_varname
+      INTO ls_var
+      BINARY SEARCH.
+    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL.
+      rv_type = ls_var-type.
+      RETURN.
+    ENDIF.
+
+    " 3. Globals (class = '', eventtype = '', eventname = '')
+    READ TABLE is_source-t_vars
+      WITH KEY program   = i_program
+               class     = ''
+               eventtype = ''
+               eventname = ''
+               name      = i_varname
+      INTO ls_var
+      BINARY SEARCH.
+    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL.
+      rv_type = ls_var-type.
+    ENDIF.
   ENDMETHOD.
 
 
@@ -149,17 +224,7 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
       IF sy-subrc = 0. lv_kw = |CALL { ls_tok2-str }|. ENDIF.
     ENDIF.
 
-    " Хелпер: резолв суперкласса — сначала из распарсенной иерархии,
-    " fallback — SELECT из seometarel
-    DATA(lv_super_of_current) = VALUE string( ).
-    READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name
-      INTO DATA(ls_cd).
-    IF sy-subrc = 0 AND ls_cd-super IS NOT INITIAL.
-      lv_super_of_current = ls_cd-super.
-    ELSEIF mv_class_name IS NOT INITIAL.
-      SELECT SINGLE refclsname FROM seometarel INTO @lv_super_of_current
-        WHERE clsname = @mv_class_name AND reltype = '1'.
-    ENDIF.
+    DATA(lv_super) = get_super( is_source = cs_source ).
 
     DATA lt_new_calls TYPE zcl_ace=>tt_calls.
 
@@ -202,15 +267,12 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
             lv_call-class = mv_class_name.
           ELSEIF lv_call-class = 'SUPER'.
             lv_call-super = abap_true.
-            lv_call-class = COND #( WHEN lv_super_of_current IS NOT INITIAL
-                                    THEN lv_super_of_current
-                                    ELSE mv_class_name ).
+            lv_call-class = COND #( WHEN lv_super IS NOT INITIAL
+                                    THEN lv_super ELSE mv_class_name ).
           ELSE.
             DATA(lv_resolved) = resolve_var_type(
-              is_source = cs_source
-              i_program = i_program
-              i_evtype  = mv_event_type
-              i_evname  = mv_event_name
+              is_source = cs_source i_program = i_program
+              i_evtype  = mv_event_type i_evname = mv_event_name
               i_varname = lv_call-class ).
             IF lv_resolved IS NOT INITIAL.
               lv_call-outer = lv_call-class.
@@ -222,10 +284,10 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
         APPEND lv_call TO lt_new_calls.
 
       WHEN 'COMPUTE'.
-        DATA lv_ci  TYPE i.
-        DATA ls_ct  LIKE LINE OF io_scan->tokens.
-        DATA ls_cn  LIKE LINE OF io_scan->tokens.
-        DATA lv_cn  TYPE string.
+        DATA lv_ci TYPE i.
+        DATA ls_ct LIKE LINE OF io_scan->tokens.
+        DATA ls_cn LIKE LINE OF io_scan->tokens.
+        DATA lv_cn TYPE string.
         lv_ci = ls_stmt-from.
         WHILE lv_ci <= ls_stmt-to.
           READ TABLE io_scan->tokens INDEX lv_ci INTO ls_ct.
@@ -238,9 +300,7 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
               CONDENSE lv_cn NO-GAPS.
               IF lv_cn IS NOT INITIAL.
                 APPEND VALUE zcl_ace=>ts_calls(
-                  event = 'METHOD'
-                  class = lv_cn
-                  name  = 'CONSTRUCTOR'
+                  event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR'
                 ) TO lt_new_calls.
               ENDIF.
               lv_ci += 1.
@@ -326,15 +386,12 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
               lv_c-class = mv_class_name.
             ELSEIF lv_left_str = 'SUPER'.
               lv_c-super = abap_true.
-              lv_c-class = COND #( WHEN lv_super_of_current IS NOT INITIAL
-                                   THEN lv_super_of_current
-                                   ELSE mv_class_name ).
+              lv_c-class = COND #( WHEN lv_super IS NOT INITIAL
+                                   THEN lv_super ELSE mv_class_name ).
             ELSE.
               lv_rtype = resolve_var_type(
-                is_source = cs_source
-                i_program = i_program
-                i_evtype  = mv_event_type
-                i_evname  = mv_event_name
+                is_source = cs_source i_program = i_program
+                i_evtype  = mv_event_type i_evname = mv_event_name
                 i_varname = lv_left_str ).
               IF lv_rtype IS NOT INITIAL.
                 lv_c-class = lv_rtype.
@@ -358,10 +415,13 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
 
     CHECK lt_new_calls IS NOT INITIAL.
 
+    " t_keywords is built in statement order: index = position in table.
+    " READ TABLE INDEX i_stmt_idx is O(1) — no scan needed.
     LOOP AT cs_source-tt_progs ASSIGNING FIELD-SYMBOL(<prog>)
       WHERE include = i_include.
-      LOOP AT <prog>-t_keywords ASSIGNING FIELD-SYMBOL(<kw>)
-        WHERE index = i_stmt_idx.
+      READ TABLE <prog>-t_keywords INDEX i_stmt_idx
+        ASSIGNING FIELD-SYMBOL(<kw>).
+      IF sy-subrc = 0.
         LOOP AT lt_new_calls INTO DATA(ls_nc).
           READ TABLE <kw>-tt_calls WITH KEY event = ls_nc-event
                                             name  = ls_nc-name
@@ -371,51 +431,10 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
             APPEND ls_nc TO <kw>-tt_calls.
           ENDIF.
         ENDLOOP.
-        EXIT.
-      ENDLOOP.
+      ENDIF.
       EXIT.
     ENDLOOP.
 
-  ENDMETHOD.
-
-
-  METHOD resolve_var_type.
-    " 1. Local variables of the current procedure
-    LOOP AT is_source-t_vars INTO DATA(ls_var)
-      WHERE program   = i_program
-        AND eventtype = i_evtype
-        AND eventname = i_evname
-        AND name      = i_varname.
-      IF ls_var-type IS NOT INITIAL.
-        rv_type = ls_var-type.
-        RETURN.
-      ENDIF.
-    ENDLOOP.
-
-    " 2. Class attributes (class-level, no event context)
-    LOOP AT is_source-t_vars INTO ls_var
-      WHERE program   = i_program
-        AND eventtype = ''
-        AND eventname = ''
-        AND name      = i_varname.
-      IF ls_var-type IS NOT INITIAL.
-        rv_type = ls_var-type.
-        RETURN.
-      ENDIF.
-    ENDLOOP.
-
-    " 3. Global variables of the program
-    LOOP AT is_source-t_vars INTO ls_var
-      WHERE program   = i_program
-        AND class     = ''
-        AND eventtype = ''
-        AND eventname = ''
-        AND name      = i_varname.
-      IF ls_var-type IS NOT INITIAL.
-        rv_type = ls_var-type.
-        RETURN.
-      ENDIF.
-    ENDLOOP.
   ENDMETHOD.
 
 ENDCLASS.

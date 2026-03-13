@@ -19,12 +19,11 @@ ENDCLASS.
 CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
 
-  method PARSE_TOKENS.
+  METHOD parse_tokens.
 
     DATA(lo_src)  = cl_ci_source_include=>create( p_name = i_include ).
     DATA(lo_scan) = NEW cl_ci_scan( p_include = lo_src ).
 
-    " Заполняем tt_progs для данного инклуда — один раз
     DATA ls_prog TYPE zcl_ace_window=>ts_prog.
     ls_prog-program    = i_program.
     ls_prog-include    = i_include.
@@ -32,7 +31,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     ls_prog-scan       = lo_scan.
     APPEND ls_prog TO cs_source-tt_progs.
 
-    " Заполняем t_keywords — по одной записи на каждый стейтмент
     ASSIGN cs_source-tt_progs[ lines( cs_source-tt_progs ) ] TO FIELD-SYMBOL(<ls_prog>).
     LOOP AT lo_scan->statements INTO DATA(ls_kw_stmt).
       DATA(lv_kw_idx) = sy-tabix.
@@ -69,51 +67,39 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     DATA(lo_vars)       = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_vars( ) ).
     DATA(lo_calls)      = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls( ) ).
 
-    " Pass 1 keywords: calls_line + vars — обрабатываются первыми
-    " Порядок в таблице = порядок вызова (STANDARD TABLE, APPEND)
-    DATA lt_pass1 TYPE STANDARD TABLE OF string WITH EMPTY KEY.
-    DATA lt_pass1_handlers TYPE TABLE OF REF TO zif_ace_stmt_handler WITH EMPTY KEY.
+    DATA lt_pass1     TYPE STANDARD TABLE OF string WITH EMPTY KEY.
+    DATA lt_pass1_hdl TYPE TABLE OF REF TO zif_ace_stmt_handler WITH EMPTY KEY.
 
-    " calls_line
     LOOP AT VALUE string_table(
-           ( `CLASS` )        ( `INTERFACE` )
-           ( `ENDCLASS` )     ( `ENDINTERFACE` )
-           ( `METHODS` )      ( `CLASS-METHODS` )
-           ( `FORM` )         ( `METHOD` )
-           ( `MODULE` )       ( `FUNCTION` )
+           ( `CLASS` ) ( `INTERFACE` ) ( `ENDCLASS` ) ( `ENDINTERFACE` )
+           ( `METHODS` ) ( `CLASS-METHODS` )
+           ( `FORM` ) ( `METHOD` ) ( `MODULE` ) ( `FUNCTION` )
          ) INTO DATA(lv_kw).
-      APPEND lv_kw TO lt_pass1.
-      APPEND lo_calls_line TO lt_pass1_handlers.
+      APPEND lv_kw TO lt_pass1.  APPEND lo_calls_line TO lt_pass1_hdl.
     ENDLOOP.
 
-    " vars — после calls_line, перед calls
     LOOP AT VALUE string_table(
-           ( `CLASS` )          ( `ENDCLASS` )
-           ( `METHOD` )         ( `ENDMETHOD` )
-           ( `FORM` )           ( `ENDFORM` )
-           ( `MODULE` )         ( `ENDMODULE` )
-           ( `FUNCTION` )       ( `ENDFUNCTION` )
-           ( `DATA` )           ( `CLASS-DATA` )
-           ( `PARAMETERS` )     ( `SELECT-OPTIONS` )
+           ( `CLASS` ) ( `ENDCLASS` )
+           ( `METHOD` ) ( `ENDMETHOD` ) ( `FORM` ) ( `ENDFORM` )
+           ( `MODULE` ) ( `ENDMODULE` ) ( `FUNCTION` ) ( `ENDFUNCTION` )
+           ( `DATA` ) ( `CLASS-DATA` ) ( `PARAMETERS` ) ( `SELECT-OPTIONS` )
          ) INTO lv_kw.
-      APPEND lv_kw TO lt_pass1.
-      APPEND lo_vars TO lt_pass1_handlers.
+      APPEND lv_kw TO lt_pass1.  APPEND lo_vars TO lt_pass1_hdl.
     ENDLOOP.
 
-    " Pass 2 keywords: calls — после того как vars уже заполнил t_vars
     DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-    INSERT `CLASS`         INTO TABLE lt_pass2.
-    INSERT `INTERFACE`     INTO TABLE lt_pass2.
-    INSERT `ENDCLASS`      INTO TABLE lt_pass2.
-    INSERT `ENDINTERFACE`  INTO TABLE lt_pass2.
-    INSERT `METHOD`        INTO TABLE lt_pass2.
-    INSERT `ENDMETHOD`     INTO TABLE lt_pass2.
-    INSERT `FORM`          INTO TABLE lt_pass2.
-    INSERT `ENDFORM`       INTO TABLE lt_pass2.
-    INSERT `FUNCTION`      INTO TABLE lt_pass2.
-    INSERT `ENDFUNCTION`   INTO TABLE lt_pass2.
-    INSERT `MODULE`        INTO TABLE lt_pass2.
-    INSERT `ENDMODULE`     INTO TABLE lt_pass2.
+    INSERT `CLASS`              INTO TABLE lt_pass2.
+    INSERT `INTERFACE`          INTO TABLE lt_pass2.
+    INSERT `ENDCLASS`           INTO TABLE lt_pass2.
+    INSERT `ENDINTERFACE`       INTO TABLE lt_pass2.
+    INSERT `METHOD`             INTO TABLE lt_pass2.
+    INSERT `ENDMETHOD`          INTO TABLE lt_pass2.
+    INSERT `FORM`               INTO TABLE lt_pass2.
+    INSERT `ENDFORM`            INTO TABLE lt_pass2.
+    INSERT `FUNCTION`           INTO TABLE lt_pass2.
+    INSERT `ENDFUNCTION`        INTO TABLE lt_pass2.
+    INSERT `MODULE`             INTO TABLE lt_pass2.
+    INSERT `ENDMODULE`          INTO TABLE lt_pass2.
     INSERT `PERFORM`            INTO TABLE lt_pass2.
     INSERT `CALL FUNCTION`      INTO TABLE lt_pass2.
     INSERT `CALL METHOD`        INTO TABLE lt_pass2.
@@ -127,7 +113,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     INSERT `AT`                 INTO TABLE lt_pass2.
     INSERT `GET`                INTO TABLE lt_pass2.
 
-    " params keywords
     DATA lt_params_kws TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
     INSERT `CLASS`         INTO TABLE lt_params_kws.
     INSERT `INTERFACE`     INTO TABLE lt_params_kws.
@@ -137,7 +122,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     INSERT `CLASS-METHODS` INTO TABLE lt_params_kws.
     INSERT `FORM`          INTO TABLE lt_params_kws.
 
-    " events: один раз по структурам
     lo_events->handle(
       EXPORTING io_scan    = lo_scan
                 i_stmt_idx = 0
@@ -145,8 +129,9 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
                 i_include  = i_include
       CHANGING  cs_source  = cs_source ).
 
-    " Цикл по всем стейтментам
     DATA(lv_max) = lines( lo_scan->statements ).
+
+    " Pass 1: calls_line + vars + params
     DO lv_max TIMES.
       DATA(lv_idx) = sy-index.
 
@@ -165,11 +150,10 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
       ENDIF.
 
-      " Pass 1: calls_line и vars (в порядке добавления)
-      LOOP AT lt_pass1 INTO DATA(lv_p1_kw) USING KEY primary_key.
+      LOOP AT lt_pass1 INTO DATA(lv_p1_kw).
         DATA(lv_p1_idx) = sy-tabix.
         IF lv_p1_kw = lv_eff_kw.
-          READ TABLE lt_pass1_handlers INDEX lv_p1_idx INTO DATA(lo_h).
+          READ TABLE lt_pass1_hdl INDEX lv_p1_idx INTO DATA(lo_h).
           IF sy-subrc = 0.
             lo_h->handle(
               EXPORTING io_scan    = lo_scan
@@ -181,7 +165,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
-      " params
       READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
@@ -192,8 +175,30 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
                     i_include  = i_include
           CHANGING  cs_source  = cs_source ).
       ENDIF.
+    ENDDO.
 
-      " Pass 2: calls — t_vars уже заполнена для этого и предыдущих стейтментов
+    " Sort t_vars once — enables BINARY SEARCH in resolve_var_type
+    SORT cs_source-t_vars BY program eventtype eventname name.
+
+    " Pass 2: calls — t_vars fully populated and sorted
+    DO lv_max TIMES.
+      lv_idx = sy-index.
+
+      READ TABLE lo_scan->statements INDEX lv_idx INTO ls_stmt.
+      CHECK sy-subrc = 0.
+      READ TABLE lo_scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
+      CHECK sy-subrc = 0.
+
+      lv_eff_kw = SWITCH string( ls_stmt-type
+        WHEN 'C' THEN 'COMPUTE'
+        WHEN 'D' THEN 'COMPUTE'
+        WHEN 'A' THEN '+CALL_METHOD'
+        ELSE          ls_kw_tok-str ).
+      IF lv_eff_kw = 'CALL'.
+        READ TABLE lo_scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok_d.
+        IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
+      ENDIF.
+
       READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff_kw
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
@@ -204,8 +209,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
                     i_include  = i_include
           CHANGING  cs_source  = cs_source ).
       ENDIF.
-
     ENDDO.
 
-  endmethod.
+  ENDMETHOD.
 ENDCLASS.
