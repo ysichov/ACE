@@ -356,7 +356,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
       mo_box = create( i_width = 800 i_hight = 150 ).
 
       "save new popup ref
-      APPEND INITIAL LINE TO ZCL_ACE_APPL=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
+      APPEND INITIAL LINE TO ZCL_ACE=>mt_popups ASSIGNING FIELD-SYMBOL(<popup>).
       <popup>-parent = mo_window->mo_box.
       <popup>-child = mo_box.
 
@@ -418,7 +418,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
 
       APPEND VALUE #( function = 'TECH' icon = icon_wd_caption quickinfo = 'Tech names'  butn_type = 0 ) TO toolbar.
 
-      LOOP AT ZCL_ACE_APPL=>mt_lang INTO DATA(lang).
+      LOOP AT ZCL_ACE=>mt_lang INTO DATA(lang).
         IF sy-tabix > 10.
           EXIT.
         ENDIF.
@@ -495,7 +495,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
               <fields>-scrtext_l = <fields>-scrtext_m = <fields>-scrtext_s =  <fields>-reptext = <fields>-fieldname.
 
             WHEN OTHERS. "header names translation
-              IF line_exists( ZCL_ACE_APPL=>mt_lang[ spras = e_ucomm ] ).
+              IF line_exists( ZCL_ACE=>mt_lang[ spras = e_ucomm ] ).
                 translate_field( EXPORTING i_lang = CONV #( e_ucomm )  CHANGING c_fld = <fields> ).
                 IF mo_sel IS BOUND.
                   READ TABLE mo_sel->mt_sel_tab ASSIGNING FIELD-SYMBOL(<sel>) WITH KEY field_label = <fields>-fieldname.
@@ -515,7 +515,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
         ENDLOOP.
       ENDIF.
 
-      IF line_exists( ZCL_ACE_APPL=>mt_lang[ spras = e_ucomm ] ).
+      IF line_exists( ZCL_ACE=>mt_lang[ spras = e_ucomm ] ).
         m_lang = e_ucomm.
         set_header( ).
         mo_sel->set_value( i_field = 'SPRSL' i_low = m_lang ).
@@ -545,7 +545,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
           OTHERS     = 2.
 
       "Free Memory
-      LOOP AT ZCL_ACE_APPL=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
+      LOOP AT ZCL_ACE=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>) WHERE alv_viewer IS NOT INITIAL.
         IF <obj>-alv_viewer->mo_box = sender.
           tabix = sy-tabix.
           EXIT.
@@ -557,7 +557,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
 
         FREE <obj>-alv_viewer.
         IF  tabix NE 0.
-          DELETE ZCL_ACE_APPL=>mt_obj INDEX  tabix.
+          DELETE ZCL_ACE=>mt_obj INDEX  tabix.
         ENDIF.
       ENDIF.
 
@@ -568,7 +568,7 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
   method REFRESH_TABLE.
 
 
-      DATA: row    TYPE ZCL_ACE_APPL=>t_sel_row,
+      DATA: row    TYPE ZCL_ACE=>t_sel_row,
             filter TYPE lvc_t_filt.
 
       CLEAR filter.

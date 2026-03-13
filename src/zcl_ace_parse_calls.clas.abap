@@ -183,6 +183,8 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
         ELSE.
           lv_call-name = lv_str.
         ENDIF.
+        REPLACE ALL OCCURRENCES OF '(' IN lv_call-name WITH ''.
+        CONDENSE lv_call-name NO-GAPS.
         IF lv_call-class IS NOT INITIAL.
           IF lv_call-class = 'ME'.
             lv_call-class = mv_class_name.
