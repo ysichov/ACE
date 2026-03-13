@@ -3530,6 +3530,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         APPEND INITIAL LINE TO io_debugger->mo_window->mt_calls ASSIGNING FIELD-SYMBOL(<method_call>).
         <method_call>-include = i_include.
         <method_call>-ev_name = i_e_name.
+
       ENDIF.
 
       DATA: cl_key        TYPE seoclskey,

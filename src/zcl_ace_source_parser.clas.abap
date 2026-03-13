@@ -912,18 +912,19 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       stack = i_stack + 1.
       CHECK  stack <= io_debugger->mo_window->m_hist_depth.
 
-      READ TABLE io_debugger->mt_steps WITH KEY program = i_include eventname = i_e_name eventtype = i_e_type TRANSPORTING NO FIELDS.
+      READ TABLE io_debugger->mt_steps WITH KEY program = i_include eventname = i_e_name eventtype = i_e_type class = i_class TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         RETURN.
       ENDIF.
 
-      READ TABLE io_debugger->mo_window->mt_calls WITH KEY include  = i_include ev_name = i_e_name TRANSPORTING NO FIELDS.
+      READ TABLE io_debugger->mo_window->mt_calls WITH KEY include  = i_include ev_name = i_e_name class = i_class TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         EXIT.
       ELSE.
         APPEND INITIAL LINE TO io_debugger->mo_window->mt_calls ASSIGNING FIELD-SYMBOL(<method_call>).
         <method_call>-include = i_include.
         <method_call>-ev_name = i_e_name.
+        <method_call>-class = i_class.
       ENDIF.
 
       DATA: cl_key        TYPE seoclskey,
@@ -1289,11 +1290,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           program = i_include.
         ENDIF.
 
-        IF i_call-name = 'CONSTRUCTOR'.
-          class_call = i_call.
-          class_call-name = 'CLASS_CONSTRUCTOR'.
-          parse_class( i_include = i_include i_call = class_call i_stack = stack io_debugger = io_debugger key = key ).
-        ENDIF.
+*        IF i_call-name = 'CONSTRUCTOR'.
+*          class_call = i_call.
+*          class_call-name = 'CLASS_CONSTRUCTOR'.
+*          parse_class( i_include = i_include i_call = class_call i_stack = stack io_debugger = io_debugger key = key ).
+*        ENDIF.
 
         IF i_call-super IS INITIAL.
           READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).

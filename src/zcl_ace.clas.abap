@@ -283,6 +283,7 @@ public section.
     BEGIN OF ts_call,
                include TYPE string,
                ev_name TYPE string,
+               class   TYPE string,
              END OF ts_call .
 
   " --- types from ZCL_ACE (instance-specific) ---
@@ -459,6 +460,7 @@ ENDCLASS.
 
 CLASS ZCL_ACE IMPLEMENTATION.
 
+
   method CHECK_MERMAID.
       CALL FUNCTION 'SEO_CLASS_EXISTENCE_CHECK'
         EXPORTING
@@ -474,6 +476,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
         i_mermaid_active = abap_true.
       ENDIF.
   endmethod.
+
 
   method INIT_ICONS_TABLE.
       m_option_icons = VALUE #(
@@ -500,6 +503,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
        ( sign = 'E'   option = 'NB'   icon_name = icon_interval_exclude_red ) ).
   endmethod.
 
+
   method OPEN_INT_TABLE.
       DATA r_tab TYPE REF TO data.
       IF it_ref IS BOUND.
@@ -511,6 +515,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       <obj>-alv_viewer = NEW #(  i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
       <obj>-alv_viewer->mo_sel->raise_selection_done( ).
   endmethod.
+
 
   method ADD_CLASS.
       DATA: tree        TYPE ZCL_ACE=>ts_tree,
@@ -1630,5 +1635,4 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
       mo_tree_local->display( ).
   endmethod.
-
 ENDCLASS.
