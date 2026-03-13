@@ -1,4 +1,4 @@
-  REPORT z_ace. " ACE - Abap Code Explorer
+ REPORT z_ace. " ACE - Abap Code Explorer
 INTERFACE zif_ace_stmt_handler DEFERRED.
 CLASS zcl_ace_window DEFINITION DEFERRED.
 CLASS zcl_ace_text_viewer DEFINITION DEFERRED.
@@ -22,6 +22,7 @@ CLASS zcl_ace DEFINITION
   create public .
 
 public section.
+
 
   types:
     BEGIN OF selection_display_s,
@@ -421,6 +422,8 @@ public section.
       !IO_WINDOW type ref to ZCL_ACE_WINDOW .
 
   " --- instance methods ---
+ CLASS-METHODS: CLASS_CONSTRUCTOR.
+
   methods CONSTRUCTOR
     importing
       !I_PROG             type PROG
@@ -8496,6 +8499,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
       local = subs-class.
     ENDLOOP.
   ENDMETHOD.
+
+  METHOD CLASS_CONSTRUCTOR.
+    write 'test'.
+  ENDMETHOD.
+
   method CONSTRUCTOR.
       CONSTANTS: c_mask TYPE x VALUE '01'.
       mv_prog = i_prog.

@@ -1243,103 +1243,113 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   endmethod.
 
 
-  method PARSE_CLASS.
+  METHOD parse_class.
 
 
-      DATA: cl_key        TYPE seoclskey,
-            meth_includes TYPE seop_methods_w_include,
-            prefix        TYPE string,
-            program       TYPE program,
-            include       TYPE progname,
-            stack         TYPE i,
-            class_call    TYPE ZCL_ACE=>ts_calls.
+    DATA: cl_key        TYPE seoclskey,
+          meth_includes TYPE seop_methods_w_include,
+          prefix        TYPE string,
+          program       TYPE program,
+          include       TYPE progname,
+          stack         TYPE i,
+          class_call    TYPE zcl_ace=>ts_calls.
 
-      cl_key = i_call-class.
-      stack = i_stack.
+    cl_key = i_call-class.
+    stack = i_stack.
 
-      DATA(lv_local_exists) = abap_false.
-      READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-        WITH KEY class = i_call-class
-        TRANSPORTING NO FIELDS.
-      IF sy-subrc = 0.
-        lv_local_exists = abap_true.
+    DATA(lv_local_exists) = abap_false.
+    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+      WITH KEY class = i_call-class
+      TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      lv_local_exists = abap_true.
+    ENDIF.
+
+    IF lv_local_exists = abap_false.
+      CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+        EXPORTING
+          clskey                       = cl_key
+        IMPORTING
+          includes                     = meth_includes
+        EXCEPTIONS
+          _internal_class_not_existing = 1
+          OTHERS                       = 2.
+    ENDIF.
+
+    IF io_debugger->mo_window->m_zcode IS INITIAL OR
+     ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( i_call-class+0(1) = 'Z' OR i_call-class+0(1) = 'Y' ) )
+       OR meth_includes IS INITIAL.
+
+      IF lines( meth_includes ) > 0 AND lv_local_exists = abap_false.
+        prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
+        include = program = prefix && 'CP'.
+
+        zcl_ace_source_parser=>parse_tokens( i_main = abap_true i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
+
+      ELSE.
+        program = i_include.
       ENDIF.
 
-      IF lv_local_exists = abap_false.
-        CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-          EXPORTING
-            clskey                       = cl_key
-          IMPORTING
-            includes                     = meth_includes
-          EXCEPTIONS
-            _internal_class_not_existing = 1
-            OTHERS                       = 2.
+      IF i_call-super IS INITIAL.
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
+      ELSE.
+        sy-subrc = 1.
       ENDIF.
 
-      IF io_debugger->mo_window->m_zcode IS INITIAL OR
-       ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( i_call-class+0(1) = 'Z' OR i_call-class+0(1) = 'Y' ) )
-         OR meth_includes IS INITIAL.
-
-        IF lines( meth_includes ) > 0 AND lv_local_exists = abap_false.
-          prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
-          include = program = prefix && 'CP'.
-
-          ZCL_ACE_SOURCE_PARSER=>parse_tokens( i_main = abap_true i_stack = stack i_program = program i_include = include io_debugger = io_debugger i_class = i_call-class ).
-
-        ELSE.
-          program = i_include.
-        ENDIF.
-
-*        IF i_call-name = 'CONSTRUCTOR'.
-*          class_call = i_call.
-*          class_call-name = 'CLASS_CONSTRUCTOR'.
-*          parse_class( i_include = i_include i_call = class_call i_stack = stack io_debugger = io_debugger key = key ).
-*        ENDIF.
-
-        IF i_call-super IS INITIAL.
-          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
-        ELSE.
-          sy-subrc = 1.
-        ENDIF.
-
-        IF sy-subrc <> 0.
-          WHILE call_line IS INITIAL.
-            LOOP AT io_debugger->mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = cl_key .
-              READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = ls_class-refclsname eventtype = 'METHOD' eventname = i_call-name INTO call_line.
-              IF sy-subrc = 0.
-                EXIT.
-              ENDIF.
-            ENDLOOP.
-            IF sy-subrc <> 0.
+      IF sy-subrc <> 0.
+        WHILE call_line IS INITIAL.
+          LOOP AT io_debugger->mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = cl_key .
+            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = ls_class-refclsname eventtype = 'METHOD' eventname = i_call-name INTO call_line.
+            IF sy-subrc = 0.
               EXIT.
             ENDIF.
-            cl_key = ls_class-refclsname.
-          ENDWHILE.
-        ENDIF.
-
-        IF call_line IS INITIAL.
-          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO call_line.
-        ENDIF.
-        IF sy-subrc = 0.
-
-          IF call_line-include IS NOT INITIAL.
-            include =  call_line-include.
+          ENDLOOP.
+          IF sy-subrc <> 0.
+            EXIT.
           ENDIF.
-
-          ZCL_ACE_SOURCE_PARSER=>parse_call( EXPORTING i_index = call_line-index
-                                   i_e_name = call_line-eventname
-                                   i_e_type = call_line-eventtype
-                                   i_program =  CONV #( include )
-                                   i_include =  CONV #( include )
-                                   i_class = call_line-class
-                                   i_stack   =  i_stack
-                                   io_debugger = io_debugger ).
-
-        ENDIF.
+          cl_key = ls_class-refclsname.
+        ENDWHILE.
       ENDIF.
 
+      IF call_line IS INITIAL.
+        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO call_line.
+      ENDIF.
+      IF sy-subrc = 0.
 
-  endmethod.
+        IF call_line-include IS NOT INITIAL.
+          include =  call_line-include.
+        ENDIF.
+
+        "lets check Class constructor existance
+        IF i_call-name = 'CONSTRUCTOR'.
+          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line WITH KEY class = cl_key eventtype = 'METHOD' eventname = 'CLASS_CONSTRUCTOR' INTO DATA(call_super).
+          IF sy-subrc = 0.
+            zcl_ace_source_parser=>parse_call( EXPORTING i_index = call_super-index
+                                               i_e_name = 'CLASS_CONSTRUCTOR'
+                                               i_e_type = call_line-eventtype
+                                               i_program =  CONV #( include )
+                                               i_include =  CONV #( include )
+                                               i_class = call_line-class
+                                               i_stack   =  i_stack
+                                               io_debugger = io_debugger ).
+          ENDIF.
+        ENDIF.
+
+
+        zcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
+                                 i_e_name = call_line-eventname
+                                 i_e_type = call_line-eventtype
+                                 i_program =  CONV #( include )
+                                 i_include =  CONV #( include )
+                                 i_class = call_line-class
+                                 i_stack   =  i_stack
+                                 io_debugger = io_debugger ).
+
+      ENDIF.
+    ENDIF.
+
+
+  ENDMETHOD.
 
 
   method PARSE_SCREEN.

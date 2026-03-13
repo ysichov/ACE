@@ -143,6 +143,7 @@ public section.
   types:
     BEGIN OF ts_class_def,
                class   TYPE string,
+               super   TYPE string,
                include TYPE program,
                line    TYPE i,
              END OF ts_class_def .

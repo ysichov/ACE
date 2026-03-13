@@ -16,6 +16,7 @@ private section.
            END OF ts_meth_def .
 
   data MV_CLASS_NAME type STRING .
+  data MV_SUPER_NAME type STRING .
   data MV_IN_IMPL    type ABAP_BOOL .
   data MV_IS_INTF    type ABAP_BOOL .
   data:
@@ -60,13 +61,21 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     mv_class_name = name_tok-str.
     mv_in_impl    = abap_false.
     mv_is_intf    = COND #( WHEN i_kw = 'INTERFACE' THEN abap_true ELSE abap_false ).
+    CLEAR mv_super_name.
 
     IF i_kw = 'CLASS'.
+      " Ищем INHERITING FROM <superclass>
+      DATA lv_prev_str TYPE string.
       LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(tok).
         IF tok-str = 'IMPLEMENTATION'.
           mv_in_impl = abap_true.
           RETURN.
         ENDIF.
+        " После FROM — следующий идентификатор это суперкласс
+        IF lv_prev_str = 'FROM'.
+          mv_super_name = tok-str.
+        ENDIF.
+        lv_prev_str = tok-str.
       ENDLOOP.
     ENDIF.
 
@@ -89,8 +98,6 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
       ) TO mt_meth_defs.
     ENDIF.
 
-    " Если внутри INTERFACE — сразу пишем в tt_calls_line с is_intf=true
-    " (у интерфейсов нет METHOD...ENDMETHOD, только METHODS в сигнатуре)
     CHECK mv_is_intf = abap_true.
 
     READ TABLE cs_source-tt_calls_line
@@ -184,8 +191,22 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
                      i_stmt_idx = i_stmt_idx
                      i_kw       = lv_kw ).
 
+        " Сохраняем суперкласс в tt_class_defs сразу после парсинга заголовка
+        IF lv_kw = 'CLASS' AND mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
+          READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name
+            ASSIGNING FIELD-SYMBOL(<cd>).
+          IF sy-subrc = 0.
+            <cd>-super = mv_super_name.
+          ELSE.
+            APPEND VALUE zcl_ace_window=>ts_class_def(
+              class = mv_class_name
+              super = mv_super_name
+            ) TO cs_source-tt_class_defs.
+          ENDIF.
+        ENDIF.
+
       WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
-        CLEAR: mv_class_name, mv_in_impl, mv_is_intf.
+        CLEAR: mv_class_name, mv_super_name, mv_in_impl, mv_is_intf.
         CLEAR mt_meth_defs.
 
       WHEN 'METHODS' OR 'CLASS-METHODS'.

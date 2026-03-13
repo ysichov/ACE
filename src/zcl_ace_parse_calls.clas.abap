@@ -149,6 +149,18 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
       IF sy-subrc = 0. lv_kw = |CALL { ls_tok2-str }|. ENDIF.
     ENDIF.
 
+    " Хелпер: резолв суперкласса — сначала из распарсенной иерархии,
+    " fallback — SELECT из seometarel
+    DATA(lv_super_of_current) = VALUE string( ).
+    READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name
+      INTO DATA(ls_cd).
+    IF sy-subrc = 0 AND ls_cd-super IS NOT INITIAL.
+      lv_super_of_current = ls_cd-super.
+    ELSEIF mv_class_name IS NOT INITIAL.
+      SELECT SINGLE refclsname FROM seometarel INTO @lv_super_of_current
+        WHERE clsname = @mv_class_name AND reltype = '1'.
+    ENDIF.
+
     DATA lt_new_calls TYPE zcl_ace=>tt_calls.
 
     CASE lv_kw.
@@ -190,7 +202,9 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
             lv_call-class = mv_class_name.
           ELSEIF lv_call-class = 'SUPER'.
             lv_call-super = abap_true.
-            lv_call-class = mv_class_name.
+            lv_call-class = COND #( WHEN lv_super_of_current IS NOT INITIAL
+                                    THEN lv_super_of_current
+                                    ELSE mv_class_name ).
           ELSE.
             DATA(lv_resolved) = resolve_var_type(
               is_source = cs_source
@@ -208,7 +222,6 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
         APPEND lv_call TO lt_new_calls.
 
       WHEN 'COMPUTE'.
-        " Ищем NEW ClassName( ) — вызов конструктора
         DATA lv_ci  TYPE i.
         DATA ls_ct  LIKE LINE OF io_scan->tokens.
         DATA ls_cn  LIKE LINE OF io_scan->tokens.
@@ -237,7 +250,6 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
         ENDWHILE.
 
       WHEN '+CALL_METHOD'.
-        " Все переменные цикла объявлены заранее — CLEAR на каждой итерации
         DATA lv_tstr       TYPE string.
         DATA lv_arrow      TYPE string.
         DATA lv_left_str   TYPE string.
@@ -276,7 +288,6 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
               REPLACE ALL OCCURRENCES OF '(' IN lv_right_name WITH ''.
               lv_tok_idx += 1.
             ENDIF.
-          " NEW ClassName( ) — вызов конструктора
           ELSEIF lv_tstr = 'NEW'.
             READ TABLE io_scan->tokens INDEX lv_tok_idx + 1 INTO ls_right.
             IF sy-subrc = 0 AND ls_right-str CS '('.
@@ -287,9 +298,7 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
               lv_right_name = 'CONSTRUCTOR'.
               lv_tok_idx += 1.
             ENDIF.
-          " show( ) — implicit me-> : токен заканчивается на ( без стрелки
           ELSEIF lv_tstr CA '(' AND NOT lv_tstr CS '->' AND NOT lv_tstr CS '=>'.
-            " Первый токен стейтмента — это сам вызов
             IF lv_tok_idx = ls_stmt-from.
               lv_arrow      = '->'.
               lv_left_str   = 'ME'.
@@ -299,7 +308,6 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
             ENDIF.
           ENDIF.
 
-          " Чистим имя метода от возможных артефактов (скобки, пробелы)
           IF lv_right_name IS NOT INITIAL.
             REPLACE ALL OCCURRENCES OF '(' IN lv_right_name WITH ''.
             REPLACE ALL OCCURRENCES OF ')' IN lv_right_name WITH ''.
@@ -317,8 +325,10 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
             IF lv_left_str = 'ME'.
               lv_c-class = mv_class_name.
             ELSEIF lv_left_str = 'SUPER'.
-              lv_c-class = mv_class_name.
               lv_c-super = abap_true.
+              lv_c-class = COND #( WHEN lv_super_of_current IS NOT INITIAL
+                                   THEN lv_super_of_current
+                                   ELSE mv_class_name ).
             ELSE.
               lv_rtype = resolve_var_type(
                 is_source = cs_source
