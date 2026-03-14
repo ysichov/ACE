@@ -149,9 +149,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       DATA(o_columns) = mo_tree->get_columns( ).
       o_columns->set_optimize( abap_true ).
 
-      o_columns->get_column( 'VALUE' )->set_visible( abap_false ).
-      o_columns->get_column( 'PARAM' )->set_visible( abap_false ).
-      o_columns->get_column( 'INCLUDE' )->set_visible( abap_false ).
+*      o_columns->get_column( 'VALUE' )->set_visible( abap_false ).
+*      o_columns->get_column( 'PARAM' )->set_visible( abap_false ).
+*      o_columns->get_column( 'INCLUDE' )->set_visible( abap_false ).
 
       add_buttons( i_type ).
 

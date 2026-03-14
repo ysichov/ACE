@@ -87,7 +87,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
     READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(name_tok).
     CHECK sy-subrc = 0.
-    DATA(lv_line) = io_scan->tokens[ stmt-from ]-row.
+    DATA(lv_line) = name_tok-row.  " строка где объявлен метод в definition
 
     READ TABLE mt_meth_defs WITH KEY name = name_tok-str TRANSPORTING NO FIELDS.
     IF sy-subrc <> 0.
@@ -141,34 +141,35 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
         WITH KEY class     = mv_class_name
                  eventtype = lv_evtype
                  eventname = name_tok-str
-        TRANSPORTING NO FIELDS.
+        INTO DATA(ls_line).
     ELSE.
       READ TABLE cs_source-tt_calls_line
         WITH KEY program   = i_program
                  eventtype = lv_evtype
                  eventname = name_tok-str
-        TRANSPORTING NO FIELDS.
+        INTO ls_line.
     ENDIF.
     CHECK sy-subrc <> 0.
 
     APPEND INITIAL LINE TO cs_source-tt_calls_line
       ASSIGNING FIELD-SYMBOL(<cl>).
     <cl>-program   = i_program.
-    <cl>-include   = i_include.
+    <cl>-include   = COND #( WHEN ls_line-include IS NOT INITIAL
+                             THEN ls_line-include
+                             ELSE i_include ).
     <cl>-class     = mv_class_name.
     <cl>-eventtype = lv_evtype.
     <cl>-eventname = name_tok-str.
     <cl>-is_intf   = mv_is_intf.
-    <cl>-index     = i_stmt_idx.
-
+    <cl>-def_line  = i_stmt_idx.
     IF i_kw = 'METHOD'.
       READ TABLE mt_meth_defs WITH KEY name = name_tok-str INTO DATA(ls_def).
       IF sy-subrc = 0.
         <cl>-def_include = ls_def-def_include.
-        <cl>-def_line    = ls_def-def_line.
+        <cl>-index       = ls_def-def_line.
       ELSE.
         <cl>-def_include = i_include.
-        <cl>-def_line    = lv_start_line.
+        <cl>-index       = lv_start_line.
       ENDIF.
     ENDIF.
 

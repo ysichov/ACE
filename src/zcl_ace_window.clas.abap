@@ -775,15 +775,14 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
   METHOD set_program.
 
-
     IF i_include = 'VIRTUAL'.
-      LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<virt_p>).
-        CLEAR <virt_p>-selected.
+      LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<sp_virt>).
+        CLEAR <sp_virt>-selected.
       ENDLOOP.
-      READ TABLE ms_sources-tt_progs WITH KEY include = 'VIRTUAL' ASSIGNING <virt_p>.
+      READ TABLE ms_sources-tt_progs WITH KEY include = 'VIRTUAL' ASSIGNING <sp_virt>.
       IF sy-subrc = 0.
-        <virt_p>-selected = abap_true.
-        mo_code_viewer->set_text( table = <virt_p>-source_tab ).
+        <sp_virt>-selected = abap_true.
+        mo_code_viewer->set_text( table = <sp_virt>-source_tab ).
       ENDIF.
       RETURN.
     ENDIF.
@@ -793,17 +792,23 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       GET TIME STAMP FIELD lv_ts1.
     ENDIF.
 
-    IF mv_new_parser = abap_true.
-      CALL METHOD zcl_ace_parser=>parse_tokens
-        EXPORTING
-          i_program = i_include
-          i_include = i_include
-        CHANGING
-          cs_source = ms_sources.
-    ELSE.
-      zcl_ace_source_parser=>parse_tokens(
-        i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+    " Определяем реальный include для парсинга.
+    " Если передано просто имя класса/программы (без '='), пробуем построить CP-инклуд.
+    DATA(lv_parse_include) = i_include.
+    FIND '=' IN i_include.
+    IF sy-subrc <> 0.
+      DATA(lv_cp) = CONV program(
+        i_include
+        && repeat( val = '=' occ = 30 - strlen( i_include ) )
+        && 'CP' ).
+      DATA(lv_cp_src) = cl_ci_source_include=>create( p_name = lv_cp ).
+      IF lv_cp_src->lines IS NOT INITIAL.
+        lv_parse_include = lv_cp.
+      ENDIF.
     ENDIF.
+
+    zcl_ace_source_parser=>parse_tokens(
+      i_main = abap_true i_program = lv_parse_include i_include = lv_parse_include io_debugger = mo_viewer ).
 
     IF mo_viewer->mv_show_parse_time = abap_true.
       show_parse_time( lv_ts1 ).
@@ -813,20 +818,24 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
     IF mo_viewer->m_step IS INITIAL.
       zcl_ace_source_parser=>code_execution_scanner(
-        i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+        i_program = lv_parse_include i_include = lv_parse_include io_debugger = mo_viewer ).
     ENDIF.
 
-    LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
-      CLEAR <prog>-selected.
+    LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<sp_prog>).
+      CLEAR <sp_prog>-selected.
     ENDLOOP.
 
-    READ TABLE ms_sources-tt_progs WITH KEY include = i_include ASSIGNING <prog>.
+    " Ищем инклуд для отображения: сначала оригинальный, потом CP
+    READ TABLE ms_sources-tt_progs WITH KEY include = i_include ASSIGNING <sp_prog>.
+    IF sy-subrc <> 0 AND lv_parse_include <> i_include.
+      READ TABLE ms_sources-tt_progs WITH KEY include = lv_parse_include ASSIGNING <sp_prog>.
+    ENDIF.
     IF sy-subrc = 0.
-      <prog>-selected = abap_true.
-      IF <prog>-v_source IS NOT INITIAL.
-        mo_code_viewer->set_text( table = <prog>-v_source ).
+      <sp_prog>-selected = abap_true.
+      IF <sp_prog>-v_source IS NOT INITIAL.
+        mo_code_viewer->set_text( table = <sp_prog>-v_source ).
       ELSE.
-        mo_code_viewer->set_text( table = <prog>-source_tab ).
+        mo_code_viewer->set_text( table = <sp_prog>-source_tab ).
       ENDIF.
     ENDIF.
 

@@ -34,8 +34,16 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     ASSIGN cs_source-tt_progs[ lines( cs_source-tt_progs ) ] TO FIELD-SYMBOL(<ls_prog>).
     LOOP AT lo_scan->statements INTO DATA(ls_kw_stmt).
       DATA(lv_kw_idx) = sy-tabix.
+      CHECK ls_kw_stmt-type <> '*' AND ls_kw_stmt-type <> 'P'.
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from INTO DATA(ls_kw_tok2).
       CHECK sy-subrc = 0.
+
+      " Определяем реальный include для этого statement через level
+      READ TABLE lo_scan->levels INDEX ls_kw_stmt-level INTO DATA(ls_kw_level).
+      DATA(lv_stmt_include) = COND program(
+        WHEN sy-subrc = 0 AND ls_kw_level-name IS NOT INITIAL
+        THEN ls_kw_level-name
+        ELSE i_include ).
 
       DATA(lv_kw_name) = SWITCH string( ls_kw_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -52,9 +60,10 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
       APPEND VALUE zcl_ace=>ts_kword(
         program = i_program
-        include = i_include
+        include = lv_stmt_include
         index   = lv_kw_idx
         line    = ls_kw_tok2-row
+        v_line  = ls_kw_tok2-row
         name    = lv_kw_name
         from    = ls_kw_stmt-from
         to      = ls_kw_stmt-to
@@ -141,6 +150,13 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lo_scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw_tok).
       CHECK sy-subrc = 0.
 
+      " Реальный include для этого statement
+      READ TABLE lo_scan->levels INDEX ls_stmt-level INTO DATA(ls_level).
+      DATA(lv_real_include) = COND program(
+        WHEN sy-subrc = 0 AND ls_level-name IS NOT INITIAL
+        THEN ls_level-name
+        ELSE i_include ).
+
       DATA(lv_eff_kw) = SWITCH string( ls_stmt-type
         WHEN 'C' THEN 'COMPUTE'
         WHEN 'D' THEN 'COMPUTE'
@@ -160,18 +176,17 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
               EXPORTING io_scan    = lo_scan
                         i_stmt_idx = lv_idx
                         i_program  = i_program
-                        i_include  = i_include
+                        i_include  = lv_real_include
               CHANGING  cs_source  = cs_source ).
           ENDIF.
         ENDIF.
       ENDLOOP.
 
-      " Pass 1: calcs — заполняем t_calculated / t_composed для COMPUTE
       lo_calcs->handle(
         EXPORTING io_scan    = lo_scan
                   i_stmt_idx = lv_idx
                   i_program  = i_program
-                  i_include  = i_include
+                  i_include  = lv_real_include
         CHANGING  cs_source  = cs_source ).
 
       READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str
@@ -181,15 +196,15 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           EXPORTING io_scan    = lo_scan
                     i_stmt_idx = lv_idx
                     i_program  = i_program
-                    i_include  = i_include
+                    i_include  = lv_real_include
           CHANGING  cs_source  = cs_source ).
       ENDIF.
     ENDDO.
 
-    " Sort t_vars once — enables BINARY SEARCH in resolve_var_type
+    " Sort t_vars once
     SORT cs_source-t_vars BY program eventtype eventname name.
 
-    " Pass 2: calls — t_vars fully populated and sorted
+    " Pass 2: calls
     DO lv_max TIMES.
       lv_idx = sy-index.
 
@@ -197,6 +212,13 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       CHECK sy-subrc = 0.
       READ TABLE lo_scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
       CHECK sy-subrc = 0.
+
+      " Реальный include для этого statement
+      READ TABLE lo_scan->levels INDEX ls_stmt-level INTO ls_level.
+      lv_real_include = COND program(
+        WHEN sy-subrc = 0 AND ls_level-name IS NOT INITIAL
+        THEN ls_level-name
+        ELSE i_include ).
 
       lv_eff_kw = SWITCH string( ls_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -215,7 +237,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           EXPORTING io_scan    = lo_scan
                     i_stmt_idx = lv_idx
                     i_program  = i_program
-                    i_include  = i_include
+                    i_include  = lv_real_include
           CHANGING  cs_source  = cs_source ).
       ENDIF.
     ENDDO.

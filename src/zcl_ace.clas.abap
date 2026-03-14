@@ -464,6 +464,7 @@ private section.
 ENDCLASS.
 
 
+
 CLASS ZCL_ACE IMPLEMENTATION.
 
 
@@ -1371,7 +1372,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       mo_window->set_program_line( 1 ).
 
       SORT mo_window->ms_sources-t_params BY class event type DESCENDING param ASCENDING.
-      SORT mo_window->ms_sources-tt_progs BY stack program.
+      "SORT mo_window->ms_sources-tt_progs BY stack program.
       DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
 
       mo_window->show_stack( ).

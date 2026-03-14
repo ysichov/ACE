@@ -1486,235 +1486,249 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   endmethod.
 
 
-  method PARSE_TOKENS.
+  METHOD parse_tokens.
 
-      DATA: lr_scan     TYPE REF TO cl_ci_scan,
-            o_scan      TYPE REF TO cl_ci_scan,
-            o_statement TYPE REF TO if_ci_kzn_statement_iterator,
-            o_procedure TYPE REF TO if_ci_kzn_statement_iterator,
-            tokens      TYPE ZCL_ACE=>tt_kword,
-            main_prog   TYPE program,
-            stack       TYPE i,
-            ls_state    TYPE ZCL_ACE=>ts_parse_state.
+    DATA: lr_scan     TYPE REF TO cl_ci_scan,
+          o_scan      TYPE REF TO cl_ci_scan,
+          o_statement TYPE REF TO if_ci_kzn_statement_iterator,
+          o_procedure TYPE REF TO if_ci_kzn_statement_iterator,
+          tokens      TYPE zcl_ace=>tt_kword,
+          main_prog   TYPE program,
+          stack       TYPE i,
+          ls_state    TYPE zcl_ace=>ts_parse_state.
 
-      IF i_main = abap_true.
-        main_prog = i_program.
-      ELSE.
-        main_prog = i_include.
+    IF io_debugger->mo_window->mv_new_parser = abap_true.
+      READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
+      IF sy-subrc <> 0.
+        CALL METHOD zcl_ace_parser=>parse_tokens
+          EXPORTING
+            i_program = i_include
+            i_include = i_include
+          CHANGING
+            cs_source = io_debugger->mo_window->ms_sources.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+
+    IF i_main = abap_true.
+      main_prog = i_program.
+    ELSE.
+      main_prog = i_include.
+    ENDIF.
+
+    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = main_prog INTO prog.
+    IF sy-subrc <> 0.
+
+      stack = i_stack + 1.
+      DATA(o_source) = cl_ci_source_include=>create( p_name = i_include ).
+
+      prog-source_tab = o_source->lines.
+      o_scan = NEW cl_ci_scan( p_include = o_source ).
+
+      zcl_ace_source_parser=>collect_events(
+        io_scan     = o_scan
+        i_program   = i_program
+        i_include   = i_include
+        io_debugger = io_debugger ).
+
+      prog-include = i_include.
+
+      o_statement = cl_cikzn_scan_iterator_factory=>get_statement_iterator( ciscan = o_scan ).
+      o_procedure = cl_cikzn_scan_iterator_factory=>get_procedure_iterator( ciscan = o_scan ).
+
+      IF i_class IS NOT INITIAL.
+        ls_state-class = abap_true.
+        IF i_main_prog IS INITIAL.
+          ls_state-call_line-class = ls_state-param-class = i_class.
+        ENDIF.
       ENDIF.
 
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = main_prog INTO DATA(prog).
-      IF sy-subrc <> 0.
+      ls_state-kw = o_statement->get_keyword( ).
 
-        stack = i_stack + 1.
-        DATA(o_source) = cl_ci_source_include=>create( p_name = i_include ).
+      ls_state-word = o_statement->get_token( offset = 2 ).
 
-        prog-source_tab = o_source->lines.
-        o_scan = NEW cl_ci_scan( p_include = o_source ).
+      o_procedure->statement_index = o_statement->statement_index.
+      o_procedure->statement_type = o_statement->statement_type.
 
-        ZCL_ACE_SOURCE_PARSER=>collect_events(
-          io_scan     = o_scan
-          i_program   = i_program
-          i_include   = i_include
-          io_debugger = io_debugger ).
+      DATA(max) = lines( o_scan->statements ).
 
-        prog-include = i_include.
+      DO.
+        CLEAR: ls_state-token-tt_calls, ls_state-call_line-redefined.
 
-        o_statement = cl_cikzn_scan_iterator_factory=>get_statement_iterator( ciscan = o_scan ).
-        o_procedure = cl_cikzn_scan_iterator_factory=>get_procedure_iterator( ciscan = o_scan ).
+        TRY.
+            o_procedure->next( ).
+          CATCH cx_scan_iterator_reached_end.
+        ENDTRY.
+        ls_state-kw = o_procedure->get_keyword( ).
 
-        IF i_class IS NOT INITIAL.
-          ls_state-class = abap_true.
-          IF i_main_prog IS INITIAL.
-            ls_state-call_line-class = ls_state-param-class = i_class.
+        ls_state-token-name = ls_state-kw.
+        ls_state-token-index = o_procedure->statement_index.
+        READ TABLE o_scan->statements INDEX o_procedure->statement_index INTO DATA(statement).
+        IF sy-subrc <> 0.
+          EXIT.
+        ENDIF.
+
+        READ TABLE o_scan->tokens INDEX statement-from INTO DATA(l_token).
+        ls_state-token-line = ls_state-calculated-line = ls_state-composed-line = l_token-row.
+        ls_state-token-v_line = l_token-row.
+        ls_state-token-program = i_program.
+
+        DATA(lv_token_row) = l_token-row.
+        IF ls_state-kw = 'METHODS' OR ls_state-kw = 'CLASS-METHODS'.
+          READ TABLE o_scan->tokens INDEX statement-from + 1 INTO DATA(l_name_tok).
+          IF sy-subrc = 0 AND l_name_tok-row > 0.
+            lv_token_row = l_name_tok-row.
           ENDIF.
         ENDIF.
 
-        ls_state-kw = o_statement->get_keyword( ).
+        READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
+        IF i_include <> level-name.
+          zcl_ace_source_parser=>parse_tokens( i_class = i_class i_reltype = i_reltype i_main_prog = i_main_prog i_stack = stack i_program = CONV #( ls_state-token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
+          ls_state-token-include = level-name.
 
-        ls_state-word = o_statement->get_token( offset = 2 ).
+        ELSE.
+          ls_state-token-include = i_include.
 
-        o_procedure->statement_index = o_statement->statement_index.
-        o_procedure->statement_type = o_statement->statement_type.
+          ls_state-calculated-program = ls_state-composed-program = i_include.
 
-        DATA(max) = lines( o_scan->statements ).
+          CLEAR ls_state-new.
 
-        DO.
-          CLEAR: ls_state-token-tt_calls, ls_state-call_line-redefined.
-
-          TRY.
-              o_procedure->next( ).
-            CATCH cx_scan_iterator_reached_end.
-          ENDTRY.
-          ls_state-kw = o_procedure->get_keyword( ).
-
-          ls_state-token-name = ls_state-kw.
-          ls_state-token-index = o_procedure->statement_index.
-          READ TABLE o_scan->statements INDEX o_procedure->statement_index INTO DATA(statement).
-          IF sy-subrc <> 0.
-            EXIT.
+          IF ls_state-kw = 'CLASS' OR ls_state-kw = 'INTERFACE'.
+            ls_state-class = abap_true.
           ENDIF.
 
-          READ TABLE o_scan->tokens INDEX statement-from INTO DATA(l_token).
-          ls_state-token-line = ls_state-calculated-line = ls_state-composed-line = l_token-row.
-          ls_state-token-v_line = l_token-row.
-          ls_state-token-program = i_program.
+          IF ls_state-kw = 'PUBLIC'.
+            ls_state-method_type = 1.
+          ENDIF.
 
-          DATA(lv_token_row) = l_token-row.
-          IF ls_state-kw = 'METHODS' OR ls_state-kw = 'CLASS-METHODS'.
-            READ TABLE o_scan->tokens INDEX statement-from + 1 INTO DATA(l_name_tok).
-            IF sy-subrc = 0 AND l_name_tok-row > 0.
-              lv_token_row = l_name_tok-row.
+          IF ls_state-kw = 'PROTECTED'.
+            ls_state-method_type = 2.
+          ENDIF.
+
+          IF ls_state-kw = 'PRIVATE'.
+            ls_state-method_type = 3.
+          ENDIF.
+
+          IF ls_state-kw = 'FORM' OR ls_state-kw = 'METHOD' OR ls_state-kw = 'METHODS' OR ls_state-kw = 'CLASS-METHODS' OR ls_state-kw = 'MODULE'.
+            ls_state-variable-eventtype = ls_state-tab-eventtype =  ls_state-eventtype = ls_state-param-event =  ls_state-kw.
+            ls_state-param-program = i_program.
+            ls_state-param-include = i_include.
+            ls_state-param-class = ls_state-class_name.
+            CLEAR  ls_state-eventname.
+            IF ls_state-kw = 'FORM'.
+              CLEAR:  ls_state-class, ls_state-param-class.
+            ELSEIF ls_state-kw = 'MODULE'.
+              CLEAR:  ls_state-class, ls_state-param-class.
+              ls_state-tab-eventtype =  ls_state-eventtype = ls_state-param-event =  'MODULE'.
+            ELSE.
+              ls_state-tab-eventtype =  ls_state-eventtype = ls_state-param-event =  'METHOD'.
             ENDIF.
           ENDIF.
 
-          READ TABLE o_scan->levels  INDEX statement-level INTO DATA(level).
-          IF i_include <> level-name.
-            ZCL_ACE_SOURCE_PARSER=>parse_tokens( i_class = i_class i_reltype = i_reltype i_main_prog = i_main_prog i_stack = stack i_program = CONV #( ls_state-token-program ) i_include = CONV #( level-name ) io_debugger = io_debugger ).
-            ls_state-token-include = level-name.
+          IF ls_state-kw = 'ENDCLASS'.
+            CLEAR: ls_state-call_line-class, ls_state-param-class, ls_state-class_name.
+          ENDIF.
 
-          ELSE.
-            ls_state-token-include = i_include.
+          IF ls_state-kw = 'ENDINTERFACE'.
+            ls_state-call_line-class   = ls_state-param-class = ls_state-class_name = ''.
+            ls_state-call_line-is_intf = abap_false.
+            CLEAR ls_state-class.
+          ENDIF.
 
-            ls_state-calculated-program = ls_state-composed-program = i_include.
-
-            CLEAR ls_state-new.
-
-            IF ls_state-kw = 'CLASS' OR ls_state-kw = 'INTERFACE'.
-              ls_state-class = abap_true.
-            ENDIF.
-
-            IF ls_state-kw = 'PUBLIC'.
-              ls_state-method_type = 1.
-            ENDIF.
-
-            IF ls_state-kw = 'PROTECTED'.
-              ls_state-method_type = 2.
-            ENDIF.
-
-            IF ls_state-kw = 'PRIVATE'.
-              ls_state-method_type = 3.
-            ENDIF.
-
-            IF ls_state-kw = 'FORM' OR ls_state-kw = 'METHOD' OR ls_state-kw = 'METHODS' OR ls_state-kw = 'CLASS-METHODS' OR ls_state-kw = 'MODULE'.
-              ls_state-variable-eventtype = ls_state-tab-eventtype =  ls_state-eventtype = ls_state-param-event =  ls_state-kw.
-              ls_state-param-program = i_program.
-              ls_state-param-include = i_include.
-              ls_state-param-class = ls_state-class_name.
-              CLEAR  ls_state-eventname.
-              IF ls_state-kw = 'FORM'.
-                CLEAR:  ls_state-class, ls_state-param-class.
-              ELSEIF ls_state-kw = 'MODULE'.
-                CLEAR:  ls_state-class, ls_state-param-class.
-                ls_state-tab-eventtype =  ls_state-eventtype = ls_state-param-event =  'MODULE'.
-              ELSE.
-                ls_state-tab-eventtype =  ls_state-eventtype = ls_state-param-event =  'METHOD'.
+          IF ls_state-kw = 'ENDFORM' OR ls_state-kw = 'ENDMETHOD' OR ls_state-kw = 'ENDMODULE'.
+            CLEAR:  ls_state-eventtype,  ls_state-eventname, ls_state-tabs, ls_state-variable, ls_state-token-sub.
+            IF ls_state-param-param IS INITIAL.
+              READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = ls_state-param-event name = ls_state-param-name TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0.
+                CLEAR ls_state-param-type.
               ENDIF.
             ENDIF.
-
-            IF ls_state-kw = 'ENDCLASS'.
-              CLEAR: ls_state-call_line-class, ls_state-param-class, ls_state-class_name.
-            ENDIF.
-
-            IF ls_state-kw = 'ENDINTERFACE'.
-              ls_state-call_line-class   = ls_state-param-class = ls_state-class_name = ''.
-              ls_state-call_line-is_intf = abap_false.
-              CLEAR ls_state-class.
-            ENDIF.
-
-            IF ls_state-kw = 'ENDFORM' OR ls_state-kw = 'ENDMETHOD' OR ls_state-kw = 'ENDMODULE'.
-              CLEAR:  ls_state-eventtype,  ls_state-eventname, ls_state-tabs, ls_state-variable, ls_state-token-sub.
-              IF ls_state-param-param IS INITIAL.
-                READ TABLE io_debugger->mo_window->ms_sources-t_params WITH KEY event = ls_state-param-event name = ls_state-param-name TRANSPORTING NO FIELDS.
-                IF sy-subrc <> 0.
-                  CLEAR ls_state-param-type.
-                ENDIF.
-              ENDIF.
-            ENDIF.
-
-            CLEAR  ls_state-prev.
-            IF ls_state-kw = 'ASSIGN' OR ls_state-kw = 'ADD' OR ls_state-kw = 'SUBTRACT' .
-              ls_state-count = 0.
-            ENDIF.
-            CLEAR ls_state-new.
-
-            IF ls_state-eventname IS  NOT INITIAL OR ls_state-class IS NOT INITIAL AND ls_state-eventtype <> 'EVENT' OR ls_state-kw = 'INCLUDE' OR ls_state-kw = 'CLASS-POOL' OR ls_state-kw = 'INTERFACE-POOL'.
-              ls_state-token-sub = abap_true.
-            ENDIF.
-
-            IF ls_state-kw = 'START-OF-SELECTION' OR ls_state-kw = 'INITIALISATION' OR ls_state-kw = 'END-OF-SELECTION'.
-              CLEAR ls_state-token-sub.
-            ENDIF.
-
-            ZCL_ACE_SOURCE_PARSER=>process_words(
-              EXPORTING
-                i_program   = i_program
-                i_include   = i_include
-                i_class     = i_class
-                i_main_prog = i_main_prog
-                i_reltype   = i_reltype
-                io_debugger = io_debugger
-                l_token_row = lv_token_row
-                o_procedure = o_procedure
-              CHANGING
-                cs_state    = ls_state ).
-            ls_state-token-from       = statement-from.
-            ls_state-token-to         = statement-to.
-            ls_state-token-v_from_row = o_scan->tokens[ statement-from ]-row.
-            ls_state-token-v_to_row   = o_scan->tokens[ statement-to ]-row.
-
-            IF ls_state-token-name <> 'PUBLIC' AND ls_state-token-name <> 'PRIVATE' AND ls_state-token-name <> 'PROTECTED' AND ls_state-token-name IS NOT INITIAL AND
-               ls_state-token-name <> 'INCLUDE' AND ls_state-token-name <> 'CLASS-POOL' AND ls_state-token-name <> 'INTERFACE-POOL'.
-              APPEND ls_state-token TO tokens.
-            ENDIF.
-
-            IF ls_state-kw = 'ENDCLASS'.
-              CLEAR: ls_state-token-sub, ls_state-class.
-            ENDIF.
           ENDIF.
 
-          IF o_procedure->statement_index =  max.
-            EXIT.
+          CLEAR  ls_state-prev.
+          IF ls_state-kw = 'ASSIGN' OR ls_state-kw = 'ADD' OR ls_state-kw = 'SUBTRACT' .
+            ls_state-count = 0.
+          ENDIF.
+          CLEAR ls_state-new.
+
+          IF ls_state-eventname IS  NOT INITIAL OR ls_state-class IS NOT INITIAL AND ls_state-eventtype <> 'EVENT' OR ls_state-kw = 'INCLUDE' OR ls_state-kw = 'CLASS-POOL' OR ls_state-kw = 'INTERFACE-POOL'.
+            ls_state-token-sub = abap_true.
           ENDIF.
 
-        ENDDO.
+          IF ls_state-kw = 'START-OF-SELECTION' OR ls_state-kw = 'INITIALISATION' OR ls_state-kw = 'END-OF-SELECTION'.
+            CLEAR ls_state-token-sub.
+          ENDIF.
 
-        ZCL_ACE_SOURCE_PARSER=>link_calls_to_params(
-          EXPORTING io_debugger = io_debugger
-          CHANGING  ct_tokens   = tokens ).
+          zcl_ace_source_parser=>process_words(
+            EXPORTING
+              i_program   = i_program
+              i_include   = i_include
+              i_class     = i_class
+              i_main_prog = i_main_prog
+              i_reltype   = i_reltype
+              io_debugger = io_debugger
+              l_token_row = lv_token_row
+              o_procedure = o_procedure
+            CHANGING
+              cs_state    = ls_state ).
+          ls_state-token-from       = statement-from.
+          ls_state-token-to         = statement-to.
+          ls_state-token-v_from_row = o_scan->tokens[ statement-from ]-row.
+          ls_state-token-v_to_row   = o_scan->tokens[ statement-to ]-row.
 
-        LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING FIELD-SYMBOL(<param>).
-          REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.
-          REPLACE ALL OCCURRENCES OF ')' IN <param>-param WITH ''.
-        ENDLOOP.
+          IF ls_state-token-name <> 'PUBLIC' AND ls_state-token-name <> 'PRIVATE' AND ls_state-token-name <> 'PROTECTED' AND ls_state-token-name IS NOT INITIAL AND
+             ls_state-token-name <> 'INCLUDE' AND ls_state-token-name <> 'CLASS-POOL' AND ls_state-token-name <> 'INTERFACE-POOL'.
+            APPEND ls_state-token TO tokens.
+          ENDIF.
 
-        APPEND LINES OF ls_state-calculated_vars TO io_debugger->mo_window->ms_sources-t_calculated.
-        APPEND LINES OF ls_state-composed_vars TO io_debugger->mo_window->ms_sources-t_composed.
+          IF ls_state-kw = 'ENDCLASS'.
+            CLEAR: ls_state-token-sub, ls_state-class.
+          ENDIF.
+        ENDIF.
 
-        io_debugger->mo_window->ms_sources-tt_tabs = ls_state-tabs.
-        prog-scan = o_scan.
-        prog-t_keywords = tokens.
-        prog-program = i_program.
-        prog-stack = stack.
-        prog-v_source   = prog-source_tab.
-        prog-v_keywords = tokens.
-        APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
-        ZCL_ACE_SOURCE_PARSER=>COLLECT_ENHANCEMENTS(
-          i_program   = i_program
-          io_debugger = io_debugger ).
+        IF o_procedure->statement_index =  max.
+          EXIT.
+        ENDIF.
 
-      ENDIF.
+      ENDDO.
 
-      IF i_main IS NOT INITIAL.
-        ZCL_ACE_SOURCE_PARSER=>process_super_and_interfaces(
-          i_class     = ls_state-class_name
-          i_program   = i_program
-          i_stack     = stack
-          io_debugger = io_debugger ).
-      ENDIF.
+      zcl_ace_source_parser=>link_calls_to_params(
+        EXPORTING io_debugger = io_debugger
+        CHANGING  ct_tokens   = tokens ).
+
+      LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING FIELD-SYMBOL(<param>).
+        REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.
+        REPLACE ALL OCCURRENCES OF ')' IN <param>-param WITH ''.
+      ENDLOOP.
+
+      APPEND LINES OF ls_state-calculated_vars TO io_debugger->mo_window->ms_sources-t_calculated.
+      APPEND LINES OF ls_state-composed_vars TO io_debugger->mo_window->ms_sources-t_composed.
+
+      io_debugger->mo_window->ms_sources-tt_tabs = ls_state-tabs.
+      prog-scan = o_scan.
+      prog-t_keywords = tokens.
+      prog-program = i_program.
+      prog-stack = stack.
+      prog-v_source   = prog-source_tab.
+      prog-v_keywords = tokens.
+      APPEND prog TO io_debugger->mo_window->ms_sources-tt_progs.
+      zcl_ace_source_parser=>collect_enhancements(
+        i_program   = i_program
+        io_debugger = io_debugger ).
+
+    ENDIF.
+
+    IF i_main IS NOT INITIAL.
+      zcl_ace_source_parser=>process_super_and_interfaces(
+        i_class     = ls_state-class_name
+        i_program   = i_program
+        i_stack     = stack
+        io_debugger = io_debugger ).
+    ENDIF.
 
 
-  endmethod.
+  ENDMETHOD.
 
 
   method PROCESS_SUPER_AND_INTERFACES.
