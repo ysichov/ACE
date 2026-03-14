@@ -682,9 +682,25 @@ CLASS ZCL_ACE IMPLEMENTATION.
         tree-kind    = 'M'.
         IF subs-is_intf = abap_true AND subs-def_line > 0.
           tree-value = subs-def_line.
-        ELSE.
+        ELSEIF keyword-v_line > 0.
           tree-value = keyword-v_line.
+        ELSEIF keyword-line > 0.
+          tree-value = keyword-line.
+        ELSE.
+          " Fallback: ищем METHOD в t_keywords по имени метода
+          LOOP AT prog-t_keywords INTO DATA(lv_kw_fb)
+            WHERE name = 'METHOD'.
+            READ TABLE prog-scan->statements INDEX lv_kw_fb-index INTO DATA(ls_s_fb).
+            IF sy-subrc = 0.
+              READ TABLE prog-scan->tokens INDEX ls_s_fb-from + 1 INTO DATA(ls_t_fb).
+              IF sy-subrc = 0 AND ls_t_fb-str = subs-eventname.
+                tree-value = lv_kw_fb-line.
+                EXIT.
+              ENDIF.
+            ENDIF.
+          ENDLOOP.
         ENDIF.
+
         tree-include = subs-include.
         tree-program = subs-program.
         tree-ev_type = subs-eventtype.

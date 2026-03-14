@@ -53,7 +53,9 @@ CLASS zcl_ace_parse_calls DEFINITION
 ENDCLASS.
 
 
-CLASS zcl_ace_parse_calls IMPLEMENTATION.
+
+CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
+
 
   METHOD zif_ace_stmt_handler~handle.
 
@@ -563,7 +565,7 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
 
     LOOP AT cs_source-tt_progs ASSIGNING FIELD-SYMBOL(<prog>)
       WHERE include = i_include.
-      READ TABLE <prog>-t_keywords INDEX i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw>).
+      READ TABLE <prog>-t_keywords with key index =  i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw>).
       IF sy-subrc = 0.
         LOOP AT lt_new_calls INTO DATA(ls_nc).
           READ TABLE <kw>-tt_calls WITH KEY event = ls_nc-event
@@ -579,5 +581,4 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
     ENDLOOP.
 
   ENDMETHOD.
-
 ENDCLASS.
