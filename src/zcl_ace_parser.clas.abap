@@ -32,13 +32,31 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     APPEND ls_prog TO cs_source-tt_progs.
 
     ASSIGN cs_source-tt_progs[ lines( cs_source-tt_progs ) ] TO FIELD-SYMBOL(<ls_prog>).
+
+    " Рекурсивно парсим sub-includes (CU/CO/CI/CM*) из levels ДО основного прохода.
+    " CU: CLASS DEFINITION + PUBLIC SECTION + METHODS → meth_type по суффиксу инклуда.
+    " CM*: METHOD ... ENDMETHOD → include корректный для каждого метода.
+    DATA lt_seen TYPE HASHED TABLE OF program WITH UNIQUE KEY table_line.
+    INSERT i_include INTO TABLE lt_seen.
+    LOOP AT lo_scan->levels INTO DATA(ls_lev).
+      DATA(lv_sub) = ls_lev-name.
+      CHECK lv_sub IS NOT INITIAL.
+      INSERT CONV program( lv_sub ) INTO TABLE lt_seen.
+      CHECK sy-subrc = 0.
+      READ TABLE cs_source-tt_progs WITH KEY include = CONV program( lv_sub )
+        TRANSPORTING NO FIELDS.
+      CHECK sy-subrc <> 0.
+      zcl_ace_parser=>parse_tokens( EXPORTING i_program = i_program
+                                              i_include = CONV program( lv_sub )
+                                    CHANGING  cs_source = cs_source ).
+    ENDLOOP.
+
     LOOP AT lo_scan->statements INTO DATA(ls_kw_stmt).
       DATA(lv_kw_idx) = sy-tabix.
       CHECK ls_kw_stmt-type <> '*' AND ls_kw_stmt-type <> 'P'.
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from INTO DATA(ls_kw_tok2).
       CHECK sy-subrc = 0.
 
-      " Определяем реальный include для этого statement через level
       READ TABLE lo_scan->levels INDEX ls_kw_stmt-level INTO DATA(ls_kw_level).
       DATA(lv_stmt_include) = COND program(
         WHEN sy-subrc = 0 AND ls_kw_level-name IS NOT INITIAL
@@ -53,9 +71,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
       IF lv_kw_name = 'CALL'.
         READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 1 INTO DATA(ls_tok2).
-        IF sy-subrc = 0.
-          lv_kw_name = |CALL { ls_tok2-str }|.
-        ENDIF.
+        IF sy-subrc = 0. lv_kw_name = |CALL { ls_tok2-str }|. ENDIF.
       ENDIF.
 
       APPEND VALUE zcl_ace=>ts_kword(
@@ -82,6 +98,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
     LOOP AT VALUE string_table(
            ( `CLASS` ) ( `INTERFACE` ) ( `ENDCLASS` ) ( `ENDINTERFACE` )
+           ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` )
            ( `METHODS` ) ( `CLASS-METHODS` )
            ( `FORM` ) ( `METHOD` ) ( `MODULE` ) ( `FUNCTION` )
          ) INTO DATA(lv_kw).
@@ -141,7 +158,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
     DATA(lv_max) = lines( lo_scan->statements ).
 
-    " Pass 1: calls_line + vars + params
+    " Pass 1 — только statements из текущего include (sub-includes уже обработаны)
     DO lv_max TIMES.
       DATA(lv_idx) = sy-index.
 
@@ -150,12 +167,13 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lo_scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw_tok).
       CHECK sy-subrc = 0.
 
-      " Реальный include для этого statement
       READ TABLE lo_scan->levels INDEX ls_stmt-level INTO DATA(ls_level).
       DATA(lv_real_include) = COND program(
         WHEN sy-subrc = 0 AND ls_level-name IS NOT INITIAL
         THEN ls_level-name
         ELSE i_include ).
+
+      IF lv_real_include <> i_include. CONTINUE. ENDIF.
 
       DATA(lv_eff_kw) = SWITCH string( ls_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -176,7 +194,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
               EXPORTING io_scan    = lo_scan
                         i_stmt_idx = lv_idx
                         i_program  = i_program
-                        i_include  = lv_real_include
+                        i_include  = i_include
               CHANGING  cs_source  = cs_source ).
           ENDIF.
         ENDIF.
@@ -186,7 +204,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         EXPORTING io_scan    = lo_scan
                   i_stmt_idx = lv_idx
                   i_program  = i_program
-                  i_include  = lv_real_include
+                  i_include  = i_include
         CHANGING  cs_source  = cs_source ).
 
       READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str
@@ -196,15 +214,14 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           EXPORTING io_scan    = lo_scan
                     i_stmt_idx = lv_idx
                     i_program  = i_program
-                    i_include  = lv_real_include
+                    i_include  = i_include
           CHANGING  cs_source  = cs_source ).
       ENDIF.
     ENDDO.
 
-    " Sort t_vars once
     SORT cs_source-t_vars BY program eventtype eventname name.
 
-    " Pass 2: calls
+    " Pass 2 — только текущий include
     DO lv_max TIMES.
       lv_idx = sy-index.
 
@@ -213,12 +230,13 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lo_scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
       CHECK sy-subrc = 0.
 
-      " Реальный include для этого statement
       READ TABLE lo_scan->levels INDEX ls_stmt-level INTO ls_level.
       lv_real_include = COND program(
         WHEN sy-subrc = 0 AND ls_level-name IS NOT INITIAL
         THEN ls_level-name
         ELSE i_include ).
+
+      IF lv_real_include <> i_include. CONTINUE. ENDIF.
 
       lv_eff_kw = SWITCH string( ls_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -237,7 +255,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           EXPORTING io_scan    = lo_scan
                     i_stmt_idx = lv_idx
                     i_program  = i_program
-                    i_include  = lv_real_include
+                    i_include  = i_include
           CHANGING  cs_source  = cs_source ).
       ENDIF.
     ENDDO.
