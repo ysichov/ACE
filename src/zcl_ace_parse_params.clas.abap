@@ -86,11 +86,13 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
     DATA(lv_ev_name)    = ``.
     DATA(lv_section)    = ``.
     DATA(lv_pname)      = ``.
-    DATA(lv_ptype)      = ``.   " <-- новое: тип текущего параметра
+    DATA(lv_ptype)      = ``.
     DATA(lv_ref)        = abap_false.
     DATA(lv_after_type) = abap_false.
     DATA(lv_is_form)    = xsdbool( i_kw = 'FORM' ).
     DATA(lv_last_row)   = 0.
+    DATA(lv_preferred)  = ``.       " имя PREFERRED PARAMETER
+    DATA(lv_skip_next)  = abap_false. " пропустить следующий токен после PREFERRED
 
     DATA(lv_tok_idx) = stmt-from + 1.
 
@@ -234,9 +236,44 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
         WHEN 'REF'.
           lv_ref = abap_true.
 
-        WHEN 'TO' OR 'OPTIONAL' OR 'DEFAULT' OR 'VALUE'
+        WHEN 'TO' OR 'OPTIONAL' OR 'DEFAULT'
           OR 'ABSTRACT' OR 'FINAL' OR 'REDEFINITION'.
           " пропускаем модификаторы
+
+        WHEN 'VALUE'.
+          " VALUE( param ) — токен VALUE сам по себе означает default-value keyword,
+          " но VALUE(PARAM) как один токен обрабатывается в WHEN OTHERS ниже.
+          " Здесь просто пропускаем одиночный VALUE.
+
+        WHEN 'PREFERRED'.
+          " Flush текущего параметра перед обработкой PREFERRED
+          IF lv_pname IS NOT INITIAL AND lv_section IS NOT INITIAL.
+            ls_param = VALUE #(
+              program = i_program  include = i_include
+              class   = mv_class_name
+              event   = COND #( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' )
+              name    = lv_ev_name
+              type    = SWITCH #( lv_section
+                          WHEN 'IMPORTING' OR 'USING' THEN 'I'
+                          WHEN 'EXPORTING'             THEN 'E'
+                          WHEN 'CHANGING'              THEN 'C'
+                          WHEN 'RETURNING'             THEN 'R'
+                          ELSE 'I' )
+              param   = lv_pname   line = tok-row ).
+            APPEND ls_param TO cs_source-t_params.
+            CLEAR: lv_pname, lv_ptype, lv_ref, lv_after_type.
+          ENDIF.
+          lv_skip_next = abap_true.
+
+        WHEN 'PARAMETER'.
+          IF lv_skip_next = abap_true.
+            READ TABLE io_scan->tokens INDEX lv_tok_idx + 1 INTO DATA(ls_pref_tok).
+            IF sy-subrc = 0.
+              lv_preferred = ls_pref_tok-str.
+              IF lv_preferred+0(1) = '!'. lv_preferred = lv_preferred+1. ENDIF.
+            ENDIF.
+            lv_skip_next = abap_false.
+          ENDIF.
 
         WHEN OTHERS.
           IF lv_str+0(1) = '!'.
@@ -286,8 +323,14 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
             lv_ref        = abap_false.
 
           ELSEIF lv_section IS NOT INITIAL AND lv_pname IS INITIAL.
-            " параметр без ! (FORM USING style)
+            " параметр без ! — в т.ч. VALUE(param) для RETURNING
             lv_pname = lv_str.
+            " Убираем VALUE( ... ) если есть
+            IF lv_pname CP 'VALUE(*'.
+              REPLACE FIRST OCCURRENCE OF 'VALUE(' IN lv_pname WITH ''.
+              REPLACE ALL OCCURRENCES OF ')' IN lv_pname WITH ''.
+              CONDENSE lv_pname NO-GAPS.
+            ENDIF.
             CLEAR: lv_ptype, lv_ref, lv_after_type.
 
           ELSEIF lv_ev_name IS INITIAL AND lv_is_form = abap_false.
@@ -316,22 +359,21 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                     ELSE 'I' )
         param   = lv_pname   line = lv_last_row ).
       APPEND ls_param TO cs_source-t_params.
+    ENDIF.
 
-*      ls_var2 = VALUE #(
-*        program   = i_program   include   = i_include
-*        class     = mv_class_name
-*        eventtype = COND #( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' )
-*        eventname = lv_ev_name
-*        section   = lv_section
-*        line      = lv_last_row
-*        name      = lv_pname
-*        type      = lv_ptype ).
-*      READ TABLE cs_source-tt_vars2 WITH KEY
-*        program   = ls_var2-program   include   = ls_var2-include
-*        eventtype = ls_var2-eventtype eventname = ls_var2-eventname
-*        name      = ls_var2-name
-*        TRANSPORTING NO FIELDS.
-*      IF sy-subrc <> 0. APPEND ls_var2 TO cs_source-tt_vars2. ENDIF.
+    " PREFERRED PARAMETER стоит в конце объявления — после того как все
+    " параметры уже добавлены. Проставляем флаг постфактум.
+    IF lv_preferred IS NOT INITIAL.
+      DATA(lv_ev_type) = COND string( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' ).
+      LOOP AT cs_source-t_params ASSIGNING FIELD-SYMBOL(<fp>)
+        WHERE program = i_program
+          AND class   = mv_class_name
+          AND event   = lv_ev_type
+          AND name    = lv_ev_name
+          AND param   = lv_preferred.
+        <fp>-preferred = 'X'.
+        EXIT.
+      ENDLOOP.
     ENDIF.
 
   ENDMETHOD.

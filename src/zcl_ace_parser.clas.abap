@@ -66,6 +66,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_params( ) ).
     DATA(lo_vars)       = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_vars( ) ).
     DATA(lo_calls)      = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls( ) ).
+    DATA(lo_calcs)      = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calcs( ) ).
 
     DATA lt_pass1     TYPE STANDARD TABLE OF string WITH EMPTY KEY.
     DATA lt_pass1_hdl TYPE TABLE OF REF TO zif_ace_stmt_handler WITH EMPTY KEY.
@@ -164,6 +165,14 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           ENDIF.
         ENDIF.
       ENDLOOP.
+
+      " Pass 1: calcs — заполняем t_calculated / t_composed для COMPUTE
+      lo_calcs->handle(
+        EXPORTING io_scan    = lo_scan
+                  i_stmt_idx = lv_idx
+                  i_program  = i_program
+                  i_include  = i_include
+        CHANGING  cs_source  = cs_source ).
 
       READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str
         TRANSPORTING NO FIELDS.
