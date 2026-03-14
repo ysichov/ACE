@@ -4,7 +4,7 @@ parameters a type i.
 
 CLASS lcl_demo DEFINITION.
   PUBLIC SECTION.
-    CLASS-METHODS cls_meth IMPORTING iv_a type i RETURNING VALUE(rv) type string.
+    CLASS-METHODS cls_meth IMPORTING iv_a type i OPTIONAL iv_b type i PREFERRED PARAMETER iv_b RETURNING VALUE(rv) type string.
      METHODS constructor .
     METHODS run IMPORTING iv_i TYPE i.
   PRIVATE SECTION.
@@ -36,6 +36,6 @@ FORM my_form USING p_val TYPE i.
 ENDFORM.
 
 START-OF-SELECTION.
-
-   lcl_demo=>cls_meth( a ).
+ "data: lv_String type string.
+   data(lv_string) = lcl_demo=>cls_meth(  a ).
   PERFORM my_form USING a.
