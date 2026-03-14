@@ -228,15 +228,76 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
 
     DATA lt_new_calls TYPE zcl_ace=>tt_calls.
 
+    " ── helper: resolve RETURNING binding lhs ──────────────────────
+    " Looks backwards from token i_from for pattern  lv_x = or DATA(lv_x) =
+    " Returns the variable name that receives the result.
+    DATA lv_lhs TYPE string.
+
+    " ── helper: find preferred/single importing param for a method ──
+    " Returns formal parameter name from t_params for class/method.
+    " Used when call has a single positional argument.
+    DATA lv_pref_param TYPE string.
+
     CASE lv_kw.
 
       WHEN 'PERFORM'.
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
         CHECK sy-subrc = 0.
-        APPEND VALUE zcl_ace=>ts_calls(
-          event = 'FORM'
-          name  = ls_tok-str
-        ) TO lt_new_calls.
+
+        DATA ls_pf_call   TYPE zcl_ace=>ts_calls.
+        DATA lv_pf_sec    TYPE string.
+        DATA lv_pf_act_i  TYPE i.
+        DATA ls_pf_bind   TYPE zcl_ace=>ts_param_binding.
+
+        ls_pf_call-event = 'FORM'.
+        ls_pf_call-name  = ls_tok-str.
+
+        " Собираем фактические аргументы по порядку (USING / CHANGING / TABLES)
+        DATA lt_pf_actuals TYPE string_table.
+        DATA(lv_pf_i) = ls_stmt-from + 2.
+        WHILE lv_pf_i <= ls_stmt-to.
+          READ TABLE io_scan->tokens INDEX lv_pf_i INTO DATA(ls_pf_t).
+          IF sy-subrc <> 0. EXIT. ENDIF.
+          CASE ls_pf_t-str.
+            WHEN 'USING' OR 'CHANGING' OR 'TABLES'.
+              lv_pf_sec = ls_pf_t-str.
+            WHEN OTHERS.
+              IF lv_pf_sec IS NOT INITIAL AND ls_pf_t-str IS NOT INITIAL.
+                APPEND ls_pf_t-str TO lt_pf_actuals.
+              ENDIF.
+          ENDCASE.
+          lv_pf_i += 1.
+        ENDWHILE.
+
+        " Сопоставляем с формальными параметрами из t_params по порядку
+        DATA lt_pf_params TYPE TABLE OF zcl_ace=>ts_params WITH EMPTY KEY.
+        lt_pf_params = VALUE #(
+          FOR p IN cs_source-t_params
+          WHERE ( event = 'FORM' AND name = ls_pf_call-name )
+          ( p ) ).
+        SORT lt_pf_params BY line.
+
+        lv_pf_act_i = 1.
+        LOOP AT lt_pf_params INTO DATA(ls_pf_p).
+          READ TABLE lt_pf_actuals INDEX lv_pf_act_i INTO DATA(lv_pf_act).
+          CLEAR ls_pf_bind.
+          ls_pf_bind-outer = lv_pf_act.       " фактический (пусто если кончились)
+          ls_pf_bind-inner = ls_pf_p-param.   " формальный
+          APPEND ls_pf_bind TO ls_pf_call-bindings.
+          lv_pf_act_i += 1.
+        ENDLOOP.
+
+        " Если формальных параметров нет — всё равно пишем outer-переменные
+        IF lt_pf_params IS INITIAL.
+          LOOP AT lt_pf_actuals INTO DATA(lv_pf_only).
+            CLEAR ls_pf_bind.
+            ls_pf_bind-outer = lv_pf_only.
+            ls_pf_bind-inner = ''.
+            APPEND ls_pf_bind TO ls_pf_call-bindings.
+          ENDLOOP.
+        ENDIF.
+
+        APPEND ls_pf_call TO lt_new_calls.
 
       WHEN 'CALL FUNCTION'.
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
@@ -281,6 +342,40 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
             ENDIF.
           ENDIF.
         ENDIF.
+
+        " ── CALL METHOD bindings: линейный проход по токенам ──────────────────
+        " Читаем токены слева направо: секция → формальный = фактический
+        DATA(lv_section_cm) = ``.
+        DATA(lv_tok_cm)     = ls_stmt-from + 3.
+        WHILE lv_tok_cm <= ls_stmt-to.
+          READ TABLE io_scan->tokens INDEX lv_tok_cm INTO DATA(ls_t_cm).
+          IF sy-subrc <> 0. EXIT. ENDIF.
+          CASE ls_t_cm-str.
+            WHEN 'EXPORTING' OR 'IMPORTING' OR 'CHANGING' OR 'RECEIVING'.
+              lv_section_cm = ls_t_cm-str.
+            WHEN '='.
+              " skip — обрабатывается при чтении формального параметра
+            WHEN OTHERS.
+              IF lv_section_cm IS NOT INITIAL AND ls_t_cm-str IS NOT INITIAL.
+                READ TABLE io_scan->tokens INDEX lv_tok_cm + 1 INTO DATA(ls_eq_cm).
+                IF ls_eq_cm-str = '='.
+                  READ TABLE io_scan->tokens INDEX lv_tok_cm + 2 INTO DATA(ls_var_cm).
+                  IF sy-subrc = 0 AND ls_var_cm-str IS NOT INITIAL.
+                    DATA(lv_cm_actual) = ls_var_cm-str.
+                    REPLACE ALL OCCURRENCES OF ')' IN lv_cm_actual WITH ''.
+                    CONDENSE lv_cm_actual NO-GAPS.
+                    APPEND VALUE zcl_ace=>ts_param_binding(
+                      inner = ls_t_cm-str   " формальный параметр
+                      outer = lv_cm_actual  " фактический аргумент
+                    ) TO lv_call-bindings.
+                    lv_tok_cm += 2.  " перепрыгиваем '=' и actual
+                  ENDIF.
+                ENDIF.
+              ENDIF.
+          ENDCASE.
+          lv_tok_cm += 1.
+        ENDWHILE.
+
         APPEND lv_call TO lt_new_calls.
 
       WHEN 'COMPUTE'.
@@ -405,7 +500,130 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
               ENDIF.
             ENDIF.
 
+            " ── Bindings для +CALL_METHOD: линейный проход по токенам ───────────
+            " Токены аргументов начинаются сразу после токена с '(' и идут до ')'.
+            " Паттерны:
+            "   named:      inner = formal,  outer = actual  (tok[i+1]='=')
+            "   positional: outer = tok[i],  inner = PREFERRED/единственный IMPORTING
+            "   lhs = ...:  outer = lhs,     inner = RETURNING param
+            DATA lt_bindings   TYPE zcl_ace=>tt_param_bindings.
+            DATA lv_single_arg TYPE string.
+            DATA lv_positional TYPE abap_bool VALUE abap_true.
+            DATA lv_scan_b     TYPE i.
+            DATA ls_b          TYPE zcl_ace=>ts_param_binding.
+
+            DATA(lv_call_class) = COND string(
+              WHEN lv_c-class IS NOT INITIAL THEN lv_c-class ELSE mv_class_name ).
+
+            " LHS: lv_x = obj->meth(…)  →  позиция lv_tok_idx-1 должна быть '='
+            CLEAR lv_lhs.
+            DATA(lv_look) = lv_tok_idx - 1.
+            IF lv_look >= ls_stmt-from.
+              READ TABLE io_scan->tokens INDEX lv_look INTO DATA(ls_lhs_eq).
+              IF ls_lhs_eq-str = '='.
+                READ TABLE io_scan->tokens INDEX lv_look - 1 INTO DATA(ls_lhs_var).
+                IF sy-subrc = 0.
+                  lv_lhs = ls_lhs_var-str.
+                  REPLACE ALL OCCURRENCES OF 'DATA(' IN lv_lhs WITH ''.
+                  REPLACE ALL OCCURRENCES OF ')'     IN lv_lhs WITH ''.
+                  CONDENSE lv_lhs NO-GAPS.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+
+            " Линейный проход по аргументам (от lv_tok_idx+1 до конца стейтмента)
+            DATA lv_arg_s    TYPE string.
+            DATA lv_b_actual TYPE string.
+            DATA ls_eq_b     LIKE LINE OF io_scan->tokens.
+            DATA ls_val_b    LIKE LINE OF io_scan->tokens.
+            DATA ls_arg      LIKE LINE OF io_scan->tokens.
+            lv_scan_b = lv_tok_idx + 1.
+            WHILE lv_scan_b <= ls_stmt-to.
+              READ TABLE io_scan->tokens INDEX lv_scan_b INTO ls_arg.
+              IF sy-subrc <> 0. EXIT. ENDIF.
+              lv_arg_s = ls_arg-str.
+
+              IF lv_arg_s = ')' OR lv_arg_s CO ')'.
+                EXIT.
+              ENDIF.
+
+              IF lv_arg_s = '(' OR lv_arg_s = ','.
+                lv_scan_b += 1.
+                CONTINUE.
+              ENDIF.
+
+              CLEAR ls_eq_b.
+              READ TABLE io_scan->tokens INDEX lv_scan_b + 1 INTO ls_eq_b.
+              IF ls_eq_b-str = '='.
+                CLEAR ls_val_b.
+                READ TABLE io_scan->tokens INDEX lv_scan_b + 2 INTO ls_val_b.
+                IF sy-subrc = 0.
+                  lv_positional = abap_false.
+                  lv_b_actual = ls_val_b-str.
+                  REPLACE ALL OCCURRENCES OF ')' IN lv_b_actual WITH ''.
+                  CONDENSE lv_b_actual NO-GAPS.
+                  CLEAR ls_b.
+                  ls_b-inner = lv_arg_s.
+                  ls_b-outer = lv_b_actual.
+                  APPEND ls_b TO lt_bindings.
+                  lv_scan_b += 3.
+                  CONTINUE.
+                ENDIF.
+              ENDIF.
+
+              IF lv_positional = abap_true AND lv_single_arg IS INITIAL
+                AND lv_arg_s IS NOT INITIAL.
+                lv_single_arg = lv_arg_s.
+                REPLACE ALL OCCURRENCES OF ')' IN lv_single_arg WITH ''.
+                CONDENSE lv_single_arg NO-GAPS.
+              ENDIF.
+
+              lv_scan_b += 1.
+            ENDWHILE.
+
+            " Позиционный единственный аргумент → ищем PREFERRED/единственный IMPORTING
+            IF lv_positional = abap_true AND lv_single_arg IS NOT INITIAL.
+              CLEAR lv_pref_param.
+              LOOP AT cs_source-t_params INTO DATA(ls_pm)
+                WHERE class = lv_call_class
+                  AND event = 'METHOD'
+                  AND name  = lv_c-name
+                  AND type  = 'I'.
+                IF ls_pm-preferred = 'X' OR lv_pref_param IS INITIAL.
+                  lv_pref_param = ls_pm-param.
+                ENDIF.
+                IF ls_pm-preferred = 'X'. EXIT. ENDIF.
+              ENDLOOP.
+              IF lv_pref_param IS NOT INITIAL.
+                CLEAR ls_b.
+                ls_b-outer = lv_single_arg.
+                ls_b-inner = lv_pref_param.
+                APPEND ls_b TO lt_bindings.
+              ENDIF.
+            ENDIF.
+
+            " LHS → RETURNING binding
+            IF lv_lhs IS NOT INITIAL.
+              DATA lv_ret_param TYPE string.
+              LOOP AT cs_source-t_params INTO DATA(ls_ret)
+                WHERE class = lv_call_class
+                  AND event = 'METHOD'
+                  AND name  = lv_c-name
+                  AND type  = 'R'.
+                lv_ret_param = ls_ret-param.
+                EXIT.
+              ENDLOOP.
+              IF lv_ret_param IS NOT INITIAL.
+                CLEAR ls_b.
+                ls_b-outer = lv_lhs.
+                ls_b-inner = lv_ret_param.
+                APPEND ls_b TO lt_bindings.
+              ENDIF.
+            ENDIF.
+
+            lv_c-bindings = lt_bindings.
             APPEND lv_c TO lt_new_calls.
+            CLEAR: lv_single_arg, lv_positional, lv_lhs.
           ENDIF.
 
           lv_tok_idx += 1.
@@ -415,8 +633,6 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
 
     CHECK lt_new_calls IS NOT INITIAL.
 
-    " t_keywords is built in statement order: index = position in table.
-    " READ TABLE INDEX i_stmt_idx is O(1) — no scan needed.
     LOOP AT cs_source-tt_progs ASSIGNING FIELD-SYMBOL(<prog>)
       WHERE include = i_include.
       READ TABLE <prog>-t_keywords INDEX i_stmt_idx

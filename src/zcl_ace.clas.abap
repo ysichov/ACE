@@ -149,15 +149,27 @@ public section.
                include    TYPE tpda_include,
                time       LIKE sy-uzeit,
              END OF t_step_counter .
+
+  " Binding: outer = caller-side variable, inner = formal parameter name.
+  " For RETURNING: outer = lhs variable (before =), inner = RETURNING param name.
   types:
-    BEGIN OF ts_calls,
-               class TYPE string,
-               event TYPE string,
-               type  TYPE string,
-               name  TYPE string,
+    BEGIN OF ts_param_binding,
                outer TYPE string,
                inner TYPE string,
-               super TYPE boolean,
+             END OF ts_param_binding .
+  types:
+    tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .
+
+  types:
+    BEGIN OF ts_calls,
+               class    TYPE string,
+               event    TYPE string,
+               type     TYPE string,
+               name     TYPE string,
+               outer    TYPE string,
+               inner    TYPE string,
+               super    TYPE boolean,
+               bindings TYPE tt_param_bindings,
              END OF ts_calls .
   types:
     tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
@@ -286,7 +298,6 @@ public section.
                class   TYPE string,
              END OF ts_call .
 
-  " --- types from ZCL_ACE (instance-specific) ---
   types:
     BEGIN OF t_sel_var,
                name   TYPE string,
@@ -323,7 +334,6 @@ public section.
   types:
     tt_line TYPE TABLE OF ts_line WITH EMPTY KEY .
 
-  " --- class-data (formerly ZCL_ACE_APPL static) ---
   class-data:
     m_option_icons   TYPE TABLE OF sign_option_icon_s .
   class-data:
@@ -336,7 +346,6 @@ public section.
   class-data:
     mt_sel TYPE TABLE OF selection_display_s .
 
-  " --- instance data ---
   data MV_PROG type PROG .
   data MV_SHOW_PROG type PROG .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
@@ -391,7 +400,6 @@ public section.
   data MS_IF type TS_IF .
   data MT_IF type TT_IF .
 
-  " --- class-methods (formerly ZCL_ACE_APPL static) ---
   class-methods INIT_ICONS_TABLE .
   class-methods CHECK_MERMAID .
   class-methods OPEN_INT_TABLE
@@ -401,7 +409,6 @@ public section.
       !I_NAME type STRING
       !IO_WINDOW type ref to ZCL_ACE_WINDOW .
 
-  " --- instance methods ---
   methods CONSTRUCTOR
     importing
       !I_PROG             type PROG
@@ -455,7 +462,6 @@ private section.
                    ref    LIKE cl_abap_typedescr=>kind_ref VALUE cl_abap_typedescr=>kind_ref,
                  END OF c_kind .
 ENDCLASS.
-
 
 
 CLASS ZCL_ACE IMPLEMENTATION.
@@ -515,6 +521,77 @@ CLASS ZCL_ACE IMPLEMENTATION.
       <obj>-alv_viewer = NEW #(  i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
       <obj>-alv_viewer->mo_sel->raise_selection_done( ).
   endmethod.
+
+
+  method CONSTRUCTOR.
+      CONSTANTS: c_mask TYPE x VALUE '01'.
+      mv_prog = i_prog.
+      mv_show_parse_time = i_show_parse_time.
+      i_step = abap_on.
+      ZCL_ACE=>check_mermaid( ).
+      ZCL_ACE=>init_icons_table( ).
+      mo_window = NEW ZCL_ACE_WINDOW( me ).
+      mo_window->mv_new_parser = i_new_parser.
+      mo_tree_local = NEW ZCL_ACE_RTTI_TREE( i_header   = 'Objects & Code Flow'
+                                         i_type     = 'L'
+                                         i_cont     = mo_window->mo_locals_container
+                                         i_debugger = me ).
+      show( ).
+  endmethod.
+
+
+  METHOD get_include_prefix.
+    IF strlen( i_class ) >= 30.
+      rv_prefix = i_class.
+    ELSE.
+      rv_prefix = i_class
+               && repeat( val = `=` occ = 30 - strlen( i_class ) )
+               && `======`.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD BUILD_LOCAL_CLASSES_NODE.
+    DATA: local      TYPE string,
+          test_rel   TYPE salv_de_node_key,
+          intf_rel   TYPE salv_de_node_key,
+          lv_prefix  TYPE string,
+          lv_ccau    TYPE string.
+
+    lv_prefix = get_include_prefix( i_excl_class ).
+    lv_ccau   = lv_prefix && 'CCAU'.
+    LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs)
+      WHERE program = i_program AND class <> i_excl_class AND eventtype = 'METHOD'.
+      IF local <> subs-class.
+        IF subs-include = lv_ccau.
+          IF test_rel IS INITIAL.
+            test_rel = mo_tree_local->add_node(
+              i_name = 'Unit Test Classes' i_icon = CONV #( icon_folder )
+              i_rel  = i_refnode
+              i_tree = VALUE #( ) ).
+          ENDIF.
+          add_class( i_class = subs-class i_refnode = test_rel no_locals = abap_true i_type = 'T' ).
+        ELSEIF subs-is_intf = abap_true.
+          IF intf_rel IS INITIAL.
+            intf_rel = mo_tree_local->add_node(
+              i_name = 'Interfaces' i_icon = CONV #( icon_oo_connection )
+              i_rel  = i_refnode
+              i_tree = VALUE #( ) ).
+          ENDIF.
+          add_class( i_class = subs-class i_refnode = intf_rel no_locals = abap_true i_type = 'I' ).
+        ELSE.
+          IF r_locals_rel IS INITIAL.
+            r_locals_rel = mo_tree_local->add_node(
+              i_name = 'Local Classes' i_icon = CONV #( icon_folder )
+              i_rel  = i_refnode
+              i_tree = VALUE #( ) ).
+          ENDIF.
+          add_class( i_class = subs-class i_refnode = r_locals_rel no_locals = abap_true ).
+        ENDIF.
+      ENDIF.
+      local = subs-class.
+    ENDLOOP.
+  ENDMETHOD.
 
 
   method ADD_CLASS.
@@ -674,78 +751,149 @@ CLASS ZCL_ACE IMPLEMENTATION.
   endmethod.
 
 
-  METHOD get_include_prefix.
-    IF strlen( i_class ) >= 30.
-      rv_prefix = i_class.
-    ELSE.
-      rv_prefix = i_class
-               && repeat( val = `=` occ = 30 - strlen( i_class ) )
-               && `======`.
-    ENDIF.
-  ENDMETHOD.
+  METHOD mark_active_root.
+    DATA: lv_tabix TYPE i.
 
+    TYPES: BEGIN OF ts_pair,
+             if_idx  TYPE i,
+             end_idx TYPE i,
+             depth   TYPE i,
+           END OF ts_pair.
 
-  METHOD BUILD_LOCAL_CLASSES_NODE.
-    DATA: local      TYPE string,
-          test_rel   TYPE salv_de_node_key,
-          intf_rel   TYPE salv_de_node_key,
-          lv_prefix  TYPE string,
-          lv_ccau    TYPE string.
+    DATA: lt_pairs    TYPE TABLE OF ts_pair WITH EMPTY KEY,
+          ls_pair     TYPE ts_pair,
+          lt_if_stack TYPE TABLE OF i WITH EMPTY KEY.
 
-    lv_prefix = get_include_prefix( i_excl_class ).
-    lv_ccau   = lv_prefix && 'CCAU'.
-    LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs)
-      WHERE program = i_program AND class <> i_excl_class AND eventtype = 'METHOD'.
-      IF local <> subs-class.
-        IF subs-include = lv_ccau.
-          IF test_rel IS INITIAL.
-            test_rel = mo_tree_local->add_node(
-              i_name = 'Unit Test Classes' i_icon = CONV #( icon_folder )
-              i_rel  = i_refnode
-              i_tree = VALUE #( ) ).
+    LOOP AT ct_results ASSIGNING FIELD-SYMBOL(<ln>).
+      lv_tabix = sy-tabix.
+      CASE <ln>-cond.
+        WHEN 'IF' OR 'CASE'.
+          APPEND lv_tabix TO lt_if_stack.
+        WHEN 'ENDIF' OR 'ENDCASE'.
+          IF lt_if_stack IS NOT INITIAL.
+            DATA(lv_if_tabix) = lt_if_stack[ lines( lt_if_stack ) ].
+            DELETE lt_if_stack INDEX lines( lt_if_stack ).
+            ls_pair-if_idx  = lv_if_tabix.
+            ls_pair-end_idx = lv_tabix.
+            ls_pair-depth   = lines( lt_if_stack ).
+            APPEND ls_pair TO lt_pairs.
           ENDIF.
-          add_class( i_class = subs-class i_refnode = test_rel no_locals = abap_true i_type = 'T' ).
-        ELSEIF subs-is_intf = abap_true.
-          IF intf_rel IS INITIAL.
-            intf_rel = mo_tree_local->add_node(
-              i_name = 'Interfaces' i_icon = CONV #( icon_oo_connection )
-              i_rel  = i_refnode
-              i_tree = VALUE #( ) ).
+      ENDCASE.
+    ENDLOOP.
+
+    SORT lt_pairs BY depth DESCENDING if_idx ASCENDING.
+
+    TYPES: BEGIN OF ts_branch_hdr,
+             tabix TYPE i,
+             cond  TYPE string,
+           END OF ts_branch_hdr.
+
+    DATA: lt_hdrs          TYPE TABLE OF ts_branch_hdr WITH EMPTY KEY,
+          ls_hdr           TYPE ts_branch_hdr,
+          lv_if_i          TYPE i,
+          lv_end_i         TYPE i,
+          lv_inner_depth   TYPE i,
+          lv_i             TYPE i,
+          lv_block_active  TYPE flag,
+          lv_hdr_cnt       TYPE i,
+          lv_h             TYPE i,
+          lv_branch_active TYPE flag,
+          lv_scan          TYPE i,
+          lv_scan_inner    TYPE i.
+
+    LOOP AT lt_pairs INTO ls_pair.
+      lv_if_i  = ls_pair-if_idx.
+      lv_end_i = ls_pair-end_idx.
+      CLEAR: lt_hdrs, lv_inner_depth.
+
+      lv_i = lv_if_i.
+      WHILE lv_i <= lv_end_i.
+        READ TABLE ct_results INDEX lv_i ASSIGNING <ln>.
+        IF sy-subrc <> 0. EXIT. ENDIF.
+        CASE <ln>-cond.
+          WHEN 'IF' OR 'CASE'.
+            IF lv_i = lv_if_i.
+              ls_hdr-tabix = lv_i.
+              ls_hdr-cond  = <ln>-cond.
+              APPEND ls_hdr TO lt_hdrs.
+            ELSE.
+              lv_inner_depth += 1.
+            ENDIF.
+          WHEN 'ENDIF' OR 'ENDCASE'.
+            IF lv_i = lv_end_i.
+              ls_hdr-tabix = lv_i.
+              ls_hdr-cond  = <ln>-cond.
+              APPEND ls_hdr TO lt_hdrs.
+            ELSE.
+              lv_inner_depth -= 1.
+            ENDIF.
+          WHEN 'ELSEIF' OR 'ELSE' OR 'WHEN'.
+            IF lv_inner_depth = 0.
+              ls_hdr-tabix = lv_i.
+              ls_hdr-cond  = <ln>-cond.
+              APPEND ls_hdr TO lt_hdrs.
+            ENDIF.
+        ENDCASE.
+        lv_i += 1.
+      ENDWHILE.
+
+      CLEAR lv_block_active.
+      lv_hdr_cnt = lines( lt_hdrs ).
+      lv_h = 1.
+
+      WHILE lv_h < lv_hdr_cnt.
+        DATA(ls_hdr_cur)  = lt_hdrs[ lv_h ].
+        DATA(ls_hdr_next) = lt_hdrs[ lv_h + 1 ].
+        CLEAR: lv_branch_active, lv_scan_inner.
+        lv_scan = ls_hdr_cur-tabix + 1.
+
+        WHILE lv_scan < ls_hdr_next-tabix.
+          READ TABLE ct_results INDEX lv_scan ASSIGNING FIELD-SYMBOL(<scan_ln>).
+          IF sy-subrc <> 0. EXIT. ENDIF.
+          CASE <scan_ln>-cond.
+            WHEN 'IF' OR 'CASE'.
+              lv_scan_inner += 1.
+            WHEN 'ENDIF' OR 'ENDCASE'.
+              lv_scan_inner -= 1.
+            WHEN OTHERS.
+              IF lv_scan_inner = 0 AND <scan_ln>-active_root = abap_true.
+                lv_branch_active = abap_true.
+              ENDIF.
+          ENDCASE.
+          IF lv_branch_active = abap_true. EXIT. ENDIF.
+          lv_scan += 1.
+        ENDWHILE.
+
+        ASSIGN ct_results[ ls_hdr_cur-tabix ] TO FIELD-SYMBOL(<hdr_ln>).
+        IF sy-subrc = 0.
+          IF lv_branch_active = abap_true.
+            <hdr_ln>-active_root = abap_true.
+            lv_block_active = abap_true.
+          ELSE.
+            CLEAR <hdr_ln>-active_root.
           ENDIF.
-          add_class( i_class = subs-class i_refnode = intf_rel no_locals = abap_true i_type = 'I' ).
+        ENDIF.
+        lv_h += 1.
+      ENDWHILE.
+
+      ASSIGN ct_results[ lv_end_i ] TO FIELD-SYMBOL(<endif_ln>).
+      IF sy-subrc = 0.
+        <endif_ln>-active_root = lv_block_active.
+      ENDIF.
+
+      ASSIGN ct_results[ lv_if_i ] TO FIELD-SYMBOL(<if_ln>).
+      IF sy-subrc = 0.
+        IF lv_block_active = abap_false.
+          CLEAR <if_ln>-active_root.
         ELSE.
-          IF r_locals_rel IS INITIAL.
-            r_locals_rel = mo_tree_local->add_node(
-              i_name = 'Local Classes' i_icon = CONV #( icon_folder )
-              i_rel  = i_refnode
-              i_tree = VALUE #( ) ).
-          ENDIF.
-          add_class( i_class = subs-class i_refnode = r_locals_rel no_locals = abap_true ).
+          <if_ln>-active_root = abap_true.
         ENDIF.
       ENDIF.
-      local = subs-class.
     ENDLOOP.
   ENDMETHOD.
 
 
-  method CONSTRUCTOR.
-      CONSTANTS: c_mask TYPE x VALUE '01'.
-      mv_prog = i_prog.
-      mv_show_parse_time = i_show_parse_time.
-      i_step = abap_on.
-      ZCL_ACE=>check_mermaid( ).
-      ZCL_ACE=>init_icons_table( ).
-      mo_window = NEW ZCL_ACE_WINDOW( me ).
-      mo_window->mv_new_parser = i_new_parser.
-      mo_tree_local = NEW ZCL_ACE_RTTI_TREE( i_header   = 'Objects & Code Flow'
-                                         i_type     = 'L'
-                                         i_cont     = mo_window->mo_locals_container
-                                         i_debugger = me ).
-      show( ).
-  endmethod.
-
-
-  METHOD get_code_flow.
+  method GET_CODE_FLOW.
     DATA: add         TYPE boolean,
           sub         TYPE string,
           form        TYPE string,
@@ -1126,148 +1274,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD mark_active_root.
-    DATA: lv_tabix TYPE i.
-
-    TYPES: BEGIN OF ts_pair,
-             if_idx  TYPE i,
-             end_idx TYPE i,
-             depth   TYPE i,
-           END OF ts_pair.
-
-    DATA: lt_pairs    TYPE TABLE OF ts_pair WITH EMPTY KEY,
-          ls_pair     TYPE ts_pair,
-          lt_if_stack TYPE TABLE OF i WITH EMPTY KEY.
-
-    LOOP AT ct_results ASSIGNING FIELD-SYMBOL(<ln>).
-      lv_tabix = sy-tabix.
-      CASE <ln>-cond.
-        WHEN 'IF' OR 'CASE'.
-          APPEND lv_tabix TO lt_if_stack.
-        WHEN 'ENDIF' OR 'ENDCASE'.
-          IF lt_if_stack IS NOT INITIAL.
-            DATA(lv_if_tabix) = lt_if_stack[ lines( lt_if_stack ) ].
-            DELETE lt_if_stack INDEX lines( lt_if_stack ).
-            ls_pair-if_idx  = lv_if_tabix.
-            ls_pair-end_idx = lv_tabix.
-            ls_pair-depth   = lines( lt_if_stack ).
-            APPEND ls_pair TO lt_pairs.
-          ENDIF.
-      ENDCASE.
-    ENDLOOP.
-
-    SORT lt_pairs BY depth DESCENDING if_idx ASCENDING.
-
-    TYPES: BEGIN OF ts_branch_hdr,
-             tabix TYPE i,
-             cond  TYPE string,
-           END OF ts_branch_hdr.
-
-    DATA: lt_hdrs          TYPE TABLE OF ts_branch_hdr WITH EMPTY KEY,
-          ls_hdr           TYPE ts_branch_hdr,
-          lv_if_i          TYPE i,
-          lv_end_i         TYPE i,
-          lv_inner_depth   TYPE i,
-          lv_i             TYPE i,
-          lv_block_active  TYPE flag,
-          lv_hdr_cnt       TYPE i,
-          lv_h             TYPE i,
-          lv_branch_active TYPE flag,
-          lv_scan          TYPE i,
-          lv_scan_inner    TYPE i.
-
-    LOOP AT lt_pairs INTO ls_pair.
-      lv_if_i  = ls_pair-if_idx.
-      lv_end_i = ls_pair-end_idx.
-      CLEAR: lt_hdrs, lv_inner_depth.
-
-      lv_i = lv_if_i.
-      WHILE lv_i <= lv_end_i.
-        READ TABLE ct_results INDEX lv_i ASSIGNING <ln>.
-        IF sy-subrc <> 0. EXIT. ENDIF.
-        CASE <ln>-cond.
-          WHEN 'IF' OR 'CASE'.
-            IF lv_i = lv_if_i.
-              ls_hdr-tabix = lv_i.
-              ls_hdr-cond  = <ln>-cond.
-              APPEND ls_hdr TO lt_hdrs.
-            ELSE.
-              lv_inner_depth += 1.
-            ENDIF.
-          WHEN 'ENDIF' OR 'ENDCASE'.
-            IF lv_i = lv_end_i.
-              ls_hdr-tabix = lv_i.
-              ls_hdr-cond  = <ln>-cond.
-              APPEND ls_hdr TO lt_hdrs.
-            ELSE.
-              lv_inner_depth -= 1.
-            ENDIF.
-          WHEN 'ELSEIF' OR 'ELSE' OR 'WHEN'.
-            IF lv_inner_depth = 0.
-              ls_hdr-tabix = lv_i.
-              ls_hdr-cond  = <ln>-cond.
-              APPEND ls_hdr TO lt_hdrs.
-            ENDIF.
-        ENDCASE.
-        lv_i += 1.
-      ENDWHILE.
-
-      CLEAR lv_block_active.
-      lv_hdr_cnt = lines( lt_hdrs ).
-      lv_h = 1.
-
-      WHILE lv_h < lv_hdr_cnt.
-        DATA(ls_hdr_cur)  = lt_hdrs[ lv_h ].
-        DATA(ls_hdr_next) = lt_hdrs[ lv_h + 1 ].
-        CLEAR: lv_branch_active, lv_scan_inner.
-        lv_scan = ls_hdr_cur-tabix + 1.
-
-        WHILE lv_scan < ls_hdr_next-tabix.
-          READ TABLE ct_results INDEX lv_scan ASSIGNING FIELD-SYMBOL(<scan_ln>).
-          IF sy-subrc <> 0. EXIT. ENDIF.
-          CASE <scan_ln>-cond.
-            WHEN 'IF' OR 'CASE'.
-              lv_scan_inner += 1.
-            WHEN 'ENDIF' OR 'ENDCASE'.
-              lv_scan_inner -= 1.
-            WHEN OTHERS.
-              IF lv_scan_inner = 0 AND <scan_ln>-active_root = abap_true.
-                lv_branch_active = abap_true.
-              ENDIF.
-          ENDCASE.
-          IF lv_branch_active = abap_true. EXIT. ENDIF.
-          lv_scan += 1.
-        ENDWHILE.
-
-        ASSIGN ct_results[ ls_hdr_cur-tabix ] TO FIELD-SYMBOL(<hdr_ln>).
-        IF sy-subrc = 0.
-          IF lv_branch_active = abap_true.
-            <hdr_ln>-active_root = abap_true.
-            lv_block_active = abap_true.
-          ELSE.
-            CLEAR <hdr_ln>-active_root.
-          ENDIF.
-        ENDIF.
-        lv_h += 1.
-      ENDWHILE.
-
-      ASSIGN ct_results[ lv_end_i ] TO FIELD-SYMBOL(<endif_ln>).
-      IF sy-subrc = 0.
-        <endif_ln>-active_root = lv_block_active.
-      ENDIF.
-
-      ASSIGN ct_results[ lv_if_i ] TO FIELD-SYMBOL(<if_ln>).
-      IF sy-subrc = 0.
-        IF lv_block_active = abap_false.
-          CLEAR <if_ln>-active_root.
-        ELSE.
-          <if_ln>-active_root = abap_true.
-        ENDIF.
-      ENDIF.
-    ENDLOOP.
-  ENDMETHOD.
-
-
   method GET_CODE_MIX.
       DATA: flow_lines TYPE sci_include,
             splits     TYPE TABLE OF string,
@@ -1381,7 +1387,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         i_icon = CONV #( icon_folder )
         i_tree = VALUE #( ) ).
 
-      " ---- Enhancements ----
       LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh).
         LOOP AT prog_enh-tt_enh_blocks INTO DATA(enh_blk).
           IF enh_rel IS INITIAL.
@@ -1401,7 +1406,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDLOOP.
       ENDLOOP.
 
-      " ---- Global Vars — always lazy ----
       DATA(lv_gvar_cnt) = 0.
       LOOP AT mo_window->ms_sources-t_vars INTO DATA(var)
         WHERE program = mo_window->m_prg-program AND eventtype IS INITIAL AND class IS INITIAL.
@@ -1416,7 +1420,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         APPEND globals_rel TO mo_tree_local->mt_lazy_nodes.
       ENDIF.
 
-      " ---- Events ----
       READ TABLE mt_steps INDEX 1 INTO DATA(first_step).
       IF first_step-line IS NOT INITIAL AND first_step-program = mo_window->m_prg-program.
         events_rel = mo_tree_local->add_node(
@@ -1441,7 +1444,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
           i_tree = VALUE #( include = event-include value = event-line ) ).
       ENDLOOP.
 
-      " ---- Function Modules ----
       LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog) WHERE program+0(4) = 'SAPL'.
         DATA: fname              TYPE rs38l_fnam,
               exception_list     TYPE TABLE OF rsexc,
@@ -1479,7 +1481,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
-      " ---- Local Classes + Interfaces ----
       IF lines( splits_prg ) = 1.
         DATA(lv_cls_cnt)  = 0.
         DATA(lv_intf_cnt) = 0.
@@ -1522,7 +1523,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      " ---- Main class hierarchy ----
       IF class_rel IS INITIAL.
         classes_rel = class_rel = mo_tree_local->main_node_key.
       ENDIF.
@@ -1541,7 +1541,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDDO.
       classes_rel = class_rel = mo_tree_local->main_node_key.
 
-      " ---- Subroutines ----
       DATA(lv_form_cnt) = 0.
       DATA(lv_mod_cnt)  = 0.
       LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs2).
@@ -1567,7 +1566,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
               i_rel  = forms_rel
               i_tree = VALUE #( kind = 'M' value = keyword-v_line include = subs2-include
                                 program = subs2-program ev_type = subs2-eventtype ev_name = subs2-eventname ) ).
-            " ---- Parameters first ----
             LOOP AT mo_window->ms_sources-t_params INTO DATA(param)
               WHERE event = 'FORM' AND name = subs2-eventname AND param IS NOT INITIAL.
               CASE param-type.
@@ -1578,7 +1576,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
               mo_tree_local->add_node( i_name = param-param i_icon = icon i_rel = event_node
                 i_tree = VALUE #( param = param-param ) ).
             ENDLOOP.
-            " ---- Local Vars for FORM (lazy) — after params ----
             DATA(lv_form_var_cnt) = 0.
             LOOP AT mo_window->ms_sources-t_vars INTO DATA(form_var)
               WHERE program = subs2-program AND eventtype = 'FORM' AND eventname = subs2-eventname.
@@ -1603,7 +1600,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      " ---- Modules ----
       IF lv_mod_cnt > 0.
         IF lv_mod_cnt <= c_lazy_threshold.
           LOOP AT mo_window->ms_sources-tt_calls_line INTO subs2
