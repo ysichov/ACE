@@ -5,6 +5,7 @@ CLASS zcl_ace_parse_vars DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ace_stmt_handler.
 
+protected section.
   PRIVATE SECTION.
     DATA mv_class_name TYPE string.
     DATA mv_eventtype  TYPE string.
@@ -40,38 +41,42 @@ CLASS ZCL_ACE_PARSE_VARS IMPLEMENTATION.
     CHECK sy-subrc = 0.
     DATA(lv_kw) = kw_tok-str.
 
+
     " --- Context tracking ---
-    CASE lv_kw.
-      WHEN 'CLASS'.
-        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(tok2).
-        IF sy-subrc = 0. mv_class_name = tok2-str. ENDIF.
-        LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(ctok).
-          IF ctok-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. EXIT. ENDIF.
-        ENDLOOP.
-        RETURN.
-      WHEN 'ENDCLASS'.
-        CLEAR: mv_class_name, mv_eventtype, mv_eventname, mv_in_impl.
-        RETURN.
-      WHEN 'METHOD'.
-        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
-        IF sy-subrc = 0. mv_eventtype = 'METHOD'. mv_eventname = tok2-str. ENDIF.
-        RETURN.
-      WHEN 'FORM'.
-        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
-        IF sy-subrc = 0. mv_eventtype = 'FORM'. mv_eventname = tok2-str. ENDIF.
-        RETURN.
-      WHEN 'MODULE'.
-        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
-        IF sy-subrc = 0. mv_eventtype = 'MODULE'. mv_eventname = tok2-str. ENDIF.
-        RETURN.
-      WHEN 'FUNCTION'.
-        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
-        IF sy-subrc = 0. mv_eventtype = 'FUNCTION'. mv_eventname = tok2-str. ENDIF.
-        RETURN.
-      WHEN 'ENDMETHOD' OR 'ENDFORM' OR 'ENDMODULE' OR 'ENDFUNCTION'.
-        CLEAR: mv_eventtype, mv_eventname.
-        RETURN.
-    ENDCASE.
+    mv_class_name = i_class.
+    mv_eventname = i_ev_name.
+    mv_eventtype = i_evtype.
+*    CASE lv_kw.
+*      WHEN 'CLASS'.
+*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(tok2).
+*        IF sy-subrc = 0. mv_class_name = tok2-str. ENDIF.
+*        LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(ctok).
+*          IF ctok-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. EXIT. ENDIF.
+*        ENDLOOP.
+*        RETURN.
+*      WHEN 'ENDCLASS'.
+*        CLEAR: mv_class_name, mv_eventtype, mv_eventname, mv_in_impl.
+*        RETURN.
+*      WHEN 'METHOD'.
+*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
+*        IF sy-subrc = 0. mv_eventtype = 'METHOD'. mv_eventname = tok2-str. ENDIF.
+*        RETURN.
+*      WHEN 'FORM'.
+*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
+*        IF sy-subrc = 0. mv_eventtype = 'FORM'. mv_eventname = tok2-str. ENDIF.
+*        RETURN.
+*      WHEN 'MODULE'.
+*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
+*        IF sy-subrc = 0. mv_eventtype = 'MODULE'. mv_eventname = tok2-str. ENDIF.
+*        RETURN.
+*      WHEN 'FUNCTION'.
+*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
+*        IF sy-subrc = 0. mv_eventtype = 'FUNCTION'. mv_eventname = tok2-str. ENDIF.
+*        RETURN.
+*      WHEN 'ENDMETHOD' OR 'ENDFORM' OR 'ENDMODULE' OR 'ENDFUNCTION'.
+*        CLEAR: mv_eventtype, mv_eventname.
+*        RETURN.
+*    ENDCASE.
 
     " Inside a class definition (not IMPLEMENTATION)
     " — обрабатываем только DATA/CLASS-DATA как атрибуты класса

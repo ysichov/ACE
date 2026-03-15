@@ -5,6 +5,7 @@ CLASS zcl_ace_parse_calls DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ace_stmt_handler.
 
+protected section.
   PRIVATE SECTION.
 
     DATA mv_class_name TYPE string.
@@ -381,6 +382,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       ENDIF.
 
       lv_c-bindings = lt_bind.
+
       APPEND lv_c TO ct_calls.
       lv_ti += 1.
     ENDWHILE.
@@ -565,13 +567,13 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
 
     LOOP AT cs_source-tt_progs ASSIGNING FIELD-SYMBOL(<prog>)
       WHERE include = i_include.
-      READ TABLE <prog>-t_keywords with key index =  i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw>).
+      READ TABLE <prog>-t_keywords with key index =  i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw>) BINARY SEARCH.
       IF sy-subrc = 0.
         LOOP AT lt_new_calls INTO DATA(ls_nc).
           READ TABLE <kw>-tt_calls WITH KEY event = ls_nc-event
                                             name  = ls_nc-name
                                             class = ls_nc-class
-            TRANSPORTING NO FIELDS.
+            TRANSPORTING NO FIELDS BINARY SEARCH.
           IF sy-subrc <> 0.
             APPEND ls_nc TO <kw>-tt_calls.
           ENDIF.

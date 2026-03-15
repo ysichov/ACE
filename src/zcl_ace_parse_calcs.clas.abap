@@ -5,6 +5,7 @@ CLASS zcl_ace_parse_calcs DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ace_stmt_handler.
 
+protected section.
   PRIVATE SECTION.
     DATA mv_eventtype TYPE string.
     DATA mv_eventname TYPE string.
@@ -32,7 +33,9 @@ CLASS zcl_ace_parse_calcs DEFINITION
 ENDCLASS.
 
 
-CLASS zcl_ace_parse_calcs IMPLEMENTATION.
+
+CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
+
 
   METHOD zif_ace_stmt_handler~handle.
     CHECK i_stmt_idx > 0.
@@ -42,44 +45,46 @@ CLASS zcl_ace_parse_calcs IMPLEMENTATION.
     READ TABLE io_scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw).
     CHECK sy-subrc = 0.
 
+
+
     " ── Контекст ─────────────────────────────────────────────────
-    CASE ls_kw-str.
-      WHEN 'CLASS'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_n).
-        IF sy-subrc = 0. mv_class = ls_n-str. ENDIF.
-        LOOP AT io_scan->tokens FROM ls_stmt-from TO ls_stmt-to INTO DATA(ls_ct).
-          IF ls_ct-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. EXIT. ENDIF.
-        ENDLOOP.
-        RETURN.
-      WHEN 'ENDCLASS'.
-        CLEAR: mv_class, mv_in_impl, mv_eventtype, mv_eventname. RETURN.
-      WHEN 'METHOD'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
-        IF sy-subrc = 0. mv_eventtype = 'METHOD'. mv_eventname = ls_n-str. ENDIF.
-        RETURN.
-      WHEN 'ENDMETHOD'. CLEAR: mv_eventtype, mv_eventname. RETURN.
-      WHEN 'FORM'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
-        IF sy-subrc = 0. mv_eventtype = 'FORM'. mv_eventname = ls_n-str. ENDIF.
-        RETURN.
-      WHEN 'ENDFORM'. CLEAR: mv_eventtype, mv_eventname. RETURN.
-      WHEN 'FUNCTION'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
-        IF sy-subrc = 0.
-          mv_eventtype = 'FUNCTION'. mv_eventname = ls_n-str.
-          REPLACE ALL OCCURRENCES OF '''' IN mv_eventname WITH ''.
-        ENDIF.
-        RETURN.
-      WHEN 'ENDFUNCTION'. CLEAR: mv_eventtype, mv_eventname. RETURN.
-      WHEN 'MODULE'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
-        IF sy-subrc = 0. mv_eventtype = 'MODULE'. mv_eventname = ls_n-str. ENDIF.
-        RETURN.
-      WHEN 'ENDMODULE'. CLEAR: mv_eventtype, mv_eventname. RETURN.
-    ENDCASE.
+*    CASE ls_kw-str.
+*      WHEN 'CLASS'.
+*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_n).
+*        IF sy-subrc = 0. mv_class = ls_n-str. ENDIF.
+*        LOOP AT io_scan->tokens FROM ls_stmt-from TO ls_stmt-to INTO DATA(ls_ct).
+*          IF ls_ct-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. EXIT. ENDIF.
+*        ENDLOOP.
+*        RETURN.
+*      WHEN 'ENDCLASS'.
+*        CLEAR: mv_class, mv_in_impl, mv_eventtype, mv_eventname. RETURN.
+*      WHEN 'METHOD'.
+*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
+*        IF sy-subrc = 0. mv_eventtype = 'METHOD'. mv_eventname = ls_n-str. ENDIF.
+*        RETURN.
+*      WHEN 'ENDMETHOD'. CLEAR: mv_eventtype, mv_eventname. RETURN.
+*      WHEN 'FORM'.
+*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
+*        IF sy-subrc = 0. mv_eventtype = 'FORM'. mv_eventname = ls_n-str. ENDIF.
+*        RETURN.
+*      WHEN 'ENDFORM'. CLEAR: mv_eventtype, mv_eventname. RETURN.
+*      WHEN 'FUNCTION'.
+*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
+*        IF sy-subrc = 0.
+*          mv_eventtype = 'FUNCTION'. mv_eventname = ls_n-str.
+*          REPLACE ALL OCCURRENCES OF '''' IN mv_eventname WITH ''.
+*        ENDIF.
+*        RETURN.
+*      WHEN 'ENDFUNCTION'. CLEAR: mv_eventtype, mv_eventname. RETURN.
+*      WHEN 'MODULE'.
+*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
+*        IF sy-subrc = 0. mv_eventtype = 'MODULE'. mv_eventname = ls_n-str. ENDIF.
+*        RETURN.
+*      WHEN 'ENDMODULE'. CLEAR: mv_eventtype, mv_eventname. RETURN.
+*    ENDCASE.
 
     " ── Только COMPUTE (тип C и D) ───────────────────────────────
-    CHECK ls_stmt-type = 'C' OR ls_stmt-type = 'D'.
+    "CHECK ls_stmt-type = 'C' OR ls_stmt-type = 'D'.
 
     DATA(lv_line) = ls_kw-row.
 
@@ -236,6 +241,7 @@ CLASS zcl_ace_parse_calcs IMPLEMENTATION.
     APPEND VALUE zcl_ace=>ts_var(
       program = i_program include = i_include line = i_line name = i_name )
       TO cs_source-t_calculated.
+
   ENDMETHOD.
 
 
@@ -244,6 +250,6 @@ CLASS zcl_ace_parse_calcs IMPLEMENTATION.
     APPEND VALUE zcl_ace=>ts_var(
       program = i_program include = i_include line = i_line name = i_name )
       TO cs_source-t_composed.
-  ENDMETHOD.
 
+  ENDMETHOD.
 ENDCLASS.

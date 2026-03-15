@@ -34,7 +34,10 @@ private section.
     changing  !CS_SOURCE TYPE zcl_ace_window=>ts_source .
 ENDCLASS.
 
+
+
 CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
+
 
   METHOD get_meth_type.
     DATA(lv_s)   = condense( val = CONV string( i_include ) ).
@@ -52,6 +55,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
       rv_type = mv_meth_type.
     ENDIF.
   ENDMETHOD.
+
 
   METHOD on_class_kw.
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
@@ -71,6 +75,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
       ENDLOOP.
     ENDIF.
   ENDMETHOD.
+
 
   METHOD on_methods_sig.
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
@@ -105,6 +110,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     <cl>-def_line    = lv_line.
     <cl>-index       = i_stmt_idx.
   ENDMETHOD.
+
 
   METHOD on_block_start.
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
@@ -159,6 +165,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
+
   METHOD zif_ace_stmt_handler~handle.
     CHECK i_stmt_idx > 0.
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
@@ -166,27 +173,31 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     READ TABLE io_scan->tokens INDEX stmt-from INTO DATA(kw_tok).
     CHECK sy-subrc = 0.
     DATA(lv_kw) = kw_tok-str.
+
+
+     mv_class_name = i_class.
+
     CASE lv_kw.
-      WHEN 'CLASS' OR 'INTERFACE'.
-        on_class_kw( io_scan = io_scan i_stmt_idx = i_stmt_idx i_kw = lv_kw ).
-        IF lv_kw = 'CLASS' AND mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
-          READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING FIELD-SYMBOL(<cd>).
-          IF sy-subrc = 0.
-            <cd>-super = mv_super_name.
-          ELSE.
-            APPEND VALUE zcl_ace_window=>ts_class_def( class = mv_class_name super = mv_super_name )
-              TO cs_source-tt_class_defs.
-          ENDIF.
-        ENDIF.
+*      WHEN 'CLASS' OR 'INTERFACE'.
+*        on_class_kw( io_scan = io_scan i_stmt_idx = i_stmt_idx i_kw = lv_kw ).
+*        IF lv_kw = 'CLASS' AND mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
+*          READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING FIELD-SYMBOL(<cd>).
+*          IF sy-subrc = 0.
+*            <cd>-super = mv_super_name.
+*          ELSE.
+*            APPEND VALUE zcl_ace_window=>ts_class_def( class = mv_class_name super = mv_super_name )
+*              TO cs_source-tt_class_defs.
+*          ENDIF.
+*        ENDIF.
       WHEN 'PUBLIC'.
         IF mv_in_impl = abap_false. mv_meth_type = 1. ENDIF.
       WHEN 'PROTECTED'.
         IF mv_in_impl = abap_false. mv_meth_type = 2. ENDIF.
       WHEN 'PRIVATE'.
         IF mv_in_impl = abap_false. mv_meth_type = 3. ENDIF.
-      WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
-        CLEAR: mv_class_name, mv_super_name, mv_in_impl, mv_is_intf, mv_meth_type.
-        CLEAR mt_meth_defs.
+*      WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
+*        CLEAR: mv_class_name, mv_super_name, mv_in_impl, mv_is_intf, mv_meth_type.
+*        CLEAR mt_meth_defs.
       WHEN 'METHODS' OR 'CLASS-METHODS'.
         IF mv_in_impl = abap_false.
           on_methods_sig( EXPORTING io_scan = io_scan i_stmt_idx = i_stmt_idx
@@ -199,5 +210,4 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
                         CHANGING  cs_source = cs_source ).
     ENDCASE.
   ENDMETHOD.
-
 ENDCLASS.

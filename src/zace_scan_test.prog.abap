@@ -19,20 +19,20 @@ CLASS lcl_demo IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD run.
-    "DATA lo TYPE REF TO lcl_demo.
-*    mo_ref = NEW lcl_demo( ).
-*    "lo->run( iv_i = 1 ).
-*    me->run( iv_i = 2 ).
-*   " lcl_demo=>cls_meth( ).
-*    PERFORM my_form USING 42.
-*    CALL FUNCTION 'POPUP_TO_CONFIRM'.
-    "CALL METHOD lo->run( iv_i = 3 ).
+    DATA lo TYPE REF TO lcl_demo.
+    mo_ref = NEW lcl_demo( ).
+    lo->run( iv_i = 1 ).
+    me->run( iv_i = 2 ).
+   lcl_demo=>cls_meth( ).
+    PERFORM my_form USING 42.
+    CALL FUNCTION 'POPUP_TO_CONFIRM'.
+    CALL METHOD lo->run( iv_i = 3 ).
   ENDMETHOD.
 ENDCLASS.
 
 FORM my_form USING p_val TYPE i.
   DATA a TYPE i.
-  a = p_val.
+  a = p_val + 6.
 ENDFORM.
 
 START-OF-SELECTION.

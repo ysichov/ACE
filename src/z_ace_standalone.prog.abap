@@ -7514,14 +7514,13 @@ CLASS zcl_ace_parse_calls IMPLEMENTATION.
     " READ TABLE INDEX i_stmt_idx is O(1) — no scan needed.
     LOOP AT cs_source-tt_progs ASSIGNING FIELD-SYMBOL(<prog>)
       WHERE include = i_include.
-      READ TABLE <prog>-t_keywords INDEX i_stmt_idx
-        ASSIGNING FIELD-SYMBOL(<kw>).
+      READ TABLE <prog>-t_keywords with key index =  i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw>) BINARY SEARCH.
       IF sy-subrc = 0.
         LOOP AT lt_new_calls INTO DATA(ls_nc).
           READ TABLE <kw>-tt_calls WITH KEY event = ls_nc-event
                                             name  = ls_nc-name
                                             class = ls_nc-class
-            TRANSPORTING NO FIELDS.
+            TRANSPORTING NO FIELDS BINARY SEARCH.
           IF sy-subrc <> 0.
             APPEND ls_nc TO <kw>-tt_calls.
           ENDIF.
@@ -9192,7 +9191,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       mo_window->set_program_line( 1 ).
 
       SORT mo_window->ms_sources-t_params BY class event type DESCENDING param ASCENDING.
-      SORT mo_window->ms_sources-tt_progs BY stack program.
+      "SORT mo_window->ms_sources-tt_progs BY stack program.
       DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
 
       mo_window->show_stack( ).

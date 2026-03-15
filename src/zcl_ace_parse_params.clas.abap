@@ -5,6 +5,7 @@ CLASS zcl_ace_parse_params DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ace_stmt_handler.
 
+protected section.
   PRIVATE SECTION.
 
     DATA mv_class_name TYPE string.
@@ -36,25 +37,26 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
     READ TABLE io_scan->tokens INDEX stmt-from INTO DATA(kw_tok).
     CHECK sy-subrc = 0.
 
+     mv_class_name = i_class.
     CASE kw_tok-str.
 
-      WHEN 'CLASS' OR 'INTERFACE'.
-        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(name_tok).
-        IF sy-subrc = 0.
-          mv_class_name = name_tok-str.
-          mv_in_impl    = abap_false.
-          IF kw_tok-str = 'CLASS'.
-            LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(tok).
-              IF tok-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. RETURN. ENDIF.
-            ENDLOOP.
-          ENDIF.
-        ENDIF.
+*      WHEN 'CLASS' OR 'INTERFACE'.
+*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(name_tok).
+*        IF sy-subrc = 0.
+*          mv_class_name = name_tok-str.
+*          mv_in_impl    = abap_false.
+*          IF kw_tok-str = 'CLASS'.
+*            LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(tok).
+*              IF tok-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. RETURN. ENDIF.
+*            ENDLOOP.
+*          ENDIF.
+*        ENDIF.
 
-      WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
-        CLEAR: mv_class_name, mv_in_impl.
+*      WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
+*        CLEAR: mv_class_name, mv_in_impl.
 
       WHEN 'METHODS' OR 'CLASS-METHODS'.
-        IF mv_in_impl = abap_false.
+        "IF mv_in_impl = abap_false.
           parse_methods_stmt(
             EXPORTING io_scan    = io_scan
                       i_stmt_idx = i_stmt_idx
@@ -62,7 +64,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                       i_include  = i_include
                       i_kw       = kw_tok-str
             CHANGING  cs_source  = cs_source ).
-        ENDIF.
+        "ENDIF.
 
       WHEN 'FORM'.
         parse_methods_stmt(
@@ -131,6 +133,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                         WHEN 'RETURNING'             THEN 'R'
                         ELSE 'I' )
             param   = lv_pname   line = tok-row ).
+
           APPEND ls_param TO cs_source-t_params.
 
 *          ls_var2 = VALUE #(
