@@ -66,7 +66,7 @@ public section.
   types:
     tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY.
    types:
-    tt_params     TYPE STANDARD TABLE OF zcl_ace=>ts_params WITH EMPTY KEY .
+    tt_params     TYPE SORTED TABLE OF zcl_ace=>ts_params WITH UNIQUE KEY program include class event name param  .
 
   types:
     BEGIN OF ts_meta,
@@ -795,8 +795,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       show_parse_time( lv_ts1 ).
     ENDIF.
 
-    SORT ms_sources-t_params.
-    DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
+  "  DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
     IF mo_viewer->m_step IS INITIAL.
       zcl_ace_source_parser=>code_execution_scanner(
         i_program = lv_parse_include i_include = lv_parse_include io_debugger = mo_viewer ).

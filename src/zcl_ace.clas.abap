@@ -246,8 +246,8 @@ CLASS zcl_ace DEFINITION
         class     TYPE string,
         event     TYPE string,
         name      TYPE string,
-        type      TYPE char1,
         param     TYPE string,
+        type      TYPE char1,
         preferred TYPE char1,
         line      TYPE i,
       END OF ts_params .
@@ -1387,7 +1387,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDIF.
       mo_window->set_program_line( 1 ).
 
-      SORT mo_window->ms_sources-t_params BY class event type DESCENDING param ASCENDING.
+      "SORT mo_window->ms_sources-t_params BY class event type DESCENDING param ASCENDING.
       "SORT mo_window->ms_sources-tt_progs BY stack program.
       DELETE mo_window->ms_sources-tt_progs WHERE t_keywords IS INITIAL.
 

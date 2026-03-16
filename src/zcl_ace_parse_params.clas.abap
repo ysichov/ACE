@@ -136,7 +136,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                         ELSE 'I' )
             param   = lv_pname   line = tok-row ).
 
-          APPEND ls_param TO lt_params. "cs_source-t_params.
+          INSERT ls_param INTO table lt_params. "cs_source-t_params.
 
         ENDIF.
         lv_tok_idx += 1.
@@ -164,7 +164,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                           WHEN 'RETURNING'             THEN 'R'
                           ELSE 'I' )
               param   = lv_pname   line = tok-row ).
-            APPEND ls_param TO lt_params. "cs_source-t_params.
+            INSERT ls_param INTO table lt_params. "cs_source-t_params.
           ENDIF.
           lv_section = lv_str.
           CLEAR: lv_pname, lv_ptype, lv_ref, lv_after_type.
@@ -183,7 +183,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                           WHEN 'RETURNING'             THEN 'R'
                           ELSE 'I' )
               param   = lv_pname   line = tok-row ).
-            APPEND ls_param TO lt_params. "cs_source-t_params.
+            INSERT ls_param INTO table lt_params. "cs_source-t_params.
           ENDIF.
           CLEAR: lv_section, lv_pname, lv_ptype, lv_ref, lv_after_type.
 
@@ -218,7 +218,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                           WHEN 'RETURNING'             THEN 'R'
                           ELSE 'I' )
               param   = lv_pname   line = tok-row ).
-            APPEND ls_param TO lt_params. "cs_source-t_params.
+            INSERT ls_param INTO table lt_params. "cs_source-t_params.
             CLEAR: lv_pname, lv_ptype, lv_ref, lv_after_type.
           ENDIF.
           lv_skip_next = abap_true.
@@ -249,7 +249,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                             WHEN 'RETURNING'             THEN 'R'
                             ELSE 'I' )
                 param   = lv_pname   line = tok-row ).
-              APPEND ls_param TO lt_params. "cs_source-t_params.
+             INSERT ls_param INTO table lt_params. "cs_source-t_params.
 
             ENDIF.
             lv_pname = lv_str+1.
@@ -301,7 +301,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                     WHEN 'RETURNING'             THEN 'R'
                     ELSE 'I' )
         param   = lv_pname   line = lv_last_row ).
-      APPEND ls_param TO lt_params. "cs_source-t_params.
+      INSERT ls_param INTO TABLE lt_params. "cs_source-t_params.
     ENDIF.
 
     " PREFERRED PARAMETER стоит в конце объявления — после того как все
@@ -311,20 +311,11 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
       IF sy-subrc = 0.
         <fp>-preferred = 'X'.
       ENDIF.
-*      DATA(lv_ev_type) = COND string( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' ).
-*      LOOP AT cs_source-t_params ASSIGNING FIELD-SYMBOL(<fp>)
-*        WHERE program = i_program
-*          AND class   = mv_class_name
-*          AND event   = lv_ev_type
-*          AND name    = lv_ev_name
-*          AND param   = lv_preferred.
       <fp>-preferred = 'X'.
-*        EXIT.
-*      ENDLOOP.
     ENDIF.
 
     LOOP AT lt_params into ls_param.
-      APPEND ls_param TO cs_source-t_params.
+      INSERT ls_param INTO TABLE cs_source-t_params.
     ENDLOOP.
 
   ENDMETHOD.

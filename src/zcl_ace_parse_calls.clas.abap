@@ -356,8 +356,12 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       IF lv_pos = abap_true AND lv_single IS NOT INITIAL.
         CLEAR lv_pref.
         LOOP AT cs_source-t_params INTO DATA(ls_pm)
-          WHERE class = lv_call_cls AND event = 'METHOD'
-            AND name = lv_c-name   AND type  = 'I'.
+          WHERE program = i_program
+            and include = i_program
+            and class = lv_call_cls
+            AND event = 'METHOD'
+            AND name = lv_c-name
+            AND type  = 'I'.
           IF ls_pm-preferred = 'X' OR lv_pref IS INITIAL. lv_pref = ls_pm-param. ENDIF.
           IF ls_pm-preferred = 'X'. EXIT. ENDIF.
         ENDLOOP.
