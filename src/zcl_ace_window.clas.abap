@@ -64,19 +64,10 @@ public section.
   types:
     tt_events     TYPE STANDARD TABLE OF ts_event WITH EMPTY KEY .
   types:
-    tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY .
-  types:
-    BEGIN OF ts_params,
-               program   TYPE program,
-               include   TYPE program,
-               class     TYPE string,
-               event     TYPE string,
-               name      TYPE string,
-               type      TYPE char1,
-               param     TYPE string,
-               preferred TYPE char1,
-               line      TYPE i,
-             END OF ts_params .
+    tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY.
+   types:
+    tt_params     TYPE STANDARD TABLE OF zcl_ace=>ts_params WITH EMPTY KEY .
+
   types:
     BEGIN OF ts_meta,
                clsname    TYPE seoclsname,
@@ -84,8 +75,7 @@ public section.
                reltype    TYPE seoreltype,
                node       TYPE salv_de_node_key,
              END OF ts_meta .
-  types:
-    tt_params TYPE STANDARD TABLE OF ts_params WITH KEY class event name type param .
+
   types:
     BEGIN OF ts_int_tabs,
                eventtype TYPE string,
@@ -234,7 +224,7 @@ public section.
     mt_source              TYPE STANDARD  TABLE OF ts_source .
   data MS_SOURCES type TS_SOURCE .
   data:
-    mt_params              TYPE STANDARD  TABLE OF ts_params .
+    mt_params              TYPE STANDARD  TABLE OF ZCL_ACE=>ts_params .
   data:
     mt_locals_set          TYPE STANDARD TABLE OF ts_locals .
   data:

@@ -877,7 +877,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       FIELD-SYMBOLS: <s_token> TYPE ZCL_ACE=>ts_kword,
                      <call>    TYPE ZCL_ACE=>ts_calls.
       DATA: call  TYPE ZCL_ACE=>ts_calls,
-            param TYPE ZCL_ACE_WINDOW=>ts_params,
+            param TYPE ZCL_ACE=>ts_params,
             index TYPE i.
 
       LOOP AT ct_tokens ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
@@ -2124,7 +2124,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             cs_state-variable-program = i_program.
             cs_state-variable-include = i_include.
             cs_state-variable-class = cs_state-class_name.
-            APPEND cs_state-variable TO io_debugger->mo_window->ms_sources-t_vars.
+            INSERT cs_state-variable INTO TABLE io_debugger->mo_window->ms_sources-t_vars.
           ENDIF.
           IF cs_state-kw = 'SELECT-OPTIONS' AND cs_state-prev = 'FOR'.
             cs_state-variable-name = cs_state-tab-name.
@@ -2134,7 +2134,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             cs_state-variable-program = i_program.
             cs_state-variable-include = i_include.
             cs_state-variable-class = cs_state-class_name.
-            APPEND cs_state-variable TO io_debugger->mo_window->ms_sources-t_vars.
+            INSERT cs_state-variable INTO TABLE io_debugger->mo_window->ms_sources-t_vars.
           ENDIF.
           IF ( cs_state-prev = 'OF' ) AND temp <> 'TABLE' AND temp <> 'OF'.
             cs_state-tab-type = temp.
@@ -2143,7 +2143,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             cs_state-variable-type = cs_state-tab-type.
             cs_state-variable-line = l_token_row.
             cs_state-variable-icon = icon_table_settings.
-            APPEND cs_state-variable TO io_debugger->mo_window->ms_sources-t_vars.
+            INSERT cs_state-variable INTO TABLE io_debugger->mo_window->ms_sources-t_vars.
           ENDIF.
           IF ( cs_state-prev = 'TYPE' ) AND temp <> 'TABLE' AND temp <> 'OF'.
             cs_state-variable-name = cs_state-tab-name.
@@ -2172,7 +2172,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             cs_state-variable-program = i_program.
             cs_state-variable-include = i_include.
             cs_state-variable-class = cs_state-class_name.
-            APPEND cs_state-variable TO io_debugger->mo_window->ms_sources-t_vars.
+            INSERT cs_state-variable INTO TABLE io_debugger->mo_window->ms_sources-t_vars.
           ENDIF.
 
         WHEN 'COMPUTE'.
