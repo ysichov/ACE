@@ -48,34 +48,13 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     DATA lt_pass1_hdl TYPE TABLE OF REF TO zif_ace_stmt_handler WITH EMPTY KEY.
 
 
-*    LOOP AT VALUE string_table(
-**           ( `CLASS` ) ( `INTERFACE` ) "( `ENDCLASS` )
-**       ( `ENDINTERFACE` )
-*           ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` )
-*           ( `METHODS` ) ( `CLASS-METHODS` )
-*           ( `FORM` ) ( `METHOD` ) ( `MODULE` ) ( `FUNCTION` )
-*         ) INTO DATA(lv_kw).
-*      APPEND lv_kw TO lt_pass1.  "APPEND lo_calls_line TO lt_pass1_hdl.
-*    ENDLOOP.
-
-*    LOOP AT VALUE string_table(
-*           ( `CLASS` ) "( `ENDCLASS` )
-*           ( `METHOD` ) "( `ENDMETHOD` )
-*       ( `FORM` ) ( `ENDFORM` )
-*           ( `MODULE` ) "( `ENDMODULE` )
-*       ( `FUNCTION` ) "( `ENDFUNCTION` )
-*           ( `DATA` ) ( `CLASS-DATA` ) ( `PARAMETERS` ) ( `SELECT-OPTIONS` )
-*         ) INTO lv_kw.
-*      APPEND lv_kw TO lt_pass1.  APPEND lo_vars TO lt_pass1_hdl.
-*    ENDLOOP.
-
     DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-    INSERT `CLASS`              INTO TABLE lt_pass2.
-    INSERT `INTERFACE`          INTO TABLE lt_pass2.
-    INSERT `METHOD`             INTO TABLE lt_pass2.
-    INSERT `FORM`               INTO TABLE lt_pass2.
-    INSERT `FUNCTION`           INTO TABLE lt_pass2.
-    INSERT `MODULE`             INTO TABLE lt_pass2.
+*    INSERT `CLASS`              INTO TABLE lt_pass2.
+*    INSERT `INTERFACE`          INTO TABLE lt_pass2.
+*    INSERT `METHOD`             INTO TABLE lt_pass2.
+*    INSERT `FORM`               INTO TABLE lt_pass2.
+*    INSERT `FUNCTION`           INTO TABLE lt_pass2.
+*    INSERT `MODULE`             INTO TABLE lt_pass2.
     INSERT `PERFORM`            INTO TABLE lt_pass2.
     INSERT `CALL FUNCTION`      INTO TABLE lt_pass2.
     INSERT `CALL METHOD`        INTO TABLE lt_pass2.
@@ -83,8 +62,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     INSERT `COMPUTE`            INTO TABLE lt_pass2.
 
     DATA lt_params_kws TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-*    INSERT `CLASS`         INTO TABLE lt_params_kws.
-*    INSERT `INTERFACE`     INTO TABLE lt_params_kws.
     INSERT `METHODS`       INTO TABLE lt_params_kws.
     INSERT `CLASS-METHODS` INTO TABLE lt_params_kws.
     INSERT `FORM`          INTO TABLE lt_params_kws.
@@ -166,11 +143,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
       ENDIF.
 
-      "LOOP AT lt_pass1 INTO DATA(lv_p1_kw).
-        "DATA(lv_p1_idx) = sy-tabix.
-        "IF lv_p1_kw = lv_eff_kw.
-          "READ TABLE lt_pass1 with key  INDEX lv_p1_idx INTO DATA(lo_h).
-          "IF sy-subrc = 0.
             IF lv_eff_kw =  'PUBLIC' or lv_eff_kw =  'PROTECTED' or lv_eff_kw = 'PRIVATE'
            or lv_eff_kw = 'METHODS' or lv_eff_kw = 'CLASS-METHODS'
            or lv_eff_kw = 'FORM' or lv_eff_kw = `METHOD` or lv_eff_kw = `MODULE` or lv_eff_kw = 'FUNCTION'.
@@ -184,8 +156,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
               CHANGING
                 cs_source  = cs_source ).
           ENDIF.
-        "ENDIF.
-      "ENDLOOP.
 
       IF lv_eff_kw = 'DATA' OR lv_eff_kw =  'CLASS-DATA' OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'.
         lo_vars->handle(

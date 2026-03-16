@@ -82,6 +82,8 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
 
   METHOD parse_methods_stmt.
 
+    DATA: lt_params LIKE cs_source-t_params.
+
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
     CHECK sy-subrc = 0.
 
@@ -110,7 +112,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
 
     " --- локальный хелпер: добавить текущий параметр в обе таблицы ---
     DATA: ls_param TYPE zcl_ace_window=>ts_params.
-          "ls_var2  TYPE zcl_ace_window=>ts_var2.
+    "ls_var2  TYPE zcl_ace_window=>ts_var2.
 
     WHILE lv_tok_idx <= stmt-to.
       READ TABLE io_scan->tokens INDEX lv_tok_idx INTO DATA(tok).
@@ -134,23 +136,8 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                         ELSE 'I' )
             param   = lv_pname   line = tok-row ).
 
-          APPEND ls_param TO cs_source-t_params.
+          APPEND ls_param TO lt_params. "cs_source-t_params.
 
-*          ls_var2 = VALUE #(
-*            program   = i_program   include   = i_include
-*            class     = mv_class_name
-*            eventtype = COND #( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' )
-*            eventname = lv_ev_name
-*            section   = lv_section
-*            line      = tok-row
-*            name      = lv_pname
-*            type      = lv_ptype ).
-*          READ TABLE cs_source-tt_vars2 WITH KEY
-*            program   = ls_var2-program   include   = ls_var2-include
-*            eventtype = ls_var2-eventtype eventname = ls_var2-eventname
-*            name      = ls_var2-name
-*            TRANSPORTING NO FIELDS.
-*          IF sy-subrc <> 0. APPEND ls_var2 TO cs_source-tt_vars2. ENDIF.
         ENDIF.
         lv_tok_idx += 1.
         READ TABLE io_scan->tokens INDEX lv_tok_idx INTO tok.
@@ -177,23 +164,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                           WHEN 'RETURNING'             THEN 'R'
                           ELSE 'I' )
               param   = lv_pname   line = tok-row ).
-            APPEND ls_param TO cs_source-t_params.
-
-*            ls_var2 = VALUE #(
-*              program   = i_program   include   = i_include
-*              class     = mv_class_name
-*              eventtype = COND #( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' )
-*              eventname = lv_ev_name
-*              section   = lv_section
-*              line      = tok-row
-*              name      = lv_pname
-*              type      = lv_ptype ).
-*            READ TABLE cs_source-tt_vars2 WITH KEY
-*              program   = ls_var2-program   include   = ls_var2-include
-*              eventtype = ls_var2-eventtype eventname = ls_var2-eventname
-*              name      = ls_var2-name
-*              TRANSPORTING NO FIELDS.
-*            IF sy-subrc <> 0. APPEND ls_var2 TO cs_source-tt_vars2. ENDIF.
+            APPEND ls_param TO lt_params. "cs_source-t_params.
           ENDIF.
           lv_section = lv_str.
           CLEAR: lv_pname, lv_ptype, lv_ref, lv_after_type.
@@ -212,23 +183,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                           WHEN 'RETURNING'             THEN 'R'
                           ELSE 'I' )
               param   = lv_pname   line = tok-row ).
-            APPEND ls_param TO cs_source-t_params.
-
-*            ls_var2 = VALUE #(
-*              program   = i_program   include   = i_include
-*              class     = mv_class_name
-*              eventtype = COND #( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' )
-*              eventname = lv_ev_name
-*              section   = lv_section
-*              line      = tok-row
-*              name      = lv_pname
-*              type      = lv_ptype ).
-*            READ TABLE cs_source-tt_vars2 WITH KEY
-*              program   = ls_var2-program   include   = ls_var2-include
-*              eventtype = ls_var2-eventtype eventname = ls_var2-eventname
-*              name      = ls_var2-name
-*              TRANSPORTING NO FIELDS.
-*            IF sy-subrc <> 0. APPEND ls_var2 TO cs_source-tt_vars2. ENDIF.
+            APPEND ls_param TO lt_params. "cs_source-t_params.
           ENDIF.
           CLEAR: lv_section, lv_pname, lv_ptype, lv_ref, lv_after_type.
 
@@ -263,7 +218,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                           WHEN 'RETURNING'             THEN 'R'
                           ELSE 'I' )
               param   = lv_pname   line = tok-row ).
-            APPEND ls_param TO cs_source-t_params.
+            APPEND ls_param TO lt_params. "cs_source-t_params.
             CLEAR: lv_pname, lv_ptype, lv_ref, lv_after_type.
           ENDIF.
           lv_skip_next = abap_true.
@@ -294,23 +249,8 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                             WHEN 'RETURNING'             THEN 'R'
                             ELSE 'I' )
                 param   = lv_pname   line = tok-row ).
-              APPEND ls_param TO cs_source-t_params.
+              APPEND ls_param TO lt_params. "cs_source-t_params.
 
-*              ls_var2 = VALUE #(
-*                program   = i_program   include   = i_include
-*                class     = mv_class_name
-*                eventtype = COND #( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' )
-*                eventname = lv_ev_name
-*                section   = lv_section
-*                line      = tok-row
-*                name      = lv_pname
-*                type      = lv_ptype ).
-*              READ TABLE cs_source-tt_vars2 WITH KEY
-*                program   = ls_var2-program   include   = ls_var2-include
-*                eventtype = ls_var2-eventtype eventname = ls_var2-eventname
-*                name      = ls_var2-name
-*                TRANSPORTING NO FIELDS.
-*              IF sy-subrc <> 0. APPEND ls_var2 TO cs_source-tt_vars2. ENDIF.
             ENDIF.
             lv_pname = lv_str+1.
             CLEAR: lv_ptype, lv_ref, lv_after_type.
@@ -361,23 +301,31 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
                     WHEN 'RETURNING'             THEN 'R'
                     ELSE 'I' )
         param   = lv_pname   line = lv_last_row ).
-      APPEND ls_param TO cs_source-t_params.
+      APPEND ls_param TO lt_params. "cs_source-t_params.
     ENDIF.
 
     " PREFERRED PARAMETER стоит в конце объявления — после того как все
     " параметры уже добавлены. Проставляем флаг постфактум.
     IF lv_preferred IS NOT INITIAL.
-      DATA(lv_ev_type) = COND string( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' ).
-      LOOP AT cs_source-t_params ASSIGNING FIELD-SYMBOL(<fp>)
-        WHERE program = i_program
-          AND class   = mv_class_name
-          AND event   = lv_ev_type
-          AND name    = lv_ev_name
-          AND param   = lv_preferred.
+      READ TABLE lt_params WITH KEY name = lv_ev_name ASSIGNING FIELD-SYMBOL(<fp>).
+      IF sy-subrc = 0.
         <fp>-preferred = 'X'.
-        EXIT.
-      ENDLOOP.
+      ENDIF.
+*      DATA(lv_ev_type) = COND string( WHEN lv_is_form = abap_true THEN 'FORM' ELSE 'METHOD' ).
+*      LOOP AT cs_source-t_params ASSIGNING FIELD-SYMBOL(<fp>)
+*        WHERE program = i_program
+*          AND class   = mv_class_name
+*          AND event   = lv_ev_type
+*          AND name    = lv_ev_name
+*          AND param   = lv_preferred.
+      <fp>-preferred = 'X'.
+*        EXIT.
+*      ENDLOOP.
     ENDIF.
+
+    LOOP AT lt_params into ls_param.
+      APPEND ls_param TO cs_source-t_params.
+    ENDLOOP.
 
   ENDMETHOD.
 ENDCLASS.

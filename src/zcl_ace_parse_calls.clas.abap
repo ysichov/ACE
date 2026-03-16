@@ -67,63 +67,63 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     READ TABLE io_scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw).
     CHECK sy-subrc = 0.
 
-    CASE ls_kw-str.
-      WHEN 'CLASS' OR 'INTERFACE'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_name).
-        IF sy-subrc = 0.
-          IF mv_class_name <> ls_name-str. CLEAR: mv_super_cls, mv_super. ENDIF.
-          mv_class_name = ls_name-str.
-          mv_in_impl    = abap_false.
-          IF ls_kw-str = 'CLASS'.
-            LOOP AT io_scan->tokens FROM ls_stmt-from TO ls_stmt-to INTO DATA(ls_t).
-              IF ls_t-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. RETURN. ENDIF.
-            ENDLOOP.
-          ENDIF.
-        ENDIF.
-        RETURN.
-      WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
-        CLEAR: mv_class_name, mv_in_impl, mv_event_type, mv_event_name, mv_super_cls, mv_super.
-        RETURN.
-      WHEN 'METHOD'.
-        mv_event_type = 'METHOD'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_name.
-        IF sy-subrc = 0. mv_event_name = ls_name-str. ENDIF.
-        RETURN.
-      WHEN 'ENDMETHOD'.
-        CLEAR: mv_event_type, mv_event_name. RETURN.
-      WHEN 'FORM'.
-        mv_event_type = 'FORM'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_name.
-        IF sy-subrc = 0. mv_event_name = ls_name-str. ENDIF.
-        RETURN.
-      WHEN 'ENDFORM'.
-        CLEAR: mv_event_type, mv_event_name. RETURN.
-      WHEN 'FUNCTION'.
-        mv_event_type = 'FUNCTION'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_name.
-        IF sy-subrc = 0.
-          mv_event_name = ls_name-str.
-          REPLACE ALL OCCURRENCES OF '''' IN mv_event_name WITH ''.
-        ENDIF.
-        RETURN.
-      WHEN 'ENDFUNCTION'.
-        CLEAR: mv_event_type, mv_event_name. RETURN.
-      WHEN 'MODULE'.
-        mv_event_type = 'MODULE'.
-        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_name.
-        IF sy-subrc = 0. mv_event_name = ls_name-str. ENDIF.
-        RETURN.
-      WHEN 'ENDMODULE'.
-        CLEAR: mv_event_type, mv_event_name. RETURN.
-      WHEN 'START-OF-SELECTION' OR 'END-OF-SELECTION'
-        OR 'INITIALIZATION' OR 'TOP-OF-PAGE' OR 'END-OF-PAGE'
-        OR 'AT' OR 'GET'.
-        mv_event_type = 'EVENT'.
-        mv_event_name = ls_kw-str.
-        RETURN.
-    ENDCASE.
-
-    CHECK mv_event_type IS NOT INITIAL.
+*    CASE ls_kw-str.
+**      WHEN 'CLASS' OR 'INTERFACE'.
+**        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_name).
+**        IF sy-subrc = 0.
+**          IF mv_class_name <> ls_name-str. CLEAR: mv_super_cls, mv_super. ENDIF.
+**          mv_class_name = ls_name-str.
+**          mv_in_impl    = abap_false.
+**          IF ls_kw-str = 'CLASS'.
+**            LOOP AT io_scan->tokens FROM ls_stmt-from TO ls_stmt-to INTO DATA(ls_t).
+**              IF ls_t-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. RETURN. ENDIF.
+**            ENDLOOP.
+**          ENDIF.
+**        ENDIF.
+**        RETURN.
+**      WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
+**        CLEAR: mv_class_name, mv_in_impl, mv_event_type, mv_event_name, mv_super_cls, mv_super.
+**        RETURN.
+*      WHEN 'METHOD'.
+*        mv_event_type = 'METHOD'.
+*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO data(ls_name).
+*        IF sy-subrc = 0. mv_event_name = ls_name-str. ENDIF.
+*        RETURN.
+**      WHEN 'ENDMETHOD'.
+**        CLEAR: mv_event_type, mv_event_name. RETURN.
+**      WHEN 'FORM'.
+**        mv_event_type = 'FORM'.
+**        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_name.
+**        IF sy-subrc = 0. mv_event_name = ls_name-str. ENDIF.
+**        RETURN.
+**      WHEN 'ENDFORM'.
+**        CLEAR: mv_event_type, mv_event_name. RETURN.
+*      WHEN 'FUNCTION'.
+*        mv_event_type = 'FUNCTION'.
+*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_name.
+*        IF sy-subrc = 0.
+*          mv_event_name = ls_name-str.
+*          REPLACE ALL OCCURRENCES OF '''' IN mv_event_name WITH ''.
+*        ENDIF.
+*        RETURN.
+**      WHEN 'ENDFUNCTION'.
+**        CLEAR: mv_event_type, mv_event_name. RETURN.
+*      WHEN 'MODULE'.
+*        mv_event_type = 'MODULE'.
+*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_name.
+*        IF sy-subrc = 0. mv_event_name = ls_name-str. ENDIF.
+*        RETURN.
+**      WHEN 'ENDMODULE'.
+**        CLEAR: mv_event_type, mv_event_name. RETURN.
+**      WHEN 'START-OF-SELECTION' OR 'END-OF-SELECTION'
+**        OR 'INITIALIZATION' OR 'TOP-OF-PAGE' OR 'END-OF-PAGE'
+**        OR 'AT' OR 'GET'.
+**        mv_event_type = 'EVENT'.
+**        mv_event_name = ls_kw-str.
+**        RETURN.
+*    ENDCASE.
+*
+*    CHECK mv_event_type IS NOT INITIAL.
 
     parse_stmt_calls(
       EXPORTING io_scan    = io_scan
