@@ -54,7 +54,9 @@ public section.
   types:
     tt_kword      TYPE STANDARD TABLE OF ZCL_ACE=>TS_KWORD WITH EMPTY KEY .
   types:
-    tt_vars       TYPE STANDARD TABLE OF ZCL_ACE=>ts_vars WITH EMPTY KEY .
+    tt_vars       TYPE SORTED TABLE OF ZCL_ACE=>ts_vars WITH UNIQUE KEY program include class eventtype eventname name.
+
+
   types:
     tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program  include line name .
   types:

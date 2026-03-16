@@ -153,20 +153,20 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
 
 
   METHOD resolve_var_type.
-    READ TABLE is_source-t_vars
-      WITH KEY program = i_program eventtype = i_evtype eventname = i_evname name = i_varname
-      INTO DATA(ls_var) BINARY SEARCH.
-    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. RETURN. ENDIF.
+*    READ TABLE is_source-t_vars
+*      WITH KEY program = i_program eventtype = i_evtype eventname = i_evname name = i_varname
+*      INTO DATA(ls_var).
+*    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. RETURN. ENDIF.
 
-    READ TABLE is_source-t_vars
-      WITH KEY program = i_program eventtype = '' eventname = '' name = i_varname
-      INTO ls_var BINARY SEARCH.
-    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. RETURN. ENDIF.
-
-    READ TABLE is_source-t_vars
-      WITH KEY program = i_program class = '' eventtype = '' eventname = '' name = i_varname
-      INTO ls_var BINARY SEARCH.
-    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. ENDIF.
+*    READ TABLE is_source-t_vars
+*      WITH KEY program = i_program eventtype = '' eventname = '' name = i_varname
+*      INTO ls_var.
+*    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. RETURN. ENDIF.
+*
+*    READ TABLE is_source-t_vars
+*      WITH KEY program = i_program class = '' eventtype = '' eventname = '' name = i_varname
+*      INTO ls_var.
+*    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. ENDIF.
   ENDMETHOD.
 
 

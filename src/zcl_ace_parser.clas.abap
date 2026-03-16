@@ -222,7 +222,5 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
     ENDLOOP.
 
-    SORT cs_source-t_vars BY program eventtype eventname name.
-
   ENDMETHOD.
 ENDCLASS.

@@ -226,15 +226,16 @@ CLASS ZCL_ACE_PARSE_VARS IMPLEMENTATION.
 
 
   METHOD append_var.
-    " --- старая таблица t_vars (обратная совместимость) ---
     READ TABLE cs_source-t_vars WITH KEY program   = i_program
-                                          include   = i_include
-                                          name      = i_name
-                                          eventtype = mv_eventtype
-                                          eventname = mv_eventname
+                                         include   = i_include
+                                         class     = mv_class_name
+                                         eventtype = mv_eventtype
+                                         eventname = mv_eventname
+                                         name      = i_name
+
       TRANSPORTING NO FIELDS.
     IF sy-subrc <> 0.
-      APPEND VALUE zcl_ace=>ts_vars(
+      INSERT VALUE zcl_ace=>ts_vars(
         program   = i_program
         include   = i_include
         class     = mv_class_name
@@ -243,7 +244,7 @@ CLASS ZCL_ACE_PARSE_VARS IMPLEMENTATION.
         line      = i_line
         name      = i_name
         type      = i_type
-        icon      = i_icon ) TO cs_source-t_vars.
+        icon      = i_icon ) INTO table cs_source-t_vars.
     ENDIF.
 
   ENDMETHOD.
