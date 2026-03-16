@@ -111,7 +111,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
     ENDIF.
 
     " --- локальный хелпер: добавить текущий параметр в обе таблицы ---
-    DATA: ls_param TYPE zcl_ace_window=>ts_params.
+    DATA: ls_param TYPE zcl_ace=>ts_params.
     "ls_var2  TYPE zcl_ace_window=>ts_var2.
 
     WHILE lv_tok_idx <= stmt-to.
