@@ -215,6 +215,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         lo_calls->handle(
           EXPORTING
             io_scan    = lo_scan
+            i_class = lv_class
             i_stmt_idx = lv_kw_idx
             i_program  = i_program
             i_include  = i_include

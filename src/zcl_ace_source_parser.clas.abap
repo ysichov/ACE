@@ -1697,10 +1697,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         EXPORTING io_debugger = io_debugger
         CHANGING  ct_tokens   = tokens ).
 
-      LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING FIELD-SYMBOL(<param>).
-        REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.
-        REPLACE ALL OCCURRENCES OF ')' IN <param>-param WITH ''.
-      ENDLOOP.
+*      LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING FIELD-SYMBOL(<param>).
+**        REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.
+**        REPLACE ALL OCCURRENCES OF ')' IN <param>-param WITH ''.
+*      ENDLOOP.
 
       APPEND LINES OF ls_state-calculated_vars TO io_debugger->mo_window->ms_sources-t_calculated.
       APPEND LINES OF ls_state-composed_vars TO io_debugger->mo_window->ms_sources-t_composed.
@@ -1936,7 +1936,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             WHEN 'CLEAR' OR 'SORT' OR 'CONDENSE'.
             WHEN 'FORM'.
               IF cs_state-param-name IS NOT INITIAL.
-                APPEND cs_state-param TO io_debugger->mo_window->ms_sources-t_params.
+                INSERT cs_state-param INTO table io_debugger->mo_window->ms_sources-t_params.
                 CLEAR cs_state-param.
               ENDIF.
           ENDCASE.
@@ -1952,7 +1952,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           CLEAR:  type,  par.
         ELSEIF cs_state-word = 'CHANGING' OR cs_state-word = 'EXPORTING' OR cs_state-word = 'RETURNING'.
           IF cs_state-param-param IS NOT INITIAL.
-            APPEND cs_state-param TO io_debugger->mo_window->ms_sources-t_params.
+            INSERT cs_state-param INTO table io_debugger->mo_window->ms_sources-t_params.
             CLEAR:  type,  par, cs_state-param-param.
           ENDIF.
           cs_state-param-type = 'E'.
@@ -1976,7 +1976,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         IF cs_state-word <> 'CHANGING' AND cs_state-word <> 'EXPORTING' AND cs_state-word <> 'RETURNING' AND cs_state-word <> 'IMPORTING' AND cs_state-word <> 'USING'.
           IF cs_state-kw = 'FORM' OR cs_state-kw = 'METHODS' OR cs_state-kw = 'CLASS-METHODS'.
             IF  par = abap_true AND  type IS INITIAL AND cs_state-word NE 'TYPE'.
-              APPEND cs_state-param TO io_debugger->mo_window->ms_sources-t_params.
+              INSERT cs_state-param INTO TABLE io_debugger->mo_window->ms_sources-t_params.
               CLEAR:  par, cs_state-param-param.
             ENDIF.
             IF  par IS INITIAL AND sy-index > 3.
@@ -1991,7 +1991,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             IF  par = abap_true AND  type = abap_true.
               REPLACE ALL OCCURRENCES OF 'VALUE(' IN cs_state-param-param WITH ''.
               REPLACE ALL OCCURRENCES OF ')' IN cs_state-param-param WITH ''.
-              APPEND cs_state-param TO io_debugger->mo_window->ms_sources-t_params.
+              INSERT cs_state-param INTO TABLE io_debugger->mo_window->ms_sources-t_params.
               CLEAR:  type,  par, cs_state-param-param.
             ENDIF.
           ENDIF.

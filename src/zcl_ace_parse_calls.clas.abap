@@ -63,6 +63,8 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     READ TABLE io_scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw).
     CHECK sy-subrc = 0.
 
+    mv_class_name = i_class.
+
 *    CASE ls_kw-str.
 **      WHEN 'CLASS' OR 'INTERFACE'.
 **        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_name).

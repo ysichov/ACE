@@ -13,12 +13,10 @@ ENDCLASS.
 
 CLASS lcl_demo IMPLEMENTATION.
   METHOD cls_meth.
+
   ENDMETHOD.
 
-  method constructor.
-  ENDMETHOD.
-
-  METHOD run.
+METHOD run.
     DATA lo TYPE REF TO lcl_demo.
     mo_ref = NEW lcl_demo( ).
     lo->run( iv_i = 1 ).
@@ -28,6 +26,12 @@ CLASS lcl_demo IMPLEMENTATION.
     CALL FUNCTION 'POPUP_TO_CONFIRM'.
     CALL METHOD lo->run( iv_i = 3 ).
   ENDMETHOD.
+
+  method constructor.
+     me->run( 1 ).
+  ENDMETHOD.
+
+
 ENDCLASS.
 
 FORM my_form USING p_val TYPE i.
@@ -36,6 +40,7 @@ FORM my_form USING p_val TYPE i.
 ENDFORM.
 
 START-OF-SELECTION.
- "data: lv_String type string.
-   data(lv_string) = lcl_demo=>cls_meth(  a ).
-  PERFORM my_form USING a.
+ data: lo_demo type ref to lcl_demo.
+   "data(lv_string) = lcl_demo=>cls_meth(  a ).
+  "PERFORM my_form USING a.
+ lo_demo = new lcl_demo( ).
