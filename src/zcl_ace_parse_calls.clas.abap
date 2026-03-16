@@ -6,51 +6,47 @@ CLASS zcl_ace_parse_calls DEFINITION
     INTERFACES zif_ace_stmt_handler.
 
 protected section.
-  PRIVATE SECTION.
+private section.
 
-    DATA mv_class_name TYPE string.
-    DATA mv_event_type TYPE string.
-    DATA mv_event_name TYPE string.
-    DATA mv_in_impl    TYPE abap_bool.
+  data MV_CLASS_NAME type STRING .
+  data MV_EVENT_TYPE type STRING .
+  data MV_EVENT_NAME type STRING .
+  data MV_IN_IMPL type ABAP_BOOL .
+  data MV_SUPER_CLS type STRING .
+  data MV_SUPER type STRING .
 
-    DATA mv_super_cls  TYPE string.
-    DATA mv_super      TYPE string.
-
-    CLASS-METHODS resolve_var_type
-      IMPORTING
-        is_source      TYPE zcl_ace_window=>ts_source
-        i_program      TYPE program
-        i_evtype       TYPE string
-        i_evname       TYPE string
-        i_varname      TYPE string
-      RETURNING
-        VALUE(rv_type) TYPE string.
-
-    METHODS get_super
-      IMPORTING
-        is_source       TYPE zcl_ace_window=>ts_source
-      RETURNING
-        VALUE(rv_super) TYPE string.
-
-    METHODS parse_stmt_calls
-      IMPORTING
-        io_scan    TYPE REF TO cl_ci_scan
-        i_stmt_idx TYPE i
-        i_program  TYPE program
-        i_include  TYPE program
-      CHANGING
-        cs_source  TYPE zcl_ace_window=>ts_source.
-
+  methods RESOLVE_VAR_TYPE
+    importing
+      !IS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE
+      !I_PROGRAM type PROGRAM
+      !I_INCLUDE type PROGRAM
+      !I_EVTYPE type STRING
+      !I_EVNAME type STRING
+      !I_VARNAME type STRING
+    returning
+      value(RV_TYPE) type STRING .
+  methods GET_SUPER
+    importing
+      !IS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE
+    returning
+      value(RV_SUPER) type STRING .
+  methods PARSE_STMT_CALLS
+    importing
+      !IO_SCAN type ref to CL_CI_SCAN
+      !I_STMT_IDX type I
+      !I_PROGRAM type PROGRAM
+      !I_INCLUDE type PROGRAM
+    changing
+      !CS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE .
     " Линейный проход: распознаёт obj->meth( / cls=>meth( / NEW cls( и собирает BINDINGS
-    METHODS collect_method_calls
-      IMPORTING
-        io_scan    TYPE REF TO cl_ci_scan
-        i_stmt     TYPE sstmnt
-        i_program  TYPE program
-      CHANGING
-        cs_source  TYPE zcl_ace_window=>ts_source
-        ct_calls   TYPE zcl_ace=>tt_calls.
-
+  methods COLLECT_METHOD_CALLS
+    importing
+      !IO_SCAN type ref to CL_CI_SCAN
+      !I_STMT type SSTMNT
+      !I_PROGRAM type PROGRAM
+    changing
+      !CS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE
+      !CT_CALLS type ZCL_ACE=>TT_CALLS .
 ENDCLASS.
 
 
@@ -153,10 +149,10 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
 
 
   METHOD resolve_var_type.
-*    READ TABLE is_source-t_vars
-*      WITH KEY program = i_program eventtype = i_evtype eventname = i_evname name = i_varname
-*      INTO DATA(ls_var).
-*    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. RETURN. ENDIF.
+    READ TABLE is_source-t_vars
+      WITH KEY program = i_program  include = i_include class = mv_class_name eventtype = i_evtype eventname = i_evname name = i_varname
+      INTO DATA(ls_var).
+    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. RETURN. ENDIF.
 
 *    READ TABLE is_source-t_vars
 *      WITH KEY program = i_program eventtype = '' eventname = '' name = i_varname
@@ -291,7 +287,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         lv_c-class = COND #( WHEN mv_super IS NOT INITIAL THEN mv_super ELSE mv_class_name ).
       ELSE.
         lv_rtype = resolve_var_type(
-          is_source = cs_source i_program = i_program
+          is_source = cs_source i_program = i_program i_include = i_program
           i_evtype  = mv_event_type i_evname = mv_event_name
           i_varname = lv_left ).
         IF lv_rtype IS NOT INITIAL.
@@ -488,7 +484,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           lv_call-class = COND #( WHEN lv_super IS NOT INITIAL THEN lv_super ELSE mv_class_name ).
         ELSEIF lv_call-class IS NOT INITIAL.
           DATA(lv_resolved) = resolve_var_type(
-            is_source = cs_source i_program = i_program
+            is_source = cs_source i_program = i_program i_include = i_program
             i_evtype  = mv_event_type i_evname = mv_event_name
             i_varname = lv_call-class ).
           IF lv_resolved IS NOT INITIAL.

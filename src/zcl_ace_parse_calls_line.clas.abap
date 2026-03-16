@@ -174,8 +174,13 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     CHECK sy-subrc = 0.
     DATA(lv_kw) = kw_tok-str.
 
-
-     mv_class_name = i_class.
+    IF i_class IS NOT INITIAL.
+      mv_class_name = i_class.
+      clear mv_is_intf.
+    ELSEIF i_interface IS NOT INITIAL.
+      mv_class_name = i_interface.
+      mv_is_intf = abap_true.
+    ENDIF.
 
     CASE lv_kw.
 *      WHEN 'CLASS' OR 'INTERFACE'.
@@ -200,14 +205,19 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
 *        CLEAR mt_meth_defs.
       WHEN 'METHODS' OR 'CLASS-METHODS'.
         IF mv_in_impl = abap_false.
-          on_methods_sig( EXPORTING io_scan = io_scan i_stmt_idx = i_stmt_idx
-                                    i_program = i_program i_include = i_include
-                          CHANGING  cs_source = cs_source ).
+          on_methods_sig( EXPORTING io_scan    = io_scan
+                                    i_stmt_idx = i_stmt_idx
+                                    i_program  = i_program
+                                    i_include  = i_include
+                          CHANGING  cs_source  = cs_source ).
         ENDIF.
       WHEN 'FORM' OR 'METHOD' OR 'MODULE' OR 'FUNCTION'.
-        on_block_start( EXPORTING io_scan = io_scan i_stmt_idx = i_stmt_idx
-                                  i_program = i_program i_include = i_include i_kw = lv_kw
-                        CHANGING  cs_source = cs_source ).
+        on_block_start( EXPORTING io_scan    = io_scan
+                                  i_stmt_idx = i_stmt_idx
+                                  i_program  = i_program
+                                  i_include  = i_include
+                                  i_kw       = lv_kw
+                        CHANGING  cs_source  = cs_source ).
     ENDCASE.
   ENDMETHOD.
 ENDCLASS.

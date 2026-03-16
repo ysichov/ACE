@@ -11,6 +11,14 @@
     <FIXPT>X</FIXPT>
     <UNICODE>X</UNICODE>
    </VSEOCLASS>
+   <DESCRIPTIONS_SUB>
+    <SEOSUBCOTX>
+     <CMPNAME>RESOLVE_VAR_TYPE</CMPNAME>
+     <SCONAME>I_INCLUDE</SCONAME>
+     <LANGU>E</LANGU>
+     <DESCRIPT>Program/Transaction in SQL Trace Evaluation</DESCRIPT>
+    </SEOSUBCOTX>
+   </DESCRIPTIONS_SUB>
   </asx:values>
  </asx:abap>
 </abapGit>

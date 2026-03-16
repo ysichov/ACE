@@ -21,6 +21,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
   METHOD parse_tokens.
     DATA: lv_class     TYPE string,
+          lv_interface TYPE string,
           lv_eventtype TYPE string,
           lv_eventname TYPE string.
 
@@ -49,12 +50,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
 
     DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-*    INSERT `CLASS`              INTO TABLE lt_pass2.
-*    INSERT `INTERFACE`          INTO TABLE lt_pass2.
-*    INSERT `METHOD`             INTO TABLE lt_pass2.
-*    INSERT `FORM`               INTO TABLE lt_pass2.
-*    INSERT `FUNCTION`           INTO TABLE lt_pass2.
-*    INSERT `MODULE`             INTO TABLE lt_pass2.
     INSERT `PERFORM`            INTO TABLE lt_pass2.
     INSERT `CALL FUNCTION`      INTO TABLE lt_pass2.
     INSERT `CALL METHOD`        INTO TABLE lt_pass2.
@@ -101,9 +96,15 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
 
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 1 INTO DATA(ls_tok2).
-      IF ls_kw_tok-str = 'CLASS' OR ls_kw_tok-str = 'INTERFACE'.
+      IF ls_kw_tok-str = 'CLASS'.
         lv_class = ls_tok2-str.
+        clear lv_interface.
       ENDIF.
+      IF  ls_kw_tok-str = 'INTERFACE'.
+        clear lv_class.
+        lv_interface = ls_tok2-str.
+      ENDIF.
+
       IF ls_kw_tok-str = 'METHOD'.
         lv_eventtype = 'METHOD'.
         lv_eventname = ls_tok2-str.
@@ -143,19 +144,20 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
       ENDIF.
 
-            IF lv_eff_kw =  'PUBLIC' or lv_eff_kw =  'PROTECTED' or lv_eff_kw = 'PRIVATE'
-           or lv_eff_kw = 'METHODS' or lv_eff_kw = 'CLASS-METHODS'
-           or lv_eff_kw = 'FORM' or lv_eff_kw = `METHOD` or lv_eff_kw = `MODULE` or lv_eff_kw = 'FUNCTION'.
-            lo_calls_line->handle(
-              EXPORTING
-                io_scan    = lo_scan
-                i_class    = lv_class
-                i_stmt_idx = lv_kw_idx
-                i_program  = i_program
-                i_include  = i_include
-              CHANGING
-                cs_source  = cs_source ).
-          ENDIF.
+      IF lv_eff_kw =  'PUBLIC' OR lv_eff_kw =  'PROTECTED' OR lv_eff_kw = 'PRIVATE'
+     OR lv_eff_kw = 'METHODS' OR lv_eff_kw = 'CLASS-METHODS'
+     OR lv_eff_kw = 'FORM' OR lv_eff_kw = `METHOD` OR lv_eff_kw = `MODULE` OR lv_eff_kw = 'FUNCTION'.
+        lo_calls_line->handle(
+          EXPORTING
+            io_scan     = lo_scan
+            i_class     = lv_class
+            i_interface = lv_interface
+            i_stmt_idx  = lv_kw_idx
+            i_program   = i_program
+            i_include   = i_include
+          CHANGING
+            cs_source   = cs_source ).
+      ENDIF.
 
       IF lv_eff_kw = 'DATA' OR lv_eff_kw =  'CLASS-DATA' OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'.
         lo_vars->handle(
