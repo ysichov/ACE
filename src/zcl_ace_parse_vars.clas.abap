@@ -234,7 +234,7 @@ CLASS ZCL_ACE_PARSE_VARS IMPLEMENTATION.
                                           eventname = mv_eventname
       TRANSPORTING NO FIELDS.
     IF sy-subrc <> 0.
-      APPEND VALUE zcl_ace_window=>ts_vars(
+      APPEND VALUE zcl_ace=>ts_vars(
         program   = i_program
         include   = i_include
         class     = mv_class_name
@@ -246,25 +246,6 @@ CLASS ZCL_ACE_PARSE_VARS IMPLEMENTATION.
         icon      = i_icon ) TO cs_source-t_vars.
     ENDIF.
 
-*    " --- новая таблица tt_vars2 (section = '' => локальная переменная) ---
-*    READ TABLE cs_source-tt_vars2 WITH KEY program   = i_program
-*                                             include   = i_include
-*                                             eventtype = mv_eventtype
-*                                             eventname = mv_eventname
-*                                             name      = i_name
-*      TRANSPORTING NO FIELDS.
-*    IF sy-subrc <> 0.
-*      APPEND VALUE zcl_ace_window=>ts_var2(
-*        program   = i_program
-*        include   = i_include
-*        class     = mv_class_name
-*        eventtype = mv_eventtype
-*        eventname = mv_eventname
-*        section   = ''
-*        line      = i_line
-*        name      = i_name
-*        type      = i_type ) TO cs_source-tt_vars2.
-*    ENDIF.
   ENDMETHOD.
 
 

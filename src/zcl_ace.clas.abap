@@ -1,449 +1,449 @@
-class ZCL_ACE definition
-  public
-  create public .
+CLASS zcl_ace DEFINITION
+  PUBLIC
+  CREATE PUBLIC .
 
-public section.
+  PUBLIC SECTION.
 
-  types:
-    BEGIN OF selection_display_s,
-          ind         TYPE i,
-          field_label TYPE lvc_fname,
-          int_type(1),
-          inherited   TYPE aqadh_type_of_icon,
-          sign        TYPE tvarv_sign,
-          opti        TYPE tvarv_opti,
-          option_icon TYPE aqadh_type_of_icon,
-          low         TYPE string,
-          high        TYPE string,
-          more_icon   TYPE aqadh_type_of_icon,
-          range       TYPE aqadh_t_ranges,
-          name        TYPE reptext,
-          element     TYPE text60,
-          domain      TYPE text60,
-          datatype    TYPE string,
-          length      TYPE i,
-          color       TYPE lvc_t_scol,
-          style       TYPE lvc_t_styl,
-        END OF selection_display_s .
-  types:
-    BEGIN OF t_sel_row,
-          sign        TYPE tvarv_sign,
-          opti        TYPE tvarv_opti,
-          option_icon TYPE aqadh_type_of_icon,
-          low         TYPE string,
-          high        TYPE string,
-          more_icon   TYPE aqadh_type_of_icon,
-          range       TYPE aqadh_t_ranges,
-        END OF t_sel_row .
-  types:
-    BEGIN OF sign_option_icon_s,
-               sign          TYPE tvarv_sign,
-               option        TYPE tvarv_opti,
-               icon_name(64) TYPE c,
-               icon          TYPE aqadh_type_of_icon,
-             END OF sign_option_icon_s .
-  types:
-    BEGIN OF var_table,
-               step          TYPE i,
-               stack         TYPE i,
-               program(40)   TYPE c,
-               eventtype(30) TYPE c,
-               eventname(61) TYPE c,
-               first         TYPE boolean,
-               i_appear      TYPE boolean,
-               del           TYPE boolean,
-               leaf          TYPE string,
-               name(1000)               ,
-               path          TYPE string,
-               short         TYPE string,
-               key           TYPE salv_de_node_key,
-               parent        TYPE string,
-               cl_leaf       TYPE int4,
-               ref           TYPE REF TO data,
-               type          TYPE string,
-               instance      TYPE string,
-               objname       TYPE string,
-               done          TYPE boolean,
-             END OF var_table .
-  types:
-    t_var_table TYPE STANDARD TABLE OF var_table WITH NON-UNIQUE DEFAULT KEY .
-  types:
-    BEGIN OF var_table_temp,
-               step          TYPE i,
-               stack         TYPE i,
-               eventtype(30) TYPE c,
-               eventname(61) TYPE c,
-               name          TYPE string,
-               value         TYPE string,
-               first         TYPE boolean,
-               i_appear      TYPE boolean,
-               del           TYPE boolean,
-               program(40)   TYPE c,
-               leaf          TYPE string,
-               path          TYPE string,
-               type          TYPE string,
-               instance      TYPE string,
-               objname       TYPE string,
-               ref           TYPE REF TO data,
-             END OF var_table_temp .
-  types:
-    BEGIN OF var_table_h,
-               step          TYPE i,
-               program(40)   TYPE c,
-               eventtype(30) TYPE c,
-               eventname(61) TYPE c,
-               leaf          TYPE string,
-               name          TYPE string,
-               path          TYPE string,
-               parent        TYPE string,
-               short         TYPE string,
-               cl_leaf       TYPE int4,
-               ref           TYPE REF TO data,
-               tree          TYPE REF TO ZCL_ACE_RTTI_TREE,
-               time          LIKE sy-uname,
-             END OF var_table_h .
-  types:
-    BEGIN OF t_obj,
-               name       TYPE string,
-               alv_viewer TYPE REF TO ZCL_ACE_TABLE_VIEWER,
-             END OF t_obj .
-  types:
-    BEGIN OF t_popup,
-               parent TYPE REF TO cl_gui_dialogbox_container,
-               child  TYPE REF TO cl_gui_dialogbox_container,
-             END OF t_popup .
-  types:
-    BEGIN OF t_classes_types,
-               name TYPE string,
-               full TYPE string,
-               type TYPE char1,
-               key  TYPE salv_de_node_key,
-             END OF t_classes_types .
-  types:
-    BEGIN OF t_lang,
-               spras(4),
-               sptxt    TYPE sptxt,
-             END OF t_lang .
-  types:
-    BEGIN OF t_stack,
-               step       TYPE i,
-               stacklevel TYPE tpda_stack_level,
-               line       TYPE tpda_sc_line,
-               program    TYPE tpda_program,
-               eventtype  TYPE string,
-               eventname  TYPE tpda_event,
-               prg        TYPE program,
-               include    TYPE tpda_include,
-             END OF t_stack .
-  types:
-    BEGIN OF t_step_counter,
-               step       TYPE i,
-               stacklevel TYPE tpda_stack_level,
-               line       TYPE tpda_sc_line,
-               eventtype  TYPE string,
-               eventname  TYPE string,
-               class      TYPE string,
-               first      TYPE boolean,
-               last       TYPE boolean,
-               program    TYPE tpda_program,
-               include    TYPE tpda_include,
-               time       LIKE sy-uzeit,
-             END OF t_step_counter .
+    TYPES:
+      BEGIN OF selection_display_s,
+        ind         TYPE i,
+        field_label TYPE lvc_fname,
+        int_type(1),
+        inherited   TYPE aqadh_type_of_icon,
+        sign        TYPE tvarv_sign,
+        opti        TYPE tvarv_opti,
+        option_icon TYPE aqadh_type_of_icon,
+        low         TYPE string,
+        high        TYPE string,
+        more_icon   TYPE aqadh_type_of_icon,
+        range       TYPE aqadh_t_ranges,
+        name        TYPE reptext,
+        element     TYPE text60,
+        domain      TYPE text60,
+        datatype    TYPE string,
+        length      TYPE i,
+        color       TYPE lvc_t_scol,
+        style       TYPE lvc_t_styl,
+      END OF selection_display_s .
+    TYPES:
+      BEGIN OF t_sel_row,
+        sign        TYPE tvarv_sign,
+        opti        TYPE tvarv_opti,
+        option_icon TYPE aqadh_type_of_icon,
+        low         TYPE string,
+        high        TYPE string,
+        more_icon   TYPE aqadh_type_of_icon,
+        range       TYPE aqadh_t_ranges,
+      END OF t_sel_row .
+    TYPES:
+      BEGIN OF sign_option_icon_s,
+        sign          TYPE tvarv_sign,
+        option        TYPE tvarv_opti,
+        icon_name(64) TYPE c,
+        icon          TYPE aqadh_type_of_icon,
+      END OF sign_option_icon_s .
+    TYPES:
+      BEGIN OF var_table,
+        step          TYPE i,
+        stack         TYPE i,
+        program(40)   TYPE c,
+        eventtype(30) TYPE c,
+        eventname(61) TYPE c,
+        first         TYPE boolean,
+        i_appear      TYPE boolean,
+        del           TYPE boolean,
+        leaf          TYPE string,
+        name(1000)               ,
+        path          TYPE string,
+        short         TYPE string,
+        key           TYPE salv_de_node_key,
+        parent        TYPE string,
+        cl_leaf       TYPE int4,
+        ref           TYPE REF TO data,
+        type          TYPE string,
+        instance      TYPE string,
+        objname       TYPE string,
+        done          TYPE boolean,
+      END OF var_table .
+    TYPES:
+      t_var_table TYPE STANDARD TABLE OF var_table WITH NON-UNIQUE DEFAULT KEY .
+    TYPES:
+      BEGIN OF var_table_temp,
+        step          TYPE i,
+        stack         TYPE i,
+        eventtype(30) TYPE c,
+        eventname(61) TYPE c,
+        name          TYPE string,
+        value         TYPE string,
+        first         TYPE boolean,
+        i_appear      TYPE boolean,
+        del           TYPE boolean,
+        program(40)   TYPE c,
+        leaf          TYPE string,
+        path          TYPE string,
+        type          TYPE string,
+        instance      TYPE string,
+        objname       TYPE string,
+        ref           TYPE REF TO data,
+      END OF var_table_temp .
+    TYPES:
+      BEGIN OF var_table_h,
+        step          TYPE i,
+        program(40)   TYPE c,
+        eventtype(30) TYPE c,
+        eventname(61) TYPE c,
+        leaf          TYPE string,
+        name          TYPE string,
+        path          TYPE string,
+        parent        TYPE string,
+        short         TYPE string,
+        cl_leaf       TYPE int4,
+        ref           TYPE REF TO data,
+        tree          TYPE REF TO zcl_ace_rtti_tree,
+        time          LIKE sy-uname,
+      END OF var_table_h .
+    TYPES:
+      BEGIN OF t_obj,
+        name       TYPE string,
+        alv_viewer TYPE REF TO zcl_ace_table_viewer,
+      END OF t_obj .
+    TYPES:
+      BEGIN OF t_popup,
+        parent TYPE REF TO cl_gui_dialogbox_container,
+        child  TYPE REF TO cl_gui_dialogbox_container,
+      END OF t_popup .
+    TYPES:
+      BEGIN OF t_classes_types,
+        name TYPE string,
+        full TYPE string,
+        type TYPE char1,
+        key  TYPE salv_de_node_key,
+      END OF t_classes_types .
+    TYPES:
+      BEGIN OF t_lang,
+        spras(4),
+        sptxt    TYPE sptxt,
+      END OF t_lang .
+    TYPES:
+      BEGIN OF t_stack,
+        step       TYPE i,
+        stacklevel TYPE tpda_stack_level,
+        line       TYPE tpda_sc_line,
+        program    TYPE tpda_program,
+        eventtype  TYPE string,
+        eventname  TYPE tpda_event,
+        prg        TYPE program,
+        include    TYPE tpda_include,
+      END OF t_stack .
+    TYPES:
+      BEGIN OF t_step_counter,
+        step       TYPE i,
+        stacklevel TYPE tpda_stack_level,
+        line       TYPE tpda_sc_line,
+        eventtype  TYPE string,
+        eventname  TYPE string,
+        class      TYPE string,
+        first      TYPE boolean,
+        last       TYPE boolean,
+        program    TYPE tpda_program,
+        include    TYPE tpda_include,
+        time       LIKE sy-uzeit,
+      END OF t_step_counter .
 
-  " Binding: outer = caller-side variable, inner = formal parameter name.
-  " For RETURNING: outer = lhs variable (before =), inner = RETURNING param name.
-  types:
-    BEGIN OF ts_param_binding,
-               outer TYPE string,
-               inner TYPE string,
-             END OF ts_param_binding .
-  types:
-    tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .
+    " Binding: outer = caller-side variable, inner = formal parameter name.
+    " For RETURNING: outer = lhs variable (before =), inner = RETURNING param name.
+    TYPES:
+      BEGIN OF ts_param_binding,
+        outer TYPE string,
+        inner TYPE string,
+      END OF ts_param_binding .
+    TYPES:
+      tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .
 
-  types:
-    BEGIN OF ts_calls,
-               class    TYPE string,
-               event    TYPE string,
-               type     TYPE string,
-               name     TYPE string,
-               outer    TYPE string,
-               inner    TYPE string,
-               super    TYPE boolean,
-               bindings TYPE tt_param_bindings,
-             END OF ts_calls .
-  types:
-    tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
-  types:
-    BEGIN OF ts_kword,
-               program    TYPE string,
-               include    TYPE string,
-               index      TYPE i,
-               line       TYPE i,
-               v_line     TYPE i,
-               v_from_row TYPE i,
-               v_to_row   TYPE i,
-               sub        TYPE boolean,
-               name       TYPE string,
-               from       TYPE i,
-               to         TYPE i,
-               tt_calls   TYPE tt_calls,
-             END OF ts_kword .
-  types:
-    tt_kword TYPE STANDARD TABLE OF ts_kword WITH NON-UNIQUE DEFAULT KEY .
-  types:
-    BEGIN OF ts_calls_line,
-               program     TYPE program,
-               include     TYPE program,
-               class       TYPE string,
-               eventtype   TYPE string,
-               meth_type   TYPE i,
-               eventname   TYPE string,
-               redefined   TYPE boolean,
-               index       TYPE i,
-               def_include TYPE program,
-               def_line    TYPE i,
-               is_intf     TYPE boolean,
-             END OF ts_calls_line .
-  types:
-    tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .
-  types:
-    BEGIN OF ts_vars,
-               program   TYPE program,
-               include   TYPE program,
-               class     TYPE string,
-               eventtype TYPE string,
-               eventname TYPE string,
-               line      TYPE i,
-               name      TYPE string,
-               type      TYPE string,
-               icon      TYPE salv_de_tree_image,
-             END OF ts_vars .
-  types:
-    BEGIN OF ts_var,
-               program   TYPE string,
-               include   TYPE string,
-               line      TYPE i,
-               name(100) TYPE c,
-               type      TYPE string,
-             END OF ts_var .
-  types:
-    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
-  types:
-    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
-  types:
-    BEGIN OF ts_int_tabs,
-               eventtype TYPE string,
-               eventname TYPE string,
-               name      TYPE string,
-               type      TYPE string,
-             END OF ts_int_tabs .
-  types:
-    tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY .
-  types:
-    BEGIN OF ts_params,
-               program   TYPE program,
-               include   TYPE program,
-               class     TYPE string,
-               event     TYPE string,
-               name      TYPE string,
-               type      TYPE char1,
-               param     TYPE string,
-               preferred TYPE char1,
-               line      TYPE i,
-             END OF ts_params .
-  types:
-    BEGIN OF ts_parse_state,
-               prev            TYPE string,
-               change          TYPE string,
-               kw              TYPE string,
-               word            TYPE string,
-               new             TYPE boolean,
-               count           TYPE i,
-               lv_default      TYPE boolean,
-               ref             TYPE boolean,
-               class           TYPE boolean,
-               preferred       TYPE boolean,
-               method_type     TYPE i,
-               class_name      TYPE string,
-               eventtype       TYPE string,
-               eventname       TYPE string,
-               token           TYPE ts_kword,
-               call            TYPE ts_calls,
-               call_line       TYPE ts_calls_line,
-               variable        TYPE ts_vars,
-               tab             TYPE ts_int_tabs,
-               tabs            TYPE tt_tabs,
-               composed        TYPE ts_var,
-               composed_vars   TYPE tt_composed,
-               calculated      TYPE ts_var,
-               calculated_vars TYPE tt_calculated,
-               param           TYPE ts_params,
-             END OF ts_parse_state .
-  types:
-    BEGIN OF ts_tree,
-               kind(1),
-               value    TYPE string,
-               param    TYPE string,
-               program  TYPE program,
-               include  TYPE program,
-               ev_type  TYPE string,
-               ev_name  TYPE string,
-               enh_id   TYPE i,
-               var_name TYPE string,
-             END OF ts_tree .
-  types:
-    BEGIN OF ts_call,
-               include TYPE string,
-               ev_name TYPE string,
-               class   TYPE string,
-             END OF ts_call .
+    TYPES:
+      BEGIN OF ts_calls,
+        class    TYPE string,
+        event    TYPE string,
+        type     TYPE string,
+        name     TYPE string,
+        outer    TYPE string,
+        inner    TYPE string,
+        super    TYPE boolean,
+        bindings TYPE tt_param_bindings,
+      END OF ts_calls .
+    TYPES:
+      tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
+    TYPES:
+      BEGIN OF ts_kword,
+        program    TYPE string,
+        include    TYPE string,
+        index      TYPE i,
+        line       TYPE i,
+        v_line     TYPE i,
+        v_from_row TYPE i,
+        v_to_row   TYPE i,
+        sub        TYPE boolean,
+        name       TYPE string,
+        from       TYPE i,
+        to         TYPE i,
+        tt_calls   TYPE tt_calls,
+      END OF ts_kword .
+    TYPES:
+      tt_kword TYPE STANDARD TABLE OF ts_kword WITH NON-UNIQUE DEFAULT KEY .
+    TYPES:
+      BEGIN OF ts_calls_line,
+        program     TYPE program,
+        include     TYPE program,
+        class       TYPE string,
+        eventtype   TYPE string,
+        meth_type   TYPE i,
+        eventname   TYPE string,
+        redefined   TYPE boolean,
+        index       TYPE i,
+        def_include TYPE program,
+        def_line    TYPE i,
+        is_intf     TYPE boolean,
+      END OF ts_calls_line .
+    TYPES:
+      tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .
+    TYPES:
+      BEGIN OF ts_vars,
+        program   TYPE program,
+        include   TYPE program,
+        class     TYPE string,
+        eventtype TYPE string,
+        eventname TYPE string,
+        name      TYPE string,
+        line      TYPE i,
+        type      TYPE string,
+        icon      TYPE salv_de_tree_image,
+      END OF ts_vars .
+    TYPES:
+      BEGIN OF ts_var,
+        program   TYPE string,
+        include   TYPE string,
+        line      TYPE i,
+        name(100) TYPE c,
+        type      TYPE string,
+      END OF ts_var .
+    TYPES:
+      tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+    TYPES:
+      tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+    TYPES:
+      BEGIN OF ts_int_tabs,
+        eventtype TYPE string,
+        eventname TYPE string,
+        name      TYPE string,
+        type      TYPE string,
+      END OF ts_int_tabs .
+    TYPES:
+      tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY .
+    TYPES:
+      BEGIN OF ts_params,
+        program   TYPE program,
+        include   TYPE program,
+        class     TYPE string,
+        event     TYPE string,
+        name      TYPE string,
+        type      TYPE char1,
+        param     TYPE string,
+        preferred TYPE char1,
+        line      TYPE i,
+      END OF ts_params .
+    TYPES:
+      BEGIN OF ts_parse_state,
+        prev            TYPE string,
+        change          TYPE string,
+        kw              TYPE string,
+        word            TYPE string,
+        new             TYPE boolean,
+        count           TYPE i,
+        lv_default      TYPE boolean,
+        ref             TYPE boolean,
+        class           TYPE boolean,
+        preferred       TYPE boolean,
+        method_type     TYPE i,
+        class_name      TYPE string,
+        eventtype       TYPE string,
+        eventname       TYPE string,
+        token           TYPE ts_kword,
+        call            TYPE ts_calls,
+        call_line       TYPE ts_calls_line,
+        variable        TYPE ts_vars,
+        tab             TYPE ts_int_tabs,
+        tabs            TYPE tt_tabs,
+        composed        TYPE ts_var,
+        composed_vars   TYPE tt_composed,
+        calculated      TYPE ts_var,
+        calculated_vars TYPE tt_calculated,
+        param           TYPE ts_params,
+      END OF ts_parse_state .
+    TYPES:
+      BEGIN OF ts_tree,
+        kind(1),
+        value    TYPE string,
+        param    TYPE string,
+        program  TYPE program,
+        include  TYPE program,
+        ev_type  TYPE string,
+        ev_name  TYPE string,
+        enh_id   TYPE i,
+        var_name TYPE string,
+      END OF ts_tree .
+    TYPES:
+      BEGIN OF ts_call,
+        include TYPE string,
+        ev_name TYPE string,
+        class   TYPE string,
+      END OF ts_call .
 
-  types:
-    BEGIN OF t_sel_var,
-               name   TYPE string,
-               i_sel  TYPE boolean,
-               refval TYPE REF TO data,
-             END OF t_sel_var .
-  types:
-    BEGIN OF ts_if,
-               if_ind      TYPE i,
-               end_ind     TYPE i,
-               before_else TYPE i,
-             END OF ts_if .
-  types:
-    tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY .
-  types:
-    BEGIN OF ts_line,
-               cond        TYPE string,
-               program     TYPE string,
-               include     TYPE string,
-               line        TYPE i,
-               ind         TYPE i,
-               class       TYPE string,
-               ev_name     TYPE string,
-               ev_type     TYPE string,
-               stack       TYPE i,
-               code        TYPE string,
-               arrow       TYPE string,
-               subname     TYPE string,
-               del         TYPE flag,
-               els_before  TYPE i,
-               els_after   TYPE i,
-               active_root TYPE flag,
-             END OF ts_line .
-  types:
-    tt_line TYPE TABLE OF ts_line WITH EMPTY KEY .
+    TYPES:
+      BEGIN OF t_sel_var,
+        name   TYPE string,
+        i_sel  TYPE boolean,
+        refval TYPE REF TO data,
+      END OF t_sel_var .
+    TYPES:
+      BEGIN OF ts_if,
+        if_ind      TYPE i,
+        end_ind     TYPE i,
+        before_else TYPE i,
+      END OF ts_if .
+    TYPES:
+      tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY .
+    TYPES:
+      BEGIN OF ts_line,
+        cond        TYPE string,
+        program     TYPE string,
+        include     TYPE string,
+        line        TYPE i,
+        ind         TYPE i,
+        class       TYPE string,
+        ev_name     TYPE string,
+        ev_type     TYPE string,
+        stack       TYPE i,
+        code        TYPE string,
+        arrow       TYPE string,
+        subname     TYPE string,
+        del         TYPE flag,
+        els_before  TYPE i,
+        els_after   TYPE i,
+        active_root TYPE flag,
+      END OF ts_line .
+    TYPES:
+      tt_line TYPE TABLE OF ts_line WITH EMPTY KEY .
 
-  class-data:
-    m_option_icons   TYPE TABLE OF sign_option_icon_s .
-  class-data:
-    mt_lang          TYPE TABLE OF t_lang .
-  class-data:
-    mt_obj           TYPE TABLE OF t_obj .
-  class-data:
-    mt_popups        TYPE TABLE OF t_popup .
-  class-data I_MERMAID_ACTIVE type BOOLEAN .
-  class-data:
-    mt_sel TYPE TABLE OF selection_display_s .
+    CLASS-DATA:
+      m_option_icons   TYPE TABLE OF sign_option_icon_s .
+    CLASS-DATA:
+      mt_lang          TYPE TABLE OF t_lang .
+    CLASS-DATA:
+      mt_obj           TYPE TABLE OF t_obj .
+    CLASS-DATA:
+      mt_popups        TYPE TABLE OF t_popup .
+    CLASS-DATA i_mermaid_active TYPE boolean .
+    CLASS-DATA:
+      mt_sel TYPE TABLE OF selection_display_s .
 
-  data MV_PROG type PROG .
-  data MV_SHOW_PROG type PROG .
-  data MV_SHOW_PARSE_TIME type ABAP_BOOL .
-  data MV_DEST type TEXT255 .
-  data MV_MODEL type TEXT255 .
-  data MV_APIKEY type TEXT255 .
-  data:
-    mt_compo          TYPE TABLE OF scompo .
-  data MT_LOCALS type TPDA_SCR_LOCALS_IT .
-  data MT_GLOBALS type TPDA_SCR_GLOBALS_IT .
-  data MT_RET_EXP type TPDA_SCR_LOCALS_IT .
-  data M_COUNTER type I .
-  data:
-    mt_steps          TYPE  TABLE OF ZCL_ACE=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname .
-  data:
-    mt_var_step       TYPE  TABLE OF ZCL_ACE=>var_table_h .
-  data M_STEP type I .
-  data M_I_FIND type BOOLEAN .
-  data M_STOP_STACK type I .
-  data M_DEBUG type X .
-  data M_REFRESH type BOOLEAN .
-  data M_UPDATE type BOOLEAN .
-  data I_STEP type BOOLEAN .
-  data MS_STACK_PREV type ZCL_ACE=>T_STACK .
-  data MS_STACK type ZCL_ACE=>T_STACK .
-  data I_HISTORY type BOOLEAN .
-  data M_HIST_STEP type I .
-  data M_STEP_DELTA type I .
-  data:
-    mt_vars_hist_view TYPE STANDARD TABLE OF ZCL_ACE=>var_table .
-  data:
-    mt_vars_hist      TYPE STANDARD TABLE OF ZCL_ACE=>var_table .
-  data:
-    mt_state          TYPE STANDARD TABLE OF ZCL_ACE=>var_table .
-  data MV_RECURSE type I .
-  data:
-    mt_classes_types  TYPE TABLE OF ZCL_ACE=>t_classes_types .
-  data MO_WINDOW type ref to ZCL_ACE_WINDOW .
-  data MV_F7_STOP type BOOLEAN .
-  data M_F6_LEVEL type I .
-  data M_TARGET_STACK type I .
-  data MO_TREE_LOCAL type ref to ZCL_ACE_RTTI_TREE .
-  data:
-    mt_selected_var   TYPE TABLE OF t_sel_var .
-  data MV_STACK_CHANGED type BOOLEAN .
-  data M_VARIABLE type ref to DATA .
-  data:
-    mt_new_string     TYPE TABLE OF  string .
-  data M_QUICK type TPDA_SCR_QUICK_INFO .
-  data:
-    mr_statements     TYPE RANGE OF string .
-  data MS_IF type TS_IF .
-  data MT_IF type TT_IF .
+    DATA mv_prog TYPE prog .
+    DATA mv_show_prog TYPE prog .
+    DATA mv_show_parse_time TYPE abap_bool .
+    DATA mv_dest TYPE text255 .
+    DATA mv_model TYPE text255 .
+    DATA mv_apikey TYPE text255 .
+    DATA:
+      mt_compo          TYPE TABLE OF scompo .
+    DATA mt_locals TYPE tpda_scr_locals_it .
+    DATA mt_globals TYPE tpda_scr_globals_it .
+    DATA mt_ret_exp TYPE tpda_scr_locals_it .
+    DATA m_counter TYPE i .
+    DATA:
+      mt_steps          TYPE  TABLE OF zcl_ace=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname .
+    DATA:
+      mt_var_step       TYPE  TABLE OF zcl_ace=>var_table_h .
+    DATA m_step TYPE i .
+    DATA m_i_find TYPE boolean .
+    DATA m_stop_stack TYPE i .
+    DATA m_debug TYPE x .
+    DATA m_refresh TYPE boolean .
+    DATA m_update TYPE boolean .
+    DATA i_step TYPE boolean .
+    DATA ms_stack_prev TYPE zcl_ace=>t_stack .
+    DATA ms_stack TYPE zcl_ace=>t_stack .
+    DATA i_history TYPE boolean .
+    DATA m_hist_step TYPE i .
+    DATA m_step_delta TYPE i .
+    DATA:
+      mt_vars_hist_view TYPE STANDARD TABLE OF zcl_ace=>var_table .
+    DATA:
+      mt_vars_hist      TYPE STANDARD TABLE OF zcl_ace=>var_table .
+    DATA:
+      mt_state          TYPE STANDARD TABLE OF zcl_ace=>var_table .
+    DATA mv_recurse TYPE i .
+    DATA:
+      mt_classes_types  TYPE TABLE OF zcl_ace=>t_classes_types .
+    DATA mo_window TYPE REF TO zcl_ace_window .
+    DATA mv_f7_stop TYPE boolean .
+    DATA m_f6_level TYPE i .
+    DATA m_target_stack TYPE i .
+    DATA mo_tree_local TYPE REF TO zcl_ace_rtti_tree .
+    DATA:
+      mt_selected_var   TYPE TABLE OF t_sel_var .
+    DATA mv_stack_changed TYPE boolean .
+    DATA m_variable TYPE REF TO data .
+    DATA:
+      mt_new_string     TYPE TABLE OF  string .
+    DATA m_quick TYPE tpda_scr_quick_info .
+    DATA:
+      mr_statements     TYPE RANGE OF string .
+    DATA ms_if TYPE ts_if .
+    DATA mt_if TYPE tt_if .
 
-  class-methods INIT_ICONS_TABLE .
-  class-methods CHECK_MERMAID .
-  class-methods OPEN_INT_TABLE
-    importing
-      !IT_TAB type ANY TABLE optional
-      !IT_REF type ref to DATA optional
-      !I_NAME type STRING
-      !IO_WINDOW type ref to ZCL_ACE_WINDOW .
+    CLASS-METHODS init_icons_table .
+    CLASS-METHODS check_mermaid .
+    CLASS-METHODS open_int_table
+      IMPORTING
+        !it_tab    TYPE ANY TABLE OPTIONAL
+        !it_ref    TYPE REF TO data OPTIONAL
+        !i_name    TYPE string
+        !io_window TYPE REF TO zcl_ace_window .
 
-  methods CONSTRUCTOR
-    importing
-      !I_PROG             type PROG
-      !I_NEW_PARSER       type ABAP_BOOL default ABAP_FALSE
-      !I_SHOW_PARSE_TIME  type ABAP_BOOL default ABAP_FALSE .
-  methods SHOW .
-  methods ADD_CLASS
-    importing
-      !I_CLASS type STRING
-      !I_REFNODE type SALV_DE_NODE_KEY
-      !NO_LOCALS type BOOLEAN optional
-      !I_TREE type ZCL_ACE=>TS_TREE optional
-      !I_TYPE type FLAG optional
-    returning
-      value(R_NODE) type SALV_DE_NODE_KEY .
-  methods BUILD_LOCAL_CLASSES_NODE
-    importing
-      !I_PROGRAM    type STRING
-      !I_EXCL_CLASS type STRING
-      !I_REFNODE    type SALV_DE_NODE_KEY
-    returning
-      value(R_LOCALS_REL) type SALV_DE_NODE_KEY .
-  methods GET_CODE_FLOW
-    importing
-      !I_CALC_PATH type BOOLEAN optional
-    returning
-      value(RESULTS) type TT_LINE .
-  methods GET_CODE_MIX
-    importing
-      !I_CALC_PATH type BOOLEAN optional .
-  methods MARK_ACTIVE_ROOT
-    importing
-      !I_CALC_PATH type BOOLEAN optional
-    changing
-      !CT_RESULTS TYPE TT_LINE .
+    METHODS constructor
+      IMPORTING
+        !i_prog            TYPE prog
+        !i_new_parser      TYPE abap_bool DEFAULT abap_false
+        !i_show_parse_time TYPE abap_bool DEFAULT abap_false .
+    METHODS show .
+    METHODS add_class
+      IMPORTING
+        !i_class      TYPE string
+        !i_refnode    TYPE salv_de_node_key
+        !no_locals    TYPE boolean OPTIONAL
+        !i_tree       TYPE zcl_ace=>ts_tree OPTIONAL
+        !i_type       TYPE flag OPTIONAL
+      RETURNING
+        VALUE(r_node) TYPE salv_de_node_key .
+    METHODS build_local_classes_node
+      IMPORTING
+        !i_program          TYPE string
+        !i_excl_class       TYPE string
+        !i_refnode          TYPE salv_de_node_key
+      RETURNING
+        VALUE(r_locals_rel) TYPE salv_de_node_key .
+    METHODS get_code_flow
+      IMPORTING
+        !i_calc_path   TYPE boolean OPTIONAL
+      RETURNING
+        VALUE(results) TYPE tt_line .
+    METHODS get_code_mix
+      IMPORTING
+        !i_calc_path TYPE boolean OPTIONAL .
+    METHODS mark_active_root
+      IMPORTING
+        !i_calc_path TYPE boolean OPTIONAL
+      CHANGING
+        !ct_results  TYPE tt_line .
 protected section.
 private section.
   methods GET_INCLUDE_PREFIX

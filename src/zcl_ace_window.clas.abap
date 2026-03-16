@@ -25,18 +25,7 @@ public section.
              END OF ts_calls .
   types:
     tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
-  types:
-    BEGIN OF ts_vars,
-               program   TYPE program,
-               include   TYPE program,
-               class     TYPE string,
-               eventtype TYPE string,
-               eventname TYPE string,
-               line      TYPE i,
-               name      TYPE string,
-               type      TYPE string,
-               icon      TYPE salv_de_tree_image,
-             END OF ts_vars .
+
   types:
     BEGIN OF ts_event,
                program    TYPE program,
@@ -65,7 +54,7 @@ public section.
   types:
     tt_kword      TYPE STANDARD TABLE OF ZCL_ACE=>TS_KWORD WITH EMPTY KEY .
   types:
-    tt_vars       TYPE STANDARD TABLE OF ts_vars WITH EMPTY KEY .
+    tt_vars       TYPE STANDARD TABLE OF ZCL_ACE=>ts_vars WITH EMPTY KEY .
   types:
     tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program  include line name .
   types:
