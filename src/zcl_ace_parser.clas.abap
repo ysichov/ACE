@@ -8,6 +8,7 @@ public section.
     importing
       !I_PROGRAM type PROGRAM
       !I_INCLUDE type PROGRAM
+      !I_CLASS type STRING optional
     changing
       !CS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE .
 protected section.
@@ -24,6 +25,12 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           lv_interface TYPE string,
           lv_eventtype TYPE string,
           lv_eventname TYPE string.
+
+    READ TABLE cs_source-tt_progs WITH KEY include = i_include TRANSPORTING  NO FIELDS.
+    CHECK sy-subrc <> 0.
+    IF i_class IS NOT INITIAL.
+      lv_class = i_class.
+    ENDIF.
 
     DATA: lo_parser TYPE REF TO zcl_ace_parser.
     DATA(lo_src)  = cl_ci_source_include=>create( p_name = i_include ).
@@ -79,6 +86,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
         NEW zcl_ace_parser( )->parse_tokens( EXPORTING i_program = i_program
                                                        i_include = ls_kw_level-name
+                                                       i_class   = lv_class
                                              CHANGING  cs_source = cs_source ).
         CONTINUE.
       ENDIF.
@@ -98,10 +106,10 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 1 INTO DATA(ls_tok2).
       IF ls_kw_tok-str = 'CLASS'.
         lv_class = ls_tok2-str.
-        clear lv_interface.
+        CLEAR lv_interface.
       ENDIF.
       IF  ls_kw_tok-str = 'INTERFACE'.
-        clear lv_class.
+        CLEAR lv_class.
         lv_interface = ls_tok2-str.
       ENDIF.
 
@@ -144,7 +152,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
       ENDIF.
 
-      IF lv_eff_kw =  'PUBLIC' OR lv_eff_kw =  'PROTECTED' OR lv_eff_kw = 'PRIVATE'
+      IF lv_eff_kw = 'CLASS' OR lv_eff_kw =  'PUBLIC' OR lv_eff_kw =  'PROTECTED' OR lv_eff_kw = 'PRIVATE'
      OR lv_eff_kw = 'METHODS' OR lv_eff_kw = 'CLASS-METHODS'
      OR lv_eff_kw = 'FORM' OR lv_eff_kw = `METHOD` OR lv_eff_kw = `MODULE` OR lv_eff_kw = 'FUNCTION'.
         lo_calls_line->handle(
@@ -215,7 +223,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         lo_calls->handle(
           EXPORTING
             io_scan    = lo_scan
-            i_class = lv_class
+            i_class    = lv_class
             i_stmt_idx = lv_kw_idx
             i_program  = i_program
             i_include  = i_include

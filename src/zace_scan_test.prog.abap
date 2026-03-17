@@ -2,7 +2,7 @@ REPORT zace_calls_test_data.
 
 parameters a type i.
 
-CLASS lcl_demo DEFINITION.
+CLASS lcl_demo DEFINITION INHERITING FROM zcl_ace_window.
   PUBLIC SECTION.
     CLASS-METHODS cls_meth IMPORTING iv_a type i OPTIONAL iv_b type i PREFERRED PARAMETER iv_b RETURNING VALUE(rv) type string.
      METHODS constructor .
@@ -28,6 +28,8 @@ METHOD run.
   ENDMETHOD.
 
   method constructor.
+ data: deb TYPE REF TO ZCL_ACE.
+     super->constructor( deb ).
      me->run( 1 ).
   ENDMETHOD.
 

@@ -183,17 +183,17 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     ENDIF.
 
     CASE lv_kw.
-*      WHEN 'CLASS' OR 'INTERFACE'.
-*        on_class_kw( io_scan = io_scan i_stmt_idx = i_stmt_idx i_kw = lv_kw ).
-*        IF lv_kw = 'CLASS' AND mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
-*          READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING FIELD-SYMBOL(<cd>).
-*          IF sy-subrc = 0.
-*            <cd>-super = mv_super_name.
-*          ELSE.
-*            APPEND VALUE zcl_ace_window=>ts_class_def( class = mv_class_name super = mv_super_name )
-*              TO cs_source-tt_class_defs.
-*          ENDIF.
-*        ENDIF.
+      WHEN 'CLASS' OR 'INTERFACE'.
+        on_class_kw( io_scan = io_scan i_stmt_idx = i_stmt_idx i_kw = lv_kw ).
+        IF lv_kw = 'CLASS' AND mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
+          READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING FIELD-SYMBOL(<cd>).
+          IF sy-subrc = 0.
+            <cd>-super = mv_super_name.
+          ELSE.
+            APPEND VALUE zcl_ace_window=>ts_class_def( class = mv_class_name super = mv_super_name )
+              TO cs_source-tt_class_defs.
+          ENDIF.
+        ENDIF.
       WHEN 'PUBLIC'.
         IF mv_in_impl = abap_false. mv_meth_type = 1. ENDIF.
       WHEN 'PROTECTED'.
