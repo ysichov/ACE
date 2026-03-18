@@ -56,7 +56,6 @@ public section.
   types:
     tt_vars       TYPE SORTED TABLE OF ZCL_ACE=>ts_vars WITH UNIQUE KEY program include class eventtype eventname name.
 
-
   types:
     tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program  include line name .
   types:

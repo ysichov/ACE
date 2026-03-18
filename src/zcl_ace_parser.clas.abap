@@ -43,12 +43,12 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     ls_prog-scan       = lo_scan.
     APPEND ls_prog TO cs_source-tt_progs.
 
-    DATA(lo_events)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_events( ) ).
-    DATA(lo_calls_line) = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls_line( ) ).
-    DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_params( ) ).
-    DATA(lo_vars)       = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_vars( ) ).
-    DATA(lo_calls)      = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls( ) ).
-    DATA(lo_calcs)      = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calcs( ) ).
+    DATA(lo_events)     =  NEW zcl_ace_parse_events( ).
+    DATA(lo_calls_line) = NEW zcl_ace_parse_calls_line( ).
+    DATA(lo_params)     =  NEW zcl_ace_parse_params( ).
+    DATA(lo_vars)       =  NEW zcl_ace_parse_vars( ).
+    DATA(lo_calls)      =  NEW zcl_ace_parse_calls( ).
+    DATA(lo_calcs)      =  NEW zcl_ace_parse_calcs( ).
 
     DATA lt_pass1     TYPE STANDARD TABLE OF string WITH EMPTY KEY.
     "DATA lt_pass1_hdl TYPE TABLE OF REF TO zif_ace_stmt_handler WITH EMPTY KEY.
@@ -66,7 +66,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     INSERT `CLASS-METHODS` INTO TABLE lt_params_kws.
     INSERT `FORM`          INTO TABLE lt_params_kws.
 
-    lo_events->handle(
+    lo_events->zif_ace_stmt_handler~handle(
       EXPORTING
         io_scan    = lo_scan
         i_stmt_idx = 0
@@ -157,7 +157,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       IF lv_eff_kw = 'CLASS' OR lv_eff_kw =  'PUBLIC' OR lv_eff_kw =  'PROTECTED' OR lv_eff_kw = 'PRIVATE'
      OR lv_eff_kw = 'METHODS' OR lv_eff_kw = 'CLASS-METHODS'
      OR lv_eff_kw = 'FORM' OR lv_eff_kw = `METHOD` OR lv_eff_kw = `MODULE` OR lv_eff_kw = 'FUNCTION'.
-        lo_calls_line->handle(
+        lo_calls_line->zif_ace_stmt_handler~handle(
           EXPORTING
             io_scan     = lo_scan
             i_class     = lv_class
@@ -170,7 +170,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       ENDIF.
 
       IF lv_eff_kw = 'DATA' OR lv_eff_kw =  'CLASS-DATA' OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS' OR lv_eff_kw = 'COMPUTE'.
-        lo_vars->handle(
+        lo_vars->zif_ace_stmt_handler~handle(
           EXPORTING
             io_scan    = lo_scan
             i_stmt_idx = lv_kw_idx
@@ -184,7 +184,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       ENDIF.
 
       IF lv_eff_kw = 'COMPUTE'.
-        lo_calcs->handle(
+        lo_calcs->zif_ace_stmt_handler~handle(
           EXPORTING
             io_scan    = lo_scan
             i_stmt_idx = lv_kw_idx
@@ -197,7 +197,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
-        lo_params->handle(
+        lo_params->zif_ace_stmt_handler~handle(
           EXPORTING
             io_scan    = lo_scan
             i_class    = lv_class
@@ -223,7 +223,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
 
-        lo_calls->handle(
+        lo_calls->zif_ace_stmt_handler~handle(
           EXPORTING
             io_scan    = lo_scan
             i_class    = lv_class

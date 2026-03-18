@@ -1500,9 +1500,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     IF io_debugger->mo_window->mv_new_parser = abap_true.
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
       IF sy-subrc <> 0.
-        data lo_parser type ref to ZCL_ace_parser.
-        CREATE object lo_parser.
-        lo_parser->parse_tokens2(
+        DATA(lo) = NEW zcl_ace_parser( ).
+        lo->parse_tokens2(
           EXPORTING
             i_program = i_include
             i_include = i_include
@@ -1696,8 +1695,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDDO.
 
       zcl_ace_source_parser=>link_calls_to_params(
-        EXPORTING io_debugger = io_debugger
-        CHANGING  ct_tokens   = tokens ).
+        EXPORTING
+          io_debugger = io_debugger
+        CHANGING
+          ct_tokens   = tokens ).
 
 *      LOOP AT io_debugger->mo_window->ms_sources-t_params ASSIGNING FIELD-SYMBOL(<param>).
 **        REPLACE ALL OCCURRENCES OF 'VALUE(' IN <param>-param WITH ''.

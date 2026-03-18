@@ -432,12 +432,12 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       ELSE          ls_kw_tok-str ).
 
 
-    DATA(lv_i) = ls_stmt-from.
-    WHILE lv_i <= ls_stmt-to.
-      READ TABLE io_scan->tokens INDEX lv_i INTO DATA(ls_tok_t).
-      WRITE ls_tok_t-str.
-      ADD 1 TO lv_i.
-    ENDWHILE.
+*    DATA(lv_i) = ls_stmt-from.
+*    WHILE lv_i <= ls_stmt-to.
+*      READ TABLE io_scan->tokens INDEX lv_i INTO DATA(ls_tok_t).
+*      WRITE ls_tok_t-str.
+*      ADD 1 TO lv_i.
+*    ENDWHILE.
 
     IF lv_kw = 'CALL'.
       READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok2).
@@ -448,7 +448,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     DATA lt_new_calls TYPE zcl_ace=>tt_calls.
 
     "test
-    WRITE: / ls_kw_tok-row.
+    "WRITE: / ls_kw_tok-row.
 *    IF ls_kw_tok-row = 7726.
 *      BREAK-POINT.
 *    ENDIF.
@@ -633,11 +633,11 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
             TRANSPORTING NO FIELDS BINARY SEARCH.
           IF sy-subrc <> 0.
             APPEND ls_nc TO <kw>-tt_calls.
-            IF ls_nc-class IS INITIAL.
-              WRITE: 'EMPTY' COLOR 1, ls_nc-event, ls_nc-name.
-            ELSE.
-             WRITE: ls_nc-class  COLOR 5, ls_nc-event, ls_nc-name.
-            ENDIF.
+*            IF ls_nc-class IS INITIAL.
+*              WRITE: 'EMPTY' COLOR 1, ls_nc-event, ls_nc-name.
+*            ELSE.
+*             WRITE: ls_nc-class  COLOR 5, ls_nc-event, ls_nc-name.
+*            ENDIF.
           ENDIF.
         ENDLOOP.
       ENDIF.

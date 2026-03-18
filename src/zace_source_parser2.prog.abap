@@ -26,11 +26,14 @@ parameters: p_prog  TYPE progname.
 START-OF-SELECTION.
 
   DATA ms_source TYPE zcl_ace_window=>ts_source.
+  data(io_debugger) = new ZCL_ACE( i_prog = p_prog ).
+*  data(lo) = NEW zcl_ace_parser( ).
+*  lo->parse_tokens2(
+*    EXPORTING i_program = p_prog
+*              i_include = p_prog
+*    CHANGING  cs_source = ms_source ).
 
-  data(lo) = NEW zcl_ace_parser( ).
-  lo->parse_tokens2(
-    EXPORTING i_program = p_prog
-              i_include = p_prog
-    CHANGING  cs_source = ms_source ).
+        ZCL_ACE_SOURCE_PARSER=>parse_tokens( i_stack = 0 i_program = p_prog i_include = p_prog io_debugger = io_debugger ).
+
 
 write ''.
