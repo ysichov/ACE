@@ -51,7 +51,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     DATA(lo_calcs)      = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calcs( ) ).
 
     DATA lt_pass1     TYPE STANDARD TABLE OF string WITH EMPTY KEY.
-    DATA lt_pass1_hdl TYPE TABLE OF REF TO zif_ace_stmt_handler WITH EMPTY KEY.
+    "DATA lt_pass1_hdl TYPE TABLE OF REF TO zif_ace_stmt_handler WITH EMPTY KEY.
 
 
     DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
@@ -93,6 +93,10 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       CHECK ls_kw_stmt-type <> '*' AND ls_kw_stmt-type <> 'P'.
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from INTO DATA(ls_kw_tok).
       CHECK sy-subrc = 0.
+
+*      IF ls_kw_tok-row = '7585'.
+*        BREAK-POINT.
+*      ENDIF.
 
       DATA(lv_kw_name) = SWITCH string( ls_kw_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -165,7 +169,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
             cs_source   = cs_source ).
       ENDIF.
 
-      IF lv_eff_kw = 'DATA' OR lv_eff_kw =  'CLASS-DATA' OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'.
+      IF lv_eff_kw = 'DATA' OR lv_eff_kw =  'CLASS-DATA' OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS' OR lv_eff_kw = 'COMPUTE'.
         lo_vars->handle(
           EXPORTING
             io_scan    = lo_scan
@@ -223,6 +227,8 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           EXPORTING
             io_scan    = lo_scan
             i_class    = lv_class
+            i_ev_name  = lv_eventname
+            i_evtype   = lv_eventtype
             i_stmt_idx = lv_kw_idx
             i_program  = i_program
             i_include  = i_include

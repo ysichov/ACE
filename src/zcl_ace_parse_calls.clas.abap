@@ -64,6 +64,8 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     CHECK sy-subrc = 0.
 
     mv_class_name = i_class.
+    mv_event_name = i_ev_name.
+    mv_event_type = i_evtype.
 
 *    CASE ls_kw-str.
 **      WHEN 'CLASS' OR 'INTERFACE'.
@@ -151,20 +153,45 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
 
 
   METHOD resolve_var_type.
+    " t_vars is pre-sorted by (program, eventtype, eventname, name)
+    " before this pass runs — so READ with BINARY SEARCH is O(log n).
+
+    " 1. Local scope
     READ TABLE is_source-t_vars
-      WITH KEY program = i_program  include = i_include class = mv_class_name eventtype = i_evtype eventname = i_evname name = i_varname
+      WITH KEY program   = i_program
+               eventtype = i_evtype
+               eventname = i_evname
+               name      = i_varname
       INTO DATA(ls_var).
-    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. RETURN. ENDIF.
 
-    READ TABLE is_source-t_vars
-      WITH KEY program = i_program eventtype = '' eventname = '' name = i_varname
-      INTO ls_var.
-    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. RETURN. ENDIF.
+    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL.
+      rv_type = ls_var-type.
+      RETURN.
+    ENDIF.
 
+    " 2. Class attributes (eventtype = '', eventname = '')
     READ TABLE is_source-t_vars
-      WITH KEY program = i_program class = '' eventtype = '' eventname = '' name = i_varname
+      WITH KEY program   = i_program
+               eventtype = ''
+               eventname = ''
+               name      = i_varname
       INTO ls_var.
-    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL. rv_type = ls_var-type. ENDIF.
+    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL.
+      rv_type = ls_var-type.
+      RETURN.
+    ENDIF.
+
+    " 3. Globals (class = '', eventtype = '', eventname = '')
+    READ TABLE is_source-t_vars
+      WITH KEY program   = i_program
+               class     = ''
+               eventtype = ''
+               eventname = ''
+               name      = i_varname
+      INTO ls_var.
+    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL.
+      rv_type = ls_var-type.
+    ENDIF.
   ENDMETHOD.
 
 
@@ -290,7 +317,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       ELSE.
         lv_rtype = resolve_var_type(
           is_source = cs_source i_program = i_program i_include = i_program
-          i_evtype  = lv_c-event i_evname = lv_c-name
+          i_evtype  = lv_c-event i_evname = mv_event_name
           i_varname = lv_left ).
         IF lv_rtype IS NOT INITIAL.
           lv_c-class = lv_rtype.
@@ -404,11 +431,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       WHEN 'A' THEN '+CALL_METHOD'
       ELSE          ls_kw_tok-str ).
 
-    "test
-    WRITE: / ls_kw_tok-row.
-*    IF ls_kw_tok-row = 1468.
-*      BREAK-POINT.
-*    ENDIF.
 
     DATA(lv_i) = ls_stmt-from.
     WHILE lv_i <= ls_stmt-to.
@@ -424,6 +446,12 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
 
     DATA(lv_super) = get_super( is_source = cs_source ).
     DATA lt_new_calls TYPE zcl_ace=>tt_calls.
+
+    "test
+    WRITE: / ls_kw_tok-row.
+*    IF ls_kw_tok-row = 7726.
+*      BREAK-POINT.
+*    ENDIF.
 
     CASE lv_kw.
 
@@ -607,6 +635,8 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
             APPEND ls_nc TO <kw>-tt_calls.
             IF ls_nc-class IS INITIAL.
               WRITE: 'EMPTY' COLOR 1, ls_nc-event, ls_nc-name.
+            ELSE.
+             WRITE: ls_nc-class  COLOR 5, ls_nc-event, ls_nc-name.
             ENDIF.
           ENDIF.
         ENDLOOP.

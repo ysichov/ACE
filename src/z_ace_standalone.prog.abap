@@ -7576,11 +7576,17 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       ) TO <ls_prog>-t_keywords.
     ENDLOOP.
 
-    DATA(lo_events)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_events( ) ).
-    DATA(lo_calls_line) = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls_line( ) ).
-    DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_params( ) ).
-    DATA(lo_vars)       = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_vars( ) ).
-    DATA(lo_calls)      = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls( ) ).
+*    DATA(lo_events)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_events( ) ).
+*    DATA(lo_calls_line) = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls_line( ) ).
+*    DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_params( ) ).
+*    DATA(lo_vars)       = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_vars( ) ).
+*    DATA(lo_calls)      = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls( ) ).
+
+     DATA(lo_events)     =  NEW zcl_ace_parse_events( ) .
+    DATA(lo_calls_line) =  NEW zcl_ace_parse_calls_line( ) .
+    DATA(lo_params)     =  NEW zcl_ace_parse_params( ) .
+    DATA(lo_vars)       =  NEW zcl_ace_parse_vars( ) .
+    DATA(lo_calls)      =  NEW zcl_ace_parse_calls( ) .
 
     DATA lt_pass1     TYPE STANDARD TABLE OF string WITH EMPTY KEY.
     DATA lt_pass1_hdl TYPE TABLE OF REF TO zif_ace_stmt_handler WITH EMPTY KEY.
@@ -7637,7 +7643,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     INSERT `CLASS-METHODS` INTO TABLE lt_params_kws.
     INSERT `FORM`          INTO TABLE lt_params_kws.
 
-    lo_events->handle(
+    lo_events->ZIF_ACE_STMT_HANDLER~handle(
       EXPORTING io_scan    = lo_scan
                 i_stmt_idx = 0
                 i_program  = i_program
@@ -7683,7 +7689,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
-        lo_params->handle(
+        lo_params->ZIF_ACE_STMT_HANDLER~handle(
           EXPORTING io_scan    = lo_scan
                     i_stmt_idx = lv_idx
                     i_program  = i_program
@@ -7717,7 +7723,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff_kw
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
-        lo_calls->handle(
+        lo_calls->ZIF_ACE_STMT_HANDLER~handle(
           EXPORTING io_scan    = lo_scan
                     i_stmt_idx = lv_idx
                     i_program  = i_program
