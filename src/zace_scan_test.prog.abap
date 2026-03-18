@@ -4,7 +4,7 @@ parameters a type i.
 
 CLASS lcl_demo DEFINITION INHERITING FROM zcl_ace_window.
   PUBLIC SECTION.
-    CLASS-METHODS cls_meth IMPORTING iv_a type i OPTIONAL iv_b type i PREFERRED PARAMETER iv_b RETURNING VALUE(rv) type string.
+    CLASS-METHODS cls_meth IMPORTING iv_a type i  iv_b type i  RETURNING VALUE(rv) type string.
      METHODS constructor .
     METHODS run IMPORTING iv_i TYPE i.
   PRIVATE SECTION.
@@ -17,11 +17,12 @@ CLASS lcl_demo IMPLEMENTATION.
   ENDMETHOD.
 
 METHOD run.
+  data: a type i, b type i.
     DATA lo TYPE REF TO lcl_demo.
     mo_ref = NEW lcl_demo( ).
     lo->run( iv_i = 1 ).
     me->run( iv_i = 2 ).
-   lcl_demo=>cls_meth( ).
+   lcl_demo=>cls_meth( EXPORTING iv_a = a iv_b = b ).
     PERFORM my_form USING 42.
     CALL FUNCTION 'POPUP_TO_CONFIRM'.
     CALL METHOD lo->run( iv_i = 3 ).
@@ -31,6 +32,7 @@ METHOD run.
  data: deb TYPE REF TO ZCL_ACE.
      super->constructor( deb ).
      me->run( 1 ).
+     run( 1 ).
   ENDMETHOD.
 
 

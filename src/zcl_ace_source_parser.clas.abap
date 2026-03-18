@@ -1500,7 +1500,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     IF io_debugger->mo_window->mv_new_parser = abap_true.
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO DATA(prog).
       IF sy-subrc <> 0.
-        NEW ZCL_ace_parser( )->parse_tokens(
+        NEW ZCL_ace_parser( )->parse_tokens2(
           EXPORTING
             i_program = i_include
             i_include = i_include

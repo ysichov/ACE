@@ -4,7 +4,7 @@ class ZCL_ACE_PARSER definition
 
 public section.
 
-  methods PARSE_TOKENS
+  methods PARSE_TOKENS2
     importing
       !I_PROGRAM type PROGRAM
       !I_INCLUDE type PROGRAM
@@ -20,7 +20,7 @@ ENDCLASS.
 CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
 
-  METHOD parse_tokens.
+  METHOD parse_tokens2.
     DATA: lv_class     TYPE string,
           lv_interface TYPE string,
           lv_eventtype TYPE string,
@@ -44,9 +44,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     APPEND ls_prog TO cs_source-tt_progs.
 
     DATA(lo_events)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_events( ) ).
-
     DATA(lo_calls_line) = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls_line( ) ).
-
     DATA(lo_params)     = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_params( ) ).
     DATA(lo_vars)       = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_vars( ) ).
     DATA(lo_calls)      = CAST zif_ace_stmt_handler( NEW zcl_ace_parse_calls( ) ).
@@ -84,10 +82,10 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       IF ls_kw_stmt-level <> 1.
         READ TABLE lo_scan->levels INDEX ls_kw_stmt-level INTO DATA(ls_kw_level).
 
-        NEW zcl_ace_parser( )->parse_tokens( EXPORTING i_program = i_program
-                                                       i_include = ls_kw_level-name
-                                                       i_class   = lv_class
-                                             CHANGING  cs_source = cs_source ).
+        NEW zcl_ace_parser( )->parse_tokens2( EXPORTING i_program = i_program
+                                                        i_include = ls_kw_level-name
+                                                        i_class   = lv_class
+                                              CHANGING  cs_source = cs_source ).
         CONTINUE.
       ENDIF.
 
@@ -220,6 +218,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff_kw
         TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
+
         lo_calls->handle(
           EXPORTING
             io_scan    = lo_scan
