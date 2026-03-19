@@ -1933,7 +1933,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         i_program = lv_parse_include i_include = lv_parse_include io_debugger = mo_viewer ).
     ENDIF.
 
-    LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<sp_prog>).
+    LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<sp_prog>) where selected = abap_true.
       CLEAR <sp_prog>-selected.
     ENDLOOP.
 

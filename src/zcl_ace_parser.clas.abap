@@ -238,5 +238,10 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
     ENDLOOP.
 
+    " Store context fields so CODEMIX can read them from the selected prog entry
+    <ls_prog>-evtype = lv_eventtype.
+    <ls_prog>-evname = lv_eventname.
+    <ls_prog>-class  = lv_class.
+
   ENDMETHOD.
 ENDCLASS.

@@ -110,6 +110,9 @@ public section.
                selected      TYPE boolean,
                enh_collected TYPE boolean,
                tt_enh_blocks TYPE tt_enh_blocks,
+               evtype        TYPE string,
+               evname        TYPE string,
+               class         TYPE string,
              END OF ts_prog .
   types:
     BEGIN OF ts_virtual_block,
@@ -396,6 +399,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
   METHOD hnd_toolbar.
 
+    data: lv_evname type string,
+          lv_evtype type string,
+          lv_class  type string.
 
     CONSTANTS: c_mask TYPE x VALUE '01'.
     FIELD-SYMBOLS: <any> TYPE any.
@@ -466,9 +472,20 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'CODEMIX'.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO data(source).
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY selected = abap_true INTO DATA(source).
+        IF sy-subrc = 0.
+          lv_evname = source-evname.
+          lv_evtype = source-evtype.
+          lv_class  = source-class.
+        ENDIF.
         zcl_ace_source_parser=>code_execution_scanner(
-          i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+          i_program   = source-include
+          i_include   = source-include
+          io_debugger = mo_viewer
+          i_evname    = lv_evname
+          i_evtype    = lv_evtype
+          i_class     = lv_class ).
 
         mo_viewer->get_code_mix( ).
         mo_viewer->mo_window->show_stack( ).

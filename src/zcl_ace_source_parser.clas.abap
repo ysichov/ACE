@@ -51,6 +51,7 @@ public section.
       !I_INCLUDE type PROGRAM
       !I_EVNAME type STRING optional
       !I_EVTYPE type STRING optional
+      !I_CLASS type STRING optional
       !I_STACK type I optional
       !IO_DEBUGGER type ref to ZCL_ACE .
   class-methods LINK_CALLS_TO_PARAMS
@@ -152,10 +153,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       SORT io_debugger->mo_window->ms_sources-tt_calls_line.
 
-      READ TABLE io_debugger->mt_steps WITH KEY program = i_include eventname = i_evname eventtype = i_evtype TRANSPORTING NO FIELDS.
-      IF sy-subrc = 0.
-        RETURN.
-      ENDIF.
+     clear: io_debugger->mt_steps, io_debugger->m_step.
+*      READ TABLE io_debugger->mt_steps WITH KEY program = i_include eventname = i_evname eventtype = i_evtype TRANSPORTING NO FIELDS.
+*      IF sy-subrc = 0.
+*        RETURN.
+*      ENDIF.
 
       stack =  i_stack + 1.
       CHECK  stack <=  io_debugger->mo_window->m_hist_depth.
@@ -181,9 +183,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ELSE.
         CLEAR  max.
         LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'C' AND type <> 'R'.
-          IF str-type = 'P' AND  str-stmnt_type = '?'.
-            CONTINUE.
-          ENDIF.
+*          IF str-type = 'P' AND  str-stmnt_type = '?'.
+*            CONTINUE.
+*          ENDIF.
           IF  max < str-stmnt_to.
             max = str-stmnt_to.
             APPEND str TO structures.
@@ -252,8 +254,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             <step>-stacklevel =  stack.
             <step>-program = i_program.
             <step>-include = key-include.
-            IF  <step>-eventtype = 'METHOD'.
-
+            IF <step>-eventtype = 'METHOD'.
+              <step>-class = i_class.
             ENDIF.
           ENDIF.
 

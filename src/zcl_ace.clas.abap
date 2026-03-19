@@ -926,16 +926,16 @@ CLASS ZCL_ACE IMPLEMENTATION.
     DATA: line      TYPE ts_line,
           pre_stack TYPE ts_line,
           opened    TYPE i.
+*
+*    DELETE mo_window->ms_sources-t_calculated WHERE name+0(1) = ''''.
+*    DELETE mo_window->ms_sources-t_composed WHERE name+0(1) = ''''.
+*    DELETE mo_window->ms_sources-t_calculated WHERE name+0(1) = '='.
+*    DELETE mo_window->ms_sources-t_composed WHERE name+0(1) = '='.
 
-    DELETE mo_window->ms_sources-t_calculated WHERE name+0(1) = ''''.
-    DELETE mo_window->ms_sources-t_composed WHERE name+0(1) = ''''.
-    DELETE mo_window->ms_sources-t_calculated WHERE name+0(1) = '='.
-    DELETE mo_window->ms_sources-t_composed WHERE name+0(1) = '='.
-
-    SORT mo_window->ms_sources-t_calculated.
-    DELETE ADJACENT DUPLICATES FROM mo_window->ms_sources-t_calculated.
-    SORT mo_window->ms_sources-t_composed.
-    DELETE ADJACENT DUPLICATES FROM mo_window->ms_sources-t_composed.
+*    SORT mo_window->ms_sources-t_calculated.
+*    DELETE ADJACENT DUPLICATES FROM mo_window->ms_sources-t_calculated.
+*    SORT mo_window->ms_sources-t_composed.
+*    DELETE ADJACENT DUPLICATES FROM mo_window->ms_sources-t_composed.
 
     READ TABLE mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(prog).
     DATA(lt_selected_var) = mt_selected_var.
@@ -955,6 +955,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
                                                   i_e_type = mo_window->ms_sel_call-eventtype
                                                   i_program = mo_window->ms_sel_call-program
                                                   i_include = mo_window->ms_sel_call-include
+                                                  i_class   = mo_window->ms_sel_call-class
                                                   i_stack   =  0
                                                   io_debugger = mo_window->mo_viewer ).
       ENDIF.

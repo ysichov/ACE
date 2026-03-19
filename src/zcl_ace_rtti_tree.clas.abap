@@ -362,6 +362,9 @@ method DISPLAY.
         IF sy-subrc = 0.
           LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<fp>). CLEAR <fp>-selected. ENDLOOP.
           <form_prog>-selected = abap_true.
+          <form_prog>-evtype   = 'FORM'.
+          <form_prog>-evname   = CONV string( <ev_name> ).
+          CLEAR <form_prog>-class.
           mo_viewer->mo_window->m_prg-include = lv_form_include.
           IF <form_prog>-v_source IS NOT INITIAL.
             mo_viewer->mo_window->mo_code_viewer->set_text( table = <form_prog>-v_source ).
@@ -619,11 +622,37 @@ method DISPLAY.
             mo_viewer->mo_window->m_prg-include = 'VIRTUAL'.
             mo_viewer->mo_window->set_program( 'VIRTUAL' ).
             mo_viewer->mo_window->set_program_line( 1 ).
+            " Store METHOD context in VIRTUAL entry for CODEMIX
+            READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+              WITH KEY include = 'VIRTUAL' ASSIGNING FIELD-SYMBOL(<virt_cm>).
+            IF sy-subrc = 0.
+              <virt_cm>-evtype = 'METHOD'.
+              <virt_cm>-evname = lv_cm_method.
+              READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+                WITH KEY include = lv_cm_include eventname = lv_cm_method eventtype = 'METHOD'
+                INTO DATA(ls_cm_cl).
+              IF sy-subrc = 0.
+                <virt_cm>-class = ls_cm_cl-class.
+              ENDIF.
+            ENDIF.
             RETURN.
           ENDIF.
         ENDIF.
         mo_viewer->mo_window->set_program( lv_cm_include ).
         mo_viewer->mo_window->set_program_line( lv_cm_value ).
+        " Store METHOD context in selected prog entry for CODEMIX
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_cm_include ASSIGNING FIELD-SYMBOL(<sel_cm>).
+        IF sy-subrc = 0.
+          <sel_cm>-evtype = 'METHOD'.
+          <sel_cm>-evname = lv_cm_method.
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+            WITH KEY include = lv_cm_include eventname = lv_cm_method eventtype = 'METHOD'
+            INTO DATA(ls_sel_cl).
+          IF sy-subrc = 0.
+            <sel_cm>-class = ls_sel_cl-class.
+          ENDIF.
+        ENDIF.
         RETURN.
       ENDIF.
 
