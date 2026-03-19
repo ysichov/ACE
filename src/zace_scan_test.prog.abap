@@ -1,6 +1,11 @@
 REPORT zace_calls_test_data.
 
 parameters a type i.
+INTERFACE lif_abapmerge DEFERRED.
+
+INTERFACE lif_abapmerge.
+METHODS: i1, i2.
+ENDINTERFACE.
 
 CLASS lcl_demo DEFINITION INHERITING FROM zcl_ace_window.
   PUBLIC SECTION.
@@ -10,6 +15,17 @@ CLASS lcl_demo DEFINITION INHERITING FROM zcl_ace_window.
   PRIVATE SECTION.
     DATA mo_ref TYPE REF TO lcl_demo.
 ENDCLASS.
+
+INTERFACE lif_abapmerge_marker.
+* abapmerge 0.16.0 - 2024-06-17T05:44:59.955Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2024-06-17T05:44:59.955Z`.
+  CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.0`.
+ENDINTERFACE.
+
+
+INTERFACE lif_abapmerge2.
+METHODS: i3, i4.
+ENDINTERFACE.
 
 CLASS lcl_demo IMPLEMENTATION.
   METHOD cls_meth.

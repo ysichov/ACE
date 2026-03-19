@@ -154,7 +154,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
       ENDIF.
 
-      IF lv_eff_kw = 'CLASS' OR lv_eff_kw =  'PUBLIC' OR lv_eff_kw =  'PROTECTED' OR lv_eff_kw = 'PRIVATE'
+      IF lv_eff_kw = 'CLASS'  OR lv_eff_kw = 'INTERFACE' OR lv_eff_kw =  'PUBLIC' OR lv_eff_kw =  'PROTECTED' OR lv_eff_kw = 'PRIVATE'
      OR lv_eff_kw = 'METHODS' OR lv_eff_kw = 'CLASS-METHODS'
      OR lv_eff_kw = 'FORM' OR lv_eff_kw = `METHOD` OR lv_eff_kw = `MODULE` OR lv_eff_kw = 'FUNCTION'.
         lo_calls_line->zif_ace_stmt_handler~handle(
