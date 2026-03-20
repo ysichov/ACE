@@ -319,6 +319,14 @@ method DISPLAY.
         WITH KEY program = <program> include = <include> eventname = <ev_name> eventtype = <ev_type>
         INTO mo_viewer->mo_window->ms_sel_call.
 
+      " Store context for CODEMIX/APPLY_DEPTH — only for executable code objects
+      IF <ev_type> = 'METHOD' OR <ev_type> = 'FORM' OR <ev_type> = 'MODULE'.
+        mo_viewer->mo_window->ms_code_context = VALUE #(
+          evtype = <ev_type>
+          evname = <ev_name>
+          class  = mo_viewer->mo_window->ms_sel_call-class ).
+      ENDIF.
+
       IF <kind> = 'M' AND <param> IS INITIAL AND <ev_type> = 'MODULE' AND <include> IS NOT INITIAL.
         DATA(lv_mod_include) = CONV program( <include> ).
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
@@ -362,9 +370,6 @@ method DISPLAY.
         IF sy-subrc = 0.
           LOOP AT mo_viewer->mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<fp>). CLEAR <fp>-selected. ENDLOOP.
           <form_prog>-selected = abap_true.
-          <form_prog>-evtype   = 'FORM'.
-          <form_prog>-evname   = CONV string( <ev_name> ).
-          CLEAR <form_prog>-class.
           mo_viewer->mo_window->m_prg-include = lv_form_include.
           IF <form_prog>-v_source IS NOT INITIAL.
             mo_viewer->mo_window->mo_code_viewer->set_text( table = <form_prog>-v_source ).
@@ -622,37 +627,27 @@ method DISPLAY.
             mo_viewer->mo_window->m_prg-include = 'VIRTUAL'.
             mo_viewer->mo_window->set_program( 'VIRTUAL' ).
             mo_viewer->mo_window->set_program_line( 1 ).
-            " Store METHOD context in VIRTUAL entry for CODEMIX
-            READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-              WITH KEY include = 'VIRTUAL' ASSIGNING FIELD-SYMBOL(<virt_cm>).
-            IF sy-subrc = 0.
-              <virt_cm>-evtype = 'METHOD'.
-              <virt_cm>-evname = lv_cm_method.
-              READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
-                WITH KEY include = lv_cm_include eventname = lv_cm_method eventtype = 'METHOD'
-                INTO DATA(ls_cm_cl).
-              IF sy-subrc = 0.
-                <virt_cm>-class = ls_cm_cl-class.
-              ENDIF.
-            ENDIF.
+            " Store context for CODEMIX/APPLY_DEPTH
+            READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+              WITH KEY include = lv_cm_include eventname = lv_cm_method eventtype = 'METHOD'
+              INTO DATA(ls_cm_cl).
+            mo_viewer->mo_window->ms_code_context = VALUE #(
+              evtype = 'METHOD'
+              evname = lv_cm_method
+              class  = ls_cm_cl-class ).
             RETURN.
           ENDIF.
         ENDIF.
+        " Store context BEFORE set_program so code_execution_scanner gets correct class
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+          WITH KEY include = lv_cm_include eventname = lv_cm_method eventtype = 'METHOD'
+          INTO DATA(ls_sel_cl).
+        mo_viewer->mo_window->ms_code_context = VALUE #(
+          evtype = 'METHOD'
+          evname = lv_cm_method
+          class  = ls_sel_cl-class ).
         mo_viewer->mo_window->set_program( lv_cm_include ).
         mo_viewer->mo_window->set_program_line( lv_cm_value ).
-        " Store METHOD context in selected prog entry for CODEMIX
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-          WITH KEY include = lv_cm_include ASSIGNING FIELD-SYMBOL(<sel_cm>).
-        IF sy-subrc = 0.
-          <sel_cm>-evtype = 'METHOD'.
-          <sel_cm>-evname = lv_cm_method.
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
-            WITH KEY include = lv_cm_include eventname = lv_cm_method eventtype = 'METHOD'
-            INTO DATA(ls_sel_cl).
-          IF sy-subrc = 0.
-            <sel_cm>-class = ls_sel_cl-class.
-          ENDIF.
-        ENDIF.
         RETURN.
       ENDIF.
 

@@ -45,6 +45,16 @@ public section.
       !I_STACK type I
       !I_CALL type ZCL_ACE=>TS_CALLS
       !IO_DEBUGGER type ref to ZCL_ACE .
+  class-methods RESOLVE_CONTEXT
+    importing
+      !I_INCLUDE  type PROGRAM
+      !I_EVTYPE   type STRING optional
+      !I_EVNAME   type STRING optional
+      !IO_DEBUGGER type ref to ZCL_ACE
+    exporting
+      !E_EVTYPE   type STRING
+      !E_EVNAME   type STRING
+      !E_CLASS    type STRING .
   class-methods CODE_EXECUTION_SCANNER
     importing
       !I_PROGRAM type PROGRAM
@@ -139,6 +149,63 @@ ENDCLASS.
 CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
 
+  METHOD resolve_context.
+    " If evtype/evname already known — just propagate and find class
+    e_evtype = i_evtype.
+    e_evname = i_evname.
+
+    IF i_evtype IS NOT INITIAL AND i_evname IS NOT INITIAL.
+      " Try exact match: include + eventtype + eventname
+      READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+        WITH KEY include   = i_include
+                 eventtype = i_evtype
+                 eventname = i_evname
+        INTO DATA(ls_cl).
+      IF sy-subrc = 0.
+        e_class = ls_cl-class.
+        RETURN.
+      ENDIF.
+      " For global class CM-includes: class is encoded in include name before '='
+      FIND '=' IN i_include.
+      IF sy-subrc = 0.
+        DATA(lv_splits) = VALUE string_table( ).
+        SPLIT i_include AT '=' INTO TABLE lv_splits.
+        e_class = lv_splits[ 1 ].
+      ENDIF.
+      RETURN.
+    ENDIF.
+
+    " evtype/evname unknown (local class program, single include) — derive from include
+    " 1. Try: is this a CM-include of a global class?
+    FIND '=' IN i_include.
+    IF sy-subrc = 0.
+      DATA(lv_sp) = VALUE string_table( ).
+      SPLIT i_include AT '=' INTO TABLE lv_sp.
+      e_class = lv_sp[ 1 ].
+      " Find first method in that class as context
+      READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+        WITH KEY include   = i_include
+                 eventtype = 'METHOD'
+        INTO ls_cl.
+      IF sy-subrc = 0.
+        e_evtype = 'METHOD'.
+        e_evname = ls_cl-eventname.
+      ENDIF.
+      RETURN.
+    ENDIF.
+
+    " 2. Local class in a flat program include — find by include
+    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+      WITH KEY include = i_include
+      INTO ls_cl.
+    IF sy-subrc = 0.
+      e_class  = ls_cl-class.
+      e_evtype = ls_cl-eventtype.
+      e_evname = ls_cl-eventname.
+    ENDIF.
+  ENDMETHOD.
+
+
   method CODE_EXECUTION_SCANNER.
 
       DATA: max       TYPE i,
@@ -196,6 +263,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       LOOP AT structures INTO str.
 
         IF str-type = 'E'.
+     .
           READ TABLE io_debugger->mo_window->ms_sources-t_events WITH KEY program = i_program stmnt_type = str-stmnt_type  stmnt_from = str-stmnt_from ASSIGNING FIELD-SYMBOL(<event>).
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = <event>-include INTO prog.
 

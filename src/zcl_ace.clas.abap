@@ -1299,10 +1299,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
             prev_flow  TYPE ts_line.
 
       DATA(lines) = get_code_flow( i_calc_path = i_calc_path ).
-      LOOP AT mo_window->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog_mix>).
-        CLEAR <prog_mix>-selected.
-      ENDLOOP.
-      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' ASSIGNING <prog_mix>.
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = 'Code_Flow_Mix' ASSIGNING FIELD-SYMBOL(<prog_mix>).
       IF sy-subrc <> 0.
         APPEND INITIAL LINE TO mo_window->ms_sources-tt_progs ASSIGNING <prog_mix>.
         INSERT INITIAL LINE INTO mo_window->mt_stack INDEX 1 ASSIGNING FIELD-SYMBOL(<stack_mix>).
@@ -1346,7 +1343,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
       mo_window->mo_code_viewer->set_text( table = flow_lines ).
       <prog_mix>-source_tab = flow_lines.
-      <prog_mix>-selected = abap_true.
+      " Do NOT set selected — keep the real prog's selected intact for CODEMIX/APPLY_DEPTH context
       mo_window->m_prg-include = 'Code_Flow_Mix'.
       mo_window->set_mixprog_line( ).
       mo_window->show_stack( ).

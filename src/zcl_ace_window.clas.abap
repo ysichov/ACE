@@ -232,6 +232,13 @@ public section.
   data:
     mt_globals_set         TYPE STANDARD TABLE OF ts_globals .
   data MS_SEL_CALL type ZCL_ACE=>TS_CALLS_LINE .
+  types:
+    BEGIN OF ts_code_context,
+               evtype TYPE string,
+               evname TYPE string,
+               class  TYPE string,
+             END OF ts_code_context .
+  data MS_CODE_CONTEXT type TS_CODE_CONTEXT .
   data MV_NEW_PARSER type ABAP_BOOL .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
 
@@ -472,20 +479,27 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'CODEMIX'.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-          WITH KEY selected = abap_true INTO DATA(source).
-        IF sy-subrc = 0.
-          lv_evname = source-evname.
-          lv_evtype = source-evtype.
-          lv_class  = source-class.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
+        IF ls_ctx-evtype IS NOT INITIAL.
+          " Context known from dblclick — use PARSE_CALL to start from method/form entry point
+          DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.
+          zcl_ace_source_parser=>parse_call(
+            i_index     = ls_sc-index
+            i_e_name    = ls_ctx-evname
+            i_e_type    = ls_ctx-evtype
+            i_class     = ls_ctx-class
+            i_program   = CONV #( ls_sc-program )
+            i_include   = CONV #( ls_sc-include )
+            i_stack     = 0
+            io_debugger = mo_viewer ).
+        ELSE.
+          " No context — full program scan
+          zcl_ace_source_parser=>code_execution_scanner(
+            i_program   = mo_viewer->mo_window->m_prg-program
+            i_include   = mo_viewer->mo_window->m_prg-program
+            io_debugger = mo_viewer ).
         ENDIF.
-        zcl_ace_source_parser=>code_execution_scanner(
-          i_program   = source-include
-          i_include   = source-include
-          io_debugger = mo_viewer
-          i_evname    = lv_evname
-          i_evtype    = lv_evtype
-          i_class     = lv_class ).
 
         mo_viewer->get_code_mix( ).
         mo_viewer->mo_window->show_stack( ).
@@ -493,9 +507,14 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       WHEN 'CODE'.
         m_zcode = m_zcode BIT-XOR c_mask.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO source.
+        DATA(ls_ctx_code) = mo_viewer->mo_window->ms_code_context.
         zcl_ace_source_parser=>code_execution_scanner(
-          i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+          i_program   = mo_viewer->mo_window->m_prg-program
+          i_include   = mo_viewer->mo_window->m_prg-program
+          io_debugger = mo_viewer
+          i_evname    = ls_ctx_code-evname
+          i_evtype    = ls_ctx_code-evtype
+          i_class     = ls_ctx_code-class ).
         IF m_zcode IS INITIAL.
           mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
         ELSE.
@@ -789,43 +808,29 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       GET TIME STAMP FIELD lv_ts1.
     ENDIF.
 
-    " Определяем реальный include для парсинга.
-    " Если передано просто имя класса/программы (без '='), пробуем построить CP-инклуд.
-    DATA(lv_parse_include) = i_include.
-    FIND '=' IN i_include.
-    IF sy-subrc <> 0.
-      DATA(lv_cp) = CONV program(
-        i_include
-        && repeat( val = '=' occ = 30 - strlen( i_include ) )
-        && 'CP' ).
-      DATA(lv_cp_src) = cl_ci_source_include=>create( p_name = lv_cp ).
-      IF lv_cp_src->lines IS NOT INITIAL.
-        lv_parse_include = lv_cp.
-      ENDIF.
-    ENDIF.
-
     zcl_ace_source_parser=>parse_tokens(
-      i_main = abap_true i_program = lv_parse_include i_include = lv_parse_include io_debugger = mo_viewer ).
+      i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
 
     IF mo_viewer->mv_show_parse_time = abap_true.
       show_parse_time( lv_ts1 ).
     ENDIF.
 
-  "  DELETE ADJACENT DUPLICATES FROM ms_sources-t_params.
     IF mo_viewer->m_step IS INITIAL.
+      DATA(ls_ctx) = ms_code_context.
       zcl_ace_source_parser=>code_execution_scanner(
-        i_program = lv_parse_include i_include = lv_parse_include io_debugger = mo_viewer ).
+        i_program   = i_include
+        i_include   = i_include
+        io_debugger = mo_viewer
+        i_evtype    = ls_ctx-evtype
+        i_evname    = ls_ctx-evname
+        i_class     = ls_ctx-class ).
     ENDIF.
 
     LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<sp_prog>).
       CLEAR <sp_prog>-selected.
     ENDLOOP.
 
-    " Ищем инклуд для отображения: сначала оригинальный, потом CP
     READ TABLE ms_sources-tt_progs WITH KEY include = i_include ASSIGNING <sp_prog>.
-    IF sy-subrc <> 0 AND lv_parse_include <> i_include.
-      READ TABLE ms_sources-tt_progs WITH KEY include = lv_parse_include ASSIGNING <sp_prog>.
-    ENDIF.
     IF sy-subrc = 0.
       <sp_prog>-selected = abap_true.
       IF <sp_prog>-v_source IS NOT INITIAL.
@@ -1012,9 +1017,38 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
              mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
-      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(source).
-      zcl_ace_source_parser=>code_execution_scanner(
-        i_program = source-include i_include = source-include io_debugger = mo_viewer ).
+
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+        WITH KEY selected = abap_true INTO DATA(source).
+      IF sy-subrc <> 0 OR source-include = 'Code_Flow_Mix' OR source-include = 'VIRTUAL'.
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO source
+          WHERE include <> 'Code_Flow_Mix' AND include <> 'VIRTUAL'.
+          EXIT.
+        ENDLOOP.
+      ENDIF.
+
+      CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+             mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
+
+      DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
+      IF ls_ctx-evtype IS NOT INITIAL.
+        DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.
+        zcl_ace_source_parser=>parse_call(
+          i_index     = ls_sc-index
+          i_e_name    = ls_ctx-evname
+          i_e_type    = ls_ctx-evtype
+          i_class     = ls_ctx-class
+          i_program   = CONV #( ls_sc-program )
+          i_include   = CONV #( ls_sc-include )
+          i_stack     = 0
+          io_debugger = mo_viewer ).
+      ELSE.
+        zcl_ace_source_parser=>code_execution_scanner(
+          i_program   = mo_viewer->mo_window->m_prg-program
+          i_include   = mo_viewer->mo_window->m_prg-program
+          io_debugger = mo_viewer ).
+      ENDIF.
+
       mo_viewer->mo_window->show_coverage( ).
       mo_viewer->mo_window->show_stack( ).
       IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
