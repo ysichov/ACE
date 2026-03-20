@@ -1575,11 +1575,31 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           EXPORTING
             i_program = i_include
             i_include = i_include
+            i_class   = i_class
           CHANGING
             cs_source = io_debugger->mo_window->ms_sources ).
         zcl_ace_source_parser=>collect_enhancements(
           i_program   = i_include
           io_debugger = io_debugger ).
+        IF i_main IS NOT INITIAL.
+          " Derive class name: from i_class param, or from last tt_calls_line entry
+          DATA(lv_new_class) = i_class.
+          IF lv_new_class IS INITIAL.
+            LOOP AT io_debugger->mo_window->ms_sources-tt_calls_line
+              INTO DATA(ls_cl_new) WHERE program = i_include OR include = i_include.
+              IF ls_cl_new-class IS NOT INITIAL.
+                lv_new_class = ls_cl_new-class.
+              ENDIF.
+            ENDLOOP.
+          ENDIF.
+          IF lv_new_class IS NOT INITIAL.
+            zcl_ace_source_parser=>process_super_and_interfaces(
+              i_class     = lv_new_class
+              i_program   = i_include
+              i_stack     = i_stack
+              io_debugger = io_debugger ).
+          ENDIF.
+        ENDIF.
         RETURN.
       ENDIF.
     ENDIF.

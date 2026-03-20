@@ -41,6 +41,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     ls_prog-include    = i_include.
     ls_prog-source_tab = lo_src->lines.
     ls_prog-scan       = lo_scan.
+    ls_prog-v_source   = lo_src->lines.   " init for enhancements (FORM enh inserts here)
     APPEND ls_prog TO cs_source-tt_progs.
 
     DATA(lo_events)     =  NEW zcl_ace_parse_events( ).
@@ -239,9 +240,11 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     ENDLOOP.
 
     " Store context fields so CODEMIX can read them from the selected prog entry
-    <ls_prog>-evtype = lv_eventtype.
-    <ls_prog>-evname = lv_eventname.
-    <ls_prog>-class  = lv_class.
+    <ls_prog>-evtype     = lv_eventtype.
+    <ls_prog>-evname     = lv_eventname.
+    <ls_prog>-class      = lv_class.
+    " Init v_keywords as copy of t_keywords for FORM enhancement insertion
+    <ls_prog>-v_keywords = <ls_prog>-t_keywords.
 
   ENDMETHOD.
 ENDCLASS.
