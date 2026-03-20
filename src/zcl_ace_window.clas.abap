@@ -810,7 +810,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
     ZCL_ACE_PARSER=>parse(
       EXPORTING i_program = i_include i_include = i_include
-      CHANGING  cs_source = mo_viewer->mo_window->ms_sources ).
+      CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
 
     IF mo_viewer->mv_show_parse_time = abap_true.
       show_parse_time( lv_ts1 ).

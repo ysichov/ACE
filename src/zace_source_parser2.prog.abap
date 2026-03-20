@@ -34,8 +34,9 @@ START-OF-SELECTION.
 *    CHANGING  cs_source = ms_source ).
 
         ZCL_ACE_PARSER=>parse(
-          EXPORTING i_program = p_prog i_include = p_prog
-          CHANGING  cs_source = ms_source ).
+        EXPORTING
+          i_program = p_prog i_include = p_prog
+          CHANGING cs_source = ms_source ).
 
 
 write ''.

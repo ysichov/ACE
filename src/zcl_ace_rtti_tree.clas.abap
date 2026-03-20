@@ -334,7 +334,7 @@ method DISPLAY.
         IF sy-subrc <> 0.
           ZCL_ACE_PARSER=>parse(
             EXPORTING i_program = lv_mod_include i_include = lv_mod_include
-            CHANGING  cs_source = mo_viewer->mo_window->ms_sources ).
+            CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_mod_include ASSIGNING FIELD-SYMBOL(<mod_prog>).
@@ -363,8 +363,9 @@ method DISPLAY.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_form_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program = lv_form_include i_include = lv_form_include io_debugger = mo_viewer ).
+          ZCL_ACE_PARSER=>parse(
+            EXPORTING i_program = lv_form_include i_include = lv_form_include
+            CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_form_include ASSIGNING FIELD-SYMBOL(<form_prog>).
@@ -395,8 +396,9 @@ method DISPLAY.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program = lv_cm_include i_include = lv_cm_include io_debugger = mo_viewer ).
+          ZCL_ACE_PARSER=>parse(
+            EXPORTING i_program = lv_cm_include i_include = lv_cm_include
+            CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm_include INTO DATA(ls_cm_check).
@@ -465,9 +467,9 @@ method DISPLAY.
                 READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                   WITH KEY include = lv_enh_eimp_ow TRANSPORTING NO FIELDS.
                 IF sy-subrc <> 0.
-                  ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-                    i_program = CONV #( lv_enh_eimp_ow ) i_include = CONV #( lv_enh_eimp_ow )
-                    io_debugger = mo_viewer ).
+                  ZCL_ACE_PARSER=>parse(
+                    EXPORTING i_program = CONV #( lv_enh_eimp_ow ) i_include = CONV #( lv_enh_eimp_ow )
+                    CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
                 ENDIF.
                 READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                   WITH KEY include = lv_enh_eimp_ow INTO DATA(ls_enh_eimp_ow).
@@ -521,9 +523,9 @@ method DISPLAY.
               READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                 WITH KEY include = lv_enh_eimp2 TRANSPORTING NO FIELDS.
               IF sy-subrc <> 0.
-                ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-                  i_program = CONV #( lv_enh_eimp2 ) i_include = CONV #( lv_enh_eimp2 )
-                  io_debugger = mo_viewer ).
+                ZCL_ACE_PARSER=>parse(
+                  EXPORTING i_program = CONV #( lv_enh_eimp2 ) i_include = CONV #( lv_enh_eimp2 )
+                  CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
               ENDIF.
               READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
                 WITH KEY include = lv_enh_eimp2 INTO DATA(ls_enh_eimp2).
@@ -658,9 +660,9 @@ method DISPLAY.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_enh_include_f TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program = CONV #( lv_enh_include_f ) i_include = CONV #( lv_enh_include_f )
-            io_debugger = mo_viewer ).
+          ZCL_ACE_PARSER=>parse(
+            EXPORTING i_program = CONV #( lv_enh_include_f ) i_include = CONV #( lv_enh_include_f )
+            CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_enh_include_f INTO DATA(ls_form_enh_prog).
@@ -723,9 +725,9 @@ method DISPLAY.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_eimp_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program = CONV #( lv_eimp_include ) i_include = CONV #( lv_eimp_include )
-            io_debugger = mo_viewer ).
+          ZCL_ACE_PARSER=>parse(
+            EXPORTING i_program = CONV #( lv_eimp_include ) i_include = CONV #( lv_eimp_include )
+            CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_eimp_include INTO DATA(ls_eimp_prog).
