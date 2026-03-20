@@ -196,12 +196,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
 
 
   METHOD collect_method_calls.
-    " Линейный проход по токенам стейтмента.
-    " Распознаёт: cls=>meth(  obj->meth(  meth(  NEW cls(
-    " Биндинги:
-    "   named:      tok[i+1]='=' → inner=tok[i],  outer=tok[i+2]
-    "   positional: single arg   → outer=arg,      inner=PREFERRED IMPORTING (или '')
-    "   lhs:        lv_x=meth(  → outer=lv_x,     inner=RETURNING (или '')
     DATA lv_tstr     TYPE string.
     DATA lv_arrow    TYPE string.
     DATA lv_left     TYPE string.
@@ -228,6 +222,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     DATA lv_val_str  TYPE string.
 
     DATA(lv_ti) = i_stmt-from.
+
     WHILE lv_ti <= i_stmt-to.
       READ TABLE io_scan->tokens INDEX lv_ti INTO DATA(ls_t).
       IF sy-subrc <> 0. EXIT. ENDIF.
@@ -236,19 +231,38 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
 
       " ── Распознаём токен вызова ───────────────────────────────────
       IF lv_tstr CS '=>' AND lv_tstr CS '('.
-        " LCL_DEMO=>CLS_METH(
         lv_arrow = '=>'.
         SPLIT lv_tstr AT '=>' INTO lv_left lv_rpart.
         SPLIT lv_rpart AT '(' INTO lv_right lv_dummy.
 
       ELSEIF lv_tstr CS '->' AND lv_tstr CS '('.
-        " lo_obj->run(
         lv_arrow = '->'.
         SPLIT lv_tstr AT '->' INTO lv_left lv_rpart.
         SPLIT lv_rpart AT '(' INTO lv_right lv_dummy.
+        " lv_left пустой или ')' — перед нами NEW cls( )->meth(
+        " Токены: NEW(ti-2) | CLS((ti-1) | )->METH((ti)
+        IF lv_left IS INITIAL OR lv_left CO ')'.
+          READ TABLE io_scan->tokens INDEX lv_ti - 1 INTO DATA(ls_m1).
+          READ TABLE io_scan->tokens INDEX lv_ti - 2 INTO DATA(ls_m2).
+          IF ls_m2-str = 'NEW' AND ls_m1-str CS '('.
+            " Вариант A: NEW | CLS( | )->METH(
+            lv_left = ls_m1-str.
+            REPLACE ALL OCCURRENCES OF '(' IN lv_left WITH ''.
+            REPLACE ALL OCCURRENCES OF ')' IN lv_left WITH ''.
+            CONDENSE lv_left NO-GAPS.
+            lv_arrow = '=>'.
+          ELSE.
+            " Вариант B: NEW | CLS | ( | ) | )->METH(
+            READ TABLE io_scan->tokens INDEX lv_ti - 3 INTO DATA(ls_m3).
+            READ TABLE io_scan->tokens INDEX lv_ti - 4 INTO DATA(ls_m4).
+            IF ls_m4-str = 'NEW' AND ls_m2-str = '('.
+              lv_left  = ls_m3-str.
+              lv_arrow = '=>'.
+            ENDIF.
+          ENDIF.
+        ENDIF.
 
       ELSEIF lv_tstr = '=>' OR lv_tstr = '->'.
-        " Стрелка как отдельный токен
         lv_arrow = lv_tstr.
         READ TABLE io_scan->tokens INDEX lv_ti - 1 INTO ls_prev.
         READ TABLE io_scan->tokens INDEX lv_ti + 1 INTO ls_next.
@@ -257,6 +271,22 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           lv_right = ls_next-str.
           REPLACE ALL OCCURRENCES OF '(' IN lv_right WITH ''.
           lv_ti += 1.
+          IF lv_tstr = '->' AND ( ls_prev-str IS INITIAL OR ls_prev-str CO ')' ).
+            READ TABLE io_scan->tokens INDEX lv_ti - 2 INTO DATA(ls_nk1).
+            READ TABLE io_scan->tokens INDEX lv_ti - 3 INTO DATA(ls_nk2).
+            READ TABLE io_scan->tokens INDEX lv_ti - 4 INTO DATA(ls_nk3).
+            IF ls_nk2-str = 'NEW' AND ls_nk1-str CS '('.
+              " NEW | CLS( | ) | -> | meth(
+              lv_left = ls_nk1-str.
+              REPLACE ALL OCCURRENCES OF '(' IN lv_left WITH ''.
+              CONDENSE lv_left NO-GAPS.
+              lv_arrow = '=>'.
+            ELSEIF ls_nk3-str = 'NEW' AND ls_nk1-str = '('.
+              " NEW | CLS | ( | ) | -> | meth(
+              lv_left  = ls_nk2-str.
+              lv_arrow = '=>'.
+            ENDIF.
+          ENDIF.
         ELSE.
           lv_ti += 1. CONTINUE.
         ENDIF.
@@ -275,8 +305,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         ENDIF.
 
       ELSEIF lv_tstr CA '(' AND NOT lv_tstr CS '->' AND NOT lv_tstr CS '=>'.
-        " meth(  без объекта — только первый токен стейтмента.
-        " Исключаем inline-объявления: DATA(, FIELD-SYMBOL(, FINAL(, VALUE( и т.п.
         IF lv_ti = i_stmt-from
           AND NOT lv_tstr CP 'DATA(*'
           AND NOT lv_tstr CP 'FIELD-SYMBOL(*'
@@ -330,6 +358,19 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           lv_c-inner = lv_right.
         ENDIF.
       ENDIF.
+
+      " ── CONSTRUCTOR: записываем только если он реально определён ──
+      IF lv_c-name = 'CONSTRUCTOR' AND lv_c-class IS NOT INITIAL.
+        READ TABLE cs_source-tt_calls_line
+          WITH KEY class     = lv_c-class
+                   eventtype = 'METHOD'
+                   eventname = 'CONSTRUCTOR'
+          TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          lv_ti += 1. CONTINUE.
+        ENDIF.
+      ENDIF.
+
       lv_call_cls = COND #( WHEN lv_c-class IS NOT INITIAL THEN lv_c-class ELSE mv_class_name ).
 
       " ── LHS: lv_x = meth(…) → RETURNING ──────────────────────────
@@ -381,13 +422,12 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         lv_scan += 1.
       ENDWHILE.
 
-      " Позиционный → PREFERRED IMPORTING (или outer без inner)
       IF lv_pos = abap_true AND lv_single IS NOT INITIAL.
         CLEAR lv_pref.
         LOOP AT cs_source-t_params INTO DATA(ls_pm)
           WHERE program = i_program
-            and include = i_program
-            and class = lv_call_cls
+            AND include = i_program
+            AND class = lv_call_cls
             AND event = 'METHOD'
             AND name = lv_c-name
             AND type  = 'I'.
@@ -398,7 +438,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         APPEND ls_b TO lt_bind.
       ENDIF.
 
-      " LHS → RETURNING (или outer без inner)
       IF lv_lhs IS NOT INITIAL.
         CLEAR lv_ret.
         LOOP AT cs_source-t_params INTO DATA(ls_ret)
@@ -411,7 +450,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       ENDIF.
 
       lv_c-bindings = lt_bind.
-
       APPEND lv_c TO ct_calls.
       lv_ti += 1.
     ENDWHILE.
@@ -431,27 +469,17 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       WHEN 'A' THEN '+CALL_METHOD'
       ELSE          ls_kw_tok-str ).
 
-
-*    DATA(lv_i) = ls_stmt-from.
-*    WHILE lv_i <= ls_stmt-to.
-*      READ TABLE io_scan->tokens INDEX lv_i INTO DATA(ls_tok_t).
-*      WRITE ls_tok_t-str.
-*      ADD 1 TO lv_i.
-*    ENDWHILE.
-
     IF lv_kw = 'CALL'.
       READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok2).
       IF sy-subrc = 0. lv_kw = |CALL { ls_tok2-str }|. ENDIF.
     ENDIF.
 
+    IF lv_kw = 'NEW'.
+      lv_kw = 'COMPUTE'.
+    ENDIF.
+
     DATA(lv_super) = get_super( is_source = cs_source ).
     DATA lt_new_calls TYPE zcl_ace=>tt_calls.
-
-    "test
-    "WRITE: / ls_kw_tok-row.
-*    IF ls_kw_tok-row = 7726.
-*      BREAK-POINT.
-*    ENDIF.
 
     CASE lv_kw.
 
@@ -572,7 +600,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         ENDWHILE.
         APPEND lv_call TO lt_new_calls.
 
-        " ── COMPUTE: NEW constructor + проход по obj=>meth / obj->meth ─
+        " ── COMPUTE / NEW: NEW constructor + obj->meth ───────────────
       WHEN 'COMPUTE'.
         DATA lv_ci TYPE i.
         DATA ls_ct LIKE LINE OF io_scan->tokens.
@@ -589,8 +617,16 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
               REPLACE ALL OCCURRENCES OF '(' IN lv_cn WITH ''.
               CONDENSE lv_cn NO-GAPS.
               IF lv_cn IS NOT INITIAL.
-                APPEND VALUE zcl_ace=>ts_calls(
-                  event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR' ) TO lt_new_calls.
+                " Записываем CONSTRUCTOR только если он реально определён
+                READ TABLE cs_source-tt_calls_line
+                  WITH KEY class     = lv_cn
+                           eventtype = 'METHOD'
+                           eventname = 'CONSTRUCTOR'
+                  TRANSPORTING NO FIELDS.
+                IF sy-subrc = 0.
+                  APPEND VALUE zcl_ace=>ts_calls(
+                    event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR' ) TO lt_new_calls.
+                ENDIF.
               ENDIF.
               lv_ci += 1.
             ENDIF.
@@ -623,9 +659,8 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
 
     LOOP AT cs_source-tt_progs ASSIGNING FIELD-SYMBOL(<prog>)
       WHERE include = i_include.
-      READ TABLE <prog>-t_keywords WITH KEY index =  i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw>) BINARY SEARCH.
+      READ TABLE <prog>-t_keywords WITH KEY index = i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw>) BINARY SEARCH.
       IF sy-subrc = 0.
-
         LOOP AT lt_new_calls INTO DATA(ls_nc).
           READ TABLE <kw>-tt_calls WITH KEY event = ls_nc-event
                                             name  = ls_nc-name
@@ -633,18 +668,11 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
             TRANSPORTING NO FIELDS BINARY SEARCH.
           IF sy-subrc <> 0.
             APPEND ls_nc TO <kw>-tt_calls.
-*            IF ls_nc-class IS INITIAL.
-*              WRITE: 'EMPTY' COLOR 1, ls_nc-event, ls_nc-name.
-*            ELSE.
-*             WRITE: ls_nc-class  COLOR 5, ls_nc-event, ls_nc-name.
-*            ENDIF.
           ENDIF.
         ENDLOOP.
       ENDIF.
       EXIT.
     ENDLOOP.
-
-
 
   ENDMETHOD.
 ENDCLASS.

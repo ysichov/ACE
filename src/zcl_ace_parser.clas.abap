@@ -12,7 +12,7 @@ public section.
     changing
       !CS_SOURCE   type ZCL_ACE_WINDOW=>TS_SOURCE .
 
-  methods PARSE_TOKENS
+  class-methods PARSE_TOKENS
     importing
       !I_PROGRAM type PROGRAM
       !I_INCLUDE type PROGRAM
@@ -37,6 +37,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       CHANGING
         cs_source = cs_source ).
   ENDMETHOD.
+
 
   METHOD parse_tokens.
     DATA: lv_class     TYPE string,
@@ -74,6 +75,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
 
     DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+    INSERT `NEW`            INTO TABLE lt_pass2.
     INSERT `PERFORM`            INTO TABLE lt_pass2.
     INSERT `CALL FUNCTION`      INTO TABLE lt_pass2.
     INSERT `CALL METHOD`        INTO TABLE lt_pass2.
