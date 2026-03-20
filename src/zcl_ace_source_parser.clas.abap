@@ -1532,6 +1532,80 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   endmethod.
 
 
+  method PROCESS_SUPER_AND_INTERFACES.
+
+      DATA: suffix     TYPE string,
+            lt_classes TYPE STANDARD TABLE OF ZCL_ACE_WINDOW=>ts_meta,
+            prefix     TYPE string,
+            program    TYPE program,
+            include    TYPE program.
+
+      SELECT clsname, refCLSNAME, reltype FROM seometarel APPENDING TABLE @lt_classes
+        WHERE clsname = @i_class.
+
+      LOOP AT lt_classes INTO DATA(interface).
+        prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
+        CASE interface-reltype.
+          WHEN '0' OR '1'.
+            suffix = 'IU'.
+          WHEN '2'.
+            suffix = 'CP'.
+          WHEN OTHERS.
+            RETURN.
+        ENDCASE.
+        include = program = prefix && suffix.
+        ZCL_ACE_SOURCE_PARSER=>parse_tokens(
+          i_main      = abap_true
+          i_reltype   = interface-reltype
+          i_main_prog = i_program
+          i_class     = CONV #( interface-refclsname )
+          i_stack     = i_stack
+          i_program   = program
+          i_include   = include
+          io_debugger = io_debugger ).
+      ENDLOOP.
+
+      APPEND LINES OF lt_classes TO io_debugger->mo_window->ms_sources-t_classes[].
+
+  endmethod.
+
+
+  method REGISTER_FIELD_SYMBOL.
+
+      DATA: split TYPE TABLE OF string.
+      SPLIT  cs_state-change AT '-' INTO TABLE split.
+      cs_state-change = split[ 1 ].
+      IF  cs_state-eventtype IS INITIAL.
+        READ TABLE io_debugger->mo_window->mt_globals_set WITH KEY program = i_include ASSIGNING FIELD-SYMBOL(<globals_set>).
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO io_debugger->mo_window->mt_globals_set ASSIGNING <globals_set>.
+          <globals_set>-program = i_include.
+        ENDIF.
+        READ TABLE <globals_set>-mt_fs WITH KEY name = cs_state-change TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO <globals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<gl_fs>).
+          <gl_fs>-name = cs_state-change.
+        ENDIF.
+      ELSE.
+        READ TABLE io_debugger->mo_window->mt_locals_set
+          WITH KEY program = i_include eventtype = cs_state-eventtype eventname = cs_state-eventname
+          ASSIGNING FIELD-SYMBOL(<locals_set>).
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO io_debugger->mo_window->mt_locals_set ASSIGNING <locals_set>.
+          <locals_set>-program    = i_include.
+          <locals_set>-eventname  = cs_state-eventname.
+          <locals_set>-eventtype  = cs_state-eventtype.
+        ENDIF.
+        READ TABLE <locals_set>-mt_fs WITH KEY name = cs_state-change TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO <locals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<loc_fs>).
+          <loc_fs>-name = cs_state-change.
+        ENDIF.
+      ENDIF.
+
+  endmethod.
+
+
   METHOD parse_tokens.
 
     DATA: lr_scan     TYPE REF TO cl_ci_scan,
@@ -1801,78 +1875,4 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 *
 
   ENDMETHOD.
-
-
-  method PROCESS_SUPER_AND_INTERFACES.
-
-      DATA: suffix     TYPE string,
-            lt_classes TYPE STANDARD TABLE OF ZCL_ACE_WINDOW=>ts_meta,
-            prefix     TYPE string,
-            program    TYPE program,
-            include    TYPE program.
-
-      SELECT clsname, refCLSNAME, reltype FROM seometarel APPENDING TABLE @lt_classes
-        WHERE clsname = @i_class.
-
-      LOOP AT lt_classes INTO DATA(interface).
-        prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
-        CASE interface-reltype.
-          WHEN '0' OR '1'.
-            suffix = 'IU'.
-          WHEN '2'.
-            suffix = 'CP'.
-          WHEN OTHERS.
-            RETURN.
-        ENDCASE.
-        include = program = prefix && suffix.
-        ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-          i_main      = abap_true
-          i_reltype   = interface-reltype
-          i_main_prog = i_program
-          i_class     = CONV #( interface-refclsname )
-          i_stack     = i_stack
-          i_program   = program
-          i_include   = include
-          io_debugger = io_debugger ).
-      ENDLOOP.
-
-      APPEND LINES OF lt_classes TO io_debugger->mo_window->ms_sources-t_classes[].
-
-  endmethod.
-
-
-  method REGISTER_FIELD_SYMBOL.
-
-      DATA: split TYPE TABLE OF string.
-      SPLIT  cs_state-change AT '-' INTO TABLE split.
-      cs_state-change = split[ 1 ].
-      IF  cs_state-eventtype IS INITIAL.
-        READ TABLE io_debugger->mo_window->mt_globals_set WITH KEY program = i_include ASSIGNING FIELD-SYMBOL(<globals_set>).
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO io_debugger->mo_window->mt_globals_set ASSIGNING <globals_set>.
-          <globals_set>-program = i_include.
-        ENDIF.
-        READ TABLE <globals_set>-mt_fs WITH KEY name = cs_state-change TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO <globals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<gl_fs>).
-          <gl_fs>-name = cs_state-change.
-        ENDIF.
-      ELSE.
-        READ TABLE io_debugger->mo_window->mt_locals_set
-          WITH KEY program = i_include eventtype = cs_state-eventtype eventname = cs_state-eventname
-          ASSIGNING FIELD-SYMBOL(<locals_set>).
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO io_debugger->mo_window->mt_locals_set ASSIGNING <locals_set>.
-          <locals_set>-program    = i_include.
-          <locals_set>-eventname  = cs_state-eventname.
-          <locals_set>-eventtype  = cs_state-eventtype.
-        ENDIF.
-        READ TABLE <locals_set>-mt_fs WITH KEY name = cs_state-change TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO <locals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<loc_fs>).
-          <loc_fs>-name = cs_state-change.
-        ENDIF.
-      ENDIF.
-
-  endmethod.
 ENDCLASS.
