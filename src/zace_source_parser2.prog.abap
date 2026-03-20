@@ -33,7 +33,9 @@ START-OF-SELECTION.
 *              i_include = p_prog
 *    CHANGING  cs_source = ms_source ).
 
-        ZCL_ACE_SOURCE_PARSER=>parse_tokens( i_stack = 0 i_program = p_prog i_include = p_prog io_debugger = io_debugger ).
+        ZCL_ACE_PARSER=>parse(
+          EXPORTING i_program = p_prog i_include = p_prog
+          CHANGING  cs_source = ms_source ).
 
 
 write ''.

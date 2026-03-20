@@ -808,8 +808,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       GET TIME STAMP FIELD lv_ts1.
     ENDIF.
 
-    zcl_ace_source_parser=>parse_tokens(
-      i_main = abap_true i_program = i_include i_include = i_include io_debugger = mo_viewer ).
+    ZCL_ACE_PARSER=>parse(
+      EXPORTING i_program = i_include i_include = i_include
+      CHANGING  cs_source = mo_viewer->mo_window->ms_sources ).
 
     IF mo_viewer->mv_show_parse_time = abap_true.
       show_parse_time( lv_ts1 ).

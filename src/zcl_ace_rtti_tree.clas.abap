@@ -332,8 +332,9 @@ method DISPLAY.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_mod_include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          ZCL_ACE_SOURCE_PARSER=>parse_tokens(
-            i_program = lv_mod_include i_include = lv_mod_include io_debugger = mo_viewer ).
+          ZCL_ACE_PARSER=>parse(
+            EXPORTING i_program = lv_mod_include i_include = lv_mod_include
+            CHANGING  cs_source = mo_viewer->mo_window->ms_sources ).
         ENDIF.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_mod_include ASSIGNING FIELD-SYMBOL(<mod_prog>).

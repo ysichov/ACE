@@ -4,7 +4,15 @@ class ZCL_ACE_PARSER definition
 
 public section.
 
-  methods PARSE_TOKENS2
+  class-methods PARSE
+    importing
+      !I_PROGRAM   type PROGRAM
+      !I_INCLUDE   type PROGRAM
+      !I_CLASS     type STRING optional
+    changing
+      !CS_SOURCE   type ZCL_ACE_WINDOW=>TS_SOURCE .
+
+  methods PARSE_TOKENS
     importing
       !I_PROGRAM type PROGRAM
       !I_INCLUDE type PROGRAM
@@ -20,7 +28,17 @@ ENDCLASS.
 CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
 
-  METHOD parse_tokens2.
+  METHOD parse.
+    NEW zcl_ace_parser( )->parse_tokens(
+      EXPORTING
+        i_program = i_program
+        i_include = i_include
+        i_class   = i_class
+      CHANGING
+        cs_source = cs_source ).
+  ENDMETHOD.
+
+  METHOD parse_tokens.
     DATA: lv_class     TYPE string,
           lv_interface TYPE string,
           lv_eventtype TYPE string,
@@ -83,7 +101,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       IF ls_kw_stmt-level <> 1.
         READ TABLE lo_scan->levels INDEX ls_kw_stmt-level INTO DATA(ls_kw_level).
 
-        NEW zcl_ace_parser( )->parse_tokens2( EXPORTING i_program = i_program
+        NEW zcl_ace_parser( )->parse_tokens( EXPORTING i_program = i_program
                                                         i_include = ls_kw_level-name
                                                         i_class   = lv_class
                                               CHANGING  cs_source = cs_source ).
