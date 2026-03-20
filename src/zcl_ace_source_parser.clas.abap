@@ -1577,6 +1577,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             i_include = i_include
           CHANGING
             cs_source = io_debugger->mo_window->ms_sources ).
+        zcl_ace_source_parser=>collect_enhancements(
+          i_program   = i_include
+          io_debugger = io_debugger ).
         RETURN.
       ENDIF.
     ENDIF.
