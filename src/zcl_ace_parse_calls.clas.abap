@@ -618,15 +618,15 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
               CONDENSE lv_cn NO-GAPS.
               IF lv_cn IS NOT INITIAL.
                 " Записываем CONSTRUCTOR только если он реально определён
-                READ TABLE cs_source-tt_calls_line
-                  WITH KEY class     = lv_cn
-                           eventtype = 'METHOD'
-                           eventname = 'CONSTRUCTOR'
-                  TRANSPORTING NO FIELDS.
-                IF sy-subrc = 0.
+*                READ TABLE cs_source-tt_calls_line
+*                  WITH KEY class     = lv_cn
+*                           eventtype = 'METHOD'
+*                           eventname = 'CONSTRUCTOR'
+*                  TRANSPORTING NO FIELDS.
+*                IF sy-subrc = 0.
                   APPEND VALUE zcl_ace=>ts_calls(
                     event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR' ) TO lt_new_calls.
-                ENDIF.
+*                ENDIF.
               ENDIF.
               lv_ci += 1.
             ENDIF.

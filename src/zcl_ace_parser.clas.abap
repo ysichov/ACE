@@ -1,31 +1,36 @@
-class ZCL_ACE_PARSER definition
-  public
-  create public .
+CLASS zcl_ace_parser DEFINITION
+  PUBLIC
+  CREATE PUBLIC .
 
-public section.
+PUBLIC SECTION.
 
-  class-methods PARSE
-    importing
-      !I_PROGRAM   type PROGRAM
-      !I_INCLUDE   type PROGRAM
-      !I_CLASS     type STRING optional
-    changing
-      !CS_SOURCE   type ZCL_ACE_WINDOW=>TS_SOURCE .
+  CLASS-METHODS parse
+    IMPORTING
+      !i_program  TYPE program
+      !i_include  TYPE program
+      !i_class    TYPE string OPTIONAL
+      !i_run      TYPE i DEFAULT 1
+    CHANGING
+      !cs_source  TYPE zcl_ace_window=>ts_source .
 
-  class-methods PARSE_TOKENS
-    importing
-      !I_PROGRAM type PROGRAM
-      !I_INCLUDE type PROGRAM
-      !I_CLASS type STRING optional
-    changing
-      !CS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE .
-protected section.
-private section.
+  CLASS-METHODS parse_tokens
+    IMPORTING
+      !i_program  TYPE program
+      !i_include  TYPE program
+      !i_class    TYPE string OPTIONAL
+      !i_run      TYPE i DEFAULT 1
+      !i_stmt_idx TYPE i DEFAULT 0
+      !i_evtype   TYPE string OPTIONAL
+      !i_ev_name  TYPE string OPTIONAL
+    CHANGING
+      !cs_source  TYPE zcl_ace_window=>ts_source .
+
+PROTECTED SECTION.
+PRIVATE SECTION.
 ENDCLASS.
 
 
-
-CLASS ZCL_ACE_PARSER IMPLEMENTATION.
+CLASS zcl_ace_parser IMPLEMENTATION.
 
 
   METHOD parse.
@@ -34,24 +39,113 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         i_program = i_program
         i_include = i_include
         i_class   = i_class
+        i_run     = i_run
       CHANGING
         cs_source = cs_source ).
   ENDMETHOD.
 
 
   METHOD parse_tokens.
+    " ---------------------------------------------------------------
+    " Режим 1 (i_stmt_idx = 0, default): полный проход по инклуду.
+    "   Заполняет t_keywords, calls_line, params, vars.
+    "   calls/calcs НЕ запускаются — точечно из CODE_EXECUTION_SCANNER.
+    "
+    " Режим 2 (i_stmt_idx > 0): точечный парсинг одного стейтмента.
+    "   Запускает calls/calcs/vars для конкретного index в t_keywords.
+    "   Ставит calls_parsed = true. Инклуд уже должен быть в tt_progs.
+    " ---------------------------------------------------------------
+
     DATA: lv_class     TYPE string,
           lv_interface TYPE string,
           lv_eventtype TYPE string,
           lv_eventname TYPE string.
 
-    READ TABLE cs_source-tt_progs WITH KEY include = i_include TRANSPORTING  NO FIELDS.
+    " ================================================================
+    " Режим 2: точечный парсинг одного стейтмента
+    " ================================================================
+    IF i_stmt_idx > 0.
+
+      READ TABLE cs_source-tt_progs
+        WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog2>).
+      CHECK sy-subrc = 0.
+
+      " calls
+      DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+      INSERT `NEW`           INTO TABLE lt_pass2.
+      INSERT `PERFORM`       INTO TABLE lt_pass2.
+      INSERT `CALL FUNCTION` INTO TABLE lt_pass2.
+      INSERT `CALL METHOD`   INTO TABLE lt_pass2.
+      INSERT `+CALL_METHOD`  INTO TABLE lt_pass2.
+      INSERT `COMPUTE`       INTO TABLE lt_pass2.
+
+      READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx INTO DATA(lv_key2).
+      CHECK sy-subrc = 0.
+
+      IF lv_key2-calls_parsed = abap_true. RETURN. ENDIF.
+
+      DATA(lv_eff2) = lv_key2-name.
+      IF lv_eff2 = 'CALL'.
+        READ TABLE <prog2>-scan->statements INDEX i_stmt_idx INTO DATA(ls_s2).
+        IF sy-subrc = 0.
+          READ TABLE <prog2>-scan->tokens INDEX ls_s2-from + 1 INTO DATA(ls_t2).
+          IF sy-subrc = 0. lv_eff2 = |CALL { ls_t2-str }|. ENDIF.
+        ENDIF.
+      ENDIF.
+
+      DATA(lv_inc2) = CONV program( i_include ).
+      DATA(lv_prg2) = CONV program( i_program ).
+
+      " vars: DATA / CLASS-DATA / COMPUTE
+      IF lv_key2-name = 'DATA' OR lv_key2-name = 'CLASS-DATA' OR lv_key2-name = 'COMPUTE'.
+        DATA(lo_vars2) = NEW zcl_ace_parse_vars( ).
+        lo_vars2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+          CHANGING cs_source = cs_source ).
+      ENDIF.
+
+      " calcs: COMPUTE
+      IF lv_key2-name = 'COMPUTE'.
+        DATA(lo_calcs2) = NEW zcl_ace_parse_calcs( ).
+        lo_calcs2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+          CHANGING cs_source = cs_source ).
+      ENDIF.
+
+      " calls: NEW / PERFORM / CALL FUNCTION / CALL METHOD / +CALL_METHOD / COMPUTE
+      READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff2 TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        DATA(lo_calls2) = NEW zcl_ace_parse_calls( ).
+        lo_calls2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+          CHANGING cs_source = cs_source ).
+      ENDIF.
+
+      " Ставим флаг
+      READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx
+        ASSIGNING FIELD-SYMBOL(<kw2>).
+      IF sy-subrc = 0. <kw2>-calls_parsed = abap_true. ENDIF.
+
+      RETURN.
+    ENDIF.
+
+    " ================================================================
+    " Режим 1: полный проход по инклуду
+    " ================================================================
+
+    " entry guard — include already parsed → nothing to do
+    READ TABLE cs_source-tt_progs WITH KEY include = i_include TRANSPORTING NO FIELDS.
     CHECK sy-subrc <> 0.
+
     IF i_class IS NOT INITIAL.
       lv_class = i_class.
     ENDIF.
 
-    DATA: lo_parser TYPE REF TO zcl_ace_parser.
     DATA(lo_src)  = cl_ci_source_include=>create( p_name = i_include ).
     DATA(lo_scan) = NEW cl_ci_scan( p_include = lo_src ).
 
@@ -60,27 +154,13 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     ls_prog-include    = i_include.
     ls_prog-source_tab = lo_src->lines.
     ls_prog-scan       = lo_scan.
-    ls_prog-v_source   = lo_src->lines.   " init for enhancements (FORM enh inserts here)
+    ls_prog-v_source   = lo_src->lines.
     APPEND ls_prog TO cs_source-tt_progs.
 
-    DATA(lo_events)     =  NEW zcl_ace_parse_events( ).
+    DATA(lo_events)     = NEW zcl_ace_parse_events( ).
     DATA(lo_calls_line) = NEW zcl_ace_parse_calls_line( ).
-    DATA(lo_params)     =  NEW zcl_ace_parse_params( ).
-    DATA(lo_vars)       =  NEW zcl_ace_parse_vars( ).
-    DATA(lo_calls)      =  NEW zcl_ace_parse_calls( ).
-    DATA(lo_calcs)      =  NEW zcl_ace_parse_calcs( ).
-
-    DATA lt_pass1     TYPE STANDARD TABLE OF string WITH EMPTY KEY.
-    "DATA lt_pass1_hdl TYPE TABLE OF REF TO zif_ace_stmt_handler WITH EMPTY KEY.
-
-
-    DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-    INSERT `NEW`            INTO TABLE lt_pass2.
-    INSERT `PERFORM`            INTO TABLE lt_pass2.
-    INSERT `CALL FUNCTION`      INTO TABLE lt_pass2.
-    INSERT `CALL METHOD`        INTO TABLE lt_pass2.
-    INSERT `+CALL_METHOD`       INTO TABLE lt_pass2.
-    INSERT `COMPUTE`            INTO TABLE lt_pass2.
+    DATA(lo_params)     = NEW zcl_ace_parse_params( ).
+    DATA(lo_vars)       = NEW zcl_ace_parse_vars( ).
 
     DATA lt_params_kws TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
     INSERT `METHODS`       INTO TABLE lt_params_kws.
@@ -88,36 +168,29 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     INSERT `FORM`          INTO TABLE lt_params_kws.
 
     lo_events->zif_ace_stmt_handler~handle(
-      EXPORTING
-        io_scan    = lo_scan
-        i_stmt_idx = 0
-        i_program  = i_program
-        i_include  = i_include
-      CHANGING
-        cs_source  = cs_source ).
-
+      EXPORTING io_scan = lo_scan i_stmt_idx = 0
+        i_program = i_program i_include = i_include
+      CHANGING cs_source = cs_source ).
 
     ASSIGN cs_source-tt_progs[ lines( cs_source-tt_progs ) ] TO FIELD-SYMBOL(<ls_prog>).
 
     LOOP AT lo_scan->statements INTO DATA(ls_kw_stmt).
+
+      " nested include
       IF ls_kw_stmt-level <> 1.
         READ TABLE lo_scan->levels INDEX ls_kw_stmt-level INTO DATA(ls_kw_level).
-
-        NEW zcl_ace_parser( )->parse_tokens( EXPORTING i_program = i_program
-                                                        i_include = ls_kw_level-name
-                                                        i_class   = lv_class
-                                              CHANGING  cs_source = cs_source ).
+        NEW zcl_ace_parser( )->parse_tokens(
+          EXPORTING i_program = i_program i_include = ls_kw_level-name i_class = lv_class
+          CHANGING  cs_source = cs_source ).
         CONTINUE.
       ENDIF.
 
       DATA(lv_kw_idx) = sy-tabix.
-      CHECK ls_kw_stmt-type <> '*' AND ls_kw_stmt-type <> 'P'.
+      CHECK ls_kw_stmt-type <> '*'.
+
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from INTO DATA(ls_kw_tok).
       CHECK sy-subrc = 0.
-
-*      IF ls_kw_tok-row = '7585'.
-*        BREAK-POINT.
-*      ENDIF.
+      READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 1 INTO DATA(ls_tok2).
 
       DATA(lv_kw_name) = SWITCH string( ls_kw_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -125,146 +198,68 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         WHEN 'A' THEN '+CALL_METHOD'
         ELSE          ls_kw_tok-str ).
 
-
-      READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 1 INTO DATA(ls_tok2).
-      IF ls_kw_tok-str = 'CLASS'.
-        lv_class = ls_tok2-str.
-        CLEAR lv_interface.
-      ENDIF.
-      IF  ls_kw_tok-str = 'INTERFACE'.
-        CLEAR lv_class.
-        lv_interface = ls_tok2-str.
-      ENDIF.
-
-      IF ls_kw_tok-str = 'METHOD'.
-        lv_eventtype = 'METHOD'.
-        lv_eventname = ls_tok2-str.
-      ENDIF.
-      IF ls_kw_tok-str = 'FORM'.
-        lv_eventtype = 'FORM'.
-        lv_eventname = ls_tok2-str.
-      ENDIF.
-      IF ls_kw_tok-str = 'MODULE'.
-        lv_eventtype = 'MODULE'.
-        lv_eventname = ls_tok2-str.
-      ENDIF.
-
-      IF lv_kw_name = 'CALL'.
-        lv_kw_name = |CALL { ls_tok2-str }|.
-      ENDIF.
-
-      APPEND VALUE zcl_ace=>ts_kword(
-        program = i_program
-        include = i_include "lv_stmt_include
-        index   = lv_kw_idx
-        line    = ls_kw_tok-row
-        v_line  = ls_kw_tok-row
-        name    = lv_kw_name
-        from    = ls_kw_stmt-from
-        to      = ls_kw_stmt-to
-      ) TO <ls_prog>-t_keywords.
+      IF ls_kw_tok-str = 'CLASS'.    lv_class = ls_tok2-str. CLEAR lv_interface. ENDIF.
+      IF ls_kw_tok-str = 'INTERFACE'. CLEAR lv_class. lv_interface = ls_tok2-str. ENDIF.
+      IF ls_kw_tok-str = 'METHOD'.   lv_eventtype = 'METHOD'. lv_eventname = ls_tok2-str. ENDIF.
+      IF ls_kw_tok-str = 'FORM'.     lv_eventtype = 'FORM'.   lv_eventname = ls_tok2-str. ENDIF.
+      IF ls_kw_tok-str = 'MODULE'.   lv_eventtype = 'MODULE'. lv_eventname = ls_tok2-str. ENDIF.
 
       DATA(lv_eff_kw) = SWITCH string( ls_kw_stmt-type
         WHEN 'C' THEN 'COMPUTE'
         WHEN 'D' THEN 'COMPUTE'
         WHEN 'A' THEN '+CALL_METHOD'
         ELSE          ls_kw_tok-str ).
-
       IF lv_eff_kw = 'CALL'.
         READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 1 INTO DATA(ls_tok_d).
         IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
       ENDIF.
 
-      IF lv_eff_kw = 'CLASS'  OR lv_eff_kw = 'INTERFACE' OR lv_eff_kw =  'PUBLIC' OR lv_eff_kw =  'PROTECTED' OR lv_eff_kw = 'PRIVATE'
-     OR lv_eff_kw = 'METHODS' OR lv_eff_kw = 'CLASS-METHODS'
-     OR lv_eff_kw = 'FORM' OR lv_eff_kw = `METHOD` OR lv_eff_kw = `MODULE` OR lv_eff_kw = 'FUNCTION'.
+      " keyword entry — все стейтменты без исключения
+      APPEND VALUE zcl_ace=>ts_kword(
+        program = i_program include = i_include
+        index   = lv_kw_idx line    = ls_kw_tok-row
+        v_line  = ls_kw_tok-row     name    = lv_kw_name
+        from    = ls_kw_stmt-from   to      = ls_kw_stmt-to
+      ) TO <ls_prog>-t_keywords.
+
+      " calls_line
+      IF lv_eff_kw = 'CLASS'   OR lv_eff_kw = 'INTERFACE'
+      OR lv_eff_kw = 'PUBLIC'  OR lv_eff_kw = 'PROTECTED' OR lv_eff_kw = 'PRIVATE'
+      OR lv_eff_kw = 'METHODS' OR lv_eff_kw = 'CLASS-METHODS'
+      OR lv_eff_kw = 'METHOD'  OR lv_eff_kw = 'FORM'
+      OR lv_eff_kw = 'MODULE'  OR lv_eff_kw = 'FUNCTION'.
         lo_calls_line->zif_ace_stmt_handler~handle(
-          EXPORTING
-            io_scan     = lo_scan
-            i_class     = lv_class
-            i_interface = lv_interface
-            i_stmt_idx  = lv_kw_idx
-            i_program   = i_program
-            i_include   = i_include
-          CHANGING
-            cs_source   = cs_source ).
+          EXPORTING io_scan = lo_scan i_class = lv_class i_interface = lv_interface
+            i_stmt_idx = lv_kw_idx i_program = i_program i_include = i_include
+          CHANGING cs_source = cs_source ).
       ENDIF.
 
-      IF lv_eff_kw = 'DATA' OR lv_eff_kw =  'CLASS-DATA' OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS' OR lv_eff_kw = 'COMPUTE'.
-        lo_vars->zif_ace_stmt_handler~handle(
-          EXPORTING
-            io_scan    = lo_scan
-            i_stmt_idx = lv_kw_idx
-            i_program  = i_program
-            i_include  = i_include
-            i_class    = lv_class
-            i_evtype   = lv_eventtype
-            i_ev_name  = lv_eventname
-          CHANGING
-            cs_source  = cs_source ).
-      ENDIF.
-
-      IF lv_eff_kw = 'COMPUTE'.
-        lo_calcs->zif_ace_stmt_handler~handle(
-          EXPORTING
-            io_scan    = lo_scan
-            i_stmt_idx = lv_kw_idx
-            i_program  = i_program
-            i_include  = i_include
-          CHANGING
-            cs_source  = cs_source ).
-      ENDIF.
-
-      READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str
-        TRANSPORTING NO FIELDS.
+      " params
+      READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         lo_params->zif_ace_stmt_handler~handle(
-          EXPORTING
-            io_scan    = lo_scan
-            i_class    = lv_class
-            i_stmt_idx = lv_kw_idx
-            i_program  = i_program
-            i_include  = i_include
-          CHANGING
-            cs_source  = cs_source ).
+          EXPORTING io_scan = lo_scan i_class = lv_class
+            i_stmt_idx = lv_kw_idx i_program = i_program i_include = i_include
+          CHANGING cs_source = cs_source ).
       ENDIF.
 
-      lv_eff_kw = SWITCH string( ls_kw_stmt-type
-           WHEN 'C' THEN 'COMPUTE'
-           WHEN 'D' THEN 'COMPUTE'
-           WHEN 'A' THEN '+CALL_METHOD'
-           ELSE          ls_kw_tok-str ).
-
-      IF lv_eff_kw = 'CALL'.
-        READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 1 INTO ls_tok_d.
-        IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
-      ENDIF.
-
-      READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff_kw
-        TRANSPORTING NO FIELDS.
-      IF sy-subrc = 0.
-
-        lo_calls->zif_ace_stmt_handler~handle(
-          EXPORTING
-            io_scan    = lo_scan
-            i_class    = lv_class
-            i_ev_name  = lv_eventname
-            i_evtype   = lv_eventtype
-            i_stmt_idx = lv_kw_idx
-            i_program  = i_program
-            i_include  = i_include
-          CHANGING
-            cs_source  = cs_source ).
+      " vars: глобальные и локальные DATA/PARAMETERS
+      IF lv_eff_kw = 'DATA'       OR lv_eff_kw = 'CLASS-DATA'
+      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'.
+        lo_vars->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
+            i_program = i_program i_include = i_include
+            i_class = lv_class i_evtype = lv_eventtype i_ev_name = lv_eventname
+          CHANGING cs_source = cs_source ).
       ENDIF.
 
     ENDLOOP.
 
-    " Store context fields so CODEMIX can read them from the selected prog entry
     <ls_prog>-evtype     = lv_eventtype.
     <ls_prog>-evname     = lv_eventname.
     <ls_prog>-class      = lv_class.
-    " Init v_keywords as copy of t_keywords for FORM enhancement insertion
     <ls_prog>-v_keywords = <ls_prog>-t_keywords.
 
   ENDMETHOD.
+
 ENDCLASS.
