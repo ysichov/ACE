@@ -12,7 +12,7 @@ CLASS zcl_ace_parse_handlers DEFINITION
         i_program TYPE program
         i_include TYPE program
       CHANGING
-        cs_source TYPE zcl_ace_window=>ts_source.
+        cs_source TYPE zif_ace_parse_data=>ts_parse_data.
 
     " Разрезолвить RAISE EVENT → список вызовов хэндлеров
     CLASS-METHODS resolve_raise_event
@@ -22,13 +22,13 @@ CLASS zcl_ace_parse_handlers DEFINITION
         i_program  TYPE program
         i_include  TYPE program
       CHANGING
-        cs_source  TYPE zcl_ace_window=>ts_source
+        cs_source  TYPE zif_ace_parse_data=>ts_parse_data
         ct_calls   TYPE zcl_ace=>tt_calls.
 
   PRIVATE SECTION.
     CLASS-METHODS resolve_var_type
       IMPORTING
-        is_source TYPE zcl_ace_window=>ts_source
+        is_source TYPE zif_ace_parse_data=>ts_parse_data
         i_program TYPE program
         i_evtype  TYPE string
         i_evname  TYPE string
@@ -120,7 +120,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                              hdl_method = ls_meth_tok-str
                     TRANSPORTING NO FIELDS.
                   IF sy-subrc <> 0.
-                    APPEND VALUE zcl_ace_window=>ts_handler_map(
+                    APPEND VALUE zif_ace_parse_data=>ts_handler_map(
                       src_class  = ls_src_tok-str
                       event_name = ls_ev_tok-str
                       hdl_class  = ``
@@ -199,7 +199,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                   <hm>-src_class = lv_src_class.
                 ENDIF.
               ELSE.
-                APPEND VALUE zcl_ace_window=>ts_handler_map(
+                APPEND VALUE zif_ace_parse_data=>ts_handler_map(
                   src_class  = lv_src_class
                   event_name = ``
                   hdl_class  = lv_hdl_class

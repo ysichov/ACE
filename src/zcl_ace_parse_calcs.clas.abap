@@ -21,14 +21,14 @@ protected section.
                 i_program TYPE program
                 i_include TYPE program
                 i_line    TYPE i
-      CHANGING  cs_source TYPE zcl_ace_window=>ts_source.
+      CHANGING  cs_source TYPE zif_ace_parse_data=>ts_parse_data.
 
     METHODS append_comp
       IMPORTING i_name    TYPE string
                 i_program TYPE program
                 i_include TYPE program
                 i_line    TYPE i
-      CHANGING  cs_source TYPE zcl_ace_window=>ts_source.
+      CHANGING  cs_source TYPE zif_ace_parse_data=>ts_parse_data.
 
 ENDCLASS.
 

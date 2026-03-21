@@ -27,11 +27,11 @@ private section.
   methods ON_METHODS_SIG
     importing !IO_SCAN TYPE REF TO cl_ci_scan !I_STMT_IDX TYPE i
               !I_PROGRAM TYPE program !I_INCLUDE TYPE program
-    changing  !CS_SOURCE TYPE zcl_ace_window=>ts_source .
+    changing  !CS_SOURCE TYPE zif_ace_parse_data=>ts_parse_data .
   methods ON_BLOCK_START
     importing !IO_SCAN TYPE REF TO cl_ci_scan !I_STMT_IDX TYPE i
               !I_PROGRAM TYPE program !I_INCLUDE TYPE program !I_KW TYPE string
-    changing  !CS_SOURCE TYPE zcl_ace_window=>ts_source .
+    changing  !CS_SOURCE TYPE zif_ace_parse_data=>ts_parse_data .
 ENDCLASS.
 
 
@@ -190,7 +190,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
           IF sy-subrc = 0.
             <cd>-super = mv_super_name.
           ELSE.
-            APPEND VALUE zcl_ace_window=>ts_class_def( class = mv_class_name super = mv_super_name )
+            APPEND VALUE zif_ace_parse_data=>ts_class_def( class = mv_class_name super = mv_super_name )
               TO cs_source-tt_class_defs.
           ENDIF.
         ENDIF.

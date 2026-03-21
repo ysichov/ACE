@@ -147,22 +147,8 @@ public section.
   types:
     tt_handler_map TYPE STANDARD TABLE OF ts_handler_map WITH EMPTY KEY .
 
-  types:
-    BEGIN OF ts_source,
-               tt_progs       TYPE tt_progs,
-               t_events       TYPE tt_events,
-               t_calculated   TYPE tt_calculated,
-               t_composed     TYPE tt_composed,
-               t_params       TYPE tt_params,
-               tt_tabs        TYPE tt_tabs,
-               tt_calls_line  TYPE ZCL_ACE=>tt_calls_line,
-               t_vars         TYPE tt_vars,
-               tt_refvar      TYPE tt_refvar,
-               t_classes      TYPE tt_classes,
-               tt_class_defs  TYPE tt_class_defs,
-               tt_handler_map TYPE tt_handler_map,
-               enh_collected  TYPE boolean,
-             END OF ts_source .
+  " ts_source is now an alias for the canonical type in ZIF_ACE_PARSE_DATA
+  TYPES ts_source TYPE zif_ace_parse_data=>ts_parse_data .
   types:
     BEGIN OF ts_locals,
                program    TYPE tpda_program,

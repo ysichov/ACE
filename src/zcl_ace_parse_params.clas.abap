@@ -19,7 +19,7 @@ protected section.
         !i_include  TYPE program
         !i_kw       TYPE string
       CHANGING
-        !cs_source  TYPE zcl_ace_window=>ts_source.
+        !cs_source  TYPE zif_ace_parse_data=>ts_parse_data.
 
 ENDCLASS.
 

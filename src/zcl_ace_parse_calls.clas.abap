@@ -17,7 +17,7 @@ private section.
 
   methods RESOLVE_VAR_TYPE
     importing
-      !IS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE
+      !IS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
       !I_PROGRAM type PROGRAM
       !I_INCLUDE type PROGRAM
       !I_EVTYPE type STRING
@@ -27,7 +27,7 @@ private section.
       value(RV_TYPE) type STRING .
   methods GET_SUPER
     importing
-      !IS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE
+      !IS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
     returning
       value(RV_SUPER) type STRING .
   methods PARSE_STMT_CALLS
@@ -37,7 +37,7 @@ private section.
       !I_PROGRAM type PROGRAM
       !I_INCLUDE type PROGRAM
     changing
-      !CS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE .
+      !CS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA .
     " Линейный проход: распознаёт obj->meth( / cls=>meth( / NEW cls( и собирает BINDINGS
   methods COLLECT_METHOD_CALLS
     importing
@@ -45,7 +45,7 @@ private section.
       !I_STMT type SSTMNT
       !I_PROGRAM type PROGRAM
     changing
-      !CS_SOURCE type ZCL_ACE_WINDOW=>TS_SOURCE
+      !CS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
       !CT_CALLS type ZCL_ACE=>TT_CALLS .
 ENDCLASS.
 

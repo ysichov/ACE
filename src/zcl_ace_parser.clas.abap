@@ -11,7 +11,7 @@ PUBLIC SECTION.
       !i_class    TYPE string OPTIONAL
       !i_run      TYPE i DEFAULT 1
     CHANGING
-      !cs_source  TYPE zcl_ace_window=>ts_source .
+      !cs_source  TYPE zif_ace_parse_data=>ts_parse_data .
 
   CLASS-METHODS parse_tokens
     IMPORTING
@@ -23,7 +23,7 @@ PUBLIC SECTION.
       !i_evtype   TYPE string OPTIONAL
       !i_ev_name  TYPE string OPTIONAL
     CHANGING
-      !cs_source  TYPE zcl_ace_window=>ts_source .
+      !cs_source  TYPE zif_ace_parse_data=>ts_parse_data .
 
 PROTECTED SECTION.
 PRIVATE SECTION.
@@ -156,7 +156,7 @@ CLASS zcl_ace_parser IMPLEMENTATION.
     DATA(lo_src)  = cl_ci_source_include=>create( p_name = i_include ).
     DATA(lo_scan) = NEW cl_ci_scan( p_include = lo_src ).
 
-    DATA ls_prog TYPE zcl_ace_window=>ts_prog.
+    DATA ls_prog TYPE zif_ace_parse_data=>ts_prog.
     ls_prog-program    = i_program.
     ls_prog-include    = i_include.
     ls_prog-source_tab = lo_src->lines.

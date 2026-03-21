@@ -161,7 +161,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           event     TYPE string,
           stack     TYPE i,
           statement TYPE i,
-          prog      TYPE zcl_ace_window=>ts_prog.
+          prog      TYPE zif_ace_parse_data=>ts_prog.
 
     SORT io_debugger->mo_window->ms_sources-tt_calls_line.
     CLEAR: io_debugger->mt_steps, io_debugger->m_step.
@@ -440,7 +440,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             WITH KEY include = ls_enh-enhinclude INTO DATA(ls_enh_prog).
           CHECK sy-subrc = 0.
 
-          DATA lt_enh_kw TYPE ZCL_ACE_WINDOW=>tt_kword.
+          DATA lt_enh_kw TYPE zcl_ace=>tt_kword.
           DATA lv_in_block TYPE boolean.
           CLEAR: lt_enh_kw, lv_in_block.
           LOOP AT ls_enh_prog-t_keywords INTO DATA(ls_kw).
@@ -632,7 +632,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDLOOP.
       CHECK lv_meth_tabix > 0.
 
-      DATA lt_enh_kw TYPE ZCL_ACE_WINDOW=>tt_kword.
+      DATA lt_enh_kw TYPE zcl_ace=>tt_kword.
       DATA lv_in_block TYPE boolean.
       LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_kw).
         IF ls_kw-name = 'METHOD'.
@@ -954,10 +954,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     IF sy-subrc = 0. lv_has_pre = abap_true. ENDIF.
     DATA(lv_body_stack) = COND i( WHEN lv_has_pre = abap_true THEN lv_stack + 1 ELSE lv_stack ).
 
-    DATA ls_cur_enh TYPE zcl_ace_window=>ts_enh_block.
+    DATA ls_cur_enh TYPE zif_ace_parse_data=>ts_enh_block.
     CLEAR ls_cur_enh.
 
-    FIELD-SYMBOLS <kw_tab> TYPE zcl_ace_window=>tt_kword.
+    FIELD-SYMBOLS <kw_tab> TYPE zcl_ace=>tt_kword.
     IF lv_use_vkw = abap_true. ASSIGN prog-v_keywords TO <kw_tab>.
     ELSE. ASSIGN prog-t_keywords TO <kw_tab>. ENDIF.
 
@@ -1219,7 +1219,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
 
   method PROCESS_SUPER_AND_INTERFACES.
-      DATA: suffix TYPE string, lt_classes TYPE STANDARD TABLE OF ZCL_ACE_WINDOW=>ts_meta,
+      DATA: suffix TYPE string, lt_classes TYPE STANDARD TABLE OF zif_ace_parse_data=>ts_meta,
             prefix TYPE string, program TYPE program, include TYPE program.
       SELECT clsname, refCLSNAME, reltype FROM seometarel APPENDING TABLE @lt_classes WHERE clsname = @i_class.
       LOOP AT lt_classes INTO DATA(interface).

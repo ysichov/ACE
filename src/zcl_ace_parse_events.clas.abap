@@ -41,7 +41,7 @@ CLASS ZCL_ACE_PARSE_EVENTS IMPLEMENTATION.
         ENDLOOP.
       ENDIF.
 
-      APPEND VALUE zcl_ace_window=>ts_event(
+      APPEND VALUE zif_ace_parse_data=>ts_event(
         program    = i_program
         include    = i_include
         type       = struc-type
