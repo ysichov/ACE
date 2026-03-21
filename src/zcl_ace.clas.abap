@@ -44,41 +44,6 @@ CLASS zcl_ace DEFINITION
       END OF sign_option_icon_s .
 
     TYPES:
-      BEGIN OF var_table_temp,
-        step          TYPE i,
-        stack         TYPE i,
-        eventtype(30) TYPE c,
-        eventname(61) TYPE c,
-        name          TYPE string,
-        value         TYPE string,
-        first         TYPE boolean,
-        i_appear      TYPE boolean,
-        del           TYPE boolean,
-        program(40)   TYPE c,
-        leaf          TYPE string,
-        path          TYPE string,
-        type          TYPE string,
-        instance      TYPE string,
-        objname       TYPE string,
-        ref           TYPE REF TO data,
-      END OF var_table_temp .
-    TYPES:
-      BEGIN OF var_table_h,
-        step          TYPE i,
-        program(40)   TYPE c,
-        eventtype(30) TYPE c,
-        eventname(61) TYPE c,
-        leaf          TYPE string,
-        name          TYPE string,
-        path          TYPE string,
-        parent        TYPE string,
-        short         TYPE string,
-        cl_leaf       TYPE int4,
-        ref           TYPE REF TO data,
-        tree          TYPE REF TO zcl_ace_rtti_tree,
-        time          LIKE sy-uname,
-      END OF var_table_h .
-    TYPES:
       BEGIN OF t_obj,
         name       TYPE string,
         alv_viewer TYPE REF TO zcl_ace_table_viewer,
@@ -325,9 +290,6 @@ CLASS zcl_ace DEFINITION
     DATA mv_prog TYPE prog .
     DATA mv_show_prog TYPE prog .
     DATA mv_show_parse_time TYPE abap_bool .
-    DATA mv_dest TYPE text255 .
-    DATA mv_model TYPE text255 .
-    DATA mv_apikey TYPE text255 .
     DATA:
       mt_compo          TYPE TABLE OF scompo .
     DATA mt_locals TYPE tpda_scr_locals_it .
@@ -336,18 +298,16 @@ CLASS zcl_ace DEFINITION
     DATA m_counter TYPE i .
     DATA:
       mt_steps          TYPE  TABLE OF zcl_ace=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname .
-    DATA:
-      mt_var_step       TYPE  TABLE OF zcl_ace=>var_table_h .
     DATA m_step TYPE i .
     DATA m_i_find TYPE boolean .
-    DATA m_stop_stack TYPE i .
-    DATA m_debug TYPE x .
+    "DATA m_stop_stack TYPE i .
+    "DATA m_debug TYPE x .
     DATA m_refresh TYPE boolean .
     DATA m_update TYPE boolean .
     DATA i_step TYPE boolean .
     DATA ms_stack_prev TYPE zcl_ace=>t_stack .
     DATA ms_stack TYPE zcl_ace=>t_stack .
-    DATA i_history TYPE boolean .
+    "DATA i_history TYPE boolean .
     DATA m_hist_step TYPE i .
     DATA m_step_delta TYPE i .
     DATA mv_recurse TYPE i .

@@ -191,7 +191,10 @@ protected section.
 private section.
 ENDCLASS.
 
+
+
 CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
+
 
   method ADD_TOOLBAR_BUTTONS.
       DATA: button TYPE ttb_button,
@@ -199,8 +202,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             event  LIKE LINE OF events.
       button  = VALUE #(
        ( function = 'RUN' icon = CONV #( icon_execute_object ) quickinfo = 'Run report' )
-       ( COND #( WHEN mo_viewer->mv_dest IS NOT INITIAL
-        THEN VALUE #( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ) )
+
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
        ( function = 'CODEMIX'  icon = CONV #( icon_wizard )          quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
@@ -222,6 +224,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_toolbar->set_registered_events( events = events ).
       SET HANDLER me->hnd_toolbar FOR mo_toolbar.
   endmethod.
+
 
   method CONSTRUCTOR.
       DATA:  text TYPE char100.
@@ -252,6 +255,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       create_code_viewer( ).
   endmethod.
 
+
   method CREATE_CODE_VIEWER.
       DATA: events TYPE cntl_simple_events,
             event  TYPE cntl_simple_event.
@@ -273,10 +277,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->set_readonly_mode( 1 ).
   endmethod.
 
+
   METHOD hnd_toolbar.
-    data: lv_evname type string,
-          lv_evtype type string,
-          lv_class  type string.
     CONSTANTS: c_mask TYPE x VALUE '01'.
     FIELD-SYMBOLS: <any> TYPE any.
     m_debug_button = fcode.
@@ -489,6 +491,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     ENDCASE.
   ENDMETHOD.
 
+
   method ON_EDITOR_BORDER_CLICK.
       DATA: type TYPE char1, program TYPE program, include TYPE program, code_line TYPE i.
       IF cntrl_pressed_set IS INITIAL. type = 'S'. ELSE. type = 'E'. ENDIF.
@@ -524,11 +527,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       IF m_prg-include = 'Code_Flow_Mix'. set_mixprog_line( ). ELSE. set_program_line( ). ENDIF.
   endmethod.
 
+
   method ON_EDITOR_DOUBLE_CLICK.
       sender->get_selection_pos(
         IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos)
                   to_line   = DATA(to_line)   to_pos = DATA(to_pos) ).
   endmethod.
+
 
   method ON_STACK_DOUBLE_CLICK.
       READ TABLE mo_viewer->mo_window->mt_stack INDEX row INTO DATA(stack).
@@ -544,9 +549,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDCASE.
   endmethod.
 
+
   method SET_MIXPROG_LINE.
       TYPES: lntab TYPE STANDARD TABLE OF i.
-      DATA: lines TYPE lntab, line_num TYPE i, flag TYPE boolean, programs TYPE TABLE OF program.
+      DATA: lines TYPE lntab, flag TYPE boolean, programs TYPE TABLE OF program.
       mo_code_viewer->remove_all_marker( 2 ).
       mo_code_viewer->remove_all_marker( 4 ).
       LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(prog) WHERE include <> 'Code_Flow_Mix'.
@@ -590,6 +596,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->draw( ).
   endmethod.
 
+
   METHOD show_parse_time.
     DATA: lv_ts2 TYPE timestampl, lv_sec TYPE tzntstmpl, lv_str(20) TYPE c.
     GET TIME STAMP FIELD lv_ts2.
@@ -599,6 +606,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     CONDENSE lv_str NO-GAPS.
     MESSAGE |parse_tokens: { lv_str } sec| TYPE 'I'.
   ENDMETHOD.
+
 
   METHOD set_program.
     IF i_include = 'VIRTUAL'.
@@ -637,6 +645,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDIF.
     ENDIF.
   ENDMETHOD.
+
 
   method SET_PROGRAM_LINE.
       TYPES: lntab TYPE STANDARD TABLE OF i.
@@ -706,6 +715,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->draw( ).
   endmethod.
 
+
   method SHOW_COVERAGE.
       DATA: split TYPE TABLE OF string.
       CLEAR: mt_watch, mt_coverage.
@@ -766,6 +776,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       SORT mt_coverage. DELETE ADJACENT DUPLICATES FROM mt_coverage.
   endmethod.
 
+
   method APPLY_DEPTH.
       CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
              mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
@@ -783,7 +794,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.
         zcl_ace_source_parser=>parse_call(
           i_index = ls_sc-index i_e_name = ls_ctx-evname i_e_type = ls_ctx-evtype
-          i_class = ls_ctx-class i_program = CONV #( ls_sc-program )
+          i_class = ls_ctx-class i_program =  ls_sc-program
           i_include = CONV #( ls_sc-include ) i_stack = 0 io_debugger = mo_viewer ).
       ELSE.
         zcl_ace_source_parser=>code_execution_scanner(
@@ -799,6 +810,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         mo_viewer->mo_window->show_stack( ).
       ENDIF.
   endmethod.
+
 
   method SHOW_STACK.
       IF mo_salv_stack IS INITIAL.
@@ -830,5 +842,4 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         mo_salv_stack->refresh( ).
       ENDIF.
   endmethod.
-
 ENDCLASS.
