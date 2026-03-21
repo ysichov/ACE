@@ -42,31 +42,7 @@ CLASS zcl_ace DEFINITION
         icon_name(64) TYPE c,
         icon          TYPE aqadh_type_of_icon,
       END OF sign_option_icon_s .
-    TYPES:
-      BEGIN OF var_table,
-        step          TYPE i,
-        stack         TYPE i,
-        program(40)   TYPE c,
-        eventtype(30) TYPE c,
-        eventname(61) TYPE c,
-        first         TYPE boolean,
-        i_appear      TYPE boolean,
-        del           TYPE boolean,
-        leaf          TYPE string,
-        name(1000)               ,
-        path          TYPE string,
-        short         TYPE string,
-        key           TYPE salv_de_node_key,
-        parent        TYPE string,
-        cl_leaf       TYPE int4,
-        ref           TYPE REF TO data,
-        type          TYPE string,
-        instance      TYPE string,
-        objname       TYPE string,
-        done          TYPE boolean,
-      END OF var_table .
-    TYPES:
-      t_var_table TYPE STANDARD TABLE OF var_table WITH NON-UNIQUE DEFAULT KEY .
+
     TYPES:
       BEGIN OF var_table_temp,
         step          TYPE i,
@@ -374,12 +350,6 @@ CLASS zcl_ace DEFINITION
     DATA i_history TYPE boolean .
     DATA m_hist_step TYPE i .
     DATA m_step_delta TYPE i .
-    DATA:
-      mt_vars_hist_view TYPE STANDARD TABLE OF zcl_ace=>var_table .
-    DATA:
-      mt_vars_hist      TYPE STANDARD TABLE OF zcl_ace=>var_table .
-    DATA:
-      mt_state          TYPE STANDARD TABLE OF zcl_ace=>var_table .
     DATA mv_recurse TYPE i .
     DATA:
       mt_classes_types  TYPE TABLE OF zcl_ace=>t_classes_types .
