@@ -26,126 +26,29 @@ public section.
   types:
     tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
 
-  types:
-    BEGIN OF ts_event,
-               program    TYPE program,
-               include    TYPE program,
-               type       TYPE string,
-               stmnt_type TYPE string,
-               stmnt_from TYPE string,
-               stmnt_to   TYPE string,
-               name       TYPE string,
-               line       TYPE i,
-             END OF ts_event .
-  types:
-    BEGIN OF ts_var,
-               program   TYPE string,
-               include   TYPE string,
-               line      TYPE i,
-               name(100) TYPE c,
-               type      TYPE string,
-             END OF ts_var .
-  types:
-    BEGIN OF ts_refvar,
-               program TYPE string,
-               name    TYPE string,
-               class   TYPE string,
-             END OF ts_refvar .
-  types:
-    tt_kword      TYPE STANDARD TABLE OF ZCL_ACE=>TS_KWORD WITH EMPTY KEY .
-  types:
-    tt_vars       TYPE SORTED TABLE OF ZCL_ACE=>ts_vars WITH UNIQUE KEY program include class eventtype eventname name.
-
-  types:
-    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program  include line name .
-  types:
-    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program  include line name .
-  types:
-    tt_events     TYPE STANDARD TABLE OF ts_event WITH EMPTY KEY .
-  types:
-    tt_refvar     TYPE STANDARD TABLE OF ts_refvar WITH EMPTY KEY.
-   types:
-    tt_params     TYPE SORTED TABLE OF zcl_ace=>ts_params WITH UNIQUE KEY program include class event name param  .
-
-  types:
-    BEGIN OF ts_meta,
-               clsname    TYPE seoclsname,
-               refclsname TYPE seoclsname,
-               reltype    TYPE seoreltype,
-               node       TYPE salv_de_node_key,
-             END OF ts_meta .
-
-  types:
-    BEGIN OF ts_int_tabs,
-               eventtype TYPE string,
-               eventname TYPE string,
-               name      TYPE string,
-               type      TYPE string,
-             END OF ts_int_tabs .
-  types:
-    tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY .
-  types:
-    BEGIN OF ts_enh_block,
-               ev_type     TYPE string,
-               ev_name     TYPE string,
-               position    TYPE string,
-               enh_name    TYPE string,
-               enh_include TYPE program,
-               enh_id      TYPE i,
-               from_line   TYPE i,
-               to_line     TYPE i,
-             END OF ts_enh_block .
-  types:
-    tt_enh_blocks TYPE STANDARD TABLE OF ts_enh_block WITH EMPTY KEY .
-  types:
-    BEGIN OF ts_prog,
-               stack         TYPE i,
-               program       TYPE program,
-               include       TYPE program,
-               source_tab    TYPE sci_include,
-               v_source      TYPE sci_include,
-               v_keywords    TYPE tt_kword,
-               scan          TYPE REF TO cl_ci_scan,
-               t_keywords    TYPE tt_kword,
-               selected      TYPE boolean,
-               enh_collected TYPE boolean,
-               tt_enh_blocks TYPE tt_enh_blocks,
-               evtype        TYPE string,
-               evname        TYPE string,
-               class         TYPE string,
-             END OF ts_prog .
-  types:
-    BEGIN OF ts_virtual_block,
-               source   TYPE sci_include,
-               keywords TYPE tt_kword,
-             END OF ts_virtual_block .
-  types:
-    tt_progs   TYPE STANDARD TABLE OF ts_prog WITH EMPTY KEY .
-  types:
-    tt_classes TYPE STANDARD TABLE OF ts_meta WITH EMPTY KEY .
-  types:
-    BEGIN OF ts_class_def,
-               class   TYPE string,
-               super   TYPE string,
-               include TYPE program,
-               line    TYPE i,
-             END OF ts_class_def .
-  types:
-    tt_class_defs TYPE STANDARD TABLE OF ts_class_def WITH NON-UNIQUE KEY class .
-
-  " Handler map: SET HANDLER registrations
-  " src_class/event_name → hdl_class/hdl_method
-  types:
-    BEGIN OF ts_handler_map,
-               src_class   TYPE string,   " класс источника события (FOR lo_src)
-               event_name  TYPE string,   " имя события
-               hdl_class   TYPE string,   " класс хэндлера
-               hdl_method  TYPE string,   " метод хэндлера
-               include     TYPE program,  " инклуд где SET HANDLER
-               line        TYPE i,        " строка
-             END OF ts_handler_map .
-  types:
-    tt_handler_map TYPE STANDARD TABLE OF ts_handler_map WITH EMPTY KEY .
+  " --- aliases for types moved to ZIF_ACE_PARSE_DATA ---
+  TYPES ts_event       TYPE zif_ace_parse_data=>ts_event.
+  TYPES tt_events      TYPE zif_ace_parse_data=>tt_events.
+  TYPES ts_var         TYPE zif_ace_parse_data=>ts_var.
+  TYPES tt_calculated  TYPE zif_ace_parse_data=>tt_calculated.
+  TYPES tt_composed    TYPE zif_ace_parse_data=>tt_composed.
+  TYPES ts_refvar      TYPE zif_ace_parse_data=>ts_refvar.
+  TYPES tt_refvar      TYPE zif_ace_parse_data=>tt_refvar.
+  TYPES tt_kword       TYPE zcl_ace=>tt_kword.
+  TYPES tt_vars        TYPE zif_ace_parse_data=>tt_vars.
+  TYPES tt_params      TYPE zif_ace_parse_data=>tt_params.
+  TYPES ts_int_tabs    TYPE zif_ace_parse_data=>ts_int_tabs.
+  TYPES tt_tabs        TYPE zif_ace_parse_data=>tt_tabs.
+  TYPES ts_meta        TYPE zif_ace_parse_data=>ts_meta.
+  TYPES tt_classes     TYPE zif_ace_parse_data=>tt_classes.
+  TYPES ts_enh_block   TYPE zif_ace_parse_data=>ts_enh_block.
+  TYPES tt_enh_blocks  TYPE zif_ace_parse_data=>tt_enh_blocks.
+  TYPES ts_prog        TYPE zif_ace_parse_data=>ts_prog.
+  TYPES tt_progs       TYPE zif_ace_parse_data=>tt_progs.
+  TYPES ts_class_def   TYPE zif_ace_parse_data=>ts_class_def.
+  TYPES tt_class_defs  TYPE zif_ace_parse_data=>tt_class_defs.
+  TYPES ts_handler_map TYPE zif_ace_parse_data=>ts_handler_map.
+  TYPES tt_handler_map TYPE zif_ace_parse_data=>tt_handler_map.
 
   " ts_source is now an alias for the canonical type in ZIF_ACE_PARSE_DATA
   TYPES ts_source TYPE zif_ace_parse_data=>ts_parse_data .
