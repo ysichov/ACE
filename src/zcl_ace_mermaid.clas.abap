@@ -496,7 +496,12 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
            BEGIN OF t_ind,
              from TYPE i,
              to   TYPE i,
-           END OF t_ind.
+           END OF t_ind,
+           BEGIN OF t_stack_entry,
+             stacklevel TYPE i,
+             entity_idx TYPE i,    " индекс ноды в таблице entities
+             name       TYPE string,
+           END OF t_stack_entry.
 
     CONSTANTS: c_style_event    TYPE string VALUE 'event',
                c_style_method   TYPE string VALUE 'method',
@@ -508,7 +513,6 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
     DATA: mm_string    TYPE string,
           entities     TYPE TABLE OF lty_entity,
           entity       TYPE lty_entity,
-          step         LIKE LINE OF mo_viewer->mt_steps,
           ind          TYPE t_ind,
           indexes      TYPE TABLE OF t_ind,
           ids_event    TYPE TABLE OF string,
@@ -516,18 +520,23 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           ids_form     TYPE TABLE OF string,
           ids_constr   TYPE TABLE OF string,
           ids_enh      TYPE TABLE OF string,
-          ids_function TYPE TABLE OF string.
+          ids_function TYPE TABLE OF string,
+          call_stack   TYPE TABLE OF t_stack_entry.
 
     DATA(copy) = mo_viewer->mt_steps.
 
+    " ── Шаг 1: собираем уникальные ноды ────────────────────────────
     LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
       entity-event = <copy>-eventtype.
 
       IF <copy>-eventtype = 'METHOD'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
-          WITH KEY include = <copy>-include eventtype = 'METHOD' eventname = <copy>-eventname class = <copy>-class
+          WITH KEY include   = <copy>-include
+                   eventtype = 'METHOD'
+                   eventname = <copy>-eventname
+                   class     = <copy>-class
           INTO DATA(call_line).
-        entity-name = |"{ call_line-class }->{ <copy>-eventname }"|.
+        entity-name  = |"{ call_line-class }->{ <copy>-eventname }"|.
         entity-style = COND string(
           WHEN <copy>-eventname = 'CONSTRUCTOR' OR <copy>-eventname = 'CLASS_CONSTRUCTOR'
           THEN c_style_constr ELSE c_style_method ).
@@ -547,10 +556,13 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           ELSE                    c_style_event ).
       ENDIF.
 
-      <copy>-eventname = entity-name.
+      <copy>-eventname   = entity-name.
       entity-include = <copy>-include.
-      entity-class = <copy>-class.
-      READ TABLE entities WITH KEY include = entity-include class = entity-class name = entity-name  TRANSPORTING NO FIELDS.
+      entity-class   = <copy>-class.
+
+      READ TABLE entities
+        WITH KEY include = entity-include class = entity-class name = entity-name
+        TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
         APPEND entity TO entities.
         DATA(lv_node_id) = |{ lines( entities ) }|.
@@ -567,22 +579,60 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
     mm_string = |graph { COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'TD' ) }\n |.
 
-    LOOP AT copy INTO DATA(step2).
-      IF step IS INITIAL. step = step2. CONTINUE. ENDIF.
-      IF step2-stacklevel >= step-stacklevel AND step2-eventname <> step-eventname.
-        READ TABLE entities WITH KEY name = step-eventname  TRANSPORTING NO FIELDS.
-        ind-from = sy-tabix.
-        READ TABLE entities WITH KEY name = step2-eventname TRANSPORTING NO FIELDS.
-        ind-to = sy-tabix.
-        READ TABLE indexes WITH KEY from = ind-from to = ind-to TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          mm_string = |{ mm_string }{ ind-from }({ step-eventname }) --> { ind-to }({ step2-eventname })\n|.
-          APPEND ind TO indexes.
-        ENDIF.
-      ENDIF.
-      step = step2.
+    " ── Шаг 2: явно объявляем все ноды ─────────────────────────────
+    DATA(lv_idx) = 0.
+    LOOP AT entities INTO entity.
+      lv_idx += 1.
+      mm_string = |{ mm_string }{ lv_idx }({ entity-name })\n|.
     ENDLOOP.
 
+    " ── Шаг 3: строим стрелки через явный стек вызовов ─────────────
+    " call_stack хранит ноды по уровням.
+    " Когда приходит новый шаг с stacklevel=N:
+    "   - caller = нода в стеке на уровне N-1
+    "   - рисуем стрелку caller → текущая нода (если ещё не было)
+    "   - обновляем стек: на уровне N теперь текущая нода
+
+    DATA lv_prev_stack TYPE i.
+
+    LOOP AT copy INTO DATA(step2).
+
+      READ TABLE entities
+        WITH KEY name = step2-eventname
+        TRANSPORTING NO FIELDS.
+      DATA(lv_cur_idx) = sy-tabix.
+
+      DATA(lv_level) = step2-stacklevel.
+
+      " Ищем caller — нода на уровне lv_level - 1 в call_stack
+      IF lv_level > 1.
+        READ TABLE call_stack
+          WITH KEY stacklevel = lv_level - 1
+          INTO DATA(ls_caller).
+        IF sy-subrc = 0 AND ls_caller-entity_idx <> lv_cur_idx.
+          " Рисуем стрелку только если ещё не было такой
+          ind-from = ls_caller-entity_idx.
+          ind-to   = lv_cur_idx.
+          READ TABLE indexes WITH KEY from = ind-from to = ind-to TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            mm_string = |{ mm_string }{ ind-from } --> { ind-to }\n|.
+            APPEND ind TO indexes.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+      " Обновляем стек: удаляем все уровни >= lv_level и добавляем текущий
+      DELETE call_stack WHERE stacklevel >= lv_level.
+      APPEND VALUE t_stack_entry(
+        stacklevel = lv_level
+        entity_idx = lv_cur_idx
+        name       = step2-eventname
+      ) TO call_stack.
+
+      lv_prev_stack = lv_level.
+    ENDLOOP.
+
+    " ── Шаг 4: стили ────────────────────────────────────────────────
     mm_string = |{ mm_string } classDef event    fill:#FFE0B2,stroke:#E65100\n|.
     mm_string = |{ mm_string } classDef method   fill:#BBDEFB,stroke:#1565C0\n|.
     mm_string = |{ mm_string } classDef form     fill:#EEEEEE,stroke:#616161\n|.

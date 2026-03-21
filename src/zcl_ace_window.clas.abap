@@ -314,16 +314,17 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         THEN VALUE #( function = 'AI' icon = CONV #( icon_manikin_unknown_gender ) quickinfo = 'Ask AI' text = 'Ask AI' ) ) )
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
-       ( function = 'CODEMIX' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
-       ( function = 'CODE' icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
-       ( function = 'DEPTH_M' icon = CONV #( icon_arrow_left ) quickinfo = 'Decrease depth' text = '' )
-       ( function = 'DEPTH' icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
-       ( function = 'DEPTH_P' icon = CONV #( icon_arrow_right ) quickinfo = 'Increase depth' text = '' )
+       ( function = 'CODEMIX'  icon = CONV #( icon_wizard )          quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
+       ( function = 'HANDLERS' icon = CONV #( icon_oo_event )        quickinfo = 'Event Handlers flow'        text = 'Handlers' )
+       ( function = 'CODE'     icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
+       ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )      quickinfo = 'Decrease depth' text = '' )
+       ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
+       ( function = 'DEPTH_P'  icon = CONV #( icon_arrow_right )     quickinfo = 'Increase depth' text = '' )
        ( butn_type = 3  )
-       ( function = 'STEPS' icon = CONV #( icon_next_step ) quickinfo = 'Steps table' text = 'Steps' )
+       ( function = 'STEPS'       icon = CONV #( icon_next_step )    quickinfo = 'Steps table' text = 'Steps' )
        ( butn_type = 3  )
-       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all ) quickinfo = 'Get local class from Global' text = 'Get whole Class' )
-       ( function = 'INFO' icon = CONV #( icon_bw_gis ) quickinfo = 'Documentation' text = '' )
+       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all )   quickinfo = 'Get local class from Global' text = 'Get whole Class' )
+       ( function = 'INFO'        icon = CONV #( icon_bw_gis )       quickinfo = 'Documentation' text = '' )
                       ).
       mo_toolbar->add_button_group( button ).
       event-eventid = cl_gui_toolbar=>m_id_function_selected.
@@ -405,12 +406,15 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         DATA(lv_count) = 0.
         SELECT COUNT(*) INTO @lv_count FROM reposrc WHERE progname = @lv_prog AND subc = '1'.
         IF lv_count = 1. SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN. ENDIF.
+
       WHEN 'DEPTH_M'.
         IF m_hist_depth > 0. m_hist_depth -= 1. ENDIF.
         apply_depth( ).
+
       WHEN 'DEPTH_P'.
         IF m_hist_depth < 99. m_hist_depth += 1. ENDIF.
         apply_depth( ).
+
       WHEN 'DEPTH'.
         DATA: lv_answer TYPE c LENGTH 1, lv_value1 TYPE spop-varvalue1.
         CALL FUNCTION 'POPUP_TO_GET_ONE_VALUE'
@@ -423,10 +427,12 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ELSEIF lv_new_depth > 99. lv_new_depth = 99. ENDIF.
         m_hist_depth = lv_new_depth.
         apply_depth( ).
+
       WHEN 'CALLS'.
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
           mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CALLS' ).
         ENDIF.
+
       WHEN 'CODEMIX'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
@@ -443,6 +449,73 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
         mo_viewer->get_code_mix( ).
         mo_viewer->mo_window->show_stack( ).
+
+      WHEN 'HANDLERS'.
+        " Каждый хэндлер:
+        "   stack=1 → виртуальная нода события (EVENT: clicked)
+        "   stack=2 → сам хэндлер-метод
+        " Это даёт стрелку: EVENT → handler в диаграмме
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_handler_map
+          INTO DATA(ls_hm).
+
+          CHECK ls_hm-hdl_method IS NOT INITIAL.
+
+          DATA(lv_hdl_class) = ls_hm-hdl_class.
+
+          " Если класс не заполнен — ищем в calls_line по имени метода
+          IF lv_hdl_class IS INITIAL.
+            LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line
+              INTO DATA(ls_cl_hdl)
+              WHERE eventname = ls_hm-hdl_method AND eventtype = 'METHOD'.
+              lv_hdl_class = ls_cl_hdl-class. EXIT.
+            ENDLOOP.
+          ENDIF.
+
+          " Ищем entry point хэндлера в calls_line
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+            INTO DATA(ls_call_hdl)
+            WITH KEY class     = lv_hdl_class
+                     eventtype = 'METHOD'
+                     eventname = ls_hm-hdl_method.
+          CHECK sy-subrc = 0.
+
+          " Добавляем виртуальный шаг для события на stack=1
+          " Это даст ноду "EVENT: clicked" в диаграмме
+          ADD 1 TO mo_viewer->m_step.
+          APPEND VALUE zcl_ace=>t_step_counter(
+            step       = mo_viewer->m_step
+            stacklevel = 1
+            eventtype  = 'EVENT'
+            eventname  = |EVENT:{ ls_hm-event_name }|
+            program    = ls_call_hdl-program
+            include    = ls_call_hdl-include
+          ) TO mo_viewer->mt_steps.
+
+          " Хэндлер на stack=2 — будет дочерним от события
+          zcl_ace_source_parser=>parse_call(
+            EXPORTING
+              i_index     = ls_call_hdl-index
+              i_e_name    = ls_call_hdl-eventname
+              i_e_type    = ls_call_hdl-eventtype
+              i_class     = ls_call_hdl-class
+              i_program   = CONV #( ls_call_hdl-program )
+              i_include   = CONV #( ls_call_hdl-include )
+              i_stack     = 1   " → внутри stack = 1+1 = 2
+              io_debugger = mo_viewer ).
+        ENDLOOP.
+
+        IF mo_viewer->mt_steps IS INITIAL.
+          MESSAGE 'No event handlers found. Run CodeMix first to parse the source.' TYPE 'I'.
+          RETURN.
+        ENDIF.
+
+        mo_viewer->get_code_mix( ).
+        mo_viewer->mo_window->show_stack( ).
+        mo_viewer->mo_window->mo_box->set_caption(
+          |Handlers: { lines( mo_viewer->mo_window->ms_sources-tt_handler_map ) } registered| ).
+
       WHEN 'CODE'.
         m_zcode = m_zcode BIT-XOR c_mask.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
@@ -462,13 +535,16 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
         ENDIF.
+
       WHEN 'INFO'.
         DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
         CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
         l_url = 'https://github.com/ysichov/Smart-Debugger'.
         CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
+
       WHEN 'STEPS'.
         zcl_ace=>open_int_table( i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
+
       WHEN 'WHOLE_CLASS'.
         DATA: lt_whole_class  TYPE sci_include,
               lv_class_name   TYPE string,
@@ -476,24 +552,20 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
               lv_section_done TYPE boolean VALUE abap_false,
               lv_cu_first     TYPE boolean VALUE abap_true.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(ls_wc_prog).
-        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_mac)
-          WHERE program = ls_wc_prog-program.
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_mac) WHERE program = ls_wc_prog-program.
           CHECK to_upper( CONV string( ls_mac-include ) ) CP '*CCMAC'.
           CHECK ls_mac-source_tab IS NOT INITIAL.
           APPEND LINES OF ls_mac-source_tab TO lt_whole_class.
           APPEND INITIAL LINE TO lt_whole_class.
         ENDLOOP.
-        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_prog_wc)
-          WHERE program = ls_wc_prog-program.
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_prog_wc) WHERE program = ls_wc_prog-program.
           DATA(lv_include_raw) = ls_prog_wc-include.
           DATA(lv_include)     = to_upper( CONV string( lv_include_raw ) ).
           DATA(lv_is_cp)     = xsdbool( lv_include CP '*CP' ).
           DATA(lv_is_cu)     = xsdbool( lv_include CP '*CU' ).
           DATA(lv_is_method) = xsdbool( lv_include CP '*CM*' ).
           IF lv_is_cp = abap_true OR lv_include CP '*====E' OR lv_include CS 'EIMP'
-            OR lv_include CP '*CCMAC' OR lv_include CP '*CCIMP' OR lv_include CP '*CCAU'.
-            CONTINUE.
-          ENDIF.
+            OR lv_include CP '*CCMAC' OR lv_include CP '*CCIMP' OR lv_include CP '*CCAU'. CONTINUE. ENDIF.
           CHECK ls_prog_wc-source_tab IS NOT INITIAL.
           IF lv_is_method = abap_true AND lv_in_methods = abap_false.
             lv_in_methods = abap_true.
@@ -509,16 +581,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           IF lv_is_cu = abap_true AND lv_cu_first = abap_true.
             lv_cu_first = abap_false.
             DATA(lv_eq_pos) = find( val = ls_prog_wc-include sub = '=' ).
-            IF lv_eq_pos > 0.
-              lv_class_name = substring( val = ls_prog_wc-include len = lv_eq_pos ).
-            ENDIF.
+            IF lv_eq_pos > 0. lv_class_name = substring( val = ls_prog_wc-include len = lv_eq_pos ). ENDIF.
           ENDIF.
           APPEND LINES OF ls_prog_wc-source_tab TO lt_whole_class.
         ENDLOOP.
         APPEND INITIAL LINE TO lt_whole_class.
         APPEND |ENDCLASS.| TO lt_whole_class.
-        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_cc)
-          WHERE program = ls_wc_prog-program.
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_cc) WHERE program = ls_wc_prog-program.
           DATA(lv_cc_inc) = to_upper( CONV string( ls_cc-include ) ).
           CHECK lv_cc_inc CP '*CCIMP' OR lv_cc_inc CP '*CCAU'.
           CHECK ls_cc-source_tab IS NOT INITIAL.
@@ -527,6 +596,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDLOOP.
         mo_code_viewer->set_text( table = lt_whole_class ).
         mo_box->set_caption( |Whole Class: { lv_class_name }| ).
+
     ENDCASE.
   ENDMETHOD.
 

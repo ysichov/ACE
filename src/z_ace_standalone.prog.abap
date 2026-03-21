@@ -1483,10 +1483,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       SET HANDLER me->hnd_toolbar FOR mo_toolbar.
   endmethod.
   method CONSTRUCTOR.
+
       DATA:  text TYPE char100.
       text = i_debugger->mv_prog.
 
       super->constructor( ).
+          zcl_ace=>open_int_table( i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = me ).
+
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
       m_hist_depth = 1.
@@ -8196,10 +8199,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
         GET REFERENCE OF it_tab INTO r_tab.
       ENDIF.
       APPEND INITIAL LINE TO ZCL_ACE=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>).
-      <obj>-alv_viewer = NEW #(  i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
+      <obj>-alv_viewer = NEW ZCL_ACE_TABLE_VIEWER(  i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
       <obj>-alv_viewer->mo_sel->raise_selection_done( ).
   endmethod.
   method CONSTRUCTOR.
+
       CONSTANTS: c_mask TYPE x VALUE '01'.
       mv_prog = i_prog.
       mv_show_parse_time = i_show_parse_time.
