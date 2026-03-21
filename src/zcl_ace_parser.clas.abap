@@ -47,13 +47,9 @@ CLASS zcl_ace_parser IMPLEMENTATION.
 
   METHOD parse_tokens.
     " ---------------------------------------------------------------
-    " Режим 1 (i_stmt_idx = 0, default): полный проход по инклуду.
-    "   Заполняет t_keywords, calls_line, params, vars.
-    "   calls/calcs НЕ запускаются — точечно из CODE_EXECUTION_SCANNER.
-    "
-    " Режим 2 (i_stmt_idx > 0): точечный парсинг одного стейтмента.
-    "   Запускает calls/calcs/vars для конкретного index в t_keywords.
-    "   Ставит calls_parsed = true. Инклуд уже должен быть в tt_progs.
+    " i_stmt_idx = 0: полный проход — t_keywords/calls_line/params/vars
+    "   + сбор карты хэндлеров через ZCL_ACE_PARSE_HANDLERS=>collect
+    " i_stmt_idx > 0: точечный — calls/calcs/vars/RAISE EVENT
     " ---------------------------------------------------------------
 
     DATA: lv_class     TYPE string,
@@ -70,7 +66,6 @@ CLASS zcl_ace_parser IMPLEMENTATION.
         WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog2>).
       CHECK sy-subrc = 0.
 
-      " calls
       DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       INSERT `NEW`           INTO TABLE lt_pass2.
       INSERT `PERFORM`       INTO TABLE lt_pass2.
@@ -78,10 +73,10 @@ CLASS zcl_ace_parser IMPLEMENTATION.
       INSERT `CALL METHOD`   INTO TABLE lt_pass2.
       INSERT `+CALL_METHOD`  INTO TABLE lt_pass2.
       INSERT `COMPUTE`       INTO TABLE lt_pass2.
+      INSERT `RAISE EVENT`   INTO TABLE lt_pass2.
 
       READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx INTO DATA(lv_key2).
       CHECK sy-subrc = 0.
-
       IF lv_key2-calls_parsed = abap_true. RETURN. ENDIF.
 
       DATA(lv_eff2) = lv_key2-name.
@@ -91,12 +86,18 @@ CLASS zcl_ace_parser IMPLEMENTATION.
           READ TABLE <prog2>-scan->tokens INDEX ls_s2-from + 1 INTO DATA(ls_t2).
           IF sy-subrc = 0. lv_eff2 = |CALL { ls_t2-str }|. ENDIF.
         ENDIF.
+      ELSEIF lv_eff2 = 'RAISE'.
+        READ TABLE <prog2>-scan->statements INDEX i_stmt_idx INTO ls_s2.
+        IF sy-subrc = 0.
+          READ TABLE <prog2>-scan->tokens INDEX ls_s2-from + 1 INTO ls_t2.
+          IF sy-subrc = 0 AND ls_t2-str = 'EVENT'. lv_eff2 = 'RAISE EVENT'. ENDIF.
+        ENDIF.
       ENDIF.
 
       DATA(lv_inc2) = CONV program( i_include ).
       DATA(lv_prg2) = CONV program( i_program ).
 
-      " vars: DATA / CLASS-DATA / COMPUTE
+      " vars
       IF lv_key2-name = 'DATA' OR lv_key2-name = 'CLASS-DATA' OR lv_key2-name = 'COMPUTE'.
         DATA(lo_vars2) = NEW zcl_ace_parse_vars( ).
         lo_vars2->zif_ace_stmt_handler~handle(
@@ -106,7 +107,7 @@ CLASS zcl_ace_parser IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " calcs: COMPUTE
+      " calcs
       IF lv_key2-name = 'COMPUTE'.
         DATA(lo_calcs2) = NEW zcl_ace_parse_calcs( ).
         lo_calcs2->zif_ace_stmt_handler~handle(
@@ -115,18 +116,28 @@ CLASS zcl_ace_parser IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " calls: NEW / PERFORM / CALL FUNCTION / CALL METHOD / +CALL_METHOD / COMPUTE
+      " calls (включая RAISE EVENT через ZCL_ACE_PARSE_HANDLERS)
       READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff2 TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
-        DATA(lo_calls2) = NEW zcl_ace_parse_calls( ).
-        lo_calls2->zif_ace_stmt_handler~handle(
-          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
-            i_program = lv_prg2 i_include = lv_inc2
-            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
-          CHANGING cs_source = cs_source ).
+        IF lv_eff2 = 'RAISE EVENT'.
+          " Используем специализированный обработчик хэндлеров
+          DATA(lo_hdl2) = NEW zcl_ace_parse_handlers( ).
+          lo_hdl2->zif_ace_stmt_handler~handle(
+            EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+              i_program = lv_prg2 i_include = lv_inc2
+              i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+            CHANGING cs_source = cs_source ).
+        ELSE.
+          DATA(lo_calls2) = NEW zcl_ace_parse_calls( ).
+          lo_calls2->zif_ace_stmt_handler~handle(
+            EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+              i_program = lv_prg2 i_include = lv_inc2
+              i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+            CHANGING cs_source = cs_source ).
+        ENDIF.
       ENDIF.
 
-      " Ставим флаг
+      " флаг
       READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx
         ASSIGNING FIELD-SYMBOL(<kw2>).
       IF sy-subrc = 0. <kw2>-calls_parsed = abap_true. ENDIF.
@@ -137,14 +148,10 @@ CLASS zcl_ace_parser IMPLEMENTATION.
     " ================================================================
     " Режим 1: полный проход по инклуду
     " ================================================================
-
-    " entry guard — include already parsed → nothing to do
     READ TABLE cs_source-tt_progs WITH KEY include = i_include TRANSPORTING NO FIELDS.
     CHECK sy-subrc <> 0.
 
-    IF i_class IS NOT INITIAL.
-      lv_class = i_class.
-    ENDIF.
+    IF i_class IS NOT INITIAL. lv_class = i_class. ENDIF.
 
     DATA(lo_src)  = cl_ci_source_include=>create( p_name = i_include ).
     DATA(lo_scan) = NEW cl_ci_scan( p_include = lo_src ).
@@ -198,11 +205,11 @@ CLASS zcl_ace_parser IMPLEMENTATION.
         WHEN 'A' THEN '+CALL_METHOD'
         ELSE          ls_kw_tok-str ).
 
-      IF ls_kw_tok-str = 'CLASS'.    lv_class = ls_tok2-str. CLEAR lv_interface. ENDIF.
+      IF ls_kw_tok-str = 'CLASS'.     lv_class = ls_tok2-str. CLEAR lv_interface. ENDIF.
       IF ls_kw_tok-str = 'INTERFACE'. CLEAR lv_class. lv_interface = ls_tok2-str. ENDIF.
-      IF ls_kw_tok-str = 'METHOD'.   lv_eventtype = 'METHOD'. lv_eventname = ls_tok2-str. ENDIF.
-      IF ls_kw_tok-str = 'FORM'.     lv_eventtype = 'FORM'.   lv_eventname = ls_tok2-str. ENDIF.
-      IF ls_kw_tok-str = 'MODULE'.   lv_eventtype = 'MODULE'. lv_eventname = ls_tok2-str. ENDIF.
+      IF ls_kw_tok-str = 'METHOD'.    lv_eventtype = 'METHOD'. lv_eventname = ls_tok2-str. ENDIF.
+      IF ls_kw_tok-str = 'FORM'.      lv_eventtype = 'FORM'.   lv_eventname = ls_tok2-str. ENDIF.
+      IF ls_kw_tok-str = 'MODULE'.    lv_eventtype = 'MODULE'.  lv_eventname = ls_tok2-str. ENDIF.
 
       DATA(lv_eff_kw) = SWITCH string( ls_kw_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -214,7 +221,7 @@ CLASS zcl_ace_parser IMPLEMENTATION.
         IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
       ENDIF.
 
-      " keyword entry — все стейтменты без исключения
+      " keyword entry
       APPEND VALUE zcl_ace=>ts_kword(
         program = i_program include = i_include
         index   = lv_kw_idx line    = ls_kw_tok-row
@@ -243,7 +250,7 @@ CLASS zcl_ace_parser IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " vars: глобальные и локальные DATA/PARAMETERS
+      " vars
       IF lv_eff_kw = 'DATA'       OR lv_eff_kw = 'CLASS-DATA'
       OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'.
         lo_vars->zif_ace_stmt_handler~handle(
@@ -254,6 +261,14 @@ CLASS zcl_ace_parser IMPLEMENTATION.
       ENDIF.
 
     ENDLOOP.
+
+    " После полного прохода — собираем карту хэндлеров
+    " (t_vars и calls_line уже заполнены — резолвинг типов работает)
+    zcl_ace_parse_handlers=>collect(
+      EXPORTING io_scan   = lo_scan
+                i_program = i_program
+                i_include = i_include
+      CHANGING  cs_source = cs_source ).
 
     <ls_prog>-evtype     = lv_eventtype.
     <ls_prog>-evname     = lv_eventname.

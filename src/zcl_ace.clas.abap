@@ -462,7 +462,11 @@ CLASS zcl_ace DEFINITION
       END OF c_kind .
 ENDCLASS.
 
-CLASS zcl_ace IMPLEMENTATION.
+
+
+CLASS ZCL_ACE IMPLEMENTATION.
+
+
   METHOD check_mermaid.
     CALL FUNCTION 'SEO_CLASS_EXISTENCE_CHECK'
       EXPORTING clskey = 'ZCL_WD_GUI_MERMAID_JS_DIAGRAM '
@@ -470,6 +474,8 @@ CLASS zcl_ace IMPLEMENTATION.
                  no_text = 4 inconsistent = 5 OTHERS = 6.
     IF sy-subrc = 0. i_mermaid_active = abap_true. ENDIF.
   ENDMETHOD.
+
+
   METHOD init_icons_table.
     m_option_icons = VALUE #(
      ( sign = space option = space  icon_name = icon_led_inactive )
@@ -494,13 +500,17 @@ CLASS zcl_ace IMPLEMENTATION.
      ( sign = 'E' option = 'BT' icon_name = icon_interval_include_red )
      ( sign = 'E' option = 'NB' icon_name = icon_interval_exclude_red ) ).
   ENDMETHOD.
+
+
   METHOD open_int_table.
     DATA r_tab TYPE REF TO data.
     IF it_ref IS BOUND. r_tab = it_ref. ELSE. GET REFERENCE OF it_tab INTO r_tab. ENDIF.
     APPEND INITIAL LINE TO zcl_ace=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>).
-    <obj>-alv_viewer = NEW #( i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
+    <obj>-alv_viewer = NEW zcl_ace_table_viewer( i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
     <obj>-alv_viewer->mo_sel->raise_selection_done( ).
   ENDMETHOD.
+
+
   METHOD constructor.
     CONSTANTS: c_mask TYPE x VALUE '01'.
     mv_prog = i_prog. mv_show_parse_time = i_show_parse_time. i_step = abap_on.
@@ -510,10 +520,14 @@ CLASS zcl_ace IMPLEMENTATION.
                                            i_cont = mo_window->mo_locals_container i_debugger = me ).
     show( ).
   ENDMETHOD.
+
+
   METHOD get_include_prefix.
     IF strlen( i_class ) >= 30. rv_prefix = i_class.
     ELSE. rv_prefix = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ) && `======`. ENDIF.
   ENDMETHOD.
+
+
   METHOD build_local_classes_node.
     DATA: local TYPE string, test_rel TYPE salv_de_node_key,
           intf_rel TYPE salv_de_node_key, lv_prefix TYPE string, lv_ccau TYPE string.
@@ -541,6 +555,8 @@ CLASS zcl_ace IMPLEMENTATION.
       local = subs-class.
     ENDLOOP.
   ENDMETHOD.
+
+
   METHOD add_class.
     DATA: tree TYPE zcl_ace=>ts_tree, splits_incl TYPE TABLE OF string,
           icon TYPE salv_de_tree_image, class_rel TYPE salv_de_node_key,
@@ -647,6 +663,8 @@ CLASS zcl_ace IMPLEMENTATION.
     ENDIF.
     r_node = class_rel.
   ENDMETHOD.
+
+
   METHOD mark_active_root.
     DATA lv_tabix TYPE i.
     TYPES: BEGIN OF ts_pair, if_idx TYPE i, end_idx TYPE i, depth TYPE i, END OF ts_pair.
@@ -718,6 +736,8 @@ CLASS zcl_ace IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
   ENDMETHOD.
+
+
   METHOD get_code_flow.
     DATA: add TYPE boolean, sub TYPE string, form TYPE string, direction TYPE string,
           ind2 TYPE i, start TYPE i, end TYPE i, bool TYPE string, block_first TYPE i,
@@ -940,6 +960,8 @@ CLASS zcl_ace IMPLEMENTATION.
       LOOP AT results ASSIGNING <line>. <line>-ind = sy-tabix. ENDLOOP.
     ENDIF.
   ENDMETHOD.
+
+
   METHOD get_code_mix.
     DATA: flow_lines TYPE sci_include, splits TYPE TABLE OF string, ind TYPE i, prev_flow TYPE ts_line.
     DATA(lines) = get_code_flow( i_calc_path = i_calc_path ).
@@ -979,6 +1001,8 @@ CLASS zcl_ace IMPLEMENTATION.
     mo_window->m_prg-include = 'Code_Flow_Mix'. mo_window->set_mixprog_line( ). mo_window->show_stack( ).
     mo_window->mo_box->set_caption( |Code Mix: { lines( lines ) } statements| ).
   ENDMETHOD.
+
+
   METHOD show.
     DATA: tree TYPE zcl_ace=>ts_tree, cl_name TYPE string, icon TYPE salv_de_tree_image,
           forms_rel TYPE salv_de_node_key, modules_rel TYPE salv_de_node_key,

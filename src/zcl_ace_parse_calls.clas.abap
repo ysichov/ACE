@@ -474,16 +474,20 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       IF sy-subrc = 0. lv_kw = |CALL { ls_tok2-str }|. ENDIF.
     ENDIF.
 
-    IF lv_kw = 'NEW'.
-      lv_kw = 'COMPUTE'.
+    " RAISE EVENT → нормализуем
+    IF lv_kw = 'RAISE'.
+      READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok2.
+      IF sy-subrc = 0 AND ls_tok2-str = 'EVENT'. lv_kw = 'RAISE EVENT'. ENDIF.
     ENDIF.
+
+    IF lv_kw = 'NEW'. lv_kw = 'COMPUTE'. ENDIF.
 
     DATA(lv_super) = get_super( is_source = cs_source ).
     DATA lt_new_calls TYPE zcl_ace=>tt_calls.
 
     CASE lv_kw.
 
-        " ── PERFORM ──────────────────────────────────────────────────
+      " ── PERFORM ──────────────────────────────────────────────────
       WHEN 'PERFORM'.
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
         CHECK sy-subrc = 0.
@@ -528,7 +532,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         ENDIF.
         APPEND ls_pf_call TO lt_new_calls.
 
-        " ── CALL FUNCTION ────────────────────────────────────────────
+      " ── CALL FUNCTION ────────────────────────────────────────────
       WHEN 'CALL FUNCTION'.
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
         CHECK sy-subrc = 0.
@@ -537,7 +541,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         APPEND VALUE zcl_ace=>ts_calls( event = 'FUNCTION' name = lv_fname )
           TO lt_new_calls.
 
-        " ── CALL METHOD ──────────────────────────────────────────────
+      " ── CALL METHOD ──────────────────────────────────────────────
       WHEN 'CALL METHOD'.
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
         CHECK sy-subrc = 0 AND ls_tok-str IS NOT INITIAL.
@@ -559,12 +563,8 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           lv_call-class = COND #( WHEN lv_super IS NOT INITIAL THEN lv_super ELSE mv_class_name ).
         ELSEIF lv_call-class IS NOT INITIAL.
           DATA(lv_resolved) = resolve_var_type(
-            is_source = cs_source
-            i_program = i_program
-            i_include = i_program
-            i_evtype  = 'METHOD'
-            i_evname  = lv_call-name
-            i_varname = lv_call-class ).
+            is_source = cs_source i_program = i_program i_include = i_program
+            i_evtype = 'METHOD' i_evname = lv_call-name i_varname = lv_call-class ).
           IF lv_resolved IS NOT INITIAL.
             lv_call-outer = lv_call-class.
             lv_call-inner = lv_call-name.
@@ -600,7 +600,36 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         ENDWHILE.
         APPEND lv_call TO lt_new_calls.
 
-        " ── COMPUTE / NEW: NEW constructor + obj->meth ───────────────
+      " ── RAISE EVENT: ищем хэндлеры в tt_handler_map ─────────────
+      WHEN 'RAISE EVENT'.
+        " Синтаксис: RAISE EVENT event_name [EXPORTING p1 = v1 ...]
+        READ TABLE io_scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
+        CHECK sy-subrc = 0.
+        DATA(lv_ev_name) = ls_tok-str.
+
+        " Ищем все хэндлеры для этого события в карте
+        LOOP AT cs_source-tt_handler_map INTO DATA(ls_hm)
+          WHERE event_name = lv_ev_name.
+          " Добавляем хэндлер как вызов метода
+          APPEND VALUE zcl_ace=>ts_calls(
+            event = 'METHOD'
+            class = ls_hm-hdl_class
+            name  = ls_hm-hdl_method
+            type  = 'H'              " H = Handler — для визуализации
+          ) TO lt_new_calls.
+        ENDLOOP.
+
+        " Если карта пуста (SET HANDLER ещё не распаршен) —
+        " регистрируем событие для последующего связывания
+        IF lt_new_calls IS INITIAL.
+          APPEND VALUE zcl_ace=>ts_calls(
+            event = 'EVENT'
+            name  = lv_ev_name
+            class = mv_class_name
+          ) TO lt_new_calls.
+        ENDIF.
+
+      " ── COMPUTE / NEW: NEW constructor + obj->meth ───────────────
       WHEN 'COMPUTE'.
         DATA lv_ci TYPE i.
         DATA ls_ct LIKE LINE OF io_scan->tokens.
@@ -617,16 +646,8 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
               REPLACE ALL OCCURRENCES OF '(' IN lv_cn WITH ''.
               CONDENSE lv_cn NO-GAPS.
               IF lv_cn IS NOT INITIAL.
-                " Записываем CONSTRUCTOR только если он реально определён
-*                READ TABLE cs_source-tt_calls_line
-*                  WITH KEY class     = lv_cn
-*                           eventtype = 'METHOD'
-*                           eventname = 'CONSTRUCTOR'
-*                  TRANSPORTING NO FIELDS.
-*                IF sy-subrc = 0.
-                  APPEND VALUE zcl_ace=>ts_calls(
-                    event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR' ) TO lt_new_calls.
-*                ENDIF.
+                APPEND VALUE zcl_ace=>ts_calls(
+                  event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR' ) TO lt_new_calls.
               ENDIF.
               lv_ci += 1.
             ENDIF.
@@ -634,24 +655,14 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           lv_ci += 1.
         ENDWHILE.
         collect_method_calls(
-          EXPORTING
-            io_scan   = io_scan
-            i_stmt    = ls_stmt
-            i_program = i_program
-          CHANGING
-            cs_source = cs_source
-            ct_calls  = lt_new_calls ).
+          EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
+          CHANGING  cs_source = cs_source ct_calls = lt_new_calls ).
 
-        " ── +CALL_METHOD: функциональный стиль obj->meth( ) ──────────
+      " ── +CALL_METHOD: функциональный стиль obj->meth( ) ──────────
       WHEN '+CALL_METHOD'.
         collect_method_calls(
-          EXPORTING
-            io_scan   = io_scan
-            i_stmt    = ls_stmt
-            i_program = i_program
-          CHANGING
-            cs_source = cs_source
-            ct_calls  = lt_new_calls ).
+          EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
+          CHANGING  cs_source = cs_source ct_calls = lt_new_calls ).
 
     ENDCASE.
 
