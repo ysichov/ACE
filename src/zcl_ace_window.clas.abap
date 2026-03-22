@@ -528,11 +528,92 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   endmethod.
 
 
-  method ON_EDITOR_DOUBLE_CLICK.
-      sender->get_selection_pos(
-        IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos)
-                  to_line   = DATA(to_line)   to_pos = DATA(to_pos) ).
-  endmethod.
+  METHOD on_editor_double_click.
+    sender->get_selection_pos(
+      IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos)
+                to_line   = DATA(to_line) to_pos   = DATA(to_pos) ).
+
+    " Find keyword at clicked virtual line
+    READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(prog).
+    CHECK sy-subrc = 0.
+    DATA(lr_kw) = REF #( prog-t_keywords ).
+    IF prog-v_keywords IS NOT INITIAL. lr_kw = REF #( prog-v_keywords ). ENDIF.
+
+    LOOP AT lr_kw->* INTO DATA(kw) WHERE v_line = fr_line. EXIT. ENDLOOP.
+    CHECK sy-subrc = 0.
+
+    DATA lv_target_vline   TYPE i.
+    DATA lv_target_include TYPE program.
+
+    CASE kw-name.
+
+      WHEN 'CLASS' OR 'INTERFACE'.
+        " Read tokens: CLASS <name> DEFINITION|IMPLEMENTATION|DEFERRED
+        READ TABLE prog-scan->statements INDEX kw-index INTO DATA(ls_stmt).
+        CHECK sy-subrc = 0.
+        READ TABLE prog-scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
+        CHECK sy-subrc = 0.
+        DATA(lv_cls_name) = ls_tok-str.
+        READ TABLE prog-scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
+        DATA(lv_kw2) = COND string( WHEN sy-subrc = 0 THEN ls_tok-str ELSE '' ).
+
+        " Look up coordinates from tt_class_defs
+        READ TABLE ms_sources-tt_class_defs
+          WITH KEY class = lv_cls_name INTO DATA(ls_cd).
+        CHECK sy-subrc = 0.
+
+        CASE lv_kw2.
+          WHEN 'IMPLEMENTATION'.
+            " → jump to DEFINITION
+            lv_target_include = ls_cd-def_include.
+            lv_target_vline   = ls_cd-def_line.
+          WHEN 'DEFINITION' OR 'DEFERRED'.
+            " → jump to IMPLEMENTATION
+            lv_target_include = ls_cd-impl_include.
+            lv_target_vline   = ls_cd-impl_line.
+          WHEN OTHERS.
+            RETURN.
+        ENDCASE.
+
+        " Convert real line → virtual line in target include
+        IF lv_target_include IS NOT INITIAL AND lv_target_vline > 0.
+          READ TABLE ms_sources-tt_progs
+            WITH KEY include = lv_target_include INTO DATA(lv_tprog).
+          IF sy-subrc = 0.
+            DATA(lr_tkw) = REF #( lv_tprog-t_keywords ).
+            IF lv_tprog-v_keywords IS NOT INITIAL. lr_tkw = REF #( lv_tprog-v_keywords ). ENDIF.
+            LOOP AT lr_tkw->* INTO DATA(tkw) WHERE line = lv_target_vline. EXIT. ENDLOOP.
+            IF sy-subrc = 0. lv_target_vline = tkw-v_line. ENDIF.
+          ENDIF.
+        ENDIF.
+
+      WHEN 'METHOD'.
+        " → jump to matching ENDMETHOD
+        LOOP AT lr_kw->* INTO DATA(kw2) WHERE name = 'ENDMETHOD' AND index > kw-index.
+          lv_target_vline   = kw2-v_line.
+          lv_target_include = m_prg-include.
+          EXIT.
+        ENDLOOP.
+
+      WHEN 'ENDMETHOD'.
+        " → jump to opening METHOD (last METHOD before current index)
+        LOOP AT lr_kw->* INTO kw2 WHERE name = 'METHOD' AND index < kw-index.
+          lv_target_vline   = kw2-v_line.
+          lv_target_include = m_prg-include.
+        ENDLOOP.
+
+    ENDCASE.
+
+    CHECK lv_target_vline > 0.
+
+    " Switch include if needed, then scroll
+    IF lv_target_include <> m_prg-include AND lv_target_include IS NOT INITIAL.
+      m_prg-include = lv_target_include.
+      set_program( lv_target_include ).
+    ENDIF.
+    set_program_line( lv_target_vline ).
+
+  ENDMETHOD.
 
 
   method ON_STACK_DOUBLE_CLICK.

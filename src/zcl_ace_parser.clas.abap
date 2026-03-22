@@ -116,11 +116,10 @@ CLASS zcl_ace_parser IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " calls (включая RAISE EVENT через ZCL_ACE_PARSE_HANDLERS)
+      " calls + RAISE EVENT
       READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff2 TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         IF lv_eff2 = 'RAISE EVENT'.
-          " Используем специализированный обработчик хэндлеров
           DATA(lo_hdl2) = NEW zcl_ace_parse_handlers( ).
           lo_hdl2->zif_ace_stmt_handler~handle(
             EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
@@ -156,7 +155,7 @@ CLASS zcl_ace_parser IMPLEMENTATION.
     DATA(lo_src)  = cl_ci_source_include=>create( p_name = i_include ).
     DATA(lo_scan) = NEW cl_ci_scan( p_include = lo_src ).
 
-    DATA ls_prog TYPE zif_ace_parse_data=>ts_prog.
+    DATA ls_prog TYPE zcl_ace_window=>ts_prog.
     ls_prog-program    = i_program.
     ls_prog-include    = i_include.
     ls_prog-source_tab = lo_src->lines.
@@ -195,9 +194,11 @@ CLASS zcl_ace_parser IMPLEMENTATION.
       DATA(lv_kw_idx) = sy-tabix.
       CHECK ls_kw_stmt-type <> '*'.
 
-      READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from INTO DATA(ls_kw_tok).
+      READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from     INTO DATA(ls_kw_tok).
       CHECK sy-subrc = 0.
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 1 INTO DATA(ls_tok2).
+      READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 2 INTO DATA(ls_tok3).
+      READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from + 3 INTO DATA(ls_tok4).
 
       DATA(lv_kw_name) = SWITCH string( ls_kw_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -205,7 +206,18 @@ CLASS zcl_ace_parser IMPLEMENTATION.
         WHEN 'A' THEN '+CALL_METHOD'
         ELSE          ls_kw_tok-str ).
 
-      IF ls_kw_tok-str = 'CLASS'.     lv_class = ls_tok2-str. CLEAR lv_interface. ENDIF.
+      " ── CLASS keyword tracking ─────────────────────────────────────
+      " lv_class обновляем для DEFINITION и IMPLEMENTATION одинаково —
+      " нужно чтобы lo_calls_line знал текущий класс при обходе METHOD.
+      " Фильтрация DEFERRED идёт отдельно при вызове lo_calls_line.
+      IF ls_kw_tok-str = 'CLASS' AND ls_tok2-str IS NOT INITIAL.
+        " CLASS name DEFINITION [DEFERRED] — обновляем lv_class
+        " CLASS name IMPLEMENTATION        — обновляем lv_class
+        " Пропускаем только CLASS name LOAD / CLASS name FRIENDS
+        IF ls_tok3-str = 'DEFINITION' OR ls_tok3-str = 'IMPLEMENTATION'.
+          lv_class = ls_tok2-str. CLEAR lv_interface.
+        ENDIF.
+      ENDIF.
       IF ls_kw_tok-str = 'INTERFACE'. CLEAR lv_class. lv_interface = ls_tok2-str. ENDIF.
       IF ls_kw_tok-str = 'METHOD'.    lv_eventtype = 'METHOD'. lv_eventname = ls_tok2-str. ENDIF.
       IF ls_kw_tok-str = 'FORM'.      lv_eventtype = 'FORM'.   lv_eventname = ls_tok2-str. ENDIF.
@@ -229,12 +241,24 @@ CLASS zcl_ace_parser IMPLEMENTATION.
         from    = ls_kw_stmt-from   to      = ls_kw_stmt-to
       ) TO <ls_prog>-t_keywords.
 
-      " calls_line
-      IF lv_eff_kw = 'CLASS'   OR lv_eff_kw = 'INTERFACE'
-      OR lv_eff_kw = 'PUBLIC'  OR lv_eff_kw = 'PROTECTED' OR lv_eff_kw = 'PRIVATE'
-      OR lv_eff_kw = 'METHODS' OR lv_eff_kw = 'CLASS-METHODS'
-      OR lv_eff_kw = 'METHOD'  OR lv_eff_kw = 'FORM'
-      OR lv_eff_kw = 'MODULE'  OR lv_eff_kw = 'FUNCTION'.
+      " calls_line — для CLASS передаём только если не DEFERRED
+      IF lv_eff_kw = 'CLASS'.
+        IF ls_tok3-str = 'DEFINITION' AND ls_tok4-str <> 'DEFERRED'.
+          lo_calls_line->zif_ace_stmt_handler~handle(
+            EXPORTING io_scan = lo_scan i_class = lv_class i_interface = lv_interface
+              i_stmt_idx = lv_kw_idx i_program = i_program i_include = i_include
+            CHANGING cs_source = cs_source ).
+        ELSEIF ls_tok3-str = 'IMPLEMENTATION'.
+          lo_calls_line->zif_ace_stmt_handler~handle(
+            EXPORTING io_scan = lo_scan i_class = lv_class i_interface = lv_interface
+              i_stmt_idx = lv_kw_idx i_program = i_program i_include = i_include
+            CHANGING cs_source = cs_source ).
+        ENDIF.
+      ELSEIF lv_eff_kw = 'INTERFACE'
+          OR lv_eff_kw = 'PUBLIC'   OR lv_eff_kw = 'PROTECTED' OR lv_eff_kw = 'PRIVATE'
+          OR lv_eff_kw = 'METHODS'  OR lv_eff_kw = 'CLASS-METHODS'
+          OR lv_eff_kw = 'METHOD'   OR lv_eff_kw = 'FORM'
+          OR lv_eff_kw = 'MODULE'   OR lv_eff_kw = 'FUNCTION'.
         lo_calls_line->zif_ace_stmt_handler~handle(
           EXPORTING io_scan = lo_scan i_class = lv_class i_interface = lv_interface
             i_stmt_idx = lv_kw_idx i_program = i_program i_include = i_include
@@ -263,7 +287,6 @@ CLASS zcl_ace_parser IMPLEMENTATION.
     ENDLOOP.
 
     " После полного прохода — собираем карту хэндлеров
-    " (t_vars и calls_line уже заполнены — резолвинг типов работает)
     zcl_ace_parse_handlers=>collect(
       EXPORTING io_scan   = lo_scan
                 i_program = i_program

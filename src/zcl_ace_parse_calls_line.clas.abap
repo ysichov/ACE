@@ -186,11 +186,32 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
       WHEN 'CLASS' OR 'INTERFACE'.
         on_class_kw( io_scan = io_scan i_stmt_idx = i_stmt_idx i_kw = lv_kw ).
         IF lv_kw = 'CLASS' AND mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
+          DATA(lv_def_line) = COND i( WHEN stmt IS NOT INITIAL THEN io_scan->tokens[ stmt-from ]-row ELSE 0 ).
           READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING FIELD-SYMBOL(<cd>).
           IF sy-subrc = 0.
-            <cd>-super = mv_super_name.
+            <cd>-super        = mv_super_name.
+            <cd>-def_include  = i_include.
+            <cd>-def_line     = lv_def_line.
           ELSE.
-            APPEND VALUE zif_ace_parse_data=>ts_class_def( class = mv_class_name super = mv_super_name )
+            APPEND VALUE zif_ace_parse_data=>ts_class_def(
+              class        = mv_class_name
+              super        = mv_super_name
+              def_include  = i_include
+              def_line     = lv_def_line )
+              TO cs_source-tt_class_defs.
+          ENDIF.
+        ENDIF.
+        IF lv_kw = 'CLASS' AND mv_in_impl = abap_true AND mv_class_name IS NOT INITIAL.
+          DATA(lv_impl_line) = COND i( WHEN stmt IS NOT INITIAL THEN io_scan->tokens[ stmt-from ]-row ELSE 0 ).
+          READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING <cd>.
+          IF sy-subrc = 0.
+            <cd>-impl_include = i_include.
+            <cd>-impl_line    = lv_impl_line.
+          ELSE.
+            APPEND VALUE zif_ace_parse_data=>ts_class_def(
+              class        = mv_class_name
+              impl_include = i_include
+              impl_line    = lv_impl_line )
               TO cs_source-tt_class_defs.
           ENDIF.
         ENDIF.

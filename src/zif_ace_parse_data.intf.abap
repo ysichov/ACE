@@ -100,10 +100,14 @@ INTERFACE zif_ace_parse_data PUBLIC.
   " --- class definition locations ---
   TYPES:
     BEGIN OF ts_class_def,
-      class   TYPE string,
-      super   TYPE string,
-      include TYPE program,
-      line    TYPE i,
+      class        TYPE string,
+      super        TYPE string,
+      include      TYPE program,
+      line         TYPE i,
+      def_include  TYPE program,
+      def_line     TYPE i,
+      impl_include TYPE program,
+      impl_line    TYPE i,
     END OF ts_class_def .
   TYPES:
     tt_class_defs TYPE STANDARD TABLE OF ts_class_def WITH NON-UNIQUE KEY class .
