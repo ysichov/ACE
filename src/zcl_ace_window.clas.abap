@@ -538,7 +538,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     DATA(lr_kw) = REF #( prog-t_keywords ).
     IF prog-v_keywords IS NOT INITIAL. lr_kw = REF #( prog-v_keywords ). ENDIF.
 
-    " Найти keyword на кликнутой виртуальной строке
     LOOP AT lr_kw->* INTO DATA(kw) WHERE v_line = fr_line. EXIT. ENDLOOP.
     CHECK sy-subrc = 0.
 
@@ -548,53 +547,39 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     CASE kw-name.
 
       WHEN 'CLASS' OR 'INTERFACE'.
-        " Ищем стейтмент по номеру реальной строки (kw-line)
+        " Ищем стейтмент по строке
         LOOP AT prog-scan->statements INTO DATA(ls_stmt).
           READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw_tok).
           IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
         ENDLOOP.
         CHECK sy-subrc = 0.
-
-        " tok[from+1] = имя класса
         READ TABLE prog-scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
         CHECK sy-subrc = 0.
         DATA(lv_cls_name) = ls_tok-str.
-
-        " tok[from+2] = DEFINITION / IMPLEMENTATION
         READ TABLE prog-scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
         DATA(lv_kw2) = COND string( WHEN sy-subrc = 0 THEN ls_tok-str ELSE '' ).
-
-        " tok[from+3] = DEFERRED (если есть)
         READ TABLE prog-scan->tokens INDEX ls_stmt-from + 3 INTO DATA(ls_tok3).
         DATA(lv_kw3) = COND string( WHEN sy-subrc = 0 THEN ls_tok3-str ELSE '' ).
-
-        READ TABLE ms_sources-tt_class_defs
-          WITH KEY class = lv_cls_name INTO DATA(ls_cd).
+        READ TABLE ms_sources-tt_class_defs WITH KEY class = lv_cls_name INTO DATA(ls_cd).
         CHECK sy-subrc = 0.
-
         CASE lv_kw2.
           WHEN 'IMPLEMENTATION'.
-            " CLASS name IMPLEMENTATION → прыгаем на DEFINITION
             lv_target_include = ls_cd-def_include.
             lv_target_vline   = ls_cd-def_line.
           WHEN 'DEFINITION'.
             IF lv_kw3 = 'DEFERRED'.
-              " CLASS name DEFINITION DEFERRED → прыгаем на настоящий DEFINITION
               lv_target_include = ls_cd-def_include.
               lv_target_vline   = ls_cd-def_line.
             ELSE.
-              " CLASS name DEFINITION → прыгаем на IMPLEMENTATION
               lv_target_include = ls_cd-impl_include.
               lv_target_vline   = ls_cd-impl_line.
             ENDIF.
           WHEN OTHERS.
             RETURN.
         ENDCASE.
-
-        " Реальную строку конвертируем в виртуальную в целевом инклуде
+        " Конвертируем реальную строку → виртуальную в целевом инклуде
         IF lv_target_include IS NOT INITIAL AND lv_target_vline > 0.
-          READ TABLE ms_sources-tt_progs
-            WITH KEY include = lv_target_include INTO DATA(lv_tprog).
+          READ TABLE ms_sources-tt_progs WITH KEY include = lv_target_include INTO DATA(lv_tprog).
           IF sy-subrc = 0.
             DATA(lr_tkw) = REF #( lv_tprog-t_keywords ).
             IF lv_tprog-v_keywords IS NOT INITIAL. lr_tkw = REF #( lv_tprog-v_keywords ). ENDIF.
@@ -604,12 +589,75 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'METHOD'.
-        " → прыгаем на ENDMETHOD
-        LOOP AT lr_kw->* INTO DATA(kw2) WHERE name = 'ENDMETHOD' AND index > kw-index.
-          lv_target_vline   = kw2-v_line.
-          lv_target_include = m_prg-include.
-          EXIT.
+        " Читаем имя метода из токенов
+        LOOP AT prog-scan->statements INTO ls_stmt.
+          READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
+          IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
         ENDLOOP.
+        CHECK sy-subrc = 0.
+        READ TABLE prog-scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok.
+        CHECK sy-subrc = 0.
+        DATA(lv_meth_name) = ls_tok-str.
+        " Ищем сигнатуру в def_include через tt_calls_line
+        READ TABLE ms_sources-tt_calls_line
+          WITH KEY include = kw-include eventtype = 'METHOD' eventname = lv_meth_name
+          INTO DATA(ls_cl).
+        IF sy-subrc = 0 AND ls_cl-def_include IS NOT INITIAL AND ls_cl-def_line > 0.
+          " Переходим на METHODS name в def_include (CU/CO/CI инклуд)
+          lv_target_include = ls_cl-def_include.
+          lv_target_vline   = ls_cl-def_line.
+          " Конвертируем реальную строку → виртуальную
+          READ TABLE ms_sources-tt_progs WITH KEY include = lv_target_include INTO DATA(lv_defprog).
+          IF sy-subrc = 0.
+            DATA(lr_defkw) = REF #( lv_defprog-t_keywords ).
+            IF lv_defprog-v_keywords IS NOT INITIAL. lr_defkw = REF #( lv_defprog-v_keywords ). ENDIF.
+            LOOP AT lr_defkw->* INTO DATA(defkw) WHERE line = lv_target_vline. EXIT. ENDLOOP.
+            IF sy-subrc = 0. lv_target_vline = defkw-v_line. ENDIF.
+          ENDIF.
+        ELSE.
+          " Fallback — прыгаем на ENDMETHOD в том же инклуде
+          LOOP AT lr_kw->* INTO DATA(kw2) WHERE name = 'ENDMETHOD' AND index > kw-index.
+            lv_target_vline   = kw2-v_line.
+            lv_target_include = m_prg-include.
+            EXIT.
+          ENDLOOP.
+        ENDIF.
+
+      WHEN 'METHODS' OR 'CLASS-METHODS'.
+        " Читаем имя метода
+        LOOP AT prog-scan->statements INTO ls_stmt.
+          READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
+          IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
+        ENDLOOP.
+        CHECK sy-subrc = 0.
+        READ TABLE prog-scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok.
+        CHECK sy-subrc = 0.
+        lv_meth_name = ls_tok-str.
+        " Ищем тело метода в include через tt_calls_line
+        READ TABLE ms_sources-tt_calls_line
+          WITH KEY eventtype = 'METHOD' eventname = lv_meth_name
+          INTO ls_cl.
+        IF sy-subrc = 0 AND ls_cl-include IS NOT INITIAL.
+          " Переходим на METHOD name в CM-инклуде
+          lv_target_include = ls_cl-include.
+          " Ищем v_line строки METHOD в CM-инклуде
+          READ TABLE ms_sources-tt_progs WITH KEY include = lv_target_include INTO DATA(lv_implprog).
+          IF sy-subrc = 0.
+            DATA(lr_implkw) = REF #( lv_implprog-t_keywords ).
+            IF lv_implprog-v_keywords IS NOT INITIAL. lr_implkw = REF #( lv_implprog-v_keywords ). ENDIF.
+            LOOP AT lr_implkw->* INTO DATA(implkw) WHERE name = 'METHOD'.
+              READ TABLE lv_implprog-scan->statements INDEX implkw-index INTO DATA(ls_impl_stmt).
+              IF sy-subrc = 0.
+                READ TABLE lv_implprog-scan->tokens INDEX ls_impl_stmt-from + 1 INTO DATA(ls_impl_tok).
+                IF sy-subrc = 0 AND ls_impl_tok-str = lv_meth_name.
+                  lv_target_vline = implkw-v_line.
+                  IF lv_target_vline = 0. lv_target_vline = implkw-line. ENDIF.
+                  EXIT.
+                ENDIF.
+              ENDIF.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
 
       WHEN 'ENDMETHOD'.
         " → прыгаем на открывающий METHOD

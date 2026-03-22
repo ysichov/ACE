@@ -507,30 +507,63 @@ CLASS ZCL_ACE IMPLEMENTATION.
       add_class( i_class = CONV #( ls_class-refclsname ) i_refnode = class_rel no_locals = abap_true i_type = 'I' ).
     ENDLOOP.
 
+    " Для локальных классов (kind<>'C') ищем CLASS name DEFINITION в t_keywords
+    DATA lv_def_inc  TYPE program.
+    DATA lv_def_line TYPE i.
+    IF i_tree-kind <> 'C'.
+      LOOP AT mo_window->ms_sources-tt_progs INTO DATA(lv_srch_prog).
+        LOOP AT lv_srch_prog-t_keywords INTO DATA(lv_srch_kw) WHERE name = 'CLASS'.
+          LOOP AT lv_srch_prog-scan->statements INTO DATA(ls_srch_stmt).
+            READ TABLE lv_srch_prog-scan->tokens INDEX ls_srch_stmt-from INTO DATA(ls_tok0).
+            IF sy-subrc = 0 AND ls_tok0-row = lv_srch_kw-line AND ls_tok0-str = 'CLASS'.
+              READ TABLE lv_srch_prog-scan->tokens INDEX ls_srch_stmt-from + 1 INTO DATA(ls_tok1).
+              IF sy-subrc = 0 AND ls_tok1-str = i_class.
+                READ TABLE lv_srch_prog-scan->tokens INDEX ls_srch_stmt-from + 2 INTO DATA(ls_tok2).
+                IF sy-subrc = 0 AND ls_tok2-str = 'DEFINITION'.
+                  READ TABLE lv_srch_prog-scan->tokens INDEX ls_srch_stmt-from + 3 INTO DATA(ls_tok3).
+                  IF NOT ( sy-subrc = 0 AND ls_tok3-str = 'DEFERRED' ).
+                    lv_def_inc  = lv_srch_prog-include.
+                    lv_def_line = COND i( WHEN lv_srch_kw-v_line > 0 THEN lv_srch_kw-v_line ELSE lv_srch_kw-line ).
+                  ENDIF.
+                ENDIF.
+              ENDIF.
+              EXIT.
+            ENDIF.
+          ENDLOOP.
+          IF lv_def_inc IS NOT INITIAL. EXIT. ENDIF.
+        ENDLOOP.
+        IF lv_def_inc IS NOT INITIAL. EXIT. ENDIF.
+      ENDLOOP.
+    ELSE.
+      " Для kind='C' — координаты переданы из SHOW в i_tree
+      lv_def_inc  = i_tree-include.
+      lv_def_line = CONV i( i_tree-value ).
+    ENDIF.
+
     LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = i_class AND eventtype = 'METHOD'.
       IF class_rel IS INITIAL.
         IF i_tree-kind = 'C'.
-          class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
+          " Глобальный класс — нода БЕЗ param (не lazy-load),
+          " секции добавляются ниже как статические дочерние ноды
+          class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
+                        i_tree = VALUE #( kind    = 'C'
+                                         include = lv_def_inc
+                                         value   = lv_def_line ) ).
         ELSE.
-          READ TABLE mo_window->ms_sources-tt_class_defs WITH KEY class = i_class INTO DATA(ls_cls_def).
-
-          " Навигация для ноды класса:
-          " Предпочитаем impl_include (реальный код) над def_include (может быть DEFERRED)
-          DATA(lv_cls_inc) = COND program(
-            WHEN sy-subrc = 0 AND ls_cls_def-impl_include IS NOT INITIAL THEN ls_cls_def-impl_include
-            WHEN sy-subrc = 0 AND ls_cls_def-def_include  IS NOT INITIAL THEN ls_cls_def-def_include
+          " Локальный класс — param=CLASS: для навигации по двойному клику
+          DATA(lv_node_inc)  = COND program(
+            WHEN lv_def_inc IS NOT INITIAL THEN lv_def_inc
             WHEN subs-def_include IS NOT INITIAL THEN subs-def_include
             ELSE subs-include ).
-          DATA(lv_cls_line) = COND i(
-            WHEN sy-subrc = 0 AND ls_cls_def-impl_line > 0 THEN ls_cls_def-impl_line
-            WHEN sy-subrc = 0 AND ls_cls_def-def_line  > 0 THEN ls_cls_def-def_line
+          DATA(lv_node_line) = COND i(
+            WHEN lv_def_line > 0 THEN lv_def_line
             WHEN subs-def_line > 0 THEN subs-def_line
             ELSE 0 ).
-
           class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
-                        i_tree = VALUE #( param = |CLASS:{ i_class }| include = lv_cls_inc value = lv_cls_line ) ).
+                        i_tree = VALUE #( param = |CLASS:{ i_class }| include = lv_node_inc value = lv_node_line ) ).
         ENDIF.
 
+        " Секции (Public/Protected/Private) — только для глобального класса
         IF i_tree-kind = 'C' AND i_type <> 'I' AND i_type <> 'T'.
           DATA(lv_sec_prefix) = get_include_prefix( i_class ).
           DATA(lt_sections) = VALUE string_table( ( lv_sec_prefix && `CU` ) ( lv_sec_prefix && `CO` ) ( lv_sec_prefix && `CI` ) ).
@@ -565,42 +598,27 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      " ── Метод: определяем строку навигации ──────────────────────────
       SPLIT subs-include AT '=' INTO TABLE splits_incl.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO DATA(prog).
       READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
 
       tree-kind = 'M'.
-
-      IF subs-is_intf = abap_true AND subs-def_line > 0.
-        tree-value = subs-def_line.
-      ELSEIF keyword-v_line > 0.
-        tree-value = keyword-v_line.
-      ELSEIF keyword-line > 0.
-        tree-value = keyword-line.
+      IF subs-is_intf = abap_true AND subs-def_line > 0. tree-value = subs-def_line.
+      ELSEIF keyword-v_line > 0. tree-value = keyword-v_line.
+      ELSEIF keyword-line > 0. tree-value = keyword-line.
       ELSE.
-        " Ищем METHOD name в t_keywords по имени метода
         LOOP AT prog-t_keywords INTO DATA(lv_kw_fb) WHERE name = 'METHOD'.
           READ TABLE prog-scan->statements INDEX lv_kw_fb-index INTO DATA(ls_s_fb).
           IF sy-subrc = 0.
             READ TABLE prog-scan->tokens INDEX ls_s_fb-from + 1 INTO DATA(ls_t_fb).
-            IF sy-subrc = 0 AND ls_t_fb-str = subs-eventname.
-              tree-value = lv_kw_fb-line. EXIT.
-            ENDIF.
+            IF sy-subrc = 0 AND ls_t_fb-str = subs-eventname. tree-value = lv_kw_fb-line. EXIT. ENDIF.
           ENDIF.
         ENDLOOP.
       ENDIF.
+      IF tree-value IS INITIAL AND subs-def_line > 0. tree-value = subs-def_line. ENDIF.
 
-      " Если строку так и не нашли — берём из def_line
-      IF tree-value IS INITIAL AND subs-def_line > 0.
-        tree-value = subs-def_line.
-      ENDIF.
-
-      tree-include  = subs-include.
-      tree-program  = subs-program.
-      tree-ev_type  = subs-eventtype.
-      tree-ev_name  = subs-eventname.
-      CLEAR tree-param.
+      tree-include = subs-include. tree-program = subs-program.
+      tree-ev_type = subs-eventtype. tree-ev_name = subs-eventname. CLEAR tree-param.
 
       IF i_type = 'I'. icon = icon_oo_inst_method.
       ELSEIF subs-redefined = abap_false.
@@ -624,8 +642,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
       DATA(lv_var_cnt) = 0.
       LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
-        WHERE program = subs-program AND class = subs-class
-          AND eventtype = subs-eventtype AND eventname = subs-eventname.
+        WHERE program = subs-program AND class = subs-class AND eventtype = subs-eventtype AND eventname = subs-eventname.
         lv_var_cnt += 1.
       ENDLOOP.
       IF lv_var_cnt > 0.
@@ -1064,8 +1081,8 @@ CLASS ZCL_ACE IMPLEMENTATION.
       IF sy-subrc = 0.
         LOOP AT import_parameter   INTO DATA(imp).    mo_tree_local->add_node( i_name = CONV #( imp-parameter    ) i_icon = CONV #( icon_parameter_import   ) i_rel = func_rel ). ENDLOOP.
         LOOP AT export_parameter   INTO DATA(exp).    mo_tree_local->add_node( i_name = CONV #( exp-parameter    ) i_icon = CONV #( icon_parameter_export   ) i_rel = func_rel ). ENDLOOP.
-        LOOP AT changing_parameter INTO DATA(change). mo_tree_local->add_node( i_name = CONV #( change-parameter ) i_icon = CONV #( icon_parameter_changing ) i_rel = func_rel ). ENDLOOP.
-        LOOP AT tables_parameter   INTO DATA(table).  mo_tree_local->add_node( i_name = CONV #( table-parameter  ) i_icon = CONV #( icon_parameter_table   ) i_rel = func_rel ). ENDLOOP.
+        LOOP AT mo_window->ms_sources-t_params INTO DATA(change). mo_tree_local->add_node( i_name = CONV #( change-param ) i_icon = CONV #( icon_parameter_changing ) i_rel = func_rel ). ENDLOOP.
+        LOOP AT tables_parameter   INTO DATA(table_p). mo_tree_local->add_node( i_name = CONV #( table_p-parameter ) i_icon = CONV #( icon_parameter_table   ) i_rel = func_rel ). ENDLOOP.
       ENDIF.
     ENDLOOP.
     IF lines( splits_prg ) = 1.
@@ -1102,7 +1119,37 @@ CLASS ZCL_ACE IMPLEMENTATION.
       IF sy-subrc <> 0. EXIT. ENDIF. cl_name = ls_class-refclsname.
     ENDDO.
     DO.
-      add_class( i_class = cl_name i_refnode = classes_rel i_tree = VALUE #( kind = 'C' ) ).
+      " Ищем CLASS cl_name DEFINITION в t_keywords — передаём координаты в i_tree
+      DATA lv_show_def_inc  TYPE program.
+      DATA lv_show_def_line TYPE i.
+      LOOP AT mo_window->ms_sources-tt_progs INTO DATA(lv_dp).
+        LOOP AT lv_dp-t_keywords INTO DATA(lv_dk) WHERE name = 'CLASS'.
+          LOOP AT lv_dp-scan->statements INTO DATA(lv_ds).
+            READ TABLE lv_dp-scan->tokens INDEX lv_ds-from INTO DATA(lv_dt0).
+            IF sy-subrc = 0 AND lv_dt0-row = lv_dk-line AND lv_dt0-str = 'CLASS'.
+              READ TABLE lv_dp-scan->tokens INDEX lv_ds-from + 1 INTO DATA(lv_dt1).
+              IF sy-subrc = 0 AND lv_dt1-str = cl_name.
+                READ TABLE lv_dp-scan->tokens INDEX lv_ds-from + 2 INTO DATA(lv_dt2).
+                IF sy-subrc = 0 AND lv_dt2-str = 'DEFINITION'.
+                  READ TABLE lv_dp-scan->tokens INDEX lv_ds-from + 3 INTO DATA(lv_dt3).
+                  IF NOT ( sy-subrc = 0 AND lv_dt3-str = 'DEFERRED' ).
+                    lv_show_def_inc  = lv_dp-include.
+                    lv_show_def_line = COND i( WHEN lv_dk-v_line > 0 THEN lv_dk-v_line ELSE lv_dk-line ).
+                  ENDIF.
+                ENDIF.
+              ENDIF.
+              EXIT. " из loop statements
+            ENDIF.
+          ENDLOOP.
+          IF lv_show_def_inc IS NOT INITIAL. EXIT. ENDIF.
+        ENDLOOP.
+        IF lv_show_def_inc IS NOT INITIAL. EXIT. ENDIF.
+      ENDLOOP.
+
+      add_class( i_class = cl_name i_refnode = classes_rel
+                 i_tree = VALUE #( kind    = 'C'
+                                   include = lv_show_def_inc
+                                   value   = lv_show_def_line ) ).
       READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2' INTO ls_class.
       IF sy-subrc <> 0. EXIT. ENDIF. cl_name = ls_class-clsname.
     ENDDO.

@@ -895,7 +895,6 @@ method DISPLAY.
           add_node( i_name = lv_fprm-param i_icon = lv_ficon i_rel = lv_fn
                     i_tree = VALUE #( param = lv_fprm-param ) ).
         ENDLOOP.
-        " ---- Local vars for FORM (lazy) ----
         DATA(lv_fvar_cnt) = 0.
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_fvc)
           WHERE program = lv_fs-program AND eventtype = 'FORM' AND eventname = lv_fs-eventname.
@@ -934,6 +933,7 @@ method DISPLAY.
     ENDIF.
 
     " ---- LCLASSES:{program} ----
+    " Координаты CLASS name DEFINITION берём из tt_class_defs
     IF strlen( lv_param ) > 9 AND lv_param+0(9) = 'LCLASSES:'.
       DATA(lv_lc_prog) = lv_param+9.
       DATA(lv_lc_prev) = ``.
@@ -944,9 +944,14 @@ method DISPLAY.
         WHERE program = lv_lc_prog AND eventtype = 'METHOD' AND is_intf = abap_false.
         CHECK lv_lc-class <> lv_main_class.
         IF lv_lc_prev <> lv_lc-class.
-          DATA(lv_cls_inc)  = COND program( WHEN lv_lc-def_include IS NOT INITIAL
-                                            THEN lv_lc-def_include ELSE lv_lc-include ).
-          DATA(lv_cls_line) = COND i( WHEN lv_lc-def_line > 0 THEN lv_lc-def_line ELSE 0 ).
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_class_defs
+            WITH KEY class = lv_lc-class INTO DATA(lv_lc_cd).
+          DATA(lv_cls_inc)  = COND program(
+            WHEN sy-subrc = 0 AND lv_lc_cd-def_include IS NOT INITIAL THEN lv_lc_cd-def_include
+            ELSE lv_lc-include ).
+          DATA(lv_cls_line) = COND i(
+            WHEN sy-subrc = 0 AND lv_lc_cd-def_line > 0 THEN lv_lc_cd-def_line
+            ELSE 0 ).
           DATA(lv_cls_node) = add_node(
             i_name = CONV #( lv_lc-class )
             i_icon = CONV #( icon_folder )
@@ -978,9 +983,14 @@ method DISPLAY.
         WHERE program = lv_li_prog AND eventtype = 'METHOD' AND is_intf = abap_true.
         CHECK lv_li-class <> lv_li_main.
         IF lv_li_prev <> lv_li-class.
-          DATA(lv_li_inc)  = COND program( WHEN lv_li-def_include IS NOT INITIAL
-                                           THEN lv_li-def_include ELSE lv_li-include ).
-          DATA(lv_li_line) = COND i( WHEN lv_li-def_line > 0 THEN lv_li-def_line ELSE 0 ).
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_class_defs
+            WITH KEY class = lv_li-class INTO DATA(lv_li_cd).
+          DATA(lv_li_inc)  = COND program(
+            WHEN sy-subrc = 0 AND lv_li_cd-def_include IS NOT INITIAL THEN lv_li_cd-def_include
+            ELSE lv_li-include ).
+          DATA(lv_li_line) = COND i(
+            WHEN sy-subrc = 0 AND lv_li_cd-def_line > 0 THEN lv_li_cd-def_line
+            ELSE 0 ).
           DATA(lv_li_node) = add_node(
             i_name = CONV #( lv_li-class )
             i_icon = CONV #( icon_oo_connection )
@@ -1039,14 +1049,11 @@ method DISPLAY.
                     WHEN lv_cm-eventname = 'CONSTRUCTOR'              THEN CONV #( icon_tools )
                     ELSE                                                   CONV #( icon_led_green ) )
           ELSE CONV #( icon_oo_overwrite ) ).
-        IF lv_cm-is_intf = abap_true.
-          lv_micon = icon_oo_inst_method.
-        ENDIF.
+        IF lv_cm-is_intf = abap_true. lv_micon = icon_oo_inst_method. ENDIF.
         DATA(lv_meth_node) = add_node(
           i_name = lv_cm-eventname i_icon = lv_micon i_rel = node_key
           i_tree = VALUE #( kind = 'M' value = lv_cmkw-v_line include = lv_cm-include
                             program = lv_cm-program ev_type = lv_cm-eventtype ev_name = lv_cm-eventname ) ).
-
         LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_mprm)
           WHERE class = lv_cls_name AND event = 'METHOD' AND name = lv_cm-eventname AND param IS NOT INITIAL.
           DATA(lv_mpicon) = COND salv_de_tree_image(
@@ -1055,7 +1062,6 @@ method DISPLAY.
           add_node( i_name = lv_mprm-param i_icon = lv_mpicon i_rel = lv_meth_node
                     i_tree = VALUE #( value = lv_mprm-line include = lv_mprm-include var_name = lv_mprm-param ) ).
         ENDLOOP.
-
         DATA(lv_mv_cnt) = 0.
         LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_mv)
           WHERE program = lv_cm-program AND class = lv_cls_name AND eventname = lv_cm-eventname.
