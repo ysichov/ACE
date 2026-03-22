@@ -488,31 +488,49 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
 
   METHOD add_class.
-    DATA: tree TYPE zcl_ace=>ts_tree, splits_incl TYPE TABLE OF string,
-          icon TYPE salv_de_tree_image, class_rel TYPE salv_de_node_key,
-          attr_rel TYPE salv_de_node_key, include TYPE string, prefix TYPE string.
+    DATA: tree        TYPE zcl_ace=>ts_tree,
+          splits_incl TYPE TABLE OF string,
+          icon        TYPE salv_de_tree_image,
+          class_rel   TYPE salv_de_node_key,
+          attr_rel    TYPE salv_de_node_key,
+          include     TYPE string,
+          prefix      TYPE string.
+
     IF i_type = 'I'. icon = icon_oo_connection.
     ELSEIF i_type = 'T'. icon = icon_test.
     ELSE. icon = icon_folder. ENDIF.
+
     LOOP AT mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = i_class AND reltype = '1'.
       IF class_rel IS INITIAL.
         class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
       ENDIF.
       add_class( i_class = CONV #( ls_class-refclsname ) i_refnode = class_rel no_locals = abap_true i_type = 'I' ).
     ENDLOOP.
+
     LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = i_class AND eventtype = 'METHOD'.
       IF class_rel IS INITIAL.
         IF i_tree-kind = 'C'.
           class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode i_tree = i_tree ).
         ELSE.
           READ TABLE mo_window->ms_sources-tt_class_defs WITH KEY class = i_class INTO DATA(ls_cls_def).
-          DATA(lv_cls_inc) = COND program( WHEN sy-subrc = 0 AND ls_cls_def-include IS NOT INITIAL THEN ls_cls_def-include
-                                           WHEN subs-def_include IS NOT INITIAL THEN subs-def_include ELSE subs-include ).
-          DATA(lv_cls_line) = COND i( WHEN sy-subrc = 0 AND ls_cls_def-line > 0 THEN ls_cls_def-line
-                                      WHEN subs-def_line > 0 THEN subs-def_line ELSE 0 ).
+
+          " Навигация для ноды класса:
+          " Предпочитаем impl_include (реальный код) над def_include (может быть DEFERRED)
+          DATA(lv_cls_inc) = COND program(
+            WHEN sy-subrc = 0 AND ls_cls_def-impl_include IS NOT INITIAL THEN ls_cls_def-impl_include
+            WHEN sy-subrc = 0 AND ls_cls_def-def_include  IS NOT INITIAL THEN ls_cls_def-def_include
+            WHEN subs-def_include IS NOT INITIAL THEN subs-def_include
+            ELSE subs-include ).
+          DATA(lv_cls_line) = COND i(
+            WHEN sy-subrc = 0 AND ls_cls_def-impl_line > 0 THEN ls_cls_def-impl_line
+            WHEN sy-subrc = 0 AND ls_cls_def-def_line  > 0 THEN ls_cls_def-def_line
+            WHEN subs-def_line > 0 THEN subs-def_line
+            ELSE 0 ).
+
           class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
                         i_tree = VALUE #( param = |CLASS:{ i_class }| include = lv_cls_inc value = lv_cls_line ) ).
         ENDIF.
+
         IF i_tree-kind = 'C' AND i_type <> 'I' AND i_type <> 'T'.
           DATA(lv_sec_prefix) = get_include_prefix( i_class ).
           DATA(lt_sections) = VALUE string_table( ( lv_sec_prefix && `CU` ) ( lv_sec_prefix && `CO` ) ( lv_sec_prefix && `CI` ) ).
@@ -523,40 +541,67 @@ CLASS ZCL_ACE IMPLEMENTATION.
             DATA(lv_sec_incl) = CONV program( lv_sec_inc ).
             READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = lv_sec_incl TRANSPORTING NO FIELDS.
             IF sy-subrc = 0.
-              mo_tree_local->add_node( i_name = lt_sec_labels[ lv_sec_idx ] i_icon = CONV #( icon_open_folder )
-                i_rel = class_rel i_tree = VALUE #( kind = 'M' include = lv_sec_incl value = '1' ) ).
+              mo_tree_local->add_node(
+                i_name = lt_sec_labels[ lv_sec_idx ]
+                i_icon = CONV #( icon_open_folder )
+                i_rel  = class_rel
+                i_tree = VALUE #( kind = 'M' include = lv_sec_incl value = '1' ) ).
             ENDIF.
           ENDLOOP.
         ENDIF.
+
         DATA(lv_attr_cnt) = 0.
         LOOP AT mo_window->ms_sources-t_vars INTO DATA(var_cnt)
           WHERE program = subs-program AND class = subs-class AND eventname IS INITIAL.
           lv_attr_cnt += 1.
         ENDLOOP.
         IF lv_attr_cnt > 0.
-          attr_rel = mo_tree_local->add_node( i_name = |Attributes ({ lv_attr_cnt })| i_icon = CONV #( icon_folder )
-            i_rel = class_rel i_tree = VALUE #( param = |ATTR:{ i_class }| ) ).
+          attr_rel = mo_tree_local->add_node(
+            i_name = |Attributes ({ lv_attr_cnt })|
+            i_icon = CONV #( icon_folder )
+            i_rel  = class_rel
+            i_tree = VALUE #( param = |ATTR:{ i_class }| ) ).
           APPEND attr_rel TO mo_tree_local->mt_lazy_nodes.
         ENDIF.
       ENDIF.
+
+      " ── Метод: определяем строку навигации ──────────────────────────
       SPLIT subs-include AT '=' INTO TABLE splits_incl.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO DATA(prog).
       READ TABLE prog-t_keywords WITH KEY index = subs-index INTO DATA(keyword).
+
       tree-kind = 'M'.
-      IF subs-is_intf = abap_true AND subs-def_line > 0. tree-value = subs-def_line.
-      ELSEIF keyword-v_line > 0. tree-value = keyword-v_line.
-      ELSEIF keyword-line > 0. tree-value = keyword-line.
+
+      IF subs-is_intf = abap_true AND subs-def_line > 0.
+        tree-value = subs-def_line.
+      ELSEIF keyword-v_line > 0.
+        tree-value = keyword-v_line.
+      ELSEIF keyword-line > 0.
+        tree-value = keyword-line.
       ELSE.
+        " Ищем METHOD name в t_keywords по имени метода
         LOOP AT prog-t_keywords INTO DATA(lv_kw_fb) WHERE name = 'METHOD'.
           READ TABLE prog-scan->statements INDEX lv_kw_fb-index INTO DATA(ls_s_fb).
           IF sy-subrc = 0.
             READ TABLE prog-scan->tokens INDEX ls_s_fb-from + 1 INTO DATA(ls_t_fb).
-            IF sy-subrc = 0 AND ls_t_fb-str = subs-eventname. tree-value = lv_kw_fb-line. EXIT. ENDIF.
+            IF sy-subrc = 0 AND ls_t_fb-str = subs-eventname.
+              tree-value = lv_kw_fb-line. EXIT.
+            ENDIF.
           ENDIF.
         ENDLOOP.
       ENDIF.
-      tree-include = subs-include. tree-program = subs-program.
-      tree-ev_type = subs-eventtype. tree-ev_name = subs-eventname. CLEAR tree-param.
+
+      " Если строку так и не нашли — берём из def_line
+      IF tree-value IS INITIAL AND subs-def_line > 0.
+        tree-value = subs-def_line.
+      ENDIF.
+
+      tree-include  = subs-include.
+      tree-program  = subs-program.
+      tree-ev_type  = subs-eventtype.
+      tree-ev_name  = subs-eventname.
+      CLEAR tree-param.
+
       IF i_type = 'I'. icon = icon_oo_inst_method.
       ELSEIF subs-redefined = abap_false.
         CASE subs-meth_type.
@@ -566,7 +611,9 @@ CLASS ZCL_ACE IMPLEMENTATION.
           WHEN OTHERS. IF subs-eventname = 'CONSTRUCTOR'. icon = icon_tools. ENDIF.
         ENDCASE.
       ELSE. icon = icon_oo_overwrite. ENDIF.
+
       DATA(event_node) = mo_tree_local->add_node( i_name = subs-eventname i_icon = icon i_rel = class_rel i_tree = tree ).
+
       LOOP AT mo_window->ms_sources-t_params INTO DATA(lv_p)
         WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname AND param IS NOT INITIAL.
         DATA(lv_p_icon) = COND salv_de_tree_image( WHEN lv_p-type = 'I' THEN CONV #( icon_parameter_import )
@@ -574,9 +621,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
         mo_tree_local->add_node( i_name = lv_p-param i_icon = lv_p_icon i_rel = event_node
           i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
       ENDLOOP.
+
       DATA(lv_var_cnt) = 0.
       LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
-        WHERE program = subs-program AND class = subs-class AND eventtype = subs-eventtype AND eventname = subs-eventname.
+        WHERE program = subs-program AND class = subs-class
+          AND eventtype = subs-eventtype AND eventname = subs-eventname.
         lv_var_cnt += 1.
       ENDLOOP.
       IF lv_var_cnt > 0.
@@ -587,10 +636,12 @@ CLASS ZCL_ACE IMPLEMENTATION.
         APPEND lv_vars_node TO mo_tree_local->mt_lazy_nodes.
       ENDIF.
     ENDLOOP.
+
     IF no_locals = abap_false.
       prefix = get_include_prefix( i_class ). include = prefix && 'CP'.
       build_local_classes_node( i_program = include i_excl_class = i_class i_refnode = class_rel ).
     ENDIF.
+
     r_node = class_rel.
   ENDMETHOD.
 

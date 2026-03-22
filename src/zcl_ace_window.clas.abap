@@ -533,12 +533,12 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos)
                 to_line   = DATA(to_line) to_pos   = DATA(to_pos) ).
 
-    " Find keyword at clicked virtual line
     READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(prog).
     CHECK sy-subrc = 0.
     DATA(lr_kw) = REF #( prog-t_keywords ).
     IF prog-v_keywords IS NOT INITIAL. lr_kw = REF #( prog-v_keywords ). ENDIF.
 
+    " Найти keyword на кликнутой виртуальной строке
     LOOP AT lr_kw->* INTO DATA(kw) WHERE v_line = fr_line. EXIT. ENDLOOP.
     CHECK sy-subrc = 0.
 
@@ -548,34 +548,50 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     CASE kw-name.
 
       WHEN 'CLASS' OR 'INTERFACE'.
-        " Read tokens: CLASS <name> DEFINITION|IMPLEMENTATION|DEFERRED
-        READ TABLE prog-scan->statements INDEX kw-index INTO DATA(ls_stmt).
+        " Ищем стейтмент по номеру реальной строки (kw-line)
+        LOOP AT prog-scan->statements INTO DATA(ls_stmt).
+          READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw_tok).
+          IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
+        ENDLOOP.
         CHECK sy-subrc = 0.
+
+        " tok[from+1] = имя класса
         READ TABLE prog-scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
         CHECK sy-subrc = 0.
         DATA(lv_cls_name) = ls_tok-str.
+
+        " tok[from+2] = DEFINITION / IMPLEMENTATION
         READ TABLE prog-scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
         DATA(lv_kw2) = COND string( WHEN sy-subrc = 0 THEN ls_tok-str ELSE '' ).
 
-        " Look up coordinates from tt_class_defs
+        " tok[from+3] = DEFERRED (если есть)
+        READ TABLE prog-scan->tokens INDEX ls_stmt-from + 3 INTO DATA(ls_tok3).
+        DATA(lv_kw3) = COND string( WHEN sy-subrc = 0 THEN ls_tok3-str ELSE '' ).
+
         READ TABLE ms_sources-tt_class_defs
           WITH KEY class = lv_cls_name INTO DATA(ls_cd).
         CHECK sy-subrc = 0.
 
         CASE lv_kw2.
           WHEN 'IMPLEMENTATION'.
-            " → jump to DEFINITION
+            " CLASS name IMPLEMENTATION → прыгаем на DEFINITION
             lv_target_include = ls_cd-def_include.
             lv_target_vline   = ls_cd-def_line.
-          WHEN 'DEFINITION' OR 'DEFERRED'.
-            " → jump to IMPLEMENTATION
-            lv_target_include = ls_cd-impl_include.
-            lv_target_vline   = ls_cd-impl_line.
+          WHEN 'DEFINITION'.
+            IF lv_kw3 = 'DEFERRED'.
+              " CLASS name DEFINITION DEFERRED → прыгаем на настоящий DEFINITION
+              lv_target_include = ls_cd-def_include.
+              lv_target_vline   = ls_cd-def_line.
+            ELSE.
+              " CLASS name DEFINITION → прыгаем на IMPLEMENTATION
+              lv_target_include = ls_cd-impl_include.
+              lv_target_vline   = ls_cd-impl_line.
+            ENDIF.
           WHEN OTHERS.
             RETURN.
         ENDCASE.
 
-        " Convert real line → virtual line in target include
+        " Реальную строку конвертируем в виртуальную в целевом инклуде
         IF lv_target_include IS NOT INITIAL AND lv_target_vline > 0.
           READ TABLE ms_sources-tt_progs
             WITH KEY include = lv_target_include INTO DATA(lv_tprog).
@@ -588,7 +604,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'METHOD'.
-        " → jump to matching ENDMETHOD
+        " → прыгаем на ENDMETHOD
         LOOP AT lr_kw->* INTO DATA(kw2) WHERE name = 'ENDMETHOD' AND index > kw-index.
           lv_target_vline   = kw2-v_line.
           lv_target_include = m_prg-include.
@@ -596,7 +612,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDLOOP.
 
       WHEN 'ENDMETHOD'.
-        " → jump to opening METHOD (last METHOD before current index)
+        " → прыгаем на открывающий METHOD
         LOOP AT lr_kw->* INTO kw2 WHERE name = 'METHOD' AND index < kw-index.
           lv_target_vline   = kw2-v_line.
           lv_target_include = m_prg-include.
@@ -606,7 +622,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
     CHECK lv_target_vline > 0.
 
-    " Switch include if needed, then scroll
     IF lv_target_include <> m_prg-include AND lv_target_include IS NOT INITIAL.
       m_prg-include = lv_target_include.
       set_program( lv_target_include ).
