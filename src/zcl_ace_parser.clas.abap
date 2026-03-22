@@ -53,14 +53,9 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           lv_eventname TYPE string,
           lv_section   TYPE string.
 
-    " ================================================================
-    " Режим 2: точечный парсинг одного стейтмента
-    " ================================================================
     IF i_stmt_idx > 0.
-      READ TABLE cs_source-tt_progs
-        WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog2>).
+      READ TABLE cs_source-tt_progs WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog2>).
       CHECK sy-subrc = 0.
-
       DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       INSERT `NEW`           INTO TABLE lt_pass2.
       INSERT `PERFORM`       INTO TABLE lt_pass2.
@@ -69,11 +64,9 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       INSERT `+CALL_METHOD`  INTO TABLE lt_pass2.
       INSERT `COMPUTE`       INTO TABLE lt_pass2.
       INSERT `RAISE EVENT`   INTO TABLE lt_pass2.
-
       READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx INTO DATA(lv_key2).
       CHECK sy-subrc = 0.
       IF lv_key2-calls_parsed = abap_true. RETURN. ENDIF.
-
       DATA(lv_eff2) = lv_key2-name.
       IF lv_eff2 = 'CALL'.
         READ TABLE <prog2>-scan->statements INDEX i_stmt_idx INTO DATA(ls_s2).
@@ -88,10 +81,8 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           IF sy-subrc = 0 AND ls_t2-str = 'EVENT'. lv_eff2 = 'RAISE EVENT'. ENDIF.
         ENDIF.
       ENDIF.
-
       DATA(lv_inc2) = CONV program( i_include ).
       DATA(lv_prg2) = CONV program( i_program ).
-
       IF lv_key2-name = 'DATA' OR lv_key2-name = 'CLASS-DATA' OR lv_key2-name = 'COMPUTE'.
         DATA(lo_vars2) = NEW zcl_ace_parse_vars( ).
         lo_vars2->zif_ace_stmt_handler~handle(
@@ -100,7 +91,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
             i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
           CHANGING cs_source = cs_source ).
       ENDIF.
-
       IF lv_key2-name = 'COMPUTE'.
         DATA(lo_calcs2) = NEW zcl_ace_parse_calcs( ).
         lo_calcs2->zif_ace_stmt_handler~handle(
@@ -108,7 +98,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
             i_program = lv_prg2 i_include = lv_inc2
           CHANGING cs_source = cs_source ).
       ENDIF.
-
       READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff2 TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         IF lv_eff2 = 'RAISE EVENT'.
@@ -127,16 +116,11 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
             CHANGING cs_source = cs_source ).
         ENDIF.
       ENDIF.
-
-      READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx
-        ASSIGNING FIELD-SYMBOL(<kw2>).
+      READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw2>).
       IF sy-subrc = 0. <kw2>-calls_parsed = abap_true. ENDIF.
       RETURN.
     ENDIF.
 
-    " ================================================================
-    " Режим 1: полный проход по инклуду
-    " ================================================================
     READ TABLE cs_source-tt_progs WITH KEY include = i_include TRANSPORTING NO FIELDS.
     CHECK sy-subrc <> 0.
 
@@ -157,7 +141,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     DATA(lo_src)  = cl_ci_source_include=>create( p_name = i_include ).
     DATA(lo_scan) = NEW cl_ci_scan( p_include = lo_src ).
 
-    DATA ls_prog TYPE zcl_ace_window=>ts_prog.
+    DATA ls_prog TYPE zif_ace_parse_data=>ts_prog.
     ls_prog-program    = i_program.
     ls_prog-include    = i_include.
     ls_prog-source_tab = lo_src->lines.
@@ -207,9 +191,8 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         WHEN 'A' THEN '+CALL_METHOD'
         ELSE          ls_kw_tok-str ).
 
-      " CLASS name DEFINITION DEFERRED — полностью игнорируем
       IF ls_kw_tok-str = 'CLASS' AND ls_tok3-str = 'DEFINITION' AND ls_tok4-str = 'DEFERRED'.
-        APPEND VALUE zcl_ace=>ts_kword(
+        APPEND VALUE zif_ace_parse_data=>ts_kword(
           program = i_program include = i_include
           index   = lv_kw_idx line    = ls_kw_tok-row
           v_line  = ls_kw_tok-row     name    = lv_kw_name
@@ -218,7 +201,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      " CLASS/INTERFACE keyword tracking
       IF ls_kw_tok-str = 'CLASS' AND ls_tok2-str IS NOT INITIAL.
         IF ls_tok3-str = 'DEFINITION' OR ls_tok3-str = 'IMPLEMENTATION'.
           lv_class = ls_tok2-str. CLEAR lv_interface.
@@ -229,13 +211,9 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       IF ls_kw_tok-str = 'FORM'.      lv_eventtype = 'FORM'.   lv_eventname = ls_tok2-str. CLEAR lv_section. ENDIF.
       IF ls_kw_tok-str = 'MODULE'.    lv_eventtype = 'MODULE'.  lv_eventname = ls_tok2-str. CLEAR lv_section. ENDIF.
       IF ls_kw_tok-str = 'ENDCLASS' OR ls_kw_tok-str = 'ENDINTERFACE'. CLEAR lv_section. ENDIF.
-      IF ls_kw_tok-str = 'PUBLIC'    AND ls_tok2-str = 'SECTION'.
-        lv_section = 'PUBLIC'.
-          ENDIF.
+      IF ls_kw_tok-str = 'PUBLIC'    AND ls_tok2-str = 'SECTION'. lv_section = 'PUBLIC'.    ENDIF.
       IF ls_kw_tok-str = 'PROTECTED' AND ls_tok2-str = 'SECTION'. lv_section = 'PROTECTED'. ENDIF.
-      IF ls_kw_tok-str = 'PRIVATE'   AND ls_tok2-str = 'SECTION'.
-         lv_section = 'PRIVATE'.
-           ENDIF.
+      IF ls_kw_tok-str = 'PRIVATE'   AND ls_tok2-str = 'SECTION'. lv_section = 'PRIVATE'.   ENDIF.
 
       DATA(lv_eff_kw) = SWITCH string( ls_kw_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -247,14 +225,13 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         IF sy-subrc = 0. lv_eff_kw = |CALL { ls_tok_d-str }|. ENDIF.
       ENDIF.
 
-      APPEND VALUE zcl_ace=>ts_kword(
+      APPEND VALUE zif_ace_parse_data=>ts_kword(
         program = i_program include = i_include
         index   = lv_kw_idx line    = ls_kw_tok-row
         v_line  = ls_kw_tok-row     name    = lv_kw_name
         from    = ls_kw_stmt-from   to      = ls_kw_stmt-to
       ) TO <ls_prog>-t_keywords.
 
-      " calls_line
       IF lv_eff_kw = 'CLASS'   OR lv_eff_kw = 'INTERFACE'
       OR lv_eff_kw = 'PUBLIC'  OR lv_eff_kw = 'PROTECTED' OR lv_eff_kw = 'PRIVATE'
       OR lv_eff_kw = 'METHODS' OR lv_eff_kw = 'CLASS-METHODS'
@@ -266,7 +243,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " params
       READ TABLE lt_params_kws WITH TABLE KEY table_line = ls_kw_tok-str TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         lo_params->zif_ace_stmt_handler~handle(
@@ -275,14 +251,8 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " vars — передаём lv_section из текущего прохода
-      " lv_section устанавливается при PUBLIC/PROTECTED/PRIVATE SECTION
-      " и сбрасывается при METHOD/FORM/MODULE/ENDCLASS
-      " calls_line обрабатывается раньше vars в том же цикле,
-      " поэтому tt_sections уже заполнен к этому моменту
       IF lv_eff_kw = 'DATA'       OR lv_eff_kw = 'CLASS-DATA'
-      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'
-      OR lv_eff_kw = 'CONSTANTS'  .
+      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'.
         lo_vars->zif_ace_stmt_handler~handle(
           EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
             i_program = i_program i_include = i_include

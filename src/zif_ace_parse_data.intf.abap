@@ -1,5 +1,96 @@
 INTERFACE zif_ace_parse_data PUBLIC.
 
+  " --- calls (used in ts_kword) ---
+  TYPES:
+    BEGIN OF ts_param_binding,
+      outer TYPE string,
+      inner TYPE string,
+    END OF ts_param_binding .
+  TYPES:
+    tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .
+  TYPES:
+    BEGIN OF ts_calls,
+      class    TYPE string,
+      event    TYPE string,
+      type     TYPE string,
+      name     TYPE string,
+      outer    TYPE string,
+      inner    TYPE string,
+      super    TYPE boolean,
+      bindings TYPE tt_param_bindings,
+    END OF ts_calls .
+  TYPES:
+    tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
+
+  " --- keyword entry ---
+  TYPES:
+    BEGIN OF ts_kword,
+      program      TYPE string,
+      include      TYPE string,
+      index        TYPE i,
+      line         TYPE i,
+      v_line       TYPE i,
+      v_from_row   TYPE i,
+      v_to_row     TYPE i,
+      sub          TYPE boolean,
+      name         TYPE string,
+      from         TYPE i,
+      to           TYPE i,
+      tt_calls     TYPE tt_calls,
+      calls_parsed TYPE abap_bool,
+    END OF ts_kword .
+  TYPES:
+    tt_kword TYPE STANDARD TABLE OF ts_kword WITH NON-UNIQUE DEFAULT KEY .
+
+  " --- calls_line ---
+  TYPES:
+    BEGIN OF ts_calls_line,
+      program     TYPE program,
+      include     TYPE program,
+      class       TYPE string,
+      eventtype   TYPE string,
+      meth_type   TYPE i,
+      eventname   TYPE string,
+      redefined   TYPE boolean,
+      index       TYPE i,
+      def_include TYPE program,
+      def_line    TYPE i,
+      is_intf     TYPE boolean,
+      end_idx     TYPE i,
+      run2_done   TYPE abap_bool,
+    END OF ts_calls_line .
+  TYPES:
+    tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .
+
+  " --- vars ---
+  TYPES:
+    BEGIN OF ts_vars,
+      program   TYPE program,
+      include   TYPE program,
+      class     TYPE string,
+      eventtype TYPE string,
+      eventname TYPE string,
+      section   TYPE string,
+      name      TYPE string,
+      line      TYPE i,
+      type      TYPE string,
+      icon      TYPE salv_de_tree_image,
+    END OF ts_vars .
+
+  " --- params ---
+  TYPES:
+    BEGIN OF ts_params,
+      program   TYPE program,
+      include   TYPE program,
+      class     TYPE string,
+      event     TYPE string,
+      name      TYPE string,
+      param     TYPE string,
+      type      TYPE char1,
+      preferred TYPE char1,
+      line      TYPE i,
+    END OF ts_params .
+
   " --- enhancement blocks ---
   TYPES:
     BEGIN OF ts_enh_block,
@@ -23,9 +114,9 @@ INTERFACE zif_ace_parse_data PUBLIC.
       include       TYPE program,
       source_tab    TYPE sci_include,
       v_source      TYPE sci_include,
-      v_keywords    TYPE zcl_ace=>tt_kword,
+      v_keywords    TYPE tt_kword,
       scan          TYPE REF TO cl_ci_scan,
-      t_keywords    TYPE zcl_ace=>tt_kword,
+      t_keywords    TYPE tt_kword,
       selected      TYPE boolean,
       enh_collected TYPE boolean,
       tt_enh_blocks TYPE tt_enh_blocks,
@@ -116,7 +207,7 @@ INTERFACE zif_ace_parse_data PUBLIC.
   TYPES:
     BEGIN OF ts_section,
       class   TYPE string,
-      section TYPE string,   " PUBLIC / PROTECTED / PRIVATE
+      section TYPE string,
       include TYPE program,
       line    TYPE i,
     END OF ts_section .
@@ -136,15 +227,15 @@ INTERFACE zif_ace_parse_data PUBLIC.
   TYPES:
     tt_handler_map TYPE STANDARD TABLE OF ts_handler_map WITH EMPTY KEY .
 
-  " --- derived table types (wrap ZCL_ACE row types) ---
+  " --- derived table types ---
   TYPES:
-    tt_vars   TYPE SORTED TABLE OF zcl_ace=>ts_vars
+    tt_vars   TYPE SORTED TABLE OF ts_vars
                 WITH UNIQUE KEY program include class eventtype eventname name .
   TYPES:
-    tt_params TYPE SORTED TABLE OF zcl_ace=>ts_params
+    tt_params TYPE SORTED TABLE OF ts_params
                 WITH UNIQUE KEY program include class event name param .
 
-  " --- main aggregate: full parse result (was ZCL_ACE_WINDOW=>TS_SOURCE) ---
+  " --- main aggregate ---
   TYPES:
     BEGIN OF ts_parse_data,
       tt_progs       TYPE tt_progs,
@@ -153,7 +244,7 @@ INTERFACE zif_ace_parse_data PUBLIC.
       t_composed     TYPE tt_composed,
       t_params       TYPE tt_params,
       tt_tabs        TYPE tt_tabs,
-      tt_calls_line  TYPE zcl_ace=>tt_calls_line,
+      tt_calls_line  TYPE tt_calls_line,
       t_vars         TYPE tt_vars,
       tt_refvar      TYPE tt_refvar,
       t_classes      TYPE tt_classes,

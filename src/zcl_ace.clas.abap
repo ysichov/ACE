@@ -100,67 +100,19 @@ CLASS zcl_ace DEFINITION
       tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .
 
     TYPES:
-      BEGIN OF ts_calls,
-        class    TYPE string,
-        event    TYPE string,
-        type     TYPE string,
-        name     TYPE string,
-        outer    TYPE string,
-        inner    TYPE string,
-        super    TYPE boolean,
-        bindings TYPE tt_param_bindings,
-      END OF ts_calls .
+      ts_calls TYPE zif_ace_parse_data=>ts_calls .
     TYPES:
-      tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
+      tt_calls TYPE zif_ace_parse_data=>tt_calls .
     TYPES:
-      BEGIN OF ts_kword,
-        program      TYPE string,
-        include      TYPE string,
-        index        TYPE i,
-        line         TYPE i,
-        v_line       TYPE i,
-        v_from_row   TYPE i,
-        v_to_row     TYPE i,
-        sub          TYPE boolean,
-        name         TYPE string,
-        from         TYPE i,
-        to           TYPE i,
-        tt_calls     TYPE tt_calls,
-        calls_parsed TYPE abap_bool,
-      END OF ts_kword .
+      ts_kword TYPE zif_ace_parse_data=>ts_kword .
     TYPES:
-      tt_kword TYPE STANDARD TABLE OF ts_kword WITH NON-UNIQUE DEFAULT KEY .
+      tt_kword TYPE zif_ace_parse_data=>tt_kword .
     TYPES:
-      BEGIN OF ts_calls_line,
-        program     TYPE program,
-        include     TYPE program,
-        class       TYPE string,
-        eventtype   TYPE string,
-        meth_type   TYPE i,
-        eventname   TYPE string,
-        redefined   TYPE boolean,
-        index       TYPE i,
-        def_include TYPE program,
-        def_line    TYPE i,
-        is_intf     TYPE boolean,
-        end_idx     TYPE i,
-        run2_done   TYPE abap_bool,
-      END OF ts_calls_line .
+      ts_calls_line TYPE zif_ace_parse_data=>ts_calls_line .
     TYPES:
-      tt_calls_line TYPE STANDARD TABLE OF ts_calls_line WITH NON-UNIQUE EMPTY KEY .
+      tt_calls_line TYPE zif_ace_parse_data=>tt_calls_line .
     TYPES:
-      BEGIN OF ts_vars,
-        program   TYPE program,
-        include   TYPE program,
-        class     TYPE string,
-        eventtype TYPE string,
-        eventname TYPE string,
-        section   TYPE string,
-        name      TYPE string,
-        line      TYPE i,
-        type      TYPE string,
-        icon      TYPE salv_de_tree_image,
-      END OF ts_vars .
+      ts_vars TYPE zif_ace_parse_data=>ts_vars .
     TYPES:
       BEGIN OF ts_var,
         program   TYPE string,
@@ -183,17 +135,7 @@ CLASS zcl_ace DEFINITION
     TYPES:
       tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY .
     TYPES:
-      BEGIN OF ts_params,
-        program   TYPE program,
-        include   TYPE program,
-        class     TYPE string,
-        event     TYPE string,
-        name      TYPE string,
-        param     TYPE string,
-        type      TYPE char1,
-        preferred TYPE char1,
-        line      TYPE i,
-      END OF ts_params .
+      ts_params TYPE zif_ace_parse_data=>ts_params .
     TYPES:
       BEGIN OF ts_parse_state,
         prev            TYPE string,

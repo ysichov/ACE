@@ -34,7 +34,7 @@ public section.
   TYPES tt_composed    TYPE zif_ace_parse_data=>tt_composed.
   TYPES ts_refvar      TYPE zif_ace_parse_data=>ts_refvar.
   TYPES tt_refvar      TYPE zif_ace_parse_data=>tt_refvar.
-  TYPES tt_kword       TYPE zcl_ace=>tt_kword.
+  TYPES tt_kword       TYPE zif_ace_parse_data=>tt_kword.
   TYPES tt_vars        TYPE zif_ace_parse_data=>tt_vars.
   TYPES tt_params      TYPE zif_ace_parse_data=>tt_params.
   TYPES ts_int_tabs    TYPE zif_ace_parse_data=>ts_int_tabs.
