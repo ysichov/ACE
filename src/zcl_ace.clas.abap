@@ -403,30 +403,41 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
 
   METHOD build_local_classes_node.
-    DATA: local TYPE string, test_rel TYPE salv_de_node_key,
-          intf_rel TYPE salv_de_node_key, lv_prefix TYPE string, lv_ccau TYPE string.
-    lv_prefix = get_include_prefix( i_excl_class ). lv_ccau = lv_prefix && 'CCAU'.
-    LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs)
-      WHERE program = i_program AND class <> i_excl_class AND eventtype = 'METHOD'.
-      IF local <> subs-class.
-        IF subs-include = lv_ccau.
-          IF test_rel IS INITIAL.
-            test_rel = mo_tree_local->add_node( i_name = 'Unit Test Classes' i_icon = CONV #( icon_folder ) i_rel = i_refnode i_tree = VALUE #( ) ).
-          ENDIF.
-          add_class( i_class = subs-class i_refnode = test_rel no_locals = abap_true i_type = 'T' ).
-        ELSEIF subs-is_intf = abap_true.
-          IF intf_rel IS INITIAL.
-            intf_rel = mo_tree_local->add_node( i_name = 'Interfaces' i_icon = CONV #( icon_oo_connection ) i_rel = i_refnode i_tree = VALUE #( ) ).
-          ENDIF.
-          add_class( i_class = subs-class i_refnode = intf_rel no_locals = abap_true i_type = 'I' ).
-        ELSE.
-          IF r_locals_rel IS INITIAL.
-            r_locals_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder ) i_rel = i_refnode i_tree = VALUE #( ) ).
-          ENDIF.
-          add_class( i_class = subs-class i_refnode = r_locals_rel no_locals = abap_true ).
+    DATA: test_rel  TYPE salv_de_node_key,
+          intf_rel  TYPE salv_de_node_key,
+          lv_prefix TYPE string,
+          lv_ccau   TYPE string.
+    lv_prefix = get_include_prefix( i_excl_class ).
+    lv_ccau   = lv_prefix && 'CCAU'.
+
+    " Итерируем по tt_class_defs — туда попадают ВСЕ CLASS/INTERFACE DEFINITION.
+    " Фильтр по program — берём только объекты этой программы.
+    LOOP AT mo_window->ms_sources-tt_class_defs INTO DATA(ls_cd)
+      WHERE class <> i_excl_class
+        AND program = i_program.
+
+      IF ls_cd-def_include = lv_ccau.
+        IF test_rel IS INITIAL.
+          test_rel = mo_tree_local->add_node( i_name = 'Unit Test Classes' i_icon = CONV #( icon_folder )
+            i_rel = i_refnode i_tree = VALUE #( ) ).
         ENDIF.
+        add_class( i_class = ls_cd-class i_refnode = test_rel no_locals = abap_true i_type = 'T' ).
+
+      ELSEIF ls_cd-is_intf = abap_true.
+        IF intf_rel IS INITIAL.
+          intf_rel = mo_tree_local->add_node( i_name = 'Interfaces' i_icon = CONV #( icon_oo_connection )
+            i_rel = i_refnode i_tree = VALUE #( ) ).
+        ENDIF.
+        add_class( i_class = ls_cd-class i_refnode = intf_rel no_locals = abap_true i_type = 'I' ).
+
+      ELSE.
+        IF r_locals_rel IS INITIAL.
+          r_locals_rel = mo_tree_local->add_node( i_name = 'Local Classes' i_icon = CONV #( icon_folder )
+            i_rel = i_refnode i_tree = VALUE #( ) ).
+        ENDIF.
+        add_class( i_class = ls_cd-class i_refnode = r_locals_rel no_locals = abap_true ).
       ENDIF.
-      local = subs-class.
+
     ENDLOOP.
   ENDMETHOD.
 
@@ -451,15 +462,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
       add_class( i_class = CONV #( ls_class-refclsname ) i_refnode = class_rel no_locals = abap_true i_type = 'I' ).
     ENDLOOP.
 
-    " Координаты CLASS name DEFINITION
+    " Координаты CLASS/INTERFACE name DEFINITION
     DATA lv_def_inc  TYPE program.
     DATA lv_def_line TYPE i.
     IF i_tree-kind = 'C'.
-      " Для глобального класса — из i_tree (заполнены в SHOW)
       lv_def_inc  = i_tree-include.
       lv_def_line = CONV i( i_tree-value ).
     ELSE.
-      " Для локального класса — из tt_class_defs
       READ TABLE mo_window->ms_sources-tt_class_defs
         WITH KEY class = i_class INTO DATA(ls_cd).
       IF sy-subrc = 0.
@@ -468,7 +477,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    " Создаём ноду класса ДО цикла по методам
+    " Создаём ноду класса/интерфейса
     IF class_rel IS INITIAL.
       IF i_tree-kind = 'C'.
         class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
@@ -483,9 +492,23 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    " Секции (PUBLIC/PROTECTED/PRIVATE) из tt_sections
-    " Работает для любых классов — глобальных и локальных
-    IF i_type <> 'I' AND i_type <> 'T'.
+    IF i_type = 'I'.
+      " Для интерфейса — секций нет, показываем Members с атрибутами напрямую
+      DATA(lv_intf_var_cnt) = 0.
+      LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_iv)
+        WHERE class = i_class AND eventname IS INITIAL.
+        lv_intf_var_cnt += 1.
+      ENDLOOP.
+      IF lv_intf_var_cnt > 0.
+        DATA(lv_members_node) = mo_tree_local->add_node(
+          i_name = |Members ({ lv_intf_var_cnt })|
+          i_icon = CONV #( icon_header )
+          i_rel  = class_rel
+          i_tree = VALUE #( param = |INTF_VARS:{ i_class }| ) ).
+        APPEND lv_members_node TO mo_tree_local->mt_lazy_nodes.
+      ENDIF.
+    ELSEIF i_type <> 'T'.
+      " Для классов — секции PUBLIC/PROTECTED/PRIVATE из tt_sections
       DATA(lv_sec_labels) = VALUE string_table(
         ( `Public Section` ) ( `Protected Section` ) ( `Private Section` ) ).
       DATA(lv_sec_keys) = VALUE string_table(
@@ -503,7 +526,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
             i_rel  = class_rel
             i_tree = VALUE #( kind = 'M' include = ls_sec-include value = ls_sec-line
                               param = |SECT:{ i_class }:{ lv_sec_key }| ) ).
-          " Если есть атрибуты в этой секции — добавляем expander
           READ TABLE mo_window->ms_sources-t_vars WITH KEY class = i_class section = lv_sec_key
             TRANSPORTING NO FIELDS.
           IF sy-subrc = 0.
@@ -1004,13 +1026,18 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
     IF lines( splits_prg ) = 1.
-      DATA(lv_cls_cnt) = 0. DATA(lv_intf_cnt) = 0. DATA(lv_loc_prev) = ``.
-      LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs_cnt)
-        WHERE program = mv_prog AND eventtype = 'METHOD' AND class <> splits_prg[ 1 ].
-        IF lv_loc_prev <> subs_cnt-class.
-          IF subs_cnt-is_intf = abap_true. lv_intf_cnt += 1. ELSE. lv_cls_cnt += 1. ENDIF.
+      " Считаем локальные классы и интерфейсы через tt_class_defs.
+      " Фильтр по program = mv_prog — только объекты этой программы.
+      DATA(lv_cls_cnt)  = 0.
+      DATA(lv_intf_cnt) = 0.
+      LOOP AT mo_window->ms_sources-tt_class_defs INTO DATA(ls_cd)
+        WHERE class   <> splits_prg[ 1 ]
+          AND program =  mv_prog.
+        IF ls_cd-is_intf = abap_true.
+          lv_intf_cnt += 1.
+        ELSE.
+          lv_cls_cnt  += 1.
         ENDIF.
-        lv_loc_prev = subs_cnt-class.
       ENDLOOP.
       DATA(lv_loc_cnt) = lv_cls_cnt + lv_intf_cnt.
       IF lv_loc_cnt <= c_lazy_threshold.
@@ -1037,7 +1064,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       IF sy-subrc <> 0. EXIT. ENDIF. cl_name = ls_class-refclsname.
     ENDDO.
     DO.
-      " Ищем CLASS cl_name DEFINITION в t_keywords — передаём координаты в i_tree
       DATA lv_show_def_inc  TYPE program.
       DATA lv_show_def_line TYPE i.
       LOOP AT mo_window->ms_sources-tt_progs INTO DATA(lv_dp).
@@ -1056,14 +1082,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
                   ENDIF.
                 ENDIF.
               ENDIF.
-              EXIT. " из loop statements
+              EXIT.
             ENDIF.
           ENDLOOP.
           IF lv_show_def_inc IS NOT INITIAL. EXIT. ENDIF.
         ENDLOOP.
         IF lv_show_def_inc IS NOT INITIAL. EXIT. ENDIF.
       ENDLOOP.
-
       add_class( i_class = cl_name i_refnode = classes_rel
                  i_tree = VALUE #( kind    = 'C'
                                    include = lv_show_def_inc

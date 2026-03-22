@@ -185,7 +185,6 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     CASE lv_kw.
       WHEN 'CLASS' OR 'INTERFACE'.
 
-        " Игнорируем CLASS name DEFINITION DEFERRED
         IF lv_kw = 'CLASS'.
           LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(ls_t).
             IF ls_t-str = 'DEFERRED'. RETURN. ENDIF.
@@ -194,24 +193,28 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
 
         on_class_kw( io_scan = io_scan i_stmt_idx = i_stmt_idx i_kw = lv_kw ).
 
-        IF lv_kw = 'CLASS' AND mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
+        IF mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
           DATA(lv_def_line) = COND i( WHEN stmt IS NOT INITIAL THEN io_scan->tokens[ stmt-from ]-row ELSE 0 ).
           READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING FIELD-SYMBOL(<cd>).
           IF sy-subrc = 0.
             <cd>-super       = mv_super_name.
+            <cd>-is_intf     = mv_is_intf.
+            <cd>-program     = i_program.
             <cd>-def_include = i_include.
             <cd>-def_line    = lv_def_line.
           ELSE.
             APPEND VALUE zif_ace_parse_data=>ts_class_def(
               class       = mv_class_name
               super       = mv_super_name
+              is_intf     = mv_is_intf
+              program     = i_program
               def_include = i_include
               def_line    = lv_def_line )
               TO cs_source-tt_class_defs.
           ENDIF.
         ENDIF.
 
-        IF lv_kw = 'CLASS' AND mv_in_impl = abap_true AND mv_class_name IS NOT INITIAL.
+        IF mv_in_impl = abap_true AND mv_class_name IS NOT INITIAL.
           DATA(lv_impl_line) = COND i( WHEN stmt IS NOT INITIAL THEN io_scan->tokens[ stmt-from ]-row ELSE 0 ).
           READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING <cd>.
           IF sy-subrc = 0.
@@ -220,6 +223,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
           ELSE.
             APPEND VALUE zif_ace_parse_data=>ts_class_def(
               class        = mv_class_name
+              program      = i_program
               impl_include = i_include
               impl_line    = lv_impl_line )
               TO cs_source-tt_class_defs.
@@ -228,13 +232,11 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
 
       WHEN 'PUBLIC' OR 'PROTECTED' OR 'PRIVATE'.
         IF mv_in_impl = abap_false AND mv_class_name IS NOT INITIAL.
-          " Обновляем meth_type
           CASE lv_kw.
             WHEN 'PUBLIC'.    mv_meth_type = 1.
             WHEN 'PROTECTED'. mv_meth_type = 2.
             WHEN 'PRIVATE'.   mv_meth_type = 3.
           ENDCASE.
-          " Записываем секцию в tt_sections
           DATA(lv_sec_line) = COND i( WHEN stmt IS NOT INITIAL THEN io_scan->tokens[ stmt-from ]-row ELSE 0 ).
           READ TABLE cs_source-tt_sections
             WITH KEY class = mv_class_name section = lv_kw
@@ -249,7 +251,6 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-*      WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
       WHEN 'METHODS' OR 'CLASS-METHODS'.
         IF mv_in_impl = abap_false.
           on_methods_sig( EXPORTING io_scan    = io_scan

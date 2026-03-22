@@ -193,6 +193,8 @@ INTERFACE zif_ace_parse_data PUBLIC.
     BEGIN OF ts_class_def,
       class        TYPE string,
       super        TYPE string,
+      is_intf      TYPE boolean,
+      program      TYPE program,
       include      TYPE program,
       line         TYPE i,
       def_include  TYPE program,

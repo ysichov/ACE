@@ -206,11 +206,15 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           lv_class = ls_tok2-str. CLEAR lv_interface.
         ENDIF.
       ENDIF.
-      IF ls_kw_tok-str = 'INTERFACE'. CLEAR lv_class. lv_interface = ls_tok2-str. ENDIF.
+      IF ls_kw_tok-str = 'INTERFACE'.
+        CLEAR: lv_class, lv_eventname, lv_eventtype.
+        lv_interface = ls_tok2-str.
+      ENDIF.
+      IF ls_kw_tok-str = 'ENDINTERFACE'. CLEAR lv_interface. ENDIF.
       IF ls_kw_tok-str = 'METHOD'.    lv_eventtype = 'METHOD'. lv_eventname = ls_tok2-str. CLEAR lv_section. ENDIF.
       IF ls_kw_tok-str = 'FORM'.      lv_eventtype = 'FORM'.   lv_eventname = ls_tok2-str. CLEAR lv_section. ENDIF.
       IF ls_kw_tok-str = 'MODULE'.    lv_eventtype = 'MODULE'.  lv_eventname = ls_tok2-str. CLEAR lv_section. ENDIF.
-      IF ls_kw_tok-str = 'ENDCLASS' OR ls_kw_tok-str = 'ENDINTERFACE'. CLEAR lv_section. ENDIF.
+      IF ls_kw_tok-str = 'ENDCLASS' OR ls_kw_tok-str = 'ENDINTERFACE'. CLEAR: lv_section, lv_eventname, lv_eventtype. ENDIF.
       IF ls_kw_tok-str = 'PUBLIC'    AND ls_tok2-str = 'SECTION'. lv_section = 'PUBLIC'.    ENDIF.
       IF ls_kw_tok-str = 'PROTECTED' AND ls_tok2-str = 'SECTION'. lv_section = 'PROTECTED'. ENDIF.
       IF ls_kw_tok-str = 'PRIVATE'   AND ls_tok2-str = 'SECTION'. lv_section = 'PRIVATE'.   ENDIF.
@@ -251,14 +255,38 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
+      " Определяем имя класса/интерфейса для vars:
+      " — внутри CLASS...ENDCLASS: lv_class заполнен, lv_section тоже (PUBLIC/PROTECTED/PRIVATE)
+      " — внутри INTERFACE...ENDINTERFACE: lv_class пуст, lv_interface заполнен, lv_section пуст
+      " Для интерфейса запускаем vars безусловно (нет секций), для класса — только внутри секции
+      DATA(lv_vars_class) = COND string(
+        WHEN lv_class     IS NOT INITIAL THEN lv_class
+        WHEN lv_interface IS NOT INITIAL THEN lv_interface
+        ELSE '' ).
+
       IF lv_eff_kw = 'DATA'       OR lv_eff_kw = 'CLASS-DATA'
-      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'.
-        lo_vars->zif_ace_stmt_handler~handle(
-          EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
-            i_program = i_program i_include = i_include
-            i_class = lv_class i_evtype = lv_eventtype i_ev_name = lv_eventname
-            i_section = lv_section
-          CHANGING cs_source = cs_source ).
+      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'
+        OR lv_eff_kw = 'CONSTANTS' .
+        IF lv_vars_class IS NOT INITIAL.
+          " Для интерфейса — запускаем всегда (нет секций)
+          " Для класса — только если lv_section установлен (находимся внутри DEFINITION)
+          IF lv_interface IS NOT INITIAL OR lv_section IS NOT INITIAL.
+            lo_vars->zif_ace_stmt_handler~handle(
+              EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
+                i_program = i_program i_include = i_include
+                i_class = lv_vars_class i_evtype = lv_eventtype i_ev_name = lv_eventname
+                i_section = lv_section
+              CHANGING cs_source = cs_source ).
+          ENDIF.
+        ELSE.
+          " Нет класса/интерфейса — глобальные или локальные переменные программы
+          lo_vars->zif_ace_stmt_handler~handle(
+            EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
+              i_program = i_program i_include = i_include
+              i_class = lv_vars_class i_evtype = lv_eventtype i_ev_name = lv_eventname
+              i_section = lv_section
+            CHANGING cs_source = cs_source ).
+        ENDIF.
       ENDIF.
 
     ENDLOOP.

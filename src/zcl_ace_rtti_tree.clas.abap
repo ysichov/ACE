@@ -825,6 +825,17 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
+    " ---- INTF_VARS:{interface} ----
+    IF strlen( lv_param ) > 10 AND lv_param+0(10) = 'INTF_VARS:'.
+      DATA(lv_intf_name) = lv_param+10.
+      LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_iv)
+        WHERE class = lv_intf_name AND eventname IS INITIAL.
+        add_node( i_name = lv_iv-name i_icon = lv_iv-icon i_rel = node_key
+                  i_tree = VALUE #( value = lv_iv-line include = lv_iv-include var_name = lv_iv-name ) ).
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
     " ---- LVARS:FORM:{formname} ----
     IF strlen( lv_param ) > 10 AND lv_param+0(10) = 'LVARS:FORM'.
       SPLIT lv_param AT ':' INTO DATA(lv_lv_pfx) DATA(lv_lv_type) DATA(lv_lv_form).
@@ -920,85 +931,72 @@ method DISPLAY.
     ENDIF.
 
     " ---- LCLASSES:{program} ----
+    " Итерируем по tt_class_defs, фильтр по program — только объекты этой программы.
     IF strlen( lv_param ) > 9 AND lv_param+0(9) = 'LCLASSES:'.
       DATA(lv_lc_prog) = lv_param+9.
-      DATA(lv_lc_prev) = ``.
       DATA(lv_lc_splits) = VALUE string_table( ).
       SPLIT lv_lc_prog AT '=' INTO TABLE lv_lc_splits.
       DATA(lv_main_class) = lv_lc_splits[ 1 ].
-      LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_lc)
-        WHERE program = lv_lc_prog AND eventtype = 'METHOD' AND is_intf = abap_false.
-        CHECK lv_lc-class <> lv_main_class.
-        IF lv_lc_prev <> lv_lc-class.
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_class_defs
-            WITH KEY class = lv_lc-class INTO DATA(lv_lc_cd).
-          DATA(lv_cls_inc)  = COND program(
-            WHEN sy-subrc = 0 AND lv_lc_cd-def_include IS NOT INITIAL THEN lv_lc_cd-def_include
-            ELSE lv_lc-include ).
-          DATA(lv_cls_line) = COND i(
-            WHEN sy-subrc = 0 AND lv_lc_cd-def_line > 0 THEN lv_lc_cd-def_line
-            ELSE 0 ).
-          DATA(lv_cls_node) = add_node(
-            i_name = CONV #( lv_lc-class )
-            i_icon = CONV #( icon_folder )
-            i_rel  = node_key
-            i_tree = VALUE #( kind    = 'M'
-                              value   = lv_cls_line
-                              include = lv_cls_inc
-                              program = lv_lc-program
-                              param   = |CLASS:{ lv_lc-class }| ) ).
-          APPEND lv_cls_node TO mt_lazy_nodes.
-          TRY.
-              mo_tree->get_nodes( )->get_node( lv_cls_node )->set_expander( abap_true ).
-            CATCH cx_root.
-          ENDTRY.
-        ENDIF.
-        lv_lc_prev = lv_lc-class.
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_class_defs INTO DATA(lv_lc_cd)
+        WHERE is_intf  = abap_false
+          AND program  = lv_lc_prog
+          AND class   <> lv_main_class.
+        DATA(lv_cls_inc)  = COND program(
+          WHEN lv_lc_cd-def_include IS NOT INITIAL THEN lv_lc_cd-def_include
+          ELSE lv_lc_cd-include ).
+        DATA(lv_cls_line) = lv_lc_cd-def_line.
+        DATA(lv_cls_node) = add_node(
+          i_name = CONV #( lv_lc_cd-class )
+          i_icon = CONV #( icon_folder )
+          i_rel  = node_key
+          i_tree = VALUE #( kind    = 'M'
+                            value   = lv_cls_line
+                            include = lv_cls_inc
+                            program = lv_lc_cd-program
+                            param   = |CLASS:{ lv_lc_cd-class }| ) ).
+        APPEND lv_cls_node TO mt_lazy_nodes.
+        TRY.
+            mo_tree->get_nodes( )->get_node( lv_cls_node )->set_expander( abap_true ).
+          CATCH cx_root.
+        ENDTRY.
       ENDLOOP.
       RETURN.
     ENDIF.
 
     " ---- LINTFS:{program} ----
+    " Итерируем по tt_class_defs, фильтр по program — только объекты этой программы.
     IF strlen( lv_param ) > 7 AND lv_param+0(7) = 'LINTFS:'.
       DATA(lv_li_prog) = lv_param+7.
-      DATA(lv_li_prev) = ``.
       DATA(lv_li_splits) = VALUE string_table( ).
       SPLIT lv_li_prog AT '=' INTO TABLE lv_li_splits.
       DATA(lv_li_main) = lv_li_splits[ 1 ].
-      LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_li)
-        WHERE program = lv_li_prog AND eventtype = 'METHOD' AND is_intf = abap_true.
-        CHECK lv_li-class <> lv_li_main.
-        IF lv_li_prev <> lv_li-class.
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_class_defs
-            WITH KEY class = lv_li-class INTO DATA(lv_li_cd).
-          DATA(lv_li_inc)  = COND program(
-            WHEN sy-subrc = 0 AND lv_li_cd-def_include IS NOT INITIAL THEN lv_li_cd-def_include
-            ELSE lv_li-include ).
-          DATA(lv_li_line) = COND i(
-            WHEN sy-subrc = 0 AND lv_li_cd-def_line > 0 THEN lv_li_cd-def_line
-            ELSE 0 ).
-          DATA(lv_li_node) = add_node(
-            i_name = CONV #( lv_li-class )
-            i_icon = CONV #( icon_oo_connection )
-            i_rel  = node_key
-            i_tree = VALUE #( kind    = 'M'
-                              value   = lv_li_line
-                              include = lv_li_inc
-                              program = lv_li-program
-                              param   = |CLASS:{ lv_li-class }| ) ).
-          APPEND lv_li_node TO mt_lazy_nodes.
-          TRY.
-              mo_tree->get_nodes( )->get_node( lv_li_node )->set_expander( abap_true ).
-            CATCH cx_root.
-          ENDTRY.
-        ENDIF.
-        lv_li_prev = lv_li-class.
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_class_defs INTO DATA(lv_li_cd)
+        WHERE is_intf  = abap_true
+          AND program  = lv_li_prog
+          AND class   <> lv_li_main.
+        DATA(lv_li_inc)  = COND program(
+          WHEN lv_li_cd-def_include IS NOT INITIAL THEN lv_li_cd-def_include
+          ELSE lv_li_cd-include ).
+        DATA(lv_li_line) = lv_li_cd-def_line.
+        DATA(lv_li_node) = add_node(
+          i_name = CONV #( lv_li_cd-class )
+          i_icon = CONV #( icon_oo_connection )
+          i_rel  = node_key
+          i_tree = VALUE #( kind    = 'M'
+                            value   = lv_li_line
+                            include = lv_li_inc
+                            program = lv_li_cd-program
+                            param   = |INTF:{ lv_li_cd-class }| ) ).
+        APPEND lv_li_node TO mt_lazy_nodes.
+        TRY.
+            mo_tree->get_nodes( )->get_node( lv_li_node )->set_expander( abap_true ).
+          CATCH cx_root.
+        ENDTRY.
       ENDLOOP.
       RETURN.
     ENDIF.
 
     " ---- SECT:{class}:{section} ----
-    " Атрибуты секции класса (PUBLIC/PROTECTED/PRIVATE)
     IF strlen( lv_param ) > 5 AND lv_param+0(5) = 'SECT:'.
       DATA(lv_sect_rest) = lv_param+5.
       SPLIT lv_sect_rest AT ':' INTO DATA(lv_sect_class) DATA(lv_sect_key).
@@ -1010,37 +1008,105 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
-    " ---- CLASS:{classname} ----
+    " ---- INTF:{classname} — раскрытие интерфейса (Members + методы) ----
+    IF strlen( lv_param ) > 5 AND lv_param+0(5) = 'INTF:'.
+      DATA(lv_intf_cls) = lv_param+5.
+
+      DATA(lv_iv_cnt) = 0.
+      LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_ivm)
+        WHERE class = lv_intf_cls AND eventname IS INITIAL.
+        lv_iv_cnt += 1.
+      ENDLOOP.
+      IF lv_iv_cnt > 0.
+        DATA(lv_imemb_node) = add_node(
+          i_name = |Members ({ lv_iv_cnt })|
+          i_icon = CONV #( icon_header )
+          i_rel  = node_key
+          i_tree = VALUE #( param = |INTF_VARS:{ lv_intf_cls }| ) ).
+        APPEND lv_imemb_node TO mt_lazy_nodes.
+        TRY.
+            mo_tree->get_nodes( )->get_node( lv_imemb_node )->set_expander( abap_true ).
+          CATCH cx_root.
+        ENDTRY.
+      ENDIF.
+
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_im)
+        WHERE class = lv_intf_cls AND eventtype = 'METHOD'.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_im-include INTO DATA(lv_improg).
+        READ TABLE lv_improg-t_keywords WITH KEY index = lv_im-index INTO DATA(lv_imkw).
+        DATA(lv_im_node) = add_node(
+          i_name = lv_im-eventname i_icon = CONV #( icon_oo_inst_method ) i_rel = node_key
+          i_tree = VALUE #( kind = 'M' value = lv_imkw-v_line include = lv_im-include
+                            program = lv_im-program ev_type = lv_im-eventtype ev_name = lv_im-eventname ) ).
+        LOOP AT mo_viewer->mo_window->ms_sources-t_params INTO DATA(lv_imp)
+          WHERE class = lv_intf_cls AND event = 'METHOD' AND name = lv_im-eventname AND param IS NOT INITIAL.
+          DATA(lv_imp_icon) = COND salv_de_tree_image(
+            WHEN lv_imp-type = 'I' THEN CONV #( icon_parameter_import )
+            ELSE                        CONV #( icon_parameter_export ) ).
+          add_node( i_name = lv_imp-param i_icon = lv_imp_icon i_rel = lv_im_node
+                    i_tree = VALUE #( value = lv_imp-line include = lv_imp-include var_name = lv_imp-param ) ).
+        ENDLOOP.
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
+    " ---- CLASS:{classname} — раскрытие класса/интерфейса (секции + методы) ----
     IF strlen( lv_param ) > 6 AND lv_param+0(6) = 'CLASS:'.
       DATA(lv_cls_name) = lv_param+6.
 
-      " Секции из tt_sections — работает для любых классов
-      DATA(lv_sec_labels) = VALUE string_table(
-        ( `Public Section` ) ( `Protected Section` ) ( `Private Section` ) ).
-      DATA(lv_sec_keys) = VALUE string_table(
-        ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` ) ).
-      DATA(lv_si) = 0.
-      LOOP AT lv_sec_keys INTO DATA(lv_sec_key).
-        lv_si += 1.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_sections
-          WITH KEY class = lv_cls_name section = lv_sec_key
-          INTO DATA(ls_sec).
-        IF sy-subrc = 0.
-          add_node(
-            i_name = lv_sec_labels[ lv_si ]
-            i_icon = CONV #( icon_open_folder )
-            i_rel  = node_key
-            i_tree = VALUE #( kind = 'M' include = ls_sec-include value = ls_sec-line ) ).
-        ENDIF.
-      ENDLOOP.
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_class_defs
+        WITH KEY class = lv_cls_name INTO DATA(lv_cls_cd).
+      DATA(lv_is_intf) = COND abap_bool(
+        WHEN sy-subrc = 0 AND lv_cls_cd-is_intf = abap_true THEN abap_true
+        ELSE abap_false ).
 
-      " Методы
+      IF lv_is_intf = abap_true.
+        DATA(lv_iv2_cnt) = 0.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_iv2)
+          WHERE class = lv_cls_name AND eventname IS INITIAL.
+          lv_iv2_cnt += 1.
+        ENDLOOP.
+        IF lv_iv2_cnt > 0.
+          DATA(lv_memb2_node) = add_node(
+            i_name = |Members ({ lv_iv2_cnt })|
+            i_icon = CONV #( icon_header )
+            i_rel  = node_key
+            i_tree = VALUE #( param = |INTF_VARS:{ lv_cls_name }| ) ).
+          APPEND lv_memb2_node TO mt_lazy_nodes.
+          TRY.
+              mo_tree->get_nodes( )->get_node( lv_memb2_node )->set_expander( abap_true ).
+            CATCH cx_root.
+          ENDTRY.
+        ENDIF.
+      ELSE.
+        DATA(lv_sec_labels) = VALUE string_table(
+          ( `Public Section` ) ( `Protected Section` ) ( `Private Section` ) ).
+        DATA(lv_sec_keys) = VALUE string_table(
+          ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` ) ).
+        DATA(lv_si) = 0.
+        LOOP AT lv_sec_keys INTO DATA(lv_sec_key).
+          lv_si += 1.
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_sections
+            WITH KEY class = lv_cls_name section = lv_sec_key
+            INTO DATA(ls_sec).
+          IF sy-subrc = 0.
+            add_node(
+              i_name = lv_sec_labels[ lv_si ]
+              i_icon = CONV #( icon_open_folder )
+              i_rel  = node_key
+              i_tree = VALUE #( kind = 'M' include = ls_sec-include value = ls_sec-line ) ).
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+
       LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_cm)
         WHERE class = lv_cls_name AND eventtype = 'METHOD'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_cm-include INTO DATA(lv_cmprog).
         READ TABLE lv_cmprog-t_keywords WITH KEY index = lv_cm-index INTO DATA(lv_cmkw).
         DATA(lv_micon) = COND salv_de_tree_image(
+          WHEN lv_is_intf = abap_true OR lv_cm-is_intf = abap_true THEN CONV #( icon_oo_inst_method )
           WHEN lv_cm-redefined = abap_false THEN
             COND #( WHEN lv_cm-meth_type = 0 OR lv_cm-meth_type = 1 THEN CONV #( icon_led_green )
                     WHEN lv_cm-meth_type = 2                          THEN CONV #( icon_led_yellow )
@@ -1048,7 +1114,6 @@ method DISPLAY.
                     WHEN lv_cm-eventname = 'CONSTRUCTOR'              THEN CONV #( icon_tools )
                     ELSE                                                   CONV #( icon_led_green ) )
           ELSE CONV #( icon_oo_overwrite ) ).
-        IF lv_cm-is_intf = abap_true. lv_micon = icon_oo_inst_method. ENDIF.
         DATA(lv_meth_node) = add_node(
           i_name = lv_cm-eventname i_icon = lv_micon i_rel = node_key
           i_tree = VALUE #( kind = 'M' value = lv_cmkw-v_line include = lv_cm-include

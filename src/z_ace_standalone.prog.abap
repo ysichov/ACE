@@ -6501,7 +6501,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
 
         on_class_kw( io_scan = io_scan i_stmt_idx = i_stmt_idx i_kw = lv_kw ).
 
-        IF lv_kw = 'CLASS' AND mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
+        IF   mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
           DATA(lv_def_line) = COND i( WHEN stmt IS NOT INITIAL THEN io_scan->tokens[ stmt-from ]-row ELSE 0 ).
           READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING FIELD-SYMBOL(<cd>).
           IF sy-subrc = 0.
@@ -6518,7 +6518,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-        IF lv_kw = 'CLASS' AND mv_in_impl = abap_true AND mv_class_name IS NOT INITIAL.
+        IF  mv_in_impl = abap_true AND mv_class_name IS NOT INITIAL.
           DATA(lv_impl_line) = COND i( WHEN stmt IS NOT INITIAL THEN io_scan->tokens[ stmt-from ]-row ELSE 0 ).
           READ TABLE cs_source-tt_class_defs WITH KEY class = mv_class_name ASSIGNING <cd>.
           IF sy-subrc = 0.
