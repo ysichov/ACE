@@ -112,6 +112,17 @@ INTERFACE zif_ace_parse_data PUBLIC.
   TYPES:
     tt_class_defs TYPE STANDARD TABLE OF ts_class_def WITH NON-UNIQUE KEY class .
 
+  " --- class sections (PUBLIC/PROTECTED/PRIVATE SECTION) ---
+  TYPES:
+    BEGIN OF ts_section,
+      class   TYPE string,
+      section TYPE string,   " PUBLIC / PROTECTED / PRIVATE
+      include TYPE program,
+      line    TYPE i,
+    END OF ts_section .
+  TYPES:
+    tt_sections TYPE STANDARD TABLE OF ts_section WITH NON-UNIQUE KEY class .
+
   " --- SET HANDLER registration map ---
   TYPES:
     BEGIN OF ts_handler_map,
@@ -147,6 +158,7 @@ INTERFACE zif_ace_parse_data PUBLIC.
       tt_refvar      TYPE tt_refvar,
       t_classes      TYPE tt_classes,
       tt_class_defs  TYPE tt_class_defs,
+      tt_sections    TYPE tt_sections,
       tt_handler_map TYPE tt_handler_map,
       enh_collected  TYPE boolean,
     END OF ts_parse_data .

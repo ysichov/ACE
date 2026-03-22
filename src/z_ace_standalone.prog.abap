@@ -464,7 +464,7 @@ CLASS zcl_ace DEFINITION
         !i_calc_path TYPE boolean OPTIONAL
       CHANGING
         !ct_results  TYPE tt_line .
-protected section.
+
 private section.
   methods GET_INCLUDE_PREFIX
     importing

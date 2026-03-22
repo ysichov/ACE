@@ -281,21 +281,8 @@ method DISPLAY.
         RETURN.
       ENDIF.
 
-      " --- ATTR: lazy-load folder ---
+      " --- ATTR: folder — no action on dblclick (expansion handled by HNDL_EXPAND_EMPTY) ---
       IF lv_param IS NOT INITIAL AND lv_param+0(5) = 'ATTR:'.
-        DATA(lv_attr_class) = lv_param+5.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
-          WITH KEY class = lv_attr_class eventtype = 'METHOD' INTO DATA(lv_attr_sub).
-        IF sy-subrc = 0.
-          LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_av)
-            WHERE program = lv_attr_sub-program AND class = lv_attr_class AND eventname IS INITIAL.
-            add_node( i_name = lv_av-name i_icon = lv_av-icon i_rel = node_key
-                      i_tree = VALUE ZCL_ACE=>ts_tree( value = lv_av-line include = lv_av-include ) ).
-          ENDLOOP.
-        ENDIF.
-        CLEAR ls_clear_row.
-        o_node->set_data_row( REF #( ls_clear_row ) ).
-        TRY. o_node->expand( ). CATCH cx_root. ENDTRY.
         RETURN.
       ENDIF.
 
@@ -933,7 +920,6 @@ method DISPLAY.
     ENDIF.
 
     " ---- LCLASSES:{program} ----
-    " Координаты CLASS name DEFINITION берём из tt_class_defs
     IF strlen( lv_param ) > 9 AND lv_param+0(9) = 'LCLASSES:'.
       DATA(lv_lc_prog) = lv_param+9.
       DATA(lv_lc_prev) = ``.
@@ -1014,6 +1000,28 @@ method DISPLAY.
     " ---- CLASS:{classname} ----
     IF strlen( lv_param ) > 6 AND lv_param+0(6) = 'CLASS:'.
       DATA(lv_cls_name) = lv_param+6.
+
+      " Секции из tt_sections — работает для любых классов
+      DATA(lv_sec_labels) = VALUE string_table(
+        ( `Public Section` ) ( `Protected Section` ) ( `Private Section` ) ).
+      DATA(lv_sec_keys) = VALUE string_table(
+        ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` ) ).
+      DATA(lv_si) = 0.
+      LOOP AT lv_sec_keys INTO DATA(lv_sec_key).
+        lv_si += 1.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_sections
+          WITH KEY class = lv_cls_name section = lv_sec_key
+          INTO DATA(ls_sec).
+        IF sy-subrc = 0.
+          add_node(
+            i_name = lv_sec_labels[ lv_si ]
+            i_icon = CONV #( icon_open_folder )
+            i_rel  = node_key
+            i_tree = VALUE #( kind = 'M' include = ls_sec-include value = ls_sec-line ) ).
+        ENDIF.
+      ENDLOOP.
+
+      " Attributes
       DATA(lv_attr_cnt) = 0.
       READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
         WITH KEY class = lv_cls_name eventtype = 'METHOD'
@@ -1036,6 +1044,8 @@ method DISPLAY.
           ENDTRY.
         ENDIF.
       ENDIF.
+
+      " Методы
       LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_cm)
         WHERE class = lv_cls_name AND eventtype = 'METHOD'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs

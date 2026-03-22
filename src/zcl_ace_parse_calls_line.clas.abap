@@ -185,8 +185,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     CASE lv_kw.
       WHEN 'CLASS' OR 'INTERFACE'.
 
-        " Игнорируем CLASS name DEFINITION DEFERRED — forward declaration,
-        " не содержит реального кода и не должна влиять на навигацию
+        " Игнорируем CLASS name DEFINITION DEFERRED
         IF lv_kw = 'CLASS'.
           LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(ls_t).
             IF ls_t-str = 'DEFERRED'. RETURN. ENDIF.
@@ -227,15 +226,30 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-      WHEN 'PUBLIC'.
-        IF mv_in_impl = abap_false. mv_meth_type = 1. ENDIF.
-      WHEN 'PROTECTED'.
-        IF mv_in_impl = abap_false. mv_meth_type = 2. ENDIF.
-      WHEN 'PRIVATE'.
-        IF mv_in_impl = abap_false. mv_meth_type = 3. ENDIF.
+      WHEN 'PUBLIC' OR 'PROTECTED' OR 'PRIVATE'.
+        IF mv_in_impl = abap_false AND mv_class_name IS NOT INITIAL.
+          " Обновляем meth_type
+          CASE lv_kw.
+            WHEN 'PUBLIC'.    mv_meth_type = 1.
+            WHEN 'PROTECTED'. mv_meth_type = 2.
+            WHEN 'PRIVATE'.   mv_meth_type = 3.
+          ENDCASE.
+          " Записываем секцию в tt_sections
+          DATA(lv_sec_line) = COND i( WHEN stmt IS NOT INITIAL THEN io_scan->tokens[ stmt-from ]-row ELSE 0 ).
+          READ TABLE cs_source-tt_sections
+            WITH KEY class = mv_class_name section = lv_kw
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            APPEND VALUE zif_ace_parse_data=>ts_section(
+              class   = mv_class_name
+              section = lv_kw
+              include = i_include
+              line    = lv_sec_line )
+              TO cs_source-tt_sections.
+          ENDIF.
+        ENDIF.
+
 *      WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
-*        CLEAR: mv_class_name, mv_super_name, mv_in_impl, mv_is_intf, mv_meth_type.
-*        CLEAR mt_meth_defs.
       WHEN 'METHODS' OR 'CLASS-METHODS'.
         IF mv_in_impl = abap_false.
           on_methods_sig( EXPORTING io_scan    = io_scan

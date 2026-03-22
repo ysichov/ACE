@@ -507,96 +507,83 @@ CLASS ZCL_ACE IMPLEMENTATION.
       add_class( i_class = CONV #( ls_class-refclsname ) i_refnode = class_rel no_locals = abap_true i_type = 'I' ).
     ENDLOOP.
 
-    " Для локальных классов (kind<>'C') ищем CLASS name DEFINITION в t_keywords
+    " Координаты CLASS name DEFINITION
     DATA lv_def_inc  TYPE program.
     DATA lv_def_line TYPE i.
-    IF i_tree-kind <> 'C'.
-      LOOP AT mo_window->ms_sources-tt_progs INTO DATA(lv_srch_prog).
-        LOOP AT lv_srch_prog-t_keywords INTO DATA(lv_srch_kw) WHERE name = 'CLASS'.
-          LOOP AT lv_srch_prog-scan->statements INTO DATA(ls_srch_stmt).
-            READ TABLE lv_srch_prog-scan->tokens INDEX ls_srch_stmt-from INTO DATA(ls_tok0).
-            IF sy-subrc = 0 AND ls_tok0-row = lv_srch_kw-line AND ls_tok0-str = 'CLASS'.
-              READ TABLE lv_srch_prog-scan->tokens INDEX ls_srch_stmt-from + 1 INTO DATA(ls_tok1).
-              IF sy-subrc = 0 AND ls_tok1-str = i_class.
-                READ TABLE lv_srch_prog-scan->tokens INDEX ls_srch_stmt-from + 2 INTO DATA(ls_tok2).
-                IF sy-subrc = 0 AND ls_tok2-str = 'DEFINITION'.
-                  READ TABLE lv_srch_prog-scan->tokens INDEX ls_srch_stmt-from + 3 INTO DATA(ls_tok3).
-                  IF NOT ( sy-subrc = 0 AND ls_tok3-str = 'DEFERRED' ).
-                    lv_def_inc  = lv_srch_prog-include.
-                    lv_def_line = COND i( WHEN lv_srch_kw-v_line > 0 THEN lv_srch_kw-v_line ELSE lv_srch_kw-line ).
-                  ENDIF.
-                ENDIF.
-              ENDIF.
-              EXIT.
-            ENDIF.
-          ENDLOOP.
-          IF lv_def_inc IS NOT INITIAL. EXIT. ENDIF.
-        ENDLOOP.
-        IF lv_def_inc IS NOT INITIAL. EXIT. ENDIF.
-      ENDLOOP.
-    ELSE.
-      " Для kind='C' — координаты переданы из SHOW в i_tree
+    IF i_tree-kind = 'C'.
+      " Для глобального класса — из i_tree (заполнены в SHOW)
       lv_def_inc  = i_tree-include.
       lv_def_line = CONV i( i_tree-value ).
+    ELSE.
+      " Для локального класса — из tt_class_defs
+      READ TABLE mo_window->ms_sources-tt_class_defs
+        WITH KEY class = i_class INTO DATA(ls_cd).
+      IF sy-subrc = 0.
+        lv_def_inc  = ls_cd-def_include.
+        lv_def_line = ls_cd-def_line.
+      ENDIF.
     ENDIF.
 
-    LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = i_class AND eventtype = 'METHOD'.
-      IF class_rel IS INITIAL.
-        IF i_tree-kind = 'C'.
-          " Глобальный класс — нода БЕЗ param (не lazy-load),
-          " секции добавляются ниже как статические дочерние ноды
-          class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
-                        i_tree = VALUE #( kind    = 'C'
-                                         include = lv_def_inc
-                                         value   = lv_def_line ) ).
-        ELSE.
-          " Локальный класс — param=CLASS: для навигации по двойному клику
-          DATA(lv_node_inc)  = COND program(
-            WHEN lv_def_inc IS NOT INITIAL THEN lv_def_inc
-            WHEN subs-def_include IS NOT INITIAL THEN subs-def_include
-            ELSE subs-include ).
-          DATA(lv_node_line) = COND i(
-            WHEN lv_def_line > 0 THEN lv_def_line
-            WHEN subs-def_line > 0 THEN subs-def_line
-            ELSE 0 ).
-          class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
-                        i_tree = VALUE #( param = |CLASS:{ i_class }| include = lv_node_inc value = lv_node_line ) ).
-        ENDIF.
-
-        " Секции (Public/Protected/Private) — только для глобального класса
-        IF i_tree-kind = 'C' AND i_type <> 'I' AND i_type <> 'T'.
-          DATA(lv_sec_prefix) = get_include_prefix( i_class ).
-          DATA(lt_sections) = VALUE string_table( ( lv_sec_prefix && `CU` ) ( lv_sec_prefix && `CO` ) ( lv_sec_prefix && `CI` ) ).
-          DATA(lt_sec_labels) = VALUE string_table( ( `Public Section` ) ( `Protected Section` ) ( `Private Section` ) ).
-          DATA(lv_sec_idx) = 0.
-          LOOP AT lt_sections INTO DATA(lv_sec_inc).
-            lv_sec_idx += 1.
-            DATA(lv_sec_incl) = CONV program( lv_sec_inc ).
-            READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = lv_sec_incl TRANSPORTING NO FIELDS.
-            IF sy-subrc = 0.
-              mo_tree_local->add_node(
-                i_name = lt_sec_labels[ lv_sec_idx ]
-                i_icon = CONV #( icon_open_folder )
-                i_rel  = class_rel
-                i_tree = VALUE #( kind = 'M' include = lv_sec_incl value = '1' ) ).
-            ENDIF.
-          ENDLOOP.
-        ENDIF.
-
-        DATA(lv_attr_cnt) = 0.
-        LOOP AT mo_window->ms_sources-t_vars INTO DATA(var_cnt)
-          WHERE program = subs-program AND class = subs-class AND eventname IS INITIAL.
-          lv_attr_cnt += 1.
-        ENDLOOP.
-        IF lv_attr_cnt > 0.
-          attr_rel = mo_tree_local->add_node(
-            i_name = |Attributes ({ lv_attr_cnt })|
-            i_icon = CONV #( icon_folder )
-            i_rel  = class_rel
-            i_tree = VALUE #( param = |ATTR:{ i_class }| ) ).
-          APPEND attr_rel TO mo_tree_local->mt_lazy_nodes.
-        ENDIF.
+    " Создаём ноду класса ДО цикла по методам
+    IF class_rel IS INITIAL.
+      IF i_tree-kind = 'C'.
+        class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
+                      i_tree = VALUE #( kind    = 'C'
+                                       include = lv_def_inc
+                                       value   = lv_def_line ) ).
+      ELSE.
+        class_rel = mo_tree_local->add_node( i_name = i_class i_icon = icon i_rel = i_refnode
+                      i_tree = VALUE #( param   = |CLASS:{ i_class }|
+                                       include = lv_def_inc
+                                       value   = lv_def_line ) ).
       ENDIF.
+    ENDIF.
+
+    " Секции (PUBLIC/PROTECTED/PRIVATE) из tt_sections
+    " Работает для любых классов — глобальных и локальных
+    IF i_type <> 'I' AND i_type <> 'T'.
+      DATA(lv_sec_labels) = VALUE string_table(
+        ( `Public Section` ) ( `Protected Section` ) ( `Private Section` ) ).
+      DATA(lv_sec_keys) = VALUE string_table(
+        ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` ) ).
+      DATA(lv_si) = 0.
+      LOOP AT lv_sec_keys INTO DATA(lv_sec_key).
+        lv_si += 1.
+        READ TABLE mo_window->ms_sources-tt_sections
+          WITH KEY class = i_class section = lv_sec_key
+          INTO DATA(ls_sec).
+        IF sy-subrc = 0.
+          mo_tree_local->add_node(
+            i_name = lv_sec_labels[ lv_si ]
+            i_icon = CONV #( icon_open_folder )
+            i_rel  = class_rel
+            i_tree = VALUE #( kind = 'M' include = ls_sec-include value = ls_sec-line ) ).
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+    " Attributes
+    READ TABLE mo_window->ms_sources-tt_calls_line
+      WITH KEY class = i_class eventtype = 'METHOD'
+      INTO DATA(lv_first_sub).
+    IF sy-subrc = 0.
+      DATA(lv_attr_cnt) = 0.
+      LOOP AT mo_window->ms_sources-t_vars INTO DATA(var_cnt)
+        WHERE program = lv_first_sub-program AND class = i_class AND eventname IS INITIAL.
+        lv_attr_cnt += 1.
+      ENDLOOP.
+      IF lv_attr_cnt > 0.
+        attr_rel = mo_tree_local->add_node(
+          i_name = |Attributes ({ lv_attr_cnt })|
+          i_icon = CONV #( icon_folder )
+          i_rel  = class_rel
+          i_tree = VALUE #( param = |ATTR:{ i_class }| ) ).
+        APPEND attr_rel TO mo_tree_local->mt_lazy_nodes.
+      ENDIF.
+    ENDIF.
+
+    " Методы
+    LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs) WHERE class = i_class AND eventtype = 'METHOD'.
 
       SPLIT subs-include AT '=' INTO TABLE splits_incl.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = subs-include INTO DATA(prog).
