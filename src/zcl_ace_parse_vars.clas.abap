@@ -10,6 +10,7 @@ protected section.
     DATA mv_class_name TYPE string.
     DATA mv_eventtype  TYPE string.
     DATA mv_eventname  TYPE string.
+    DATA mv_section    TYPE string.
     DATA mv_in_impl    TYPE abap_bool.
 
     METHODS append_var
@@ -49,47 +50,9 @@ CLASS ZCL_ACE_PARSE_VARS IMPLEMENTATION.
     mv_class_name = i_class.
     mv_eventname = i_ev_name.
     mv_eventtype = i_evtype.
-*    CASE lv_kw.
-*      WHEN 'CLASS'.
-*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(tok2).
-*        IF sy-subrc = 0. mv_class_name = tok2-str. ENDIF.
-*        LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(ctok).
-*          IF ctok-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. EXIT. ENDIF.
-*        ENDLOOP.
-*        RETURN.
-*      WHEN 'ENDCLASS'.
-*        CLEAR: mv_class_name, mv_eventtype, mv_eventname, mv_in_impl.
-*        RETURN.
-*      WHEN 'METHOD'.
-*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
-*        IF sy-subrc = 0. mv_eventtype = 'METHOD'. mv_eventname = tok2-str. ENDIF.
-*        RETURN.
-*      WHEN 'FORM'.
-*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
-*        IF sy-subrc = 0. mv_eventtype = 'FORM'. mv_eventname = tok2-str. ENDIF.
-*        RETURN.
-*      WHEN 'MODULE'.
-*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
-*        IF sy-subrc = 0. mv_eventtype = 'MODULE'. mv_eventname = tok2-str. ENDIF.
-*        RETURN.
-*      WHEN 'FUNCTION'.
-*        READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO tok2.
-*        IF sy-subrc = 0. mv_eventtype = 'FUNCTION'. mv_eventname = tok2-str. ENDIF.
-*        RETURN.
-*      WHEN 'ENDMETHOD' OR 'ENDFORM' OR 'ENDMODULE' OR 'ENDFUNCTION'.
-*        CLEAR: mv_eventtype, mv_eventname.
-*        RETURN.
-*    ENDCASE.
-
-    " Inside a class definition (not IMPLEMENTATION)
-    " — обрабатываем только DATA/CLASS-DATA как атрибуты класса
-*    IF mv_class_name IS NOT INITIAL AND mv_in_impl = abap_false.
-*      IF lv_kw <> 'DATA' AND lv_kw <> 'CLASS-DATA'.
-*        RETURN.
-*      ENDIF.
-*      " Атрибут класса — сохраняем с пустым eventtype/eventname
-*      " (mv_eventtype/mv_eventname уже пустые — мы в definition)
-*    ENDIF.
+    IF i_section IS SUPPLIED.
+      mv_section = i_section.
+    ENDIF.
 
     DATA(lv_line) = io_scan->tokens[ stmt-from ]-row.
 
@@ -238,7 +201,6 @@ WHEN OTHERS.
                                          eventtype = mv_eventtype
                                          eventname = mv_eventname
                                          name      = i_name
-
       TRANSPORTING NO FIELDS.
     IF sy-subrc <> 0.
       INSERT VALUE zcl_ace=>ts_vars(
@@ -247,12 +209,12 @@ WHEN OTHERS.
         class     = mv_class_name
         eventtype = mv_eventtype
         eventname = mv_eventname
+        section   = mv_section
         line      = i_line
         name      = i_name
         type      = i_type
         icon      = i_icon ) INTO table cs_source-t_vars.
     ENDIF.
-
   ENDMETHOD.
 
 

@@ -10,6 +10,7 @@ INTERFACE zif_ace_stmt_handler PUBLIC.
       !i_interface TYPE string OPTIONAL
       !i_evtype    TYPE string OPTIONAL
       !i_ev_name   TYPE string OPTIONAL
+      !i_section   TYPE string OPTIONAL
     CHANGING
       !cs_source   TYPE zif_ace_parse_data=>ts_parse_data .
 

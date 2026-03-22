@@ -30,7 +30,8 @@ PRIVATE SECTION.
 ENDCLASS.
 
 
-CLASS zcl_ace_parser IMPLEMENTATION.
+
+CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
 
   METHOD parse.
@@ -49,7 +50,8 @@ CLASS zcl_ace_parser IMPLEMENTATION.
     DATA: lv_class     TYPE string,
           lv_interface TYPE string,
           lv_eventtype TYPE string,
-          lv_eventname TYPE string.
+          lv_eventname TYPE string,
+          lv_section   TYPE string.
 
     " ================================================================
     " Режим 2: точечный парсинг одного стейтмента
@@ -139,6 +141,18 @@ CLASS zcl_ace_parser IMPLEMENTATION.
     CHECK sy-subrc <> 0.
 
     IF i_class IS NOT INITIAL. lv_class = i_class. ENDIF.
+    " Для инклудов глобального класса (CU/CO/CI/CP) — класс определяем из имени инклуда
+    IF lv_class IS INITIAL AND i_include IS NOT INITIAL.
+      DATA(lv_inc_len2) = strlen( i_include ).
+      IF lv_inc_len2 >= 2.
+        DATA(lv_sfx) = substring( val = i_include off = lv_inc_len2 - 2 len = 2 ).
+        IF lv_sfx = 'CU' OR lv_sfx = 'CO' OR lv_sfx = 'CI' OR lv_sfx = 'CP'.
+          DATA(lv_cls_from_inc) = CONV string( i_include ).
+          REPLACE REGEX '=+(CU|CO|CI|CP)$' IN lv_cls_from_inc WITH ''.
+          IF lv_cls_from_inc IS NOT INITIAL. lv_class = lv_cls_from_inc. ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
 
     DATA(lo_src)  = cl_ci_source_include=>create( p_name = i_include ).
     DATA(lo_scan) = NEW cl_ci_scan( p_include = lo_src ).
@@ -195,7 +209,6 @@ CLASS zcl_ace_parser IMPLEMENTATION.
 
       " CLASS name DEFINITION DEFERRED — полностью игнорируем
       IF ls_kw_tok-str = 'CLASS' AND ls_tok3-str = 'DEFINITION' AND ls_tok4-str = 'DEFERRED'.
-        " Добавляем в t_keywords (для полноты индекса) но не парсим
         APPEND VALUE zcl_ace=>ts_kword(
           program = i_program include = i_include
           index   = lv_kw_idx line    = ls_kw_tok-row
@@ -212,9 +225,17 @@ CLASS zcl_ace_parser IMPLEMENTATION.
         ENDIF.
       ENDIF.
       IF ls_kw_tok-str = 'INTERFACE'. CLEAR lv_class. lv_interface = ls_tok2-str. ENDIF.
-      IF ls_kw_tok-str = 'METHOD'.    lv_eventtype = 'METHOD'. lv_eventname = ls_tok2-str. ENDIF.
-      IF ls_kw_tok-str = 'FORM'.      lv_eventtype = 'FORM'.   lv_eventname = ls_tok2-str. ENDIF.
-      IF ls_kw_tok-str = 'MODULE'.    lv_eventtype = 'MODULE'.  lv_eventname = ls_tok2-str. ENDIF.
+      IF ls_kw_tok-str = 'METHOD'.    lv_eventtype = 'METHOD'. lv_eventname = ls_tok2-str. CLEAR lv_section. ENDIF.
+      IF ls_kw_tok-str = 'FORM'.      lv_eventtype = 'FORM'.   lv_eventname = ls_tok2-str. CLEAR lv_section. ENDIF.
+      IF ls_kw_tok-str = 'MODULE'.    lv_eventtype = 'MODULE'.  lv_eventname = ls_tok2-str. CLEAR lv_section. ENDIF.
+      IF ls_kw_tok-str = 'ENDCLASS' OR ls_kw_tok-str = 'ENDINTERFACE'. CLEAR lv_section. ENDIF.
+      IF ls_kw_tok-str = 'PUBLIC'    AND ls_tok2-str = 'SECTION'.
+        lv_section = 'PUBLIC'.
+          ENDIF.
+      IF ls_kw_tok-str = 'PROTECTED' AND ls_tok2-str = 'SECTION'. lv_section = 'PROTECTED'. ENDIF.
+      IF ls_kw_tok-str = 'PRIVATE'   AND ls_tok2-str = 'SECTION'.
+         lv_section = 'PRIVATE'.
+           ENDIF.
 
       DATA(lv_eff_kw) = SWITCH string( ls_kw_stmt-type
         WHEN 'C' THEN 'COMPUTE'
@@ -254,13 +275,19 @@ CLASS zcl_ace_parser IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " vars
+      " vars — передаём lv_section из текущего прохода
+      " lv_section устанавливается при PUBLIC/PROTECTED/PRIVATE SECTION
+      " и сбрасывается при METHOD/FORM/MODULE/ENDCLASS
+      " calls_line обрабатывается раньше vars в том же цикле,
+      " поэтому tt_sections уже заполнен к этому моменту
       IF lv_eff_kw = 'DATA'       OR lv_eff_kw = 'CLASS-DATA'
-      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'.
+      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'
+      OR lv_eff_kw = 'CONSTANTS'  .
         lo_vars->zif_ace_stmt_handler~handle(
           EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
             i_program = i_program i_include = i_include
             i_class = lv_class i_evtype = lv_eventtype i_ev_name = lv_eventname
+            i_section = lv_section
           CHANGING cs_source = cs_source ).
       ENDIF.
 
@@ -278,5 +305,4 @@ CLASS zcl_ace_parser IMPLEMENTATION.
     <ls_prog>-v_keywords = <ls_prog>-t_keywords.
 
   ENDMETHOD.
-
 ENDCLASS.

@@ -997,6 +997,19 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
+    " ---- SECT:{class}:{section} ----
+    " Атрибуты секции класса (PUBLIC/PROTECTED/PRIVATE)
+    IF strlen( lv_param ) > 5 AND lv_param+0(5) = 'SECT:'.
+      DATA(lv_sect_rest) = lv_param+5.
+      SPLIT lv_sect_rest AT ':' INTO DATA(lv_sect_class) DATA(lv_sect_key).
+      LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_sv)
+        WHERE class = lv_sect_class AND section = lv_sect_key AND eventname IS INITIAL.
+        add_node( i_name = lv_sv-name i_icon = lv_sv-icon i_rel = node_key
+                  i_tree = VALUE #( value = lv_sv-line include = lv_sv-include var_name = lv_sv-name ) ).
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
     " ---- CLASS:{classname} ----
     IF strlen( lv_param ) > 6 AND lv_param+0(6) = 'CLASS:'.
       DATA(lv_cls_name) = lv_param+6.
@@ -1020,30 +1033,6 @@ method DISPLAY.
             i_tree = VALUE #( kind = 'M' include = ls_sec-include value = ls_sec-line ) ).
         ENDIF.
       ENDLOOP.
-
-      " Attributes
-      DATA(lv_attr_cnt) = 0.
-      READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
-        WITH KEY class = lv_cls_name eventtype = 'METHOD'
-        INTO DATA(lv_cls_sub).
-      IF sy-subrc = 0.
-        LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_ca)
-          WHERE program = lv_cls_sub-program AND class = lv_cls_name AND eventname IS INITIAL.
-          lv_attr_cnt += 1.
-        ENDLOOP.
-        IF lv_attr_cnt > 0.
-          DATA(lv_attr_node) = add_node(
-            i_name = |Attributes ({ lv_attr_cnt })|
-            i_icon = CONV #( icon_folder )
-            i_rel  = node_key
-            i_tree = VALUE #( param = |ATTR:{ lv_cls_name }| ) ).
-          APPEND lv_attr_node TO mt_lazy_nodes.
-          TRY.
-              mo_tree->get_nodes( )->get_node( lv_attr_node )->set_expander( abap_true ).
-            CATCH cx_root.
-          ENDTRY.
-        ENDIF.
-      ENDIF.
 
       " Методы
       LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(lv_cm)

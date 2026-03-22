@@ -155,6 +155,7 @@ CLASS zcl_ace DEFINITION
         class     TYPE string,
         eventtype TYPE string,
         eventname TYPE string,
+        section   TYPE string,
         name      TYPE string,
         line      TYPE i,
         type      TYPE string,
@@ -376,6 +377,7 @@ CLASS zcl_ace DEFINITION
         !ct_results  TYPE tt_line .
   PROTECTED SECTION.
   PRIVATE SECTION.
+  data mv_dummy type i.
     METHODS get_include_prefix
       IMPORTING
         !i_class         TYPE string
@@ -553,33 +555,20 @@ CLASS ZCL_ACE IMPLEMENTATION.
           WITH KEY class = i_class section = lv_sec_key
           INTO DATA(ls_sec).
         IF sy-subrc = 0.
-          mo_tree_local->add_node(
+          DATA(lv_sec_node) = mo_tree_local->add_node(
             i_name = lv_sec_labels[ lv_si ]
             i_icon = CONV #( icon_open_folder )
             i_rel  = class_rel
-            i_tree = VALUE #( kind = 'M' include = ls_sec-include value = ls_sec-line ) ).
+            i_tree = VALUE #( kind = 'M' include = ls_sec-include value = ls_sec-line
+                              param = |SECT:{ i_class }:{ lv_sec_key }| ) ).
+          " Если есть атрибуты в этой секции — добавляем expander
+          READ TABLE mo_window->ms_sources-t_vars WITH KEY class = i_class section = lv_sec_key
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            APPEND lv_sec_node TO mo_tree_local->mt_lazy_nodes.
+          ENDIF.
         ENDIF.
       ENDLOOP.
-    ENDIF.
-
-    " Attributes
-    READ TABLE mo_window->ms_sources-tt_calls_line
-      WITH KEY class = i_class eventtype = 'METHOD'
-      INTO DATA(lv_first_sub).
-    IF sy-subrc = 0.
-      DATA(lv_attr_cnt) = 0.
-      LOOP AT mo_window->ms_sources-t_vars INTO DATA(var_cnt)
-        WHERE program = lv_first_sub-program AND class = i_class AND eventname IS INITIAL.
-        lv_attr_cnt += 1.
-      ENDLOOP.
-      IF lv_attr_cnt > 0.
-        attr_rel = mo_tree_local->add_node(
-          i_name = |Attributes ({ lv_attr_cnt })|
-          i_icon = CONV #( icon_folder )
-          i_rel  = class_rel
-          i_tree = VALUE #( param = |ATTR:{ i_class }| ) ).
-        APPEND attr_rel TO mo_tree_local->mt_lazy_nodes.
-      ENDIF.
     ENDIF.
 
     " Методы
