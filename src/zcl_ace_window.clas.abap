@@ -659,6 +659,20 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
+      WHEN 'INCLUDE'.
+        " Читаем имя include-программы из токенов и переходим на строку 1
+        LOOP AT prog-scan->statements INTO ls_stmt.
+          READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
+          IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
+        ENDLOOP.
+        IF sy-subrc = 0.
+          READ TABLE prog-scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok.
+          IF sy-subrc = 0.
+            lv_target_include = CONV #( ls_tok-str ).
+            lv_target_vline   = 1.
+          ENDIF.
+        ENDIF.
+
       WHEN 'ENDMETHOD'.
         " → прыгаем на открывающий METHOD
         LOOP AT lr_kw->* INTO kw2 WHERE name = 'METHOD' AND index < kw-index.
