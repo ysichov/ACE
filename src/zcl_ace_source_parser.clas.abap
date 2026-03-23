@@ -111,6 +111,7 @@ private section.
 ENDCLASS.
 
 
+
 CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
 
@@ -818,9 +819,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       READ TABLE prog-t_keywords WITH KEY index = statement INTO DATA(key).
       IF sy-subrc <> 0. ADD 1 TO statement. CONTINUE. ENDIF.
-      IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS' OR key-name IS INITIAL.
-        ADD 1 TO statement. CONTINUE.
-      ENDIF.
 
       " Точечный парсинг calls/calcs/vars через parse_tokens( i_stmt_idx )
       IF key-calls_parsed = abap_false.
@@ -835,8 +833,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           CHANGING
             cs_source  = io_debugger->mo_window->ms_sources ).
         " Перечитываем key — calls_parsed = true, tt_calls заполнен
-        READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
+        "READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
       ENDIF.
+
+            IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS' OR key-name IS INITIAL.
+        ADD 1 TO statement. CONTINUE.
+      ENDIF.
+
 
       READ TABLE io_debugger->mt_steps
         WITH KEY line = key-line program = i_program include = key-include
@@ -1267,5 +1270,4 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDIF.
       ENDIF.
   endmethod.
-
 ENDCLASS.

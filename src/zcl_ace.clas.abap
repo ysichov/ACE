@@ -1083,6 +1083,9 @@ CLASS ZCL_ACE IMPLEMENTATION.
     IF class_rel IS INITIAL. classes_rel = class_rel = mo_tree_local->main_node_key. ENDIF.
     SORT mo_window->ms_sources-tt_calls_line BY program class eventtype meth_type eventname.
     cl_name = splits_prg[ 1 ].
+    READ TABLE mo_window->ms_sources-tt_class_defs WITH KEY class = CONV #( cl_name )
+      TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
     DO.
       READ TABLE mo_window->ms_sources-t_classes WITH KEY clsname = cl_name reltype = '2' INTO DATA(ls_class).
       IF sy-subrc <> 0. EXIT. ENDIF. cl_name = ls_class-refclsname.
@@ -1120,7 +1123,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2' INTO ls_class.
       IF sy-subrc <> 0. EXIT. ENDIF. cl_name = ls_class-clsname.
     ENDDO.
-    classes_rel = class_rel = mo_tree_local->main_node_key.
+    ENDIF.
     DATA(lv_form_cnt) = 0. DATA(lv_mod_cnt) = 0.
     LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs2).
       IF subs2-eventtype = 'FORM'   AND subs2-program = splits_prg[ 1 ]. lv_form_cnt += 1. ENDIF.
