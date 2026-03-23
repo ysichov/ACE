@@ -164,6 +164,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       o_columns->get_column( 'VALUE' )->set_visible( abap_false ).
       o_columns->get_column( 'PARAM' )->set_visible( abap_false ).
       o_columns->get_column( 'INCLUDE' )->set_visible( abap_false ).
+      o_columns->get_column( 'VAR_NAME' )->set_visible( abap_false ).
 
       add_buttons( i_type ).
 
