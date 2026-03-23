@@ -963,7 +963,28 @@ CLASS ZCL_ACE IMPLEMENTATION.
     cl_gui_cfw=>set_new_ok_code( 'DUMMY' ). cl_gui_cfw=>dispatch( ).
     mo_tree_local->main_node_key = mo_tree_local->add_node(
       i_name = CONV #( mo_window->m_prg-program ) i_icon = CONV #( icon_folder ) i_tree = VALUE #( ) ).
+
+    " --- Includes branch (always lazy, first) ---
+    DATA(lv_main_prog) = CONV program( splits_prg[ 1 ] ).
+    DATA lv_incl_cnt TYPE i.
+    LOOP AT mo_window->ms_sources-tt_progs TRANSPORTING NO FIELDS
+      WHERE include <> 'VIRTUAL' AND include <> lv_main_prog.
+      lv_incl_cnt += 1.
+    ENDLOOP.
+    IF lv_incl_cnt > 0.
+      DATA(lv_incl_rel) = mo_tree_local->add_node(
+        i_name = |Includes ({ lv_incl_cnt })|
+        i_icon = CONV #( icon_list )
+        i_rel  = mo_tree_local->main_node_key
+        i_tree = VALUE #( param = |INCLS:{ mv_prog }| program = mv_prog ) ).
+      APPEND lv_incl_rel TO mo_tree_local->mt_lazy_nodes.
+    ENDIF.
     LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh).
+      IF prog_enh-enh_collected = abap_false.
+        zcl_ace_source_parser=>collect_enhancements( i_program = prog_enh-include io_debugger = me ).
+      ENDIF.
+      READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = prog_enh-include
+        INTO prog_enh.  " перечитываем — enh_blocks теперь заполнены
       LOOP AT prog_enh-tt_enh_blocks INTO DATA(enh_blk).
         IF enh_rel IS INITIAL.
           enh_rel = mo_tree_local->add_node( i_name = 'Enhancements' i_icon = CONV #( icon_folder )
@@ -986,20 +1007,23 @@ CLASS ZCL_ACE IMPLEMENTATION.
       APPEND globals_rel TO mo_tree_local->mt_lazy_nodes.
     ENDIF.
     READ TABLE mt_steps INDEX 1 INTO DATA(first_step).
-    IF first_step-line IS NOT INITIAL AND first_step-program = mo_window->m_prg-program.
+    IF first_step-line IS NOT INITIAL AND first_step-program = mo_window->m_prg-program
+                                      AND lines( splits_prg ) = 1.
       events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder )
         i_rel = mo_tree_local->main_node_key i_tree = VALUE #( ) ).
       mo_tree_local->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event ) i_rel = events_rel
         i_tree = VALUE #( kind = 'E' value = first_step-line include = first_step-include ) ).
     ENDIF.
-    LOOP AT mo_window->ms_sources-t_events INTO DATA(event) WHERE program = mo_window->m_prg-program.
-      IF events_rel IS INITIAL.
-        events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder )
-          i_rel = mo_tree_local->main_node_key i_tree = VALUE #( ) ).
-      ENDIF.
-      mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel
-        i_tree = VALUE #( include = event-include value = event-line ) ).
-    ENDLOOP.
+    IF lines( splits_prg ) = 1.
+      LOOP AT mo_window->ms_sources-t_events INTO DATA(event) WHERE program = mo_window->m_prg-program.
+        IF events_rel IS INITIAL.
+          events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder )
+            i_rel = mo_tree_local->main_node_key i_tree = VALUE #( ) ).
+        ENDIF.
+        mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel
+          i_tree = VALUE #( include = event-include value = event-line ) ).
+      ENDLOOP.
+    ENDIF.
     LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog) WHERE program+0(4) = 'SAPL'.
       DATA: fname TYPE rs38l_fnam, exception_list TYPE TABLE OF rsexc, export_parameter TYPE TABLE OF rsexp,
             import_parameter TYPE TABLE OF rsimp, changing_parameter TYPE TABLE OF rscha,

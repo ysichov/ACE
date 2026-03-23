@@ -874,6 +874,24 @@ method DISPLAY.
       RETURN.
     ENDIF.
 
+    " ---- INCLS:{program} — инклуды программы ----
+    IF strlen( lv_param ) > 6 AND lv_param+0(6) = 'INCLS:'.
+      DATA(lv_incls_main) = CONV program( lv_param+6 ).
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_incl_prog)
+        WHERE include <> 'VIRTUAL'
+          AND include <> lv_incls_main.
+        add_node(
+          i_name = CONV #( ls_incl_prog-include )
+          i_icon = CONV #( icon_document )
+          i_rel  = node_key
+          i_tree = VALUE #( kind    = 'M'
+                            include = ls_incl_prog-include
+                            program = ls_incl_prog-program
+                            value   = 1 ) ).
+      ENDLOOP.
+      RETURN.
+    ENDIF.
+
     " ---- GVARS: ----
     IF lv_param = 'GVARS:'.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_g)
