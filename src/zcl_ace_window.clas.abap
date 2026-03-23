@@ -97,6 +97,17 @@ public section.
   data M_DIRECTION type X .
   data M_PRG type TPDA_SCR_PRG_INFO .
   data M_DEBUG_BUTTON like SY-UCOMM .
+
+  types:
+    BEGIN OF ts_nav_entry,
+      include TYPE program,
+      line    TYPE i,
+    END OF ts_nav_entry.
+  types tt_nav_history TYPE STANDARD TABLE OF ts_nav_entry WITH EMPTY KEY.
+
+  data MT_NAV_HISTORY type TT_NAV_HISTORY.
+  data MV_NAV_IDX     type I value 0.
+  data MV_NAV_SILENT  type BOOLEAN.
   data M_SHOW_STEP type BOOLEAN .
   data MT_BPOINTS type TT_BPOINTS .
   data MO_VIEWER type ref to ZCL_ACE .
@@ -165,6 +176,10 @@ public section.
   methods SET_PROGRAM_LINE
     importing
       !I_LINE like SY-INDEX optional .
+  methods PUSH_NAV_ENTRY
+    importing
+      !I_INCLUDE type PROGRAM
+      !I_LINE    type I.
   methods SET_MIXPROG_LINE
     importing
       !I_LINE like SY-INDEX optional .
@@ -808,6 +823,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   method SET_PROGRAM_LINE.
       TYPES: lntab TYPE STANDARD TABLE OF i.
       DATA: lines TYPE lntab, line_num TYPE i.
+
+      " Единственная точка записи истории навигации
+      IF i_line IS NOT INITIAL AND m_prg-include IS NOT INITIAL AND mv_nav_silent IS INITIAL.
+        push_nav_entry( i_include = m_prg-include i_line = i_line ).
+      ENDIF.
+      CLEAR mv_nav_silent.
+
       mo_code_viewer->remove_all_marker( 2 ).
       mo_code_viewer->remove_all_marker( 4 ).
       mo_code_viewer->remove_all_marker( 7 ).
@@ -1000,4 +1022,21 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         mo_salv_stack->refresh( ).
       ENDIF.
   endmethod.
+
+  METHOD push_nav_entry.
+    " Если мы не в конце истории — обрезаем "будущее"
+    IF mv_nav_idx < lines( mt_nav_history ).
+      DELETE mt_nav_history FROM mv_nav_idx + 1.
+    ENDIF.
+    " Не дублируем подряд одинаковые записи
+    IF mt_nav_history IS NOT INITIAL.
+      DATA(ls_last) = mt_nav_history[ lines( mt_nav_history ) ].
+      IF ls_last-include = i_include AND ls_last-line = i_line.
+        RETURN.
+      ENDIF.
+    ENDIF.
+    APPEND VALUE ts_nav_entry( include = i_include line = i_line ) TO mt_nav_history.
+    mv_nav_idx = lines( mt_nav_history ).
+  ENDMETHOD.
+
 ENDCLASS.

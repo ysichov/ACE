@@ -86,6 +86,7 @@
 
     ENDIF.
 
+    check sy-ucomm is INITIAL.
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
     IF sy-dbcnt <> 0.

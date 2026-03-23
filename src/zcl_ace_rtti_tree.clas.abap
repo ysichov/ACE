@@ -74,7 +74,6 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
   method ADD_BUTTONS.
 
-
       DATA(o_functions) = mo_tree->get_functions( ).
       o_functions->set_all( ).
 
@@ -85,12 +84,25 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       CHECK mo_viewer IS NOT INITIAL AND i_type = 'L'.
 
       o_functions->add_function(
+        name     = 'NAV_BACK'
+        icon     = CONV #( icon_arrow_left )
+        text     = ''
+        tooltip  = 'Navigate Back'
+        position = if_salv_c_function_position=>left_of_salv_functions ).
+
+      o_functions->add_function(
+        name     = 'NAV_FORWARD'
+        icon     = CONV #( icon_arrow_right )
+        text     = ''
+        tooltip  = 'Navigate Forward'
+        position = if_salv_c_function_position=>left_of_salv_functions ).
+
+      o_functions->add_function(
         name     = 'REFRESH'
         icon     = CONV #( icon_refresh )
         text     = ''
         tooltip  = 'Refresh'
         position = if_salv_c_function_position=>left_of_salv_functions ).
-
 
   endmethod.
 
@@ -1154,17 +1166,42 @@ method DISPLAY.
 
   method HNDL_USER_COMMAND.
 
-
       CONSTANTS: c_mask TYPE x VALUE '01'.
+
+      " Не допускаем попадания function code в sy-ucomm selection-screen программы
+      cl_gui_cfw=>set_new_ok_code( 'DUMMY' ).
 
       CASE e_salv_function.
 
-        WHEN 'REFRESH'."
+        WHEN 'NAV_BACK'.
+          CHECK mo_viewer->mo_window->mv_nav_idx > 1.
+          mo_viewer->mo_window->mv_nav_idx = mo_viewer->mo_window->mv_nav_idx - 1.
+          DATA(ls_back) = mo_viewer->mo_window->mt_nav_history[ mo_viewer->mo_window->mv_nav_idx ].
+          IF ls_back-include <> mo_viewer->mo_window->m_prg-include.
+            mo_viewer->mo_window->m_prg-include = ls_back-include.
+            mo_viewer->mo_window->mv_nav_silent = abap_true.
+            mo_viewer->mo_window->set_program( ls_back-include ).
+          ENDIF.
+          mo_viewer->mo_window->mv_nav_silent = abap_true.
+          mo_viewer->mo_window->set_program_line( ls_back-line ).
+
+        WHEN 'NAV_FORWARD'.
+          CHECK mo_viewer->mo_window->mv_nav_idx < lines( mo_viewer->mo_window->mt_nav_history ).
+          mo_viewer->mo_window->mv_nav_idx = mo_viewer->mo_window->mv_nav_idx + 1.
+          DATA(ls_fwd) = mo_viewer->mo_window->mt_nav_history[ mo_viewer->mo_window->mv_nav_idx ].
+          IF ls_fwd-include <> mo_viewer->mo_window->m_prg-include.
+            mo_viewer->mo_window->m_prg-include = ls_fwd-include.
+            mo_viewer->mo_window->mv_nav_silent = abap_true.
+            mo_viewer->mo_window->set_program( ls_fwd-include ).
+          ENDIF.
+          mo_viewer->mo_window->mv_nav_silent = abap_true.
+          mo_viewer->mo_window->set_program_line( ls_fwd-line ).
+
+        WHEN 'REFRESH'.
           mo_viewer->mo_tree_local->display( ).
           RETURN.
 
       ENDCASE.
-
 
   endmethod.
 ENDCLASS.
