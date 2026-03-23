@@ -695,6 +695,35 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           lv_target_include = m_prg-include.
         ENDLOOP.
 
+      WHEN 'PERFORM'.
+        " Читаем имя формы из токенов, ищем в tt_calls_line
+        LOOP AT prog-scan->statements INTO ls_stmt.
+          READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
+          IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
+        ENDLOOP.
+        IF sy-subrc = 0.
+          READ TABLE prog-scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok.
+          IF sy-subrc = 0.
+            DATA(lv_form_name) = ls_tok-str.
+            READ TABLE ms_sources-tt_calls_line
+              WITH KEY eventtype = 'FORM' eventname = lv_form_name
+              INTO DATA(ls_form_cl).
+            IF sy-subrc = 0.
+              lv_target_include = ls_form_cl-include.
+              " Ищем v_line строки FORM в инклуде
+              READ TABLE ms_sources-tt_progs WITH KEY include = lv_target_include INTO DATA(ls_form_prog).
+              IF sy-subrc = 0.
+                DATA(lr_fkw) = REF #( ls_form_prog-t_keywords ).
+                IF ls_form_prog-v_keywords IS NOT INITIAL. lr_fkw = REF #( ls_form_prog-v_keywords ). ENDIF.
+                LOOP AT lr_fkw->* INTO DATA(fkw) WHERE name = 'FORM' AND index = ls_form_cl-index. EXIT. ENDLOOP.
+                IF sy-subrc = 0.
+                  lv_target_vline = fkw-v_line.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+
     ENDCASE.
 
     CHECK lv_target_vline > 0.
