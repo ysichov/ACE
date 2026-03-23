@@ -823,12 +823,86 @@ method DISPLAY.
     ASSIGN COMPONENT 'PARAM'   OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
     ASSIGN COMPONENT 'PROGRAM' OF STRUCTURE <row> TO FIELD-SYMBOL(<program>).
 
+    ASSIGN COMPONENT 'KIND'    OF STRUCTURE <row> TO FIELD-SYMBOL(<kind>).
+    ASSIGN COMPONENT 'EV_TYPE' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_type>).
+    ASSIGN COMPONENT 'EV_NAME' OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
+    ASSIGN COMPONENT 'INCLUDE' OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
+
+    " ---- Нода метода: parse_call без шагов → заполняем t_vars → добавляем Local vars ----
+    IF <kind> = 'M' AND <ev_type> = 'METHOD' AND <param> IS INITIAL AND <ev_name> IS NOT INITIAL.
+      DATA(lv_m_include) = CONV program( <include> ).
+      DATA(lv_m_method)  = CONV string( <ev_name> ).
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+        WITH KEY include = lv_m_include eventtype = 'METHOD' eventname = lv_m_method
+        INTO DATA(ls_m_cl).
+      IF sy-subrc = 0.
+        " Запускаем parse_call только если vars ещё не разобраны
+*        READ TABLE mo_viewer->mo_window->ms_sources-t_vars
+*          WITH KEY program = ls_m_cl-program class = ls_m_cl-class
+*                   eventtype = 'METHOD' eventname = lv_m_method
+*          TRANSPORTING NO FIELDS.
+        "IF sy-subrc <> 0.
+          zcl_ace_source_parser=>parse_call(
+            i_index      = ls_m_cl-index
+            i_e_name     = lv_m_method
+            i_e_type     = 'METHOD'
+            i_class      = ls_m_cl-class
+            i_program    = ls_m_cl-program
+            i_include    = lv_m_include
+            i_stack      = 0
+            i_no_steps   = abap_true
+            io_debugger  = mo_viewer ).
+        "ENDIF.
+        " Считаем переменные и добавляем lazy-ноду если ещё нет
+        DATA(lv_m_var_cnt) = 0.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_mv)
+          WHERE program = ls_m_cl-program AND class = ls_m_cl-class
+            AND eventtype = 'METHOD' AND eventname = lv_m_method.
+          lv_m_var_cnt += 1.
+        ENDLOOP.
+        IF lv_m_var_cnt > 0.
+          DATA(lv_m_vars_node) = add_node(
+            i_name = |Local vars ({ lv_m_var_cnt })|
+            i_icon = CONV #( icon_folder )
+            i_rel  = node_key
+            i_tree = VALUE #( program = ls_m_cl-program include = lv_m_include
+                              ev_type = 'VARS' ev_name = lv_m_method
+                              param   = |VARS:{ ls_m_cl-class }:{ lv_m_method }| ) ).
+          APPEND lv_m_vars_node TO mt_lazy_nodes.
+          TRY.
+              mo_tree->get_nodes( )->get_node( lv_m_vars_node )->set_expander( abap_true ).
+            CATCH cx_root.
+          ENDTRY.
+          TRY.
+              mo_tree->get_nodes( )->get_node( node_key )->expand( ).
+            CATCH cx_root.
+          ENDTRY.
+        ENDIF.
+      ENDIF.
+      RETURN.
+    ENDIF.
+
     CHECK <param> IS NOT INITIAL.
     DATA(lv_param) = CONV string( <param> ).
 
     " ---- VARS:{class}:{method} ----
     IF lv_param+0(5) = 'VARS:'.
       SPLIT lv_param AT ':' INTO DATA(lv_pfx) DATA(lv_class) DATA(lv_meth).
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+        WITH KEY class = lv_class eventtype = 'METHOD' eventname = lv_meth
+        INTO DATA(ls_vars_cl).
+      IF sy-subrc = 0.
+        zcl_ace_source_parser=>parse_call(
+          i_index     = ls_vars_cl-index
+          i_e_name    = lv_meth
+          i_e_type    = 'METHOD'
+          i_class     = lv_class
+          i_program   = ls_vars_cl-program
+          i_include   = ls_vars_cl-include
+          i_stack     = 0
+          i_no_steps  = abap_true
+          io_debugger = mo_viewer ).
+      ENDIF.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_v)
         WHERE program = <program> AND class = lv_class AND eventtype = 'METHOD' AND eventname = lv_meth.
         add_node( i_name = lv_v-name i_icon = lv_v-icon i_rel = node_key
@@ -1156,9 +1230,28 @@ method DISPLAY.
           add_node( i_name = lv_mprm-param i_icon = lv_mpicon i_rel = lv_meth_node
                     i_tree = VALUE #( value = lv_mprm-line include = lv_mprm-include var_name = lv_mprm-param ) ).
         ENDLOOP.
+        " parse_call чтобы заполнить t_vars, добавляем Local vars если есть
+        IF lv_cm-include IS NOT INITIAL.
+          READ TABLE mo_viewer->mo_window->mt_calls
+            WITH KEY include = lv_cm-include ev_name = lv_cm-eventname class = lv_cm-class
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            zcl_ace_source_parser=>parse_call(
+              i_index     = lv_cm-index
+              i_e_name    = lv_cm-eventname
+              i_e_type    = 'METHOD'
+              i_class     = lv_cm-class
+              i_program   = lv_cm-program
+              i_include   = lv_cm-include
+              i_stack     = 0
+              i_no_steps  = abap_true
+              io_debugger = mo_viewer ).
+          ENDIF.
+        ENDIF.
         DATA(lv_mv_cnt) = 0.
-        LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_mv)
-          WHERE program = lv_cm-program AND class = lv_cls_name AND eventname = lv_cm-eventname.
+        LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO lv_mv
+          WHERE program = lv_cm-program AND class = lv_cls_name
+            AND eventtype = 'METHOD' AND eventname = lv_cm-eventname.
           lv_mv_cnt += 1.
         ENDLOOP.
         IF lv_mv_cnt > 0.

@@ -14,6 +14,7 @@ public section.
       !I_E_TYPE    type STRING
       !I_CLASS     type STRING optional
       !I_STMT_IDX  type I optional
+      !I_NO_STEPS  type ABAP_BOOL optional
       !IO_DEBUGGER type ref to ZCL_ACE .
   class-methods PARSE_CALL_FORM
     importing
@@ -844,7 +845,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       READ TABLE io_debugger->mt_steps
         WITH KEY line = key-line program = i_program include = key-include
         TRANSPORTING NO FIELDS.
-      IF sy-subrc <> 0.
+      IF sy-subrc <> 0 AND i_no_steps IS INITIAL.
         ADD 1 TO io_debugger->m_step.
         APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
         <step>-step       = io_debugger->m_step.

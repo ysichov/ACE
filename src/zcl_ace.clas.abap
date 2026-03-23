@@ -571,6 +571,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ELSE. icon = icon_oo_overwrite. ENDIF.
 
       DATA(event_node) = mo_tree_local->add_node( i_name = subs-eventname i_icon = icon i_rel = class_rel i_tree = tree ).
+      APPEND event_node TO mo_tree_local->mt_lazy_nodes.
 
       LOOP AT mo_window->ms_sources-t_params INTO DATA(lv_p)
         WHERE class = subs-class AND event = 'METHOD' AND name = subs-eventname AND param IS NOT INITIAL.
@@ -580,9 +581,28 @@ CLASS ZCL_ACE IMPLEMENTATION.
           i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
       ENDLOOP.
 
+      " Парсим метод чтобы заполнить t_vars, затем добавляем Local vars если есть
+      IF subs-include IS NOT INITIAL.
+        READ TABLE mo_window->mt_calls
+          WITH KEY include = subs-include ev_name = subs-eventname class = subs-class
+          TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          zcl_ace_source_parser=>parse_call(
+            i_index     = subs-index
+            i_e_name    = subs-eventname
+            i_e_type    = 'METHOD'
+            i_class     = subs-class
+            i_program   = subs-program
+            i_include   = subs-include
+            i_stack     = 0
+            i_no_steps  = abap_true
+            io_debugger = mo_window->mo_viewer ).
+        ENDIF.
+      ENDIF.
       DATA(lv_var_cnt) = 0.
       LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
-        WHERE program = subs-program AND class = subs-class AND eventtype = subs-eventtype AND eventname = subs-eventname.
+        WHERE program = subs-program AND class = subs-class
+          AND eventtype = subs-eventtype AND eventname = subs-eventname.
         lv_var_cnt += 1.
       ENDLOOP.
       IF lv_var_cnt > 0.
