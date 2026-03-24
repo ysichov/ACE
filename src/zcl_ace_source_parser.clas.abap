@@ -180,25 +180,60 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
     DATA: structures LIKE <prog>-scan->structures.
 
-    LOOP AT <prog>-scan->structures INTO DATA(structure)
-      WHERE type = 'E' AND ( stmnt_type = '1' OR stmnt_type = '2' OR stmnt_type = '3' ).
-    ENDLOOP.
+    " If a specific event name is requested, find only that event's structure.
+    " Otherwise fall through to the general logic (all events or program body).
+    IF i_evname IS NOT INITIAL AND i_evtype = 'EVENT'.
 
-    IF sy-subrc = 0.
-      structures = <prog>-scan->structures.
-      DELETE structures WHERE type <> 'E'.
-      LOOP AT structures ASSIGNING FIELD-SYMBOL(<structure>) WHERE stmnt_type = 'g'.
-        CLEAR <structure>-stmnt_type.
-      ENDLOOP.
-      SORT structures BY stmnt_type ASCENDING.
+      " Locate the event in t_events by name
+      READ TABLE io_debugger->mo_window->ms_sources-t_events
+        WITH KEY program = i_program name = i_evname
+        INTO DATA(ls_sel_event).
+      IF sy-subrc <> 0.
+        " Try matching by stmnt_type / stmnt_from via structures
+        LOOP AT <prog>-scan->structures INTO DATA(str_ev)
+          WHERE type = 'E' AND ( stmnt_type = '1' OR stmnt_type = '2' OR stmnt_type = '3' ).
+          READ TABLE io_debugger->mo_window->ms_sources-t_events
+            WITH KEY program = i_program stmnt_type = str_ev-stmnt_type stmnt_from = str_ev-stmnt_from
+            INTO ls_sel_event.
+          IF sy-subrc = 0 AND ls_sel_event-name = i_evname. EXIT. ENDIF.
+          CLEAR ls_sel_event.
+        ENDLOOP.
+      ENDIF.
+
+      IF ls_sel_event-stmnt_from > 0.
+        " Find the matching structure for this event
+        LOOP AT <prog>-scan->structures INTO DATA(str_match)
+          WHERE type = 'E'
+            AND stmnt_type = ls_sel_event-stmnt_type
+            AND stmnt_from = ls_sel_event-stmnt_from.
+          APPEND str_match TO structures.
+          EXIT.
+        ENDLOOP.
+      ENDIF.
+
     ELSE.
-      CLEAR max.
-      LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'C' AND type <> 'R'.
-        IF max < str-stmnt_to.
-          max = str-stmnt_to.
-          APPEND str TO structures.
-        ENDIF.
+
+      LOOP AT <prog>-scan->structures INTO DATA(structure)
+        WHERE type = 'E' AND ( stmnt_type = '1' OR stmnt_type = '2' OR stmnt_type = '3' ).
       ENDLOOP.
+
+      IF sy-subrc = 0.
+        structures = <prog>-scan->structures.
+        DELETE structures WHERE type <> 'E'.
+        LOOP AT structures ASSIGNING FIELD-SYMBOL(<structure>) WHERE stmnt_type = 'g'.
+          CLEAR <structure>-stmnt_type.
+        ENDLOOP.
+        SORT structures BY stmnt_type ASCENDING.
+      ELSE.
+        CLEAR max.
+        LOOP AT <prog>-scan->structures INTO DATA(str) WHERE type <> 'C' AND type <> 'R'.
+          IF max < str-stmnt_to.
+            max = str-stmnt_to.
+            APPEND str TO structures.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+
     ENDIF.
 
     LOOP AT structures INTO str.
@@ -305,6 +340,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     ENDLOOP.
 
   ENDMETHOD.
+
 
 
   method COLLECT_ENHANCEMENTS.

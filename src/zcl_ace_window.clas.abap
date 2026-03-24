@@ -306,7 +306,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         DELETE lt_source INDEX 2.
         IF sy-subrc = 0.
           CALL FUNCTION 'CLPB_EXPORT'
-            TABLES data_tab = lt_source EXCEPTIONS clpb_error = 1 OTHERS = 2.
+            TABLES
+              data_tab   = lt_source
+            EXCEPTIONS
+              clpb_error = 1
+              OTHERS     = 2.
         ENDIF.
         lv_prog = mo_viewer->mv_prog.
         DATA(lv_count) = 0.
@@ -324,13 +328,22 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       WHEN 'DEPTH'.
         DATA: lv_answer TYPE c LENGTH 1, lv_value1 TYPE spop-varvalue1.
         CALL FUNCTION 'POPUP_TO_GET_ONE_VALUE'
-          EXPORTING textline1 = |Current depth: { m_hist_depth }. Enter new value (0-99):|
-                    titel = 'Set History Depth' valuelength = '2'
-          IMPORTING answer = lv_answer value1 = lv_value1 EXCEPTIONS OTHERS = 1.
+          EXPORTING
+            textline1   = |Current depth: { m_hist_depth }. Enter new value (0-99):|
+            titel       = 'Set History Depth'
+            valuelength = '2'
+          IMPORTING
+            answer      = lv_answer
+            value1      = lv_value1
+          EXCEPTIONS
+            OTHERS      = 1.
         IF sy-subrc <> 0 OR lv_answer <> 'J' OR lv_value1 IS INITIAL. RETURN. ENDIF.
         DATA(lv_new_depth) = CONV i( lv_value1 ).
-        IF lv_new_depth < 0. lv_new_depth = 0.
-        ELSEIF lv_new_depth > 99. lv_new_depth = 99. ENDIF.
+        IF lv_new_depth < 0.
+          lv_new_depth = 0.
+        ELSEIF lv_new_depth > 99.
+          lv_new_depth = 99.
+        ENDIF.
         m_hist_depth = lv_new_depth.
         apply_depth( ).
 
@@ -341,18 +354,27 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'CODEMIX'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
-        DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
-        IF ls_ctx-evtype IS NOT INITIAL.
-          DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.
-          zcl_ace_source_parser=>parse_call(
-            i_index = ls_sc-index i_e_name = ls_ctx-evname i_e_type = ls_ctx-evtype
-            i_class = ls_ctx-class i_program = CONV #( ls_sc-program )
-            i_include = CONV #( ls_sc-include ) i_stack = 0 io_debugger = mo_viewer ).
-        ELSE.
-          zcl_ace_source_parser=>code_execution_scanner(
-            i_program = mo_viewer->mo_window->m_prg-program
-            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer ).
-        ENDIF.
+        apply_depth( ).
+*        DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
+*        IF ls_ctx-evtype = 'EVENT'."IS NOT INITIAL.
+*          zcl_ace_source_parser=>code_execution_scanner(
+*            i_program = mo_viewer->mo_window->m_prg-program
+*            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer
+*            i_evtype = ls_ctx-evtype
+*            i_evname = ls_ctx-evname ).
+*
+*        ELSEIF ls_ctx-evtype IS NOT INITIAL.
+*          DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.
+*          zcl_ace_source_parser=>parse_call(
+*            i_index = ls_sc-index i_e_name = ls_ctx-evname i_e_type = ls_ctx-evtype
+*            i_class = ls_ctx-class i_program = CONV #( ls_sc-program )
+*            i_include = CONV #( ls_sc-include ) i_stack = 0 io_debugger = mo_viewer ).
+*
+*        ELSE.
+*          zcl_ace_source_parser=>code_execution_scanner(
+*            i_program = mo_viewer->mo_window->m_prg-program
+*            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer ).
+*        ENDIF.
         mo_viewer->get_code_mix( ).
         mo_viewer->mo_window->show_stack( ).
 
@@ -471,7 +493,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           DATA(lv_is_cu)     = xsdbool( lv_include CP '*CU' ).
           DATA(lv_is_method) = xsdbool( lv_include CP '*CM*' ).
           IF lv_is_cp = abap_true OR lv_include CP '*====E' OR lv_include CS 'EIMP'
-            OR lv_include CP '*CCMAC' OR lv_include CP '*CCIMP' OR lv_include CP '*CCAU'. CONTINUE. ENDIF.
+            OR lv_include CP '*CCMAC' OR lv_include CP '*CCIMP' OR lv_include CP '*CCAU'. CONTINUE.
+          ENDIF.
           CHECK ls_prog_wc-source_tab IS NOT INITIAL.
           IF lv_is_method = abap_true AND lv_in_methods = abap_false.
             lv_in_methods = abap_true.
@@ -986,39 +1009,69 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   endmethod.
 
 
-  method APPLY_DEPTH.
-      CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
-             mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
-      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-        WITH KEY selected = abap_true INTO DATA(source).
-      IF sy-subrc <> 0 OR source-include = 'Code_Flow_Mix' OR source-include = 'VIRTUAL'.
-        LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO source
-          WHERE include <> 'Code_Flow_Mix' AND include <> 'VIRTUAL'. EXIT.
-        ENDLOOP.
-      ENDIF.
-      CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
-             mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
-      DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
-      IF ls_ctx-evtype IS NOT INITIAL.
-        DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.
-        zcl_ace_source_parser=>parse_call(
-          i_index = ls_sc-index i_e_name = ls_ctx-evname i_e_type = ls_ctx-evtype
-          i_class = ls_ctx-class i_program =  ls_sc-program
-          i_include = CONV #( ls_sc-include ) i_stack = 0 io_debugger = mo_viewer ).
-      ELSE.
-        zcl_ace_source_parser=>code_execution_scanner(
-          i_program = mo_viewer->mo_window->m_prg-program
-          i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer ).
-      ENDIF.
-      mo_viewer->mo_window->show_coverage( ).
+  METHOD apply_depth.
+    CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+           mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
+    READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+      WITH KEY selected = abap_true INTO DATA(source).
+    IF sy-subrc <> 0 OR source-include = 'Code_Flow_Mix' OR source-include = 'VIRTUAL'.
+      LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO source
+        WHERE include <> 'Code_Flow_Mix' AND include <> 'VIRTUAL'. EXIT.
+      ENDLOOP.
+    ENDIF.
+    CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+           mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
+            DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
+        IF ls_ctx-evtype = 'EVENT'."IS NOT INITIAL.
+          zcl_ace_source_parser=>code_execution_scanner(
+            i_program = mo_viewer->mo_window->m_prg-program
+            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer
+            i_evtype = ls_ctx-evtype
+            i_evname = ls_ctx-evname ).
+
+        ELSEIF ls_ctx-evtype IS NOT INITIAL.
+          DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.
+          zcl_ace_source_parser=>parse_call(
+            i_index = ls_sc-index i_e_name = ls_ctx-evname i_e_type = ls_ctx-evtype
+            i_class = ls_ctx-class i_program = CONV #( ls_sc-program )
+            i_include = CONV #( ls_sc-include ) i_stack = 0 io_debugger = mo_viewer ).
+
+        ELSE.
+          zcl_ace_source_parser=>code_execution_scanner(
+            i_program = mo_viewer->mo_window->m_prg-program
+            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer ).
+        ENDIF.
+
+*    DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
+*        IF ls_ctx-evtype IS NOT INITIAL.
+*          DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.
+*          zcl_ace_source_parser=>parse_call(
+*            i_index = ls_sc-index i_e_name = ls_ctx-evname i_e_type = ls_ctx-evtype
+*            i_class = ls_ctx-class i_program = CONV #( ls_sc-program )
+*            i_include = CONV #( ls_sc-include ) i_stack = 0 io_debugger = mo_viewer ).
+*
+*        ELSE.
+*          IF ls_ctx-evtype <> 'EVENT'.
+*            zcl_ace_source_parser=>code_execution_scanner(
+*              i_program = mo_viewer->mo_window->m_prg-program
+*              i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer
+*              i_evtype = ls_ctx-evtype
+*              i_evname = ls_ctx-evname ).
+*          ELSE.
+*            zcl_ace_source_parser=>code_execution_scanner(
+*              i_program = mo_viewer->mo_window->m_prg-program
+*              i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer ).
+*          ENDIF.
+*        ENDIF.
+    mo_viewer->mo_window->show_coverage( ).
+    mo_viewer->mo_window->show_stack( ).
+    IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+    mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
+    IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
+      mo_viewer->get_code_mix( ).
       mo_viewer->mo_window->show_stack( ).
-      IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
-      mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
-      IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
-        mo_viewer->get_code_mix( ).
-        mo_viewer->mo_window->show_stack( ).
-      ENDIF.
-  endmethod.
+    ENDIF.
+  ENDMETHOD.
 
 
   method SHOW_STACK.
@@ -1052,6 +1105,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDIF.
   endmethod.
 
+
   METHOD push_nav_entry.
     " Если мы не в конце истории — обрезаем "будущее"
     IF mv_nav_idx < lines( mt_nav_history ).
@@ -1067,5 +1121,4 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     APPEND VALUE ts_nav_entry( include = i_include line = i_line ) TO mt_nav_history.
     mv_nav_idx = lines( mt_nav_history ).
   ENDMETHOD.
-
 ENDCLASS.

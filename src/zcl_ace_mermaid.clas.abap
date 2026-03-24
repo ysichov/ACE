@@ -193,6 +193,8 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
     " Fields used:
     "   ind        - sequential index within results (set in GET_CODE_FLOW)
     "   cond       - IF / ELSE / ELSEIF / ENDIF / CASE / WHEN / ENDCASE / <empty>
+    "   ev_name    - event/method name this line belongs to
+    "   stack      - call stack level (1 = root event, no incoming arrow from another context)
     "   els_before - ind of node before this ELSE/ELSEIF/WHEN (set in GET_CODE_FLOW)
     "   els_after  - ind of first real node after this branch (set in GET_CODE_FLOW)
     "   arrow      - label for edge (variable assignments)
@@ -205,6 +207,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           if_ptr    TYPE i,            " current index in lt_if
           pre_ind   TYPE i,            " ind of previous drawable node
           pre_cond  TYPE string,       " cond of previous node
+          pre_ev    TYPE string,       " ev_name of previous drawable node
           sub       TYPE string,       " edge label
           last_els  TYPE i.            " last els_after handled (to skip duplicate edges)
 
@@ -240,11 +243,16 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
         " draw edge from last node before ENDIF to ENDIF node
         IF pre_ind > 0 AND pre_cond <> 'ELSE' AND pre_cond <> 'ELSEIF' AND pre_cond <> 'WHEN'
            AND NOT ( last_els = line-ind ).
-          CV_MM_STRING = |{ CV_MM_STRING }{ pre_ind }-->{ sub }{ line-ind }\n|.
-          CLEAR sub.
+          " Stack-context check: do not draw arrow if current node is the
+          " first node of a new root context (stack = 1, different ev_name)
+          IF NOT ( line-stack = 1 AND line-ev_name <> pre_ev ).
+            CV_MM_STRING = |{ CV_MM_STRING }{ pre_ind }-->{ sub }{ line-ind }\n|.
+            CLEAR sub.
+          ENDIF.
         ENDIF.
         pre_ind  = line-ind.
         pre_cond = line-cond.
+        pre_ev   = line-ev_name.
         CONTINUE.
       ENDIF.
 
@@ -287,6 +295,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
           pre_ind  = line-ind.
         ENDIF.
         pre_cond = line-cond.
+        pre_ev   = line-ev_name.
         CLEAR sub.
         CONTINUE.
       ENDIF.
@@ -295,16 +304,25 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       IF pre_ind > 0
          AND pre_cond <> 'ELSE' AND pre_cond <> 'ELSEIF' AND pre_cond <> 'WHEN'
          AND NOT ( last_els = line-ind ).
-        CV_MM_STRING = |{ CV_MM_STRING }{ pre_ind }-->{ sub }{ line-ind }\n|.
+        " Stack-context check: do not draw an arrow from a node in a different
+        " call context into the first node of a new root event (stack = 1).
+        " This mirrors the call-stack logic used in STEPS_FLOW: a node at
+        " stacklevel 1 has no caller in the diagram, so no incoming cross-
+        " context arrow should be drawn.
+        IF NOT ( line-stack = 1 AND line-ev_name <> pre_ev ).
+          CV_MM_STRING = |{ CV_MM_STRING }{ pre_ind }-->{ sub }{ line-ind }\n|.
+        ENDIF.
       ENDIF.
 
       sub = COND string( WHEN line-arrow IS NOT INITIAL THEN '|"' && line-arrow && '"|' ).
       pre_ind  = line-ind.
       pre_cond = line-cond.
+      pre_ev   = line-ev_name.
 
     ENDLOOP.
 
   endmethod.
+
 
 
   METHOD magic_search.

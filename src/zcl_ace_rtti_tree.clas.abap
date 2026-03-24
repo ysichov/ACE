@@ -271,6 +271,34 @@ method DISPLAY.
 
       DATA(lv_param) = CONV string( <param> ).
 
+      " --- EVENT node: run scanner for this single event only ---
+      " kind='E', ev_type='EVENT', ev_name = event name (filled in ZCL_ACE=>SHOW)
+      IF <kind> = 'E' AND <ev_type> = 'EVENT' AND <ev_name> IS NOT INITIAL.
+        DATA(lv_ev_program) = CONV program( <program> ).
+        DATA(lv_ev_name)    = CONV string( <ev_name> ).
+        " Store context so CODEMIX / APPLY_DEPTH / Depth buttons reuse it
+        mo_viewer->mo_window->ms_code_context = VALUE #(
+          evtype = 'EVENT'
+          evname = lv_ev_name ).
+        CLEAR mo_viewer->mo_window->ms_sel_call.
+        " Run scanner scoped to this single event
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        zcl_ace_source_parser=>code_execution_scanner(
+          i_program  = lv_ev_program
+          i_include  = lv_ev_program
+          i_evtype   = 'EVENT'
+          i_evname   = lv_ev_name
+          io_debugger = mo_viewer ).
+        mo_viewer->mo_window->show_coverage( ).
+        mo_viewer->mo_window->show_stack( ).
+        " Navigate to the event's first line in the editor
+        IF <include> IS NOT INITIAL.
+          mo_viewer->mo_window->set_program( CONV #( <include> ) ).
+        ENDIF.
+        mo_viewer->mo_window->set_program_line( CONV #( <value> ) ).
+        RETURN.
+      ENDIF.
+
       " --- VARS: lazy-load folder ---
       IF lv_param IS NOT INITIAL AND lv_param+0(5) = 'VARS:'.
         SPLIT lv_param AT ':' INTO DATA(lv_pfx) DATA(lv_lazy_class) DATA(lv_lazy_meth).
@@ -813,6 +841,7 @@ method DISPLAY.
       ENDIF.
 
   endmethod.
+
 
 
   method HNDL_EXPAND_EMPTY.

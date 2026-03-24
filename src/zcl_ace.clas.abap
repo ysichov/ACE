@@ -1031,8 +1031,14 @@ CLASS ZCL_ACE IMPLEMENTATION.
                                       AND lines( splits_prg ) = 1.
       events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder )
         i_rel = mo_tree_local->main_node_key i_tree = VALUE #( ) ).
+      " kind='E', ev_type='EVENT', ev_name = event name — needed for single-event scanner on dblclick
       mo_tree_local->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event ) i_rel = events_rel
-        i_tree = VALUE #( kind = 'E' value = first_step-line include = first_step-include ) ).
+        i_tree = VALUE #( kind    = 'E'
+                          value   = first_step-line
+                          include = first_step-include
+                          program = mo_window->m_prg-program
+                          ev_type = 'EVENT'
+                          ev_name = first_step-eventname ) ).
     ENDIF.
     IF lines( splits_prg ) = 1.
       LOOP AT mo_window->ms_sources-t_events INTO DATA(event) WHERE program = mo_window->m_prg-program.
@@ -1040,8 +1046,14 @@ CLASS ZCL_ACE IMPLEMENTATION.
           events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder )
             i_rel = mo_tree_local->main_node_key i_tree = VALUE #( ) ).
         ENDIF.
+        " kind='E', ev_type='EVENT', ev_name = event name — needed for single-event scanner on dblclick
         mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel
-          i_tree = VALUE #( include = event-include value = event-line ) ).
+          i_tree = VALUE #( kind    = 'E'
+                            include = event-include
+                            value   = event-line
+                            program = mo_window->m_prg-program
+                            ev_type = 'EVENT'
+                            ev_name = event-name ) ).
       ENDLOOP.
     ENDIF.
     LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog) WHERE program+0(4) = 'SAPL'.
@@ -1205,4 +1217,5 @@ CLASS ZCL_ACE IMPLEMENTATION.
     ENDIF.
     mo_tree_local->display( ).
   ENDMETHOD.
+
 ENDCLASS.
