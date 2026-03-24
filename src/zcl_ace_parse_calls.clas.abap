@@ -393,12 +393,21 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       CLEAR: lt_bind, lv_single, lv_pos.
       lv_pos  = abap_true.
       lv_scan = lv_ti + 1.
+      DATA lv_cur_sec TYPE string.   " current keyword section: EXPORTING/IMPORTING/CHANGING/RECEIVING
+      CLEAR lv_cur_sec.
       WHILE lv_scan <= i_stmt-to.
         READ TABLE io_scan->tokens INDEX lv_scan INTO ls_sa.
         IF sy-subrc <> 0. EXIT. ENDIF.
         lv_sa_str = ls_sa-str.
         IF lv_sa_str = ')' OR lv_sa_str CO ')'. EXIT. ENDIF.
         IF lv_sa_str = '(' OR lv_sa_str = ','. lv_scan += 1. CONTINUE. ENDIF.
+        " Track explicit section keywords
+        IF lv_sa_str = 'EXPORTING' OR lv_sa_str = 'IMPORTING' OR
+           lv_sa_str = 'CHANGING'  OR lv_sa_str = 'RECEIVING'.
+          lv_cur_sec = lv_sa_str.
+          lv_pos = abap_false.
+          lv_scan += 1. CONTINUE.
+        ENDIF.
         CLEAR ls_eq.
         READ TABLE io_scan->tokens INDEX lv_scan + 1 INTO ls_eq.
         IF ls_eq-str = '='.
@@ -409,7 +418,19 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
             lv_val_str = ls_val-str.
             REPLACE ALL OCCURRENCES OF ')' IN lv_val_str WITH ''.
             CONDENSE lv_val_str NO-GAPS.
+            " Determine direction from current section:
+            " EXPORTING = caller sends value in  → dir='I'
+            " IMPORTING / RECEIVING = caller gets value out → dir='E'
+            " CHANGING = bidirectional → dir='C'
+            " No explicit section (plain named arg) → dir='I'
+            DATA(lv_bind_dir) = SWITCH char1( lv_cur_sec
+              WHEN 'EXPORTING'  THEN 'I'
+              WHEN 'IMPORTING'  THEN 'E'
+              WHEN 'RECEIVING'  THEN 'E'
+              WHEN 'CHANGING'   THEN 'C'
+              ELSE                   'I' ).
             CLEAR ls_b. ls_b-inner = lv_sa_str. ls_b-outer = lv_val_str.
+            ls_b-dir = lv_bind_dir.
             APPEND ls_b TO lt_bind.
             lv_scan += 3. CONTINUE.
           ENDIF.
@@ -446,7 +467,8 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           lv_ret = ls_ret-param. EXIT.
         ENDLOOP.
         CLEAR ls_b. ls_b-outer = lv_lhs. ls_b-inner = lv_ret.
-        APPEND ls_b TO lt_bind.
+      ls_b-dir = 'E'.   " returning value comes back to caller
+      APPEND ls_b TO lt_bind.
       ENDIF.
 
       lv_c-bindings = lt_bind.
@@ -474,7 +496,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       IF sy-subrc = 0. lv_kw = |CALL { ls_tok2-str }|. ENDIF.
     ENDIF.
 
-    " RAISE EVENT → нормализуем
     IF lv_kw = 'RAISE'.
       READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok2.
       IF sy-subrc = 0 AND ls_tok2-str = 'EVENT'. lv_kw = 'RAISE EVENT'. ENDIF.
@@ -494,19 +515,24 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         DATA ls_pf_call  TYPE zcl_ace=>ts_calls.
         DATA lv_pf_sec   TYPE string.
         DATA lv_pf_act_i TYPE i.
-        DATA ls_pf_bind  TYPE zcl_ace=>ts_param_binding.
+        DATA ls_pf_bind  TYPE zif_ace_parse_data=>ts_param_binding.
         ls_pf_call-event = 'FORM'.
         ls_pf_call-name  = ls_tok-str.
-        DATA lt_pf_actuals TYPE string_table.
+        DATA lt_pf_actuals   TYPE string_table.
+        DATA lt_pf_act_dirs  TYPE TABLE OF char1 WITH EMPTY KEY.
+        DATA lv_pf_cur_dir   TYPE char1 VALUE 'I'.
         DATA(lv_pf_i) = ls_stmt-from + 2.
         WHILE lv_pf_i <= ls_stmt-to.
           READ TABLE io_scan->tokens INDEX lv_pf_i INTO DATA(ls_pf_t).
           IF sy-subrc <> 0. EXIT. ENDIF.
           CASE ls_pf_t-str.
-            WHEN 'USING' OR 'CHANGING' OR 'TABLES'. lv_pf_sec = ls_pf_t-str.
+            WHEN 'USING'.    lv_pf_cur_dir = 'I'.
+            WHEN 'CHANGING'. lv_pf_cur_dir = 'C'.
+            WHEN 'TABLES'.   lv_pf_cur_dir = 'C'.
             WHEN OTHERS.
-              IF lv_pf_sec IS NOT INITIAL AND ls_pf_t-str IS NOT INITIAL.
+              IF ls_pf_t-str IS NOT INITIAL.
                 APPEND ls_pf_t-str TO lt_pf_actuals.
+                APPEND lv_pf_cur_dir TO lt_pf_act_dirs.
               ENDIF.
           ENDCASE.
           lv_pf_i += 1.
@@ -517,17 +543,24 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         SORT lt_pf_params BY line.
         lv_pf_act_i = 1.
         LOOP AT lt_pf_params INTO DATA(ls_pf_p).
-          READ TABLE lt_pf_actuals INDEX lv_pf_act_i INTO DATA(lv_pf_act).
+          READ TABLE lt_pf_actuals  INDEX lv_pf_act_i INTO DATA(lv_pf_act).
+          READ TABLE lt_pf_act_dirs INDEX lv_pf_act_i INTO DATA(lv_pf_dir).
           CLEAR ls_pf_bind.
           ls_pf_bind-outer = lv_pf_act.
           ls_pf_bind-inner = ls_pf_p-param.
+          ls_pf_bind-dir   = COND #( WHEN lv_pf_dir IS NOT INITIAL THEN lv_pf_dir ELSE 'I' ).
           APPEND ls_pf_bind TO ls_pf_call-bindings.
           lv_pf_act_i += 1.
         ENDLOOP.
         IF lt_pf_params IS INITIAL.
+          lv_pf_act_i = 1.
           LOOP AT lt_pf_actuals INTO DATA(lv_pf_only).
-            CLEAR ls_pf_bind. ls_pf_bind-outer = lv_pf_only.
+            READ TABLE lt_pf_act_dirs INDEX lv_pf_act_i INTO DATA(lv_pf_only_dir).
+            CLEAR ls_pf_bind.
+            ls_pf_bind-outer = lv_pf_only.
+            ls_pf_bind-dir   = COND #( WHEN lv_pf_only_dir IS NOT INITIAL THEN lv_pf_only_dir ELSE 'I' ).
             APPEND ls_pf_bind TO ls_pf_call-bindings.
+            lv_pf_act_i += 1.
           ENDLOOP.
         ENDIF.
         APPEND ls_pf_call TO lt_new_calls.
@@ -589,8 +622,15 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
                     DATA(lv_cm_actual) = ls_var_cm-str.
                     REPLACE ALL OCCURRENCES OF ')' IN lv_cm_actual WITH ''.
                     CONDENSE lv_cm_actual NO-GAPS.
-                    APPEND VALUE zcl_ace=>ts_param_binding(
-                      inner = ls_t_cm-str outer = lv_cm_actual ) TO lv_call-bindings.
+                    DATA(lv_cm_dir) = SWITCH char1( lv_section_cm
+                      WHEN 'EXPORTING'  THEN 'I'
+                      WHEN 'IMPORTING'  THEN 'E'
+                      WHEN 'RECEIVING'  THEN 'E'
+                      WHEN 'CHANGING'   THEN 'C'
+                      ELSE                   'I' ).
+                    APPEND VALUE zif_ace_parse_data=>ts_param_binding(
+                      inner = ls_t_cm-str outer = lv_cm_actual dir = lv_cm_dir )
+                      TO lv_call-bindings.
                     lv_tok_cm += 2.
                   ENDIF.
                 ENDIF.
@@ -600,36 +640,23 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         ENDWHILE.
         APPEND lv_call TO lt_new_calls.
 
-      " ── RAISE EVENT: ищем хэндлеры в tt_handler_map ─────────────
+      " ── RAISE EVENT ──────────────────────────────────────────────
       WHEN 'RAISE EVENT'.
-        " Синтаксис: RAISE EVENT event_name [EXPORTING p1 = v1 ...]
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
         CHECK sy-subrc = 0.
         DATA(lv_ev_name) = ls_tok-str.
-
-        " Ищем все хэндлеры для этого события в карте
         LOOP AT cs_source-tt_handler_map INTO DATA(ls_hm)
           WHERE event_name = lv_ev_name.
-          " Добавляем хэндлер как вызов метода
           APPEND VALUE zcl_ace=>ts_calls(
-            event = 'METHOD'
-            class = ls_hm-hdl_class
-            name  = ls_hm-hdl_method
-            type  = 'H'              " H = Handler — для визуализации
-          ) TO lt_new_calls.
+            event = 'METHOD' class = ls_hm-hdl_class name = ls_hm-hdl_method type = 'H' )
+            TO lt_new_calls.
         ENDLOOP.
-
-        " Если карта пуста (SET HANDLER ещё не распаршен) —
-        " регистрируем событие для последующего связывания
         IF lt_new_calls IS INITIAL.
-          APPEND VALUE zcl_ace=>ts_calls(
-            event = 'EVENT'
-            name  = lv_ev_name
-            class = mv_class_name
-          ) TO lt_new_calls.
+          APPEND VALUE zcl_ace=>ts_calls( event = 'EVENT' name = lv_ev_name class = mv_class_name )
+            TO lt_new_calls.
         ENDIF.
 
-      " ── COMPUTE / NEW: NEW constructor + obj->meth ───────────────
+      " ── COMPUTE / NEW ────────────────────────────────────────────
       WHEN 'COMPUTE'.
         DATA lv_ci TYPE i.
         DATA ls_ct LIKE LINE OF io_scan->tokens.
@@ -658,7 +685,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
           CHANGING  cs_source = cs_source ct_calls = lt_new_calls ).
 
-      " ── +CALL_METHOD: функциональный стиль obj->meth( ) ──────────
+      " ── +CALL_METHOD ─────────────────────────────────────────────
       WHEN '+CALL_METHOD'.
         collect_method_calls(
           EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
@@ -686,4 +713,5 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     ENDLOOP.
 
   ENDMETHOD.
+
 ENDCLASS.

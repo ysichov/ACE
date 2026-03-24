@@ -5,6 +5,7 @@ INTERFACE zif_ace_parse_data PUBLIC.
     BEGIN OF ts_param_binding,
       outer TYPE string,
       inner TYPE string,
+      dir   TYPE char1,   " 'I'=importing/using  'E'=exporting/returning  'C'=changing
     END OF ts_param_binding .
   TYPES:
     tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .

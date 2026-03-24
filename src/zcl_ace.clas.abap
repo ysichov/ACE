@@ -91,10 +91,12 @@ CLASS zcl_ace DEFINITION
         time       LIKE sy-uzeit,
       END OF t_step_counter .
 
+    " Aligned with zif_ace_parse_data=>ts_param_binding (dir added)
     TYPES:
       BEGIN OF ts_param_binding,
         outer TYPE string,
         inner TYPE string,
+        dir   TYPE char1,
       END OF ts_param_binding .
     TYPES:
       tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .
@@ -861,11 +863,19 @@ CLASS ZCL_ACE IMPLEMENTATION.
         REPLACE ALL OCCURRENCES OF '"' IN <line>-code WITH ''.
 
         " Build arrow label from bindings (outer=actual, inner=formal)
+        " dir: 'I'=importing/using  outer>inner
+        "      'E'=exporting/returning  outer<inner
+        "      'C'=changing  outer<>inner
         LOOP AT call-bindings INTO DATA(ls_bind).
           CHECK ls_bind-outer IS NOT INITIAL OR ls_bind-inner IS NOT INITIAL.
           IF <line>-arrow IS NOT INITIAL. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
+          DATA(lv_sep) = SWITCH string( ls_bind-dir
+            WHEN 'I' THEN '->'
+            WHEN 'E' THEN '<-'
+            WHEN 'C' THEN '-> <-'
+            ELSE          '--' ).
           IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
-            <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }-{ ls_bind-inner }|.
+            <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }{ lv_sep }{ ls_bind-inner }|.
           ELSEIF ls_bind-outer IS NOT INITIAL.
             <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }|.
           ELSE.
@@ -931,7 +941,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
       LOOP AT results ASSIGNING <line>. <line>-ind = sy-tabix. ENDLOOP.
     ENDIF.
   ENDMETHOD.
-
 
 
   METHOD get_code_mix.
@@ -1231,5 +1240,4 @@ CLASS ZCL_ACE IMPLEMENTATION.
     ENDIF.
     mo_tree_local->display( ).
   ENDMETHOD.
-
 ENDCLASS.
