@@ -1,3 +1,4 @@
+   "should be skipped
 *&---------------------------------------------------------------------*
 *& Program  : Z_CALC_DEMO
 *& Description: Annuity credit calculator demo (local OOP)

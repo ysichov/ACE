@@ -177,7 +177,9 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       ENDIF.
 
       DATA(lv_kw_idx) = sy-tabix.
-      CHECK ls_kw_stmt-type <> '*'.
+
+      " Skip comment statements: 'P'
+      CHECK ls_kw_stmt-type <> 'P'.
 
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from     INTO DATA(ls_kw_tok).
       CHECK sy-subrc = 0.

@@ -203,13 +203,19 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
     " Work with a local copy so we don't corrupt shared state
     DATA(lt_if) = mo_viewer->mt_if.
 
-    DATA: if_stack  TYPE TABLE OF i,   " stack of indices into lt_if
-          if_ptr    TYPE i,            " current index in lt_if
-          pre_ind   TYPE i,            " ind of previous drawable node
-          pre_cond  TYPE string,       " cond of previous node
-          pre_ev    TYPE string,       " ev_name of previous drawable node
-          sub       TYPE string,       " edge label
-          last_els  TYPE i.            " last els_after handled (to skip duplicate edges)
+    DATA: if_stack   TYPE TABLE OF i,      " stack of indices into lt_if
+          if_ptr     TYPE i,               " current index in lt_if
+          pre_ind    TYPE i,               " ind of previous drawable node
+          pre_cond   TYPE string,          " cond of previous node
+          pre_ev     TYPE string,          " ev_name of previous drawable node
+          sub        TYPE string,          " edge label
+          last_els   TYPE i.               " last els_after handled (to skip duplicate edges)
+
+    " Track which (stack=1, ev_name) contexts have already had at least one node
+    " drawn. Only the very first node of a root context must not get an incoming
+    " cross-context arrow; subsequent nodes in the same context may receive arrows
+    " from nodes that temporarily "dipped" into a deeper ev_name (subgraph call).
+    DATA lt_started_ev TYPE TABLE OF string WITH EMPTY KEY.
 
     LOOP AT IT_LINES INTO DATA(line).
 
@@ -243,12 +249,23 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
         " draw edge from last node before ENDIF to ENDIF node
         IF pre_ind > 0 AND pre_cond <> 'ELSE' AND pre_cond <> 'ELSEIF' AND pre_cond <> 'WHEN'
            AND NOT ( last_els = line-ind ).
-          " Stack-context check: do not draw arrow if current node is the
-          " first node of a new root context (stack = 1, different ev_name)
-          IF NOT ( line-stack = 1 AND line-ev_name <> pre_ev ).
+          " Block only the very first appearance of a root-level (stack=1) ev_name context
+          DATA(lv_block_endif) = abap_false.
+          IF line-stack = 1.
+            READ TABLE lt_started_ev WITH KEY table_line = line-ev_name TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              lv_block_endif = abap_true.
+            ENDIF.
+          ENDIF.
+          IF lv_block_endif = abap_false.
             CV_MM_STRING = |{ CV_MM_STRING }{ pre_ind }-->{ sub }{ line-ind }\n|.
             CLEAR sub.
           ENDIF.
+        ENDIF.
+        " Mark this ev_name as started once we output (or skip) its first node
+        IF line-stack = 1.
+          READ TABLE lt_started_ev WITH KEY table_line = line-ev_name TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0. APPEND line-ev_name TO lt_started_ev. ENDIF.
         ENDIF.
         pre_ind  = line-ind.
         pre_cond = line-cond.
@@ -304,14 +321,27 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
       IF pre_ind > 0
          AND pre_cond <> 'ELSE' AND pre_cond <> 'ELSEIF' AND pre_cond <> 'WHEN'
          AND NOT ( last_els = line-ind ).
-        " Stack-context check: do not draw an arrow from a node in a different
-        " call context into the first node of a new root event (stack = 1).
-        " This mirrors the call-stack logic used in STEPS_FLOW: a node at
-        " stacklevel 1 has no caller in the diagram, so no incoming cross-
-        " context arrow should be drawn.
-        IF NOT ( line-stack = 1 AND line-ev_name <> pre_ev ).
+        " Block only the very first node of a root-level (stack=1) context when
+        " it is being encountered for the first time — i.e. it has no predecessor
+        " within its own ev_name yet. Subsequent appearances of the same ev_name
+        " (e.g. after returning from a nested subgraph call) are allowed arrows.
+        DATA(lv_block) = abap_false.
+        IF line-stack = 1.
+          READ TABLE lt_started_ev WITH KEY table_line = line-ev_name TRANSPORTING NO FIELDS.
+          IF sy-subrc <> 0.
+            " First node of this root context — no incoming cross-context arrow
+            lv_block = abap_true.
+          ENDIF.
+        ENDIF.
+        IF lv_block = abap_false.
           CV_MM_STRING = |{ CV_MM_STRING }{ pre_ind }-->{ sub }{ line-ind }\n|.
         ENDIF.
+      ENDIF.
+
+      " Mark this ev_name as started once we process its first node
+      IF line-stack = 1.
+        READ TABLE lt_started_ev WITH KEY table_line = line-ev_name TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0. APPEND line-ev_name TO lt_started_ev. ENDIF.
       ENDIF.
 
       sub = COND string( WHEN line-arrow IS NOT INITIAL THEN '|"' && line-arrow && '"|' ).
@@ -322,6 +352,7 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
     ENDLOOP.
 
   endmethod.
+
 
 
 
@@ -368,6 +399,8 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
     open_mermaid( mm_string ).
 
   ENDMETHOD.
+
+
 
 
   method ADD_TOOLBAR_BUTTONS.
