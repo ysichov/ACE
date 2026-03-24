@@ -850,14 +850,27 @@ CLASS ZCL_ACE IMPLEMENTATION.
         IF <line>-code IS INITIAL. <line>-code = token-str. ELSE. <line>-code = |{ <line>-code } { token-str }|. ENDIF.
       ENDLOOP.
       IF keyword-tt_calls IS NOT INITIAL.
-        SORT keyword-tt_calls BY outer. DELETE ADJACENT DUPLICATES FROM keyword-tt_calls.
-        LOOP AT keyword-tt_calls INTO call.
-          <line>-subname = call-name.
-          CHECK call-outer IS NOT INITIAL AND call-inner IS NOT INITIAL.
-          IF sy-tabix <> 1. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
-          <line>-arrow = |{ <line>-arrow } { call-outer } { call-type } { call-inner }|.
-          REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
-          REPLACE ALL OCCURRENCES OF '"' IN <line>-code WITH ''.
+        " Use the first call entry to get subname and build arrow from bindings.
+        " bindings holds outer (actual) -> inner (formal) pairs collected by the parser
+        " for PERFORM...USING/CHANGING and METHOD calls with EXPORTING/IMPORTING etc.
+        READ TABLE keyword-tt_calls INDEX 1 INTO call.
+        <line>-subname = call-name.
+        REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
+        REPLACE ALL OCCURRENCES OF '(' IN <line>-subname WITH ''.
+        REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
+        REPLACE ALL OCCURRENCES OF '"' IN <line>-code WITH ''.
+
+        " Build arrow label from bindings (outer=actual, inner=formal)
+        LOOP AT call-bindings INTO DATA(ls_bind).
+          CHECK ls_bind-outer IS NOT INITIAL OR ls_bind-inner IS NOT INITIAL.
+          IF <line>-arrow IS NOT INITIAL. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
+          IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
+            <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }-{ ls_bind-inner }|.
+          ELSEIF ls_bind-outer IS NOT INITIAL.
+            <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }|.
+          ELSE.
+            <line>-arrow = |{ <line>-arrow }{ ls_bind-inner }|.
+          ENDIF.
         ENDLOOP.
       ENDIF.
       REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
@@ -918,6 +931,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       LOOP AT results ASSIGNING <line>. <line>-ind = sy-tabix. ENDLOOP.
     ENDIF.
   ENDMETHOD.
+
 
 
   METHOD get_code_mix.
