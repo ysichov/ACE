@@ -847,14 +847,48 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ind = sy-tabix.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = <line>-include INTO prog.
       READ TABLE prog-t_keywords WITH KEY line = <line>-line INTO keyword.
+      " Collect all tokens; insert <br/> before each new param = pattern (after a value token).
+      " State: lv_prev_was_value = true after we saw  "= VALUE", so next word is a new param name.
+      DATA(lv_in_params)      = abap_false.  " true once we pass first EXPORTING/IMPORTING etc.
+      DATA(lv_after_eq)       = abap_false.  " true right after '='
+      DATA(lv_prev_was_value) = abap_false.  " true after value token following '='
       LOOP AT prog-scan->tokens FROM keyword-from TO keyword-to INTO DATA(token).
-        IF token-str = 'USING' OR token-str = 'EXPORTING' OR token-str = 'IMPORTING' OR token-str = 'CHANGING'. EXIT. ENDIF.
-        IF <line>-code IS INITIAL. <line>-code = token-str. ELSE. <line>-code = |{ <line>-code } { token-str }|. ENDIF.
+        DATA(lv_tok) = token-str.
+        " Detect entry into param section
+        IF lv_tok = 'EXPORTING' OR lv_tok = 'IMPORTING' OR lv_tok = 'CHANGING'
+           OR lv_tok = 'USING' OR lv_tok = 'TABLES' OR lv_tok = 'RAISING'.
+          lv_in_params      = abap_true.
+          lv_after_eq       = abap_false.
+          lv_prev_was_value = abap_false.
+          IF <line>-code IS INITIAL. <line>-code = lv_tok. ELSE. <line>-code = |{ <line>-code } { lv_tok }|. ENDIF.
+          CONTINUE.
+        ENDIF.
+        IF lv_tok = '='.
+          lv_after_eq       = abap_true.
+          lv_prev_was_value = abap_false.
+          <line>-code = |{ <line>-code } { lv_tok }|.
+          CONTINUE.
+        ENDIF.
+        IF lv_in_params = abap_true.
+          IF lv_after_eq = abap_true.
+            " This is the value token
+            <line>-code = |{ <line>-code } { lv_tok }|.
+            lv_after_eq       = abap_false.
+            lv_prev_was_value = abap_true.
+          ELSEIF lv_prev_was_value = abap_true.
+            " This is the next param name — insert <br/> before it
+            <line>-code = |{ <line>-code }<br/>{ lv_tok }|.
+            lv_prev_was_value = abap_false.
+          ELSE.
+            " First param name after section keyword
+            <line>-code = |{ <line>-code } { lv_tok }|.
+          ENDIF.
+        ELSE.
+          " Before any param section — just append
+          IF <line>-code IS INITIAL. <line>-code = lv_tok. ELSE. <line>-code = |{ <line>-code } { lv_tok }|. ENDIF.
+        ENDIF.
       ENDLOOP.
       IF keyword-tt_calls IS NOT INITIAL.
-        " Use the first call entry to get subname and build arrow from bindings.
-        " bindings holds outer (actual) -> inner (formal) pairs collected by the parser
-        " for PERFORM...USING/CHANGING and METHOD calls with EXPORTING/IMPORTING etc.
         READ TABLE keyword-tt_calls INDEX 1 INTO call.
         <line>-subname = call-name.
         REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
@@ -863,14 +897,10 @@ CLASS ZCL_ACE IMPLEMENTATION.
         REPLACE ALL OCCURRENCES OF '"' IN <line>-code WITH ''.
 
         " Build arrow label from bindings (outer=actual, inner=formal)
-        " dir: 'I'=importing/using  outer->inner  (actual passed into formal)
-        "      'E'=exporting/returning  shown as  outer = inner( )
-        "      'C'=changing  outer<>inner
         LOOP AT call-bindings INTO DATA(ls_bind).
           CHECK ls_bind-outer IS NOT INITIAL OR ls_bind-inner IS NOT INITIAL.
-          IF <line>-arrow IS NOT INITIAL. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
+          IF <line>-arrow IS NOT INITIAL. <line>-arrow = |{ <line>-arrow }<br/>|. ENDIF.
           IF ls_bind-dir = 'E'.
-            " EXPORTING / RETURNING: outer = inner( )
             IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
               <line>-arrow = |{ <line>-arrow }{ ls_bind-outer } = { ls_bind-inner }( )|.
             ELSEIF ls_bind-outer IS NOT INITIAL.
@@ -899,7 +929,6 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDIF.
       ENDIF.
       REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
-      " Do NOT strip parentheses from subname — they are intentional: run( )
       REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''. REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
     ENDLOOP.
     DATA: if_depth TYPE i, when_count TYPE i.

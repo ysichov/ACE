@@ -68,14 +68,15 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
   method FORMAT_NODE_LABEL.
 
     RV_LABEL = I_CODE.
-    IF strlen( RV_LABEL ) > I_MAXLEN.
+    " Truncate only if I_MAXLEN > 0
+    IF I_MAXLEN > 0 AND strlen( RV_LABEL ) > I_MAXLEN.
       RV_LABEL = RV_LABEL+0(I_MAXLEN).
     ENDIF.
     REPLACE ALL OCCURRENCES OF `PERFORM`       IN RV_LABEL WITH `FORM`     IN CHARACTER MODE.
     REPLACE ALL OCCURRENCES OF `CALL FUNCTION` IN RV_LABEL WITH `FUNCTION` IN CHARACTER MODE.
     REPLACE ALL OCCURRENCES OF `CALL METHOD`   IN RV_LABEL WITH `METHOD`   IN CHARACTER MODE.
     REPLACE ALL OCCURRENCES OF `-`             IN RV_LABEL WITH ` `        IN CHARACTER MODE.
-    " Replace spaces with &nbsp; but preserve ( ) so that run( ) stays readable
+    " Replace spaces with &nbsp; but preserve <br/> tags already embedded in the label
     REPLACE ALL OCCURRENCES OF ` `             IN RV_LABEL WITH `&nbsp;`   IN CHARACTER MODE.
 
   endmethod.
@@ -141,20 +142,25 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
       ENDIF.
 
-      " PERFORM/CALL FUNCTION/CALL METHOD etc. — draw node using subname only (no params),
-      " then open subgraph for nested rows. Params belong only to the edge label.
+      " PERFORM/CALL FUNCTION/CALL METHOD etc.
       IF <line>-subname IS NOT INITIAL.
 
-        DATA(name2) = format_node_label( i_code = <line>-subname ).
-
-        " Node label shows only the method/function name — parameters go on the edge
-        CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ name2 }"{ box_e }\n|.
-
         READ TABLE CT_LINES INDEX lv_tabix + 1 INTO line2.
-        IF sy-subrc = 0 AND line2-stack > <line>-stack.
+        DATA(lv_has_children) = xsdbool( sy-subrc = 0 AND line2-stack > <line>-stack ).
+
+        IF lv_has_children = abap_true.
+          " Call goes deeper (stack+1): node shows only method name, params go on edge
+          DATA(name2) = format_node_label( i_code = <line>-subname ).
+          CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ name2 }"{ box_e }\n|.
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ name2 }"]\n  direction { I_DIRECTION }\n|.
           opened += 1.
+        ELSE.
+          " Same-level call: show full original code without truncation, clear edge label
+          DATA(lv_label) = format_node_label( i_code = <line>-code i_maxlen = 0 ).
+          CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ lv_label }"{ box_e }\n|.
+          CLEAR <line>-arrow.
         ENDIF.
+
         pre_stack = <line>.
         CONTINUE.
 
@@ -176,8 +182,8 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
       " Regular node
       REPLACE ALL OCCURRENCES OF `-` IN <line>-code WITH ` ` IN CHARACTER MODE.
-      DATA(lv_label) = format_node_label( i_code = <line>-code ).
-      CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ lv_label }"{ box_e }\n|.
+      DATA(lv_reg_label) = format_node_label( i_code = <line>-code ).
+      CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ lv_reg_label }"{ box_e }\n|.
       pre_stack = <line>.
 
     ENDLOOP.
