@@ -757,13 +757,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
     LOOP AT steps INTO step.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calculated_var) WHERE line = step-line.
+        ADD 1 TO ind.
+        LOOP AT mo_window->ms_sources-t_composed INTO DATA(composed_var) WHERE line = step-line.
+          READ TABLE lt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0. APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>. <selected>-name = composed_var-name. ENDIF.
+        ENDLOOP.
         READ TABLE lt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
-          LOOP AT mo_window->ms_sources-t_composed INTO DATA(composed_var) WHERE line = step-line.
-            READ TABLE lt_selected_var WITH KEY name = composed_var-name TRANSPORTING NO FIELDS.
-            IF sy-subrc <> 0. APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>. <selected>-name = composed_var-name. ENDIF.
-          ENDLOOP.
-        ENDIF.
+        IF sy-subrc = 0. APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>. <selected>-name = call-inner. ENDIF.
       ENDLOOP.
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
       LOOP AT keyword-tt_calls INTO call.
@@ -863,29 +863,44 @@ CLASS ZCL_ACE IMPLEMENTATION.
         REPLACE ALL OCCURRENCES OF '"' IN <line>-code WITH ''.
 
         " Build arrow label from bindings (outer=actual, inner=formal)
-        " dir: 'I'=importing/using  outer>inner
-        "      'E'=exporting/returning  outer<inner
+        " dir: 'I'=importing/using  outer->inner  (actual passed into formal)
+        "      'E'=exporting/returning  shown as  outer = inner( )
         "      'C'=changing  outer<>inner
         LOOP AT call-bindings INTO DATA(ls_bind).
           CHECK ls_bind-outer IS NOT INITIAL OR ls_bind-inner IS NOT INITIAL.
           IF <line>-arrow IS NOT INITIAL. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
-          DATA(lv_sep) = SWITCH string( ls_bind-dir
-            WHEN 'I' THEN '->'
-            WHEN 'E' THEN '<-'
-            WHEN 'C' THEN '-> <-'
-            ELSE          '--' ).
-          IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
-            <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }{ lv_sep }{ ls_bind-inner }|.
-          ELSEIF ls_bind-outer IS NOT INITIAL.
-            <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }|.
+          IF ls_bind-dir = 'E'.
+            " EXPORTING / RETURNING: outer = inner( )
+            IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
+              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer } = { ls_bind-inner }( )|.
+            ELSEIF ls_bind-outer IS NOT INITIAL.
+              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }|.
+            ELSE.
+              <line>-arrow = |{ <line>-arrow }{ ls_bind-inner }( )|.
+            ENDIF.
           ELSE.
-            <line>-arrow = |{ <line>-arrow }{ ls_bind-inner }|.
+            DATA(lv_sep) = SWITCH string( ls_bind-dir
+              WHEN 'I' THEN '->'
+              WHEN 'C' THEN '-> <-'
+              ELSE          '--' ).
+            IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
+              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }{ lv_sep }{ ls_bind-inner }|.
+            ELSEIF ls_bind-outer IS NOT INITIAL.
+              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }|.
+            ELSE.
+              <line>-arrow = |{ <line>-arrow }{ ls_bind-inner }|.
+            ENDIF.
           ENDIF.
         ENDLOOP.
+
+        " Append ( ) to subname so nodes show as  run( )
+        IF <line>-subname IS NOT INITIAL.
+          <line>-subname = |{ <line>-subname }( )|.
+        ENDIF.
       ENDIF.
       REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
+      " Do NOT strip parentheses from subname — they are intentional: run( )
       REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''. REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
-      REPLACE ALL OCCURRENCES OF '(' IN <line>-subname WITH ''. REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
     ENDLOOP.
     DATA: if_depth TYPE i, when_count TYPE i.
     LOOP AT results ASSIGNING <line>. <line>-ind = sy-tabix. ENDLOOP.

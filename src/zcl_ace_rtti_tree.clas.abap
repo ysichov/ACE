@@ -291,6 +291,10 @@ method DISPLAY.
           io_debugger = mo_viewer ).
         mo_viewer->mo_window->show_coverage( ).
         mo_viewer->mo_window->show_stack( ).
+        " Refresh mermaid diagram if open — same as APPLY_DEPTH / CODEMIX do
+        IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL.
+          mo_viewer->mo_window->mo_mermaid->refresh( ).
+        ENDIF.
         " Navigate to the event's first line in the editor
         IF <include> IS NOT INITIAL.
           mo_viewer->mo_window->set_program( CONV #( <include> ) ).
