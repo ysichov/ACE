@@ -159,54 +159,54 @@ ENDCLASS.
 *----------------------------------------------------------------------*
 CLASS lcl_display DEFINITION FINAL.
   PUBLIC SECTION.
-    CLASS-METHODS show_summary
-      IMPORTING iv_amount          TYPE ty_amount
-                iv_months          TYPE i
-                iv_rate_year       TYPE ty_rate
-                iv_monthly_payment TYPE ty_amount
-                iv_total_payment   TYPE ty_amount
-                iv_overpayment     TYPE ty_amount.
+*    CLASS-METHODS show_summary
+*      IMPORTING iv_amount          TYPE ty_amount
+*                iv_months          TYPE i
+*                iv_rate_year       TYPE ty_rate
+*                iv_monthly_payment TYPE ty_amount
+*                iv_total_payment   TYPE ty_amount
+*                iv_overpayment     TYPE ty_amount.
 
-    CLASS-METHODS show_schedule
-      IMPORTING it_schedule TYPE ty_schedule.
+*    CLASS-METHODS show_schedule
+*      IMPORTING it_schedule TYPE ty_schedule.
 ENDCLASS.
 
 CLASS lcl_display IMPLEMENTATION.
-  METHOD show_summary.
-    WRITE: / '==================================================='.
-    WRITE: / '       CREDIT CALCULATION  (annuity method)'.
-    WRITE: / '==================================================='.
-    WRITE: / 'Principal:       ', iv_amount          CURRENCY 'USD'.
-    WRITE: / 'Term (months):   ', iv_months.
-    WRITE: / 'Annual rate:     ', iv_rate_year, '%'.
-    WRITE: / '---------------------------------------------------'.
-    WRITE: / 'Monthly payment: ', iv_monthly_payment CURRENCY 'USD'.
-    WRITE: / 'Total payment:   ', iv_total_payment   CURRENCY 'USD'.
-    WRITE: / 'Overpayment:     ', iv_overpayment     CURRENCY 'USD'.
-    WRITE: / '==================================================='.
-    SKIP.
-  ENDMETHOD.
-
-  METHOD show_schedule.
-    WRITE: / 'PAYMENT SCHEDULE:'.
-    WRITE: /   sy-vline, 'Mon'      ,  6 sy-vline,
-                         'Payment'  , 20 sy-vline,
-                         'Principal', 34 sy-vline,
-                         'Interest' , 48 sy-vline,
-                         'Balance'  , 62 sy-vline.
-    WRITE: / '--------------------------------------------------------------'.
-
-    LOOP AT it_schedule INTO DATA(ls_line).
-      WRITE: /   sy-vline, ls_line-month              ,
-              6  sy-vline, ls_line-payment   CURRENCY 'USD',
-              20 sy-vline, ls_line-principal CURRENCY 'USD',
-              34 sy-vline, ls_line-interest  CURRENCY 'USD',
-              48 sy-vline, ls_line-balance   CURRENCY 'USD',
-              62 sy-vline.
-    ENDLOOP.
-
-    WRITE: / '--------------------------------------------------------------'.
-  ENDMETHOD.
+*  METHOD show_summary.
+*    WRITE: / '==================================================='.
+*    WRITE: / '       CREDIT CALCULATION  (annuity method)'.
+*    WRITE: / '==================================================='.
+*    WRITE: / 'Principal:       ', iv_amount          CURRENCY 'USD'.
+*    WRITE: / 'Term (months):   ', iv_months.
+*    WRITE: / 'Annual rate:     ', iv_rate_year, '%'.
+*    WRITE: / '---------------------------------------------------'.
+*    WRITE: / 'Monthly payment: ', iv_monthly_payment CURRENCY 'USD'.
+*    WRITE: / 'Total payment:   ', iv_total_payment   CURRENCY 'USD'.
+*    WRITE: / 'Overpayment:     ', iv_overpayment     CURRENCY 'USD'.
+*    WRITE: / '==================================================='.
+*    SKIP.
+*  ENDMETHOD.
+*
+*  METHOD show_schedule.
+*    WRITE: / 'PAYMENT SCHEDULE:'.
+*    WRITE: /   sy-vline, 'Mon'      ,  6 sy-vline,
+*                         'Payment'  , 20 sy-vline,
+*                         'Principal', 34 sy-vline,
+*                         'Interest' , 48 sy-vline,
+*                         'Balance'  , 62 sy-vline.
+*    WRITE: / '--------------------------------------------------------------'.
+*
+*    LOOP AT it_schedule INTO DATA(ls_line).
+*      WRITE: /   sy-vline, ls_line-month              ,
+*              6  sy-vline, ls_line-payment   CURRENCY 'USD',
+*              20 sy-vline, ls_line-principal CURRENCY 'USD',
+*              34 sy-vline, ls_line-interest  CURRENCY 'USD',
+*              48 sy-vline, ls_line-balance   CURRENCY 'USD',
+*              62 sy-vline.
+*    ENDLOOP.
+*
+*    WRITE: / '--------------------------------------------------------------'.
+*  ENDMETHOD.
 ENDCLASS.
 
 *----------------------------------------------------------------------*
@@ -276,10 +276,10 @@ CLASS lcl_calculator IMPLEMENTATION.
 
   METHOD run.
     " Validate all input parameters before calculation
-    lcl_validator=>validate(
-      iv_amount    = iv_amount
-      iv_months    = iv_months
-      iv_rate_year = iv_rate_year ).
+*    lcl_validator=>validate(
+*      iv_amount    = iv_amount
+*      iv_months    = iv_months
+*      iv_rate_year = iv_rate_year ).
 
     " Step 1: annual rate → monthly fraction
     DATA(lv_rate) = get_rate_monthly(
@@ -302,23 +302,23 @@ CLASS lcl_calculator IMPLEMENTATION.
       iv_amount        = iv_amount ).
 
     " Build and display the payment schedule
-    DATA lt_schedule TYPE ty_schedule.
-    lcl_schedule_builder=>build(
-      EXPORTING iv_amount          = iv_amount
-                iv_months          = iv_months
-                iv_monthly_payment = ev_monthly_payment
-                iv_rate_monthly    = lv_rate
-      IMPORTING et_schedule        = lt_schedule ).
-
-    lcl_display=>show_summary(
-      iv_amount          = iv_amount
-      iv_months          = iv_months
-      iv_rate_year       = iv_rate_year
-      iv_monthly_payment = ev_monthly_payment
-      iv_total_payment   = ev_total_payment
-      iv_overpayment     = ev_overpayment ).
-
-    lcl_display=>show_schedule( lt_schedule ).
+*    DATA lt_schedule TYPE ty_schedule.
+*    lcl_schedule_builder=>build(
+*      EXPORTING iv_amount          = iv_amount
+*                iv_months          = iv_months
+*                iv_monthly_payment = ev_monthly_payment
+*                iv_rate_monthly    = lv_rate
+*      IMPORTING et_schedule        = lt_schedule ).
+*
+*    lcl_display=>show_summary(
+*      iv_amount          = iv_amount
+*      iv_months          = iv_months
+*      iv_rate_year       = iv_rate_year
+*      iv_monthly_payment = ev_monthly_payment
+*      iv_total_payment   = ev_total_payment
+*      iv_overpayment     = ev_overpayment ).
+*
+*    lcl_display=>show_schedule( lt_schedule ).
   ENDMETHOD.
 
 ENDCLASS.
@@ -333,15 +333,15 @@ SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-t01.
     p_rate   TYPE ty_rate   DEFAULT '12.00'.
 SELECTION-SCREEN END OF BLOCK b1.
 
-AT SELECTION-SCREEN.
-  TRY.
-      lcl_validator=>validate(
-        iv_amount    = p_amount
-        iv_months    = p_months
-        iv_rate_year = p_rate ).
-    CATCH cx_parameter_invalid INTO DATA(lx).
-      MESSAGE |Invalid parameter: { lx->parameter }| TYPE 'E'.
-  ENDTRY.
+*AT SELECTION-SCREEN.
+*  TRY.
+*      lcl_validator=>validate(
+*        iv_amount    = p_amount
+*        iv_months    = p_months
+*        iv_rate_year = p_rate ).
+*    CATCH cx_parameter_invalid INTO DATA(lx).
+*      MESSAGE |Invalid parameter: { lx->parameter }| TYPE 'E'.
+*  ENDTRY.
 
 *----------------------------------------------------------------------*
 * Main

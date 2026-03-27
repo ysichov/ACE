@@ -221,6 +221,16 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     DATA lv_sa_str   TYPE string.
     DATA lv_val_str  TYPE string.
 
+    " Определяем, является ли statement assignment-ом вида: VAR = func(...)
+    " В таком случае токен с вызовом находится на позиции from+2, а не from
+    DATA(lv_is_assign) = abap_false.
+    DATA(lv_assign_rhs_pos) = i_stmt-from.
+    READ TABLE io_scan->tokens INDEX i_stmt-from + 1 INTO DATA(ls_eq_tok).
+    IF sy-subrc = 0 AND ls_eq_tok-str = '='.
+      lv_is_assign   = abap_true.
+      lv_assign_rhs_pos = i_stmt-from + 2.
+    ENDIF.
+
     DATA(lv_ti) = i_stmt-from.
 
     WHILE lv_ti <= i_stmt-to.
@@ -240,19 +250,16 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         SPLIT lv_tstr AT '->' INTO lv_left lv_rpart.
         SPLIT lv_rpart AT '(' INTO lv_right lv_dummy.
         " lv_left пустой или ')' — перед нами NEW cls( )->meth(
-        " Токены: NEW(ti-2) | CLS((ti-1) | )->METH((ti)
         IF lv_left IS INITIAL OR lv_left CO ')'.
           READ TABLE io_scan->tokens INDEX lv_ti - 1 INTO DATA(ls_m1).
           READ TABLE io_scan->tokens INDEX lv_ti - 2 INTO DATA(ls_m2).
           IF ls_m2-str = 'NEW' AND ls_m1-str CS '('.
-            " Вариант A: NEW | CLS( | )->METH(
             lv_left = ls_m1-str.
             REPLACE ALL OCCURRENCES OF '(' IN lv_left WITH ''.
             REPLACE ALL OCCURRENCES OF ')' IN lv_left WITH ''.
             CONDENSE lv_left NO-GAPS.
             lv_arrow = '=>'.
           ELSE.
-            " Вариант B: NEW | CLS | ( | ) | )->METH(
             READ TABLE io_scan->tokens INDEX lv_ti - 3 INTO DATA(ls_m3).
             READ TABLE io_scan->tokens INDEX lv_ti - 4 INTO DATA(ls_m4).
             IF ls_m4-str = 'NEW' AND ls_m2-str = '('.
@@ -276,13 +283,11 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
             READ TABLE io_scan->tokens INDEX lv_ti - 3 INTO DATA(ls_nk2).
             READ TABLE io_scan->tokens INDEX lv_ti - 4 INTO DATA(ls_nk3).
             IF ls_nk2-str = 'NEW' AND ls_nk1-str CS '('.
-              " NEW | CLS( | ) | -> | meth(
               lv_left = ls_nk1-str.
               REPLACE ALL OCCURRENCES OF '(' IN lv_left WITH ''.
               CONDENSE lv_left NO-GAPS.
               lv_arrow = '=>'.
             ELSEIF ls_nk3-str = 'NEW' AND ls_nk1-str = '('.
-              " NEW | CLS | ( | ) | -> | meth(
               lv_left  = ls_nk2-str.
               lv_arrow = '=>'.
             ENDIF.
@@ -305,7 +310,9 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         ENDIF.
 
       ELSEIF lv_tstr CA '(' AND NOT lv_tstr CS '->' AND NOT lv_tstr CS '=>'.
-        IF lv_ti = i_stmt-from
+        " Допускаем вызов как первый токен statement (plain call),
+        " ИЛИ на позиции from+2 если statement — assignment (var = func(...))
+        IF ( lv_ti = i_stmt-from OR ( lv_is_assign = abap_true AND lv_ti = lv_assign_rhs_pos ) )
           AND NOT lv_tstr CP 'DATA(*'
           AND NOT lv_tstr CP 'FIELD-SYMBOL(*'
           AND NOT lv_tstr CP 'FINAL(*'
@@ -393,7 +400,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       CLEAR: lt_bind, lv_single, lv_pos.
       lv_pos  = abap_true.
       lv_scan = lv_ti + 1.
-      DATA lv_cur_sec TYPE string.   " current keyword section: EXPORTING/IMPORTING/CHANGING/RECEIVING
+      DATA lv_cur_sec TYPE string.
       CLEAR lv_cur_sec.
       WHILE lv_scan <= i_stmt-to.
         READ TABLE io_scan->tokens INDEX lv_scan INTO ls_sa.
@@ -401,7 +408,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         lv_sa_str = ls_sa-str.
         IF lv_sa_str = ')' OR lv_sa_str CO ')'. EXIT. ENDIF.
         IF lv_sa_str = '(' OR lv_sa_str = ','. lv_scan += 1. CONTINUE. ENDIF.
-        " Track explicit section keywords
         IF lv_sa_str = 'EXPORTING' OR lv_sa_str = 'IMPORTING' OR
            lv_sa_str = 'CHANGING'  OR lv_sa_str = 'RECEIVING'.
           lv_cur_sec = lv_sa_str.
@@ -418,11 +424,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
             lv_val_str = ls_val-str.
             REPLACE ALL OCCURRENCES OF ')' IN lv_val_str WITH ''.
             CONDENSE lv_val_str NO-GAPS.
-            " Determine direction from current section:
-            " EXPORTING = caller sends value in  → dir='I'
-            " IMPORTING / RECEIVING = caller gets value out → dir='E'
-            " CHANGING = bidirectional → dir='C'
-            " No explicit section (plain named arg) → dir='I'
             DATA(lv_bind_dir) = SWITCH char1( lv_cur_sec
               WHEN 'EXPORTING'  THEN 'I'
               WHEN 'IMPORTING'  THEN 'E'
@@ -467,8 +468,8 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           lv_ret = ls_ret-param. EXIT.
         ENDLOOP.
         CLEAR ls_b. ls_b-outer = lv_lhs. ls_b-inner = lv_ret.
-      ls_b-dir = 'E'.   " returning value comes back to caller
-      APPEND ls_b TO lt_bind.
+        ls_b-dir = 'E'.
+        APPEND ls_b TO lt_bind.
       ENDIF.
 
       lv_c-bindings = lt_bind.

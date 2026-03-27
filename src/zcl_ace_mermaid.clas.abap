@@ -67,17 +67,30 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
 
   method FORMAT_NODE_LABEL.
 
+    CONSTANTS lc_br    TYPE string VALUE `<br/>`.
+    CONSTANTS lc_br_ph TYPE string VALUE `##BR##`.
+
+    " Effective max length: use parameter value, but treat 50 (old default) as 100
+    "DATA(lv_maxlen) = COND i( WHEN I_MAXLEN = 50 OR I_MAXLEN = 0 THEN 100 ELSE I_MAXLEN ).
+DATA(lv_maxlen) = 200.
     RV_LABEL = I_CODE.
-    " Truncate only if I_MAXLEN > 0
-    IF I_MAXLEN > 0 AND strlen( RV_LABEL ) > I_MAXLEN.
-      RV_LABEL = RV_LABEL+0(I_MAXLEN).
+
+    " Protect existing <br/> tags before any text transformations
+    REPLACE ALL OCCURRENCES OF lc_br IN RV_LABEL WITH lc_br_ph IN CHARACTER MODE.
+
+    " Truncate only if lv_maxlen > 0
+    IF lv_maxlen > 0 AND strlen( RV_LABEL ) > lv_maxlen.
+      RV_LABEL = RV_LABEL+0(lv_maxlen).
     ENDIF.
+
     REPLACE ALL OCCURRENCES OF `PERFORM`       IN RV_LABEL WITH `FORM`     IN CHARACTER MODE.
     REPLACE ALL OCCURRENCES OF `CALL FUNCTION` IN RV_LABEL WITH `FUNCTION` IN CHARACTER MODE.
     REPLACE ALL OCCURRENCES OF `CALL METHOD`   IN RV_LABEL WITH `METHOD`   IN CHARACTER MODE.
     REPLACE ALL OCCURRENCES OF `-`             IN RV_LABEL WITH ` `        IN CHARACTER MODE.
-    " Replace spaces with &nbsp; but preserve <br/> tags already embedded in the label
     REPLACE ALL OCCURRENCES OF ` `             IN RV_LABEL WITH `&nbsp;`   IN CHARACTER MODE.
+
+    " Restore <br/> tags
+    REPLACE ALL OCCURRENCES OF lc_br_ph IN RV_LABEL WITH lc_br IN CHARACTER MODE.
 
   endmethod.
 
@@ -363,8 +376,6 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
   endmethod.
 
 
-
-
   METHOD magic_search.
 
     DATA: mm_string TYPE string,
@@ -408,8 +419,6 @@ CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
     open_mermaid( mm_string ).
 
   ENDMETHOD.
-
-
 
 
   method ADD_TOOLBAR_BUTTONS.
