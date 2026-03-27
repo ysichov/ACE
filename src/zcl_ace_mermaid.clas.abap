@@ -166,17 +166,40 @@ DATA(lv_maxlen) = 200.
           " keep everything up to and including the first '(' then add ' )'.
           " e.g. "rv_payment = lcl_annuity=>monthly_payment( iv_amount = ... )"
           "   -> "rv_payment = lcl_annuity=>monthly_payment( )"
+          " For "DATA(LV_RATE) = GET_RATE_MONTHLY( IV_RATE_YEAR = ... )"
+          "   -> "DATA(LV_RATE) = GET_RATE_MONTHLY( )"
           DATA(lv_call_label) = <line>-code.
           DATA(lv_paren_pos)  = 0.
-          FIND FIRST OCCURRENCE OF '(' IN lv_call_label MATCH OFFSET DATA(lv_off).
+
+          " Find ' = ' first to skip past left-hand side, then find '(' for method call
+          FIND FIRST OCCURRENCE OF ` = ` IN lv_call_label MATCH OFFSET DATA(lv_eq_off).
           IF sy-subrc = 0.
-            lv_call_label = |{ lv_call_label(lv_off) }( )|.
+            DATA(lv_rhs) = lv_call_label+lv_eq_off.          " from ' = ...' onward
+            FIND FIRST OCCURRENCE OF '(' IN lv_rhs MATCH OFFSET DATA(lv_rhs_off).
+            IF sy-subrc = 0.
+              " absolute offset of '(' in lv_call_label
+              DATA(lv_abs_paren) = lv_eq_off + lv_rhs_off + 1. " +1: include the '(' itself
+              lv_call_label = |{ lv_call_label(lv_abs_paren) } )|.
+            ELSE.
+              lv_call_label = |{ lv_call_label }( )|.
+            ENDIF.
           ELSE.
-            lv_call_label = |{ lv_call_label }( )|.
+            " No ' = ': plain call like "PERFORM foo( ...)" — use first '('
+            FIND FIRST OCCURRENCE OF '(' IN lv_call_label MATCH OFFSET DATA(lv_off).
+            IF sy-subrc = 0.
+              lv_call_label = |{ lv_call_label(lv_off) }( )|.
+            ELSE.
+              lv_call_label = |{ lv_call_label }( )|.
+            ENDIF.
           ENDIF.
+
+          " Node: full assignment with stripped params
           DATA(name2) = format_node_label( i_code = lv_call_label i_maxlen = 0 ).
           CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ name2 }"{ box_e }\n|.
-          CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ name2 }"]\n  direction { I_DIRECTION }\n|.
+
+          " Subgraph title: only method/form name (subname already contains "NAME( )")
+          DATA(lv_sg_title) = format_node_label( i_code = <line>-subname i_maxlen = 0 ).
+          CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ lv_sg_title }"]\n  direction { I_DIRECTION }\n|.
           opened += 1.
         ELSE.
           " Same-level call: show full original code without truncation, clear edge label
