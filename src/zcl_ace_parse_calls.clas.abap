@@ -221,16 +221,10 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     DATA lv_sa_str   TYPE string.
     DATA lv_val_str  TYPE string.
 
-    " Определяем, является ли statement assignment-ом вида: VAR = func(...)
-    " В таком случае токен с вызовом находится на позиции from+2, а не from
-    DATA(lv_is_assign) = abap_false.
-    DATA(lv_assign_rhs_pos) = i_stmt-from.
-    READ TABLE io_scan->tokens INDEX i_stmt-from + 1 INTO DATA(ls_eq_tok).
-    IF sy-subrc = 0 AND ls_eq_tok-str = '='.
-      lv_is_assign   = abap_true.
-      lv_assign_rhs_pos = i_stmt-from + 2.
-    ENDIF.
-
+    " Для statement вида  VAR = expr  токен[from] — это LHS-переменная,
+    " токен[from+1] = '='.  Такой первый токен нужно пропустить как вызов,
+    " но НЕ ограничивать поиск одной позицией — в правой части может быть
+    " несколько вызовов: RV = A * FUNC1(...) + FUNC2(...).
     DATA(lv_ti) = i_stmt-from.
 
     WHILE lv_ti <= i_stmt-to.
@@ -249,7 +243,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         lv_arrow = '->'.
         SPLIT lv_tstr AT '->' INTO lv_left lv_rpart.
         SPLIT lv_rpart AT '(' INTO lv_right lv_dummy.
-        " lv_left пустой или ')' — перед нами NEW cls( )->meth(
         IF lv_left IS INITIAL OR lv_left CO ')'.
           READ TABLE io_scan->tokens INDEX lv_ti - 1 INTO DATA(ls_m1).
           READ TABLE io_scan->tokens INDEX lv_ti - 2 INTO DATA(ls_m2).
@@ -310,26 +303,36 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         ENDIF.
 
       ELSEIF lv_tstr CA '(' AND NOT lv_tstr CS '->' AND NOT lv_tstr CS '=>'.
-        " Допускаем вызов как первый токен statement (plain call),
-        " ИЛИ на позиции from+2 если statement — assignment (var = func(...))
-        IF ( lv_ti = i_stmt-from OR ( lv_is_assign = abap_true AND lv_ti = lv_assign_rhs_pos ) )
-          AND NOT lv_tstr CP 'DATA(*'
-          AND NOT lv_tstr CP 'FIELD-SYMBOL(*'
-          AND NOT lv_tstr CP 'FINAL(*'
-          AND NOT lv_tstr CP 'VALUE(*'
-          AND NOT lv_tstr CP 'CONV(*'
-          AND NOT lv_tstr CP 'REF(*'
-          AND NOT lv_tstr CP 'CAST(*'
-          AND NOT lv_tstr CP 'COND(*'
-          AND NOT lv_tstr CP 'SWITCH(*'.
-          lv_arrow = '->'.
-          lv_left  = 'ME'.
-          lv_right = lv_tstr.
-          REPLACE ALL OCCURRENCES OF '(' IN lv_right WITH ''.
-          CONDENSE lv_right NO-GAPS.
-        ELSE.
+        " Токен вида NAME( без стрелки.
+        " Пропускаем если это LHS-переменная (следующий токен = '=')
+        " или это оператор/конструктор языка.
+        READ TABLE io_scan->tokens INDEX lv_ti + 1 INTO DATA(ls_after).
+        IF ls_after-str = '='.
+          " Это LHS: VAR( ... ) = ... — не вызов метода
           lv_ti += 1. CONTINUE.
         ENDIF.
+        " Пропускаем первый токен statement если он — простая переменная
+        " без скобки в конце (т.е. LHS в VAR = expr), уже обработано выше.
+        " Пропускаем языковые конструкторы.
+        IF lv_tstr CP 'DATA(*'
+          OR lv_tstr CP 'FIELD-SYMBOL(*'
+          OR lv_tstr CP 'FINAL(*'
+          OR lv_tstr CP 'VALUE(*'
+          OR lv_tstr CP 'CONV(*'
+          OR lv_tstr CP 'REF(*'
+          OR lv_tstr CP 'CAST(*'
+          OR lv_tstr CP 'COND(*'
+          OR lv_tstr CP 'SWITCH(*'.
+          lv_ti += 1. CONTINUE.
+        ENDIF.
+        " Для первого токена statement дополнительно проверяем:
+        " если за ним стоит '=', это LHS — пропускаем.
+        " (уже обработано выше, но оставим на случай склеенного токена)
+        lv_arrow = '->'.
+        lv_left  = 'ME'.
+        lv_right = lv_tstr.
+        REPLACE ALL OCCURRENCES OF '(' IN lv_right WITH ''.
+        CONDENSE lv_right NO-GAPS.
 
       ELSE.
         lv_ti += 1. CONTINUE.
@@ -381,6 +384,9 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       lv_call_cls = COND #( WHEN lv_c-class IS NOT INITIAL THEN lv_c-class ELSE mv_class_name ).
 
       " ── LHS: lv_x = meth(…) → RETURNING ──────────────────────────
+      " Ищем ближайший '=' левее текущей позиции — это LHS для данного вызова.
+      " Важно: в выражении A * FUNC1(...) + FUNC2(...) у каждого вызова свой
+      " контекст bindings, но RETURNING пишется только если вызов прямо после '='.
       CLEAR lv_lhs.
       DATA(lv_lhs_pos) = lv_ti - 1.
       IF lv_lhs_pos >= i_stmt-from.
