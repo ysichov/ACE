@@ -162,8 +162,19 @@ DATA(lv_maxlen) = 200.
         DATA(lv_has_children) = xsdbool( sy-subrc = 0 AND line2-stack > <line>-stack ).
 
         IF lv_has_children = abap_true.
-          " Call goes deeper (stack+1): node shows only method name, params go on edge
-          DATA(name2) = format_node_label( i_code = <line>-subname ).
+          " Call goes deeper (stack+1): build label from full code but strip parameters —
+          " keep everything up to and including the first '(' then add ' )'.
+          " e.g. "rv_payment = lcl_annuity=>monthly_payment( iv_amount = ... )"
+          "   -> "rv_payment = lcl_annuity=>monthly_payment( )"
+          DATA(lv_call_label) = <line>-code.
+          DATA(lv_paren_pos)  = 0.
+          FIND FIRST OCCURRENCE OF '(' IN lv_call_label MATCH OFFSET DATA(lv_off).
+          IF sy-subrc = 0.
+            lv_call_label = |{ lv_call_label(lv_off) }( )|.
+          ELSE.
+            lv_call_label = |{ lv_call_label }( )|.
+          ENDIF.
+          DATA(name2) = format_node_label( i_code = lv_call_label i_maxlen = 0 ).
           CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ name2 }"{ box_e }\n|.
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ name2 }"]\n  direction { I_DIRECTION }\n|.
           opened += 1.
