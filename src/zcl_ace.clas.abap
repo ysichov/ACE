@@ -804,6 +804,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ENDLOOP.
     ENDLOOP.
     SORT lt_selected_var. DELETE ADJACENT DUPLICATES FROM lt_selected_var. CLEAR mo_window->mt_coverage.
+
+    " In calc_path mode with no variable filter, 'mt_selected_var IS INITIAL' would
+    " unconditionally mark every line that touches t_calculated as active_root — including
+    " CATCH, MESSAGE, WRITE and other non-assignment statements.
+    " Use a local flag so the 'OR IS INITIAL' shortcut is suppressed when calc_path is on.
+    DATA(lv_no_filter) = xsdbool( mt_selected_var IS INITIAL AND i_calc_path = abap_false ).
+
     LOOP AT steps INTO step.
       CLEAR inserted.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
@@ -827,7 +834,11 @@ CLASS ZCL_ACE IMPLEMENTATION.
           IF sy-subrc = 0. APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>. <selected>-name = composed_var-name. ENDIF.
         ENDLOOP.
         READ TABLE lt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0 OR mt_selected_var IS INITIAL.
+        " In normal mode (no calc_path): accept any line when no variable filter is set.
+        " In calc_path mode: only accept lines whose assigned variable is already selected —
+        " 'OR IS INITIAL' is deliberately suppressed to avoid false positives from
+        " CATCH / MESSAGE / WRITE that happen to read a t_calculated variable.
+        IF sy-subrc = 0 OR lv_no_filter = abap_true.
           APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING <watch>.
           <watch>-program = step-program. <watch>-line = line-line = step-line.
           IF ind = 1.

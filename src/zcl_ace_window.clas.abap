@@ -220,17 +220,18 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
-       ( function = 'CODEMIX'  icon = CONV #( icon_wizard )          quickinfo = 'Calculations flow sequence' text = 'CodeMix' )
-       ( function = 'HANDLERS' icon = CONV #( icon_oo_event )        quickinfo = 'Event Handlers flow'        text = 'Handlers' )
-       ( function = 'CODE'     icon = CONV #( icon_customer_warehouse ) quickinfo = 'Only Z' text = 'Only Z' )
-       ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )      quickinfo = 'Decrease depth' text = '' )
-       ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
-       ( function = 'DEPTH_P'  icon = CONV #( icon_arrow_right )     quickinfo = 'Increase depth' text = '' )
+       ( function = 'CODEMIX'   icon = CONV #( icon_wizard )              quickinfo = 'Full code flow sequence'          text = 'Code Flow' )
+       ( function = 'CALCONLY'  icon = CONV #( icon_biw_formula )         quickinfo = 'Only lines that calculate values'  text = 'Calculation only' )
+       ( function = 'HANDLERS'  icon = CONV #( icon_oo_event )            quickinfo = 'Event Handlers flow'              text = 'Handlers' )
+       ( function = 'CODE'      icon = CONV #( icon_customer_warehouse )  quickinfo = 'Only Z'                           text = 'Only Z' )
+       ( function = 'DEPTH_M'   icon = CONV #( icon_arrow_left )          quickinfo = 'Decrease depth'                   text = '' )
+       ( function = 'DEPTH'     icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
+       ( function = 'DEPTH_P'   icon = CONV #( icon_arrow_right )         quickinfo = 'Increase depth'                   text = '' )
        ( butn_type = 3  )
-       ( function = 'STEPS'       icon = CONV #( icon_next_step )    quickinfo = 'Steps table' text = 'Steps' )
+       ( function = 'STEPS'       icon = CONV #( icon_next_step )    quickinfo = 'Steps table'                   text = 'Steps' )
        ( butn_type = 3  )
-       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all )   quickinfo = 'Get local class from Global' text = 'Get whole Class' )
-       ( function = 'INFO'        icon = CONV #( icon_bw_gis )       quickinfo = 'Documentation' text = '' )
+       ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all )   quickinfo = 'Get local class from Global'   text = 'Get whole Class' )
+       ( function = 'INFO'        icon = CONV #( icon_bw_gis )       quickinfo = 'Documentation'                 text = '' )
                       ).
       mo_toolbar->add_button_group( button ).
       event-eventid = cl_gui_toolbar=>m_id_function_selected.
@@ -357,9 +358,18 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'CODEMIX'.
+        " Full code flow: all executed statements grouped by method/form scope.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         mo_viewer->get_code_mix( ).
+        mo_viewer->mo_window->show_stack( ).
+
+      WHEN 'CALCONLY'.
+        " Calculation only: same as Code Flow but filtered to lines that
+        " actually assign or compute values (i_calc_path = true).
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        apply_depth( ).
+        mo_viewer->get_code_mix( i_calc_path = abap_true ).
         mo_viewer->mo_window->show_stack( ).
 
       WHEN 'HANDLERS'.
