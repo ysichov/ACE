@@ -162,10 +162,10 @@ DATA(lv_maxlen) = 200.
         DATA(lv_has_children) = xsdbool( sy-subrc = 0 AND line2-stack > <line>-stack ).
 
         IF lv_has_children = abap_true.
-          " Call goes deeper (stack+1): build label from full code but strip parameters —
-          " keep everything up to and including the first '(' then add ' )'.
+          " Call goes deeper (stack+1): show only the call signature without parameters
+          " (the parameters are visible in the child nodes / subgraph below).
+          " Strip everything from the first opening parenthesis onward.
           DATA(lv_call_label) = <line>-code.
-          DATA(lv_paren_pos)  = 0.
 
           FIND FIRST OCCURRENCE OF ` = ` IN lv_call_label MATCH OFFSET DATA(lv_eq_off).
           IF sy-subrc = 0.
@@ -193,24 +193,50 @@ DATA(lv_maxlen) = 200.
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ lv_sg_title }"]\n  direction { I_DIRECTION }\n|.
           opened += 1.
         ELSE.
-          " Same-level call: show full original code.
+          " Same-level call (no children): show the full source line including all parameters.
+          " <line>-code was built with an early EXIT at USING/EXPORTING/IMPORTING/CHANGING,
+          " so we re-read all tokens directly from the scan to get the complete text.
+          DATA(lv_label_code) = ``.
+
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+            WITH KEY include = <line>-include INTO DATA(ls_prog_full).
+          IF sy-subrc = 0.
+            READ TABLE ls_prog_full-t_keywords
+              WITH KEY line = <line>-line INTO DATA(ls_kw_full).
+            IF sy-subrc = 0.
+              " Read all tokens for this keyword span (no early exit on USING/EXPORTING/…)
+              LOOP AT ls_prog_full-scan->tokens
+                FROM ls_kw_full-from TO ls_kw_full-to
+                INTO DATA(ls_tok_full).
+                IF lv_label_code IS INITIAL.
+                  lv_label_code = ls_tok_full-str.
+                ELSE.
+                  lv_label_code = |{ lv_label_code } { ls_tok_full-str }|.
+                ENDIF.
+              ENDLOOP.
+              REPLACE ALL OCCURRENCES OF '"' IN lv_label_code WITH ``.
+            ENDIF.
+          ENDIF.
+
+          " Fall back to the pre-built code if the re-read yielded nothing.
+          IF lv_label_code IS INITIAL.
+            lv_label_code = <line>-code.
+          ENDIF.
+
           " If the call has bindings (named parameters), insert <br/> before each
           " parameter so every parameter starts on a new line in the Mermaid node label.
-          DATA(lv_label_code) = <line>-code.
-
-          " Look up the keyword entry for this line to access bindings from tt_calls
           READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
             WITH KEY include = <line>-include INTO DATA(ls_prog_bn).
           IF sy-subrc = 0.
             READ TABLE ls_prog_bn-t_keywords
               WITH KEY line = <line>-line INTO DATA(ls_kw_bn).
             IF sy-subrc = 0 AND ls_kw_bn-tt_calls IS NOT INITIAL.
-              " Use bindings from the first call entry that has named parameters
+              " Use bindings from the first call entry that has named parameters.
               LOOP AT ls_kw_bn-tt_calls INTO DATA(ls_call_bn).
                 IF ls_call_bn-bindings IS NOT INITIAL.
                   LOOP AT ls_call_bn-bindings INTO DATA(ls_bind_bn).
                     IF ls_bind_bn-inner IS INITIAL. CONTINUE. ENDIF.
-                    " Insert <br/> before " INNER =" pattern in the code string
+                    " Insert <br/> before " INNER =" pattern in the code string.
                     DATA(lv_pattern_bn) = | { ls_bind_bn-inner } =|.
                     REPLACE ALL OCCURRENCES OF lv_pattern_bn
                       IN lv_label_code

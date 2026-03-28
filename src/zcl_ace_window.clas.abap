@@ -349,40 +349,24 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'CALLS'.
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
+          " Diagram window does not exist yet — create it.
           mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CALLS' ).
+        ELSE.
+          " Diagram window is already open — bring it to the front.
+          mo_mermaid->mo_box->set_focus( mo_mermaid->mo_box ).
         ENDIF.
 
       WHEN 'CODEMIX'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
-*        DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
-*        IF ls_ctx-evtype = 'EVENT'."IS NOT INITIAL.
-*          zcl_ace_source_parser=>code_execution_scanner(
-*            i_program = mo_viewer->mo_window->m_prg-program
-*            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer
-*            i_evtype = ls_ctx-evtype
-*            i_evname = ls_ctx-evname ).
-*
-*        ELSEIF ls_ctx-evtype IS NOT INITIAL.
-*          DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.
-*          zcl_ace_source_parser=>parse_call(
-*            i_index = ls_sc-index i_e_name = ls_ctx-evname i_e_type = ls_ctx-evtype
-*            i_class = ls_ctx-class i_program = CONV #( ls_sc-program )
-*            i_include = CONV #( ls_sc-include ) i_stack = 0 io_debugger = mo_viewer ).
-*
-*        ELSE.
-*          zcl_ace_source_parser=>code_execution_scanner(
-*            i_program = mo_viewer->mo_window->m_prg-program
-*            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer ).
-*        ENDIF.
         mo_viewer->get_code_mix( ).
         mo_viewer->mo_window->show_stack( ).
 
       WHEN 'HANDLERS'.
-        " Каждый хэндлер:
-        "   stack=1 → виртуальная нода события (EVENT: clicked)
-        "   stack=2 → сам хэндлер-метод
-        " Это даёт стрелку: EVENT → handler в диаграмме
+        " Each handler gets two steps:
+        "   stack=1 → virtual event node  (EVENT: clicked)
+        "   stack=2 → the handler method itself
+        " This produces an arrow  EVENT → handler  in the diagram.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
 
         LOOP AT mo_viewer->mo_window->ms_sources-tt_handler_map
@@ -392,7 +376,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
           DATA(lv_hdl_class) = ls_hm-hdl_class.
 
-          " Если класс не заполнен — ищем в calls_line по имени метода
+          " If the class is not filled — look it up in calls_line by method name.
           IF lv_hdl_class IS INITIAL.
             LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line
               INTO DATA(ls_cl_hdl)
@@ -401,7 +385,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             ENDLOOP.
           ENDIF.
 
-          " Ищем entry point хэндлера в calls_line
+          " Find the handler entry point in calls_line.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
             INTO DATA(ls_call_hdl)
             WITH KEY class     = lv_hdl_class
@@ -409,8 +393,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
                      eventname = ls_hm-hdl_method.
           CHECK sy-subrc = 0.
 
-          " Добавляем виртуальный шаг для события на stack=1
-          " Это даст ноду "EVENT: clicked" в диаграмме
+          " Add a virtual step for the event at stack=1.
           ADD 1 TO mo_viewer->m_step.
           APPEND VALUE zcl_ace=>t_step_counter(
             step       = mo_viewer->m_step
@@ -421,7 +404,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             include    = ls_call_hdl-include
           ) TO mo_viewer->mt_steps.
 
-          " Хэндлер на stack=2 — будет дочерним от события
+          " Handler at stack=2 — child of the event node.
           zcl_ace_source_parser=>parse_call(
             EXPORTING
               i_index     = ls_call_hdl-index
@@ -430,7 +413,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
               i_class     = ls_call_hdl-class
               i_program   = CONV #( ls_call_hdl-program )
               i_include   = CONV #( ls_call_hdl-include )
-              i_stack     = 1   " → внутри stack = 1+1 = 2
+              i_stack     = 1
               io_debugger = mo_viewer ).
         ENDLOOP.
 
