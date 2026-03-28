@@ -876,10 +876,12 @@ CLASS ZCL_ACE IMPLEMENTATION.
             LOOP AT call-bindings INTO DATA(ls_b).
               CHECK ls_b-outer IS NOT INITIAL OR ls_b-inner IS NOT INITIAL.
               IF lv_arrow_cnt > 0. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
-              DATA(lv_dir) = COND string(
-                WHEN call-type = '<' THEN '<'
-                ELSE                      '>' ).
-              <line>-arrow = |{ <line>-arrow } { ls_b-outer } { lv_dir } { ls_b-inner }|.
+              DATA(lv_sep) = SWITCH string( ls_b-dir
+                WHEN 'I' THEN '->'
+                WHEN 'E' THEN '<-'
+                WHEN 'C' THEN '-> <-'
+                ELSE          '--' ).
+              <line>-arrow = |{ <line>-arrow } { ls_b-outer } { lv_sep } { ls_b-inner }|.
               lv_arrow_cnt += 1.
             ENDLOOP.
           ELSEIF call-outer IS NOT INITIAL AND call-inner IS NOT INITIAL.
