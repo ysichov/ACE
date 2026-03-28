@@ -164,27 +164,20 @@ DATA(lv_maxlen) = 200.
         IF lv_has_children = abap_true.
           " Call goes deeper (stack+1): build label from full code but strip parameters —
           " keep everything up to and including the first '(' then add ' )'.
-          " e.g. "rv_payment = lcl_annuity=>monthly_payment( iv_amount = ... )"
-          "   -> "rv_payment = lcl_annuity=>monthly_payment( )"
-          " For "DATA(LV_RATE) = GET_RATE_MONTHLY( IV_RATE_YEAR = ... )"
-          "   -> "DATA(LV_RATE) = GET_RATE_MONTHLY( )"
           DATA(lv_call_label) = <line>-code.
           DATA(lv_paren_pos)  = 0.
 
-          " Find ' = ' first to skip past left-hand side, then find '(' for method call
           FIND FIRST OCCURRENCE OF ` = ` IN lv_call_label MATCH OFFSET DATA(lv_eq_off).
           IF sy-subrc = 0.
-            DATA(lv_rhs) = lv_call_label+lv_eq_off.          " from ' = ...' onward
+            DATA(lv_rhs) = lv_call_label+lv_eq_off.
             FIND FIRST OCCURRENCE OF '(' IN lv_rhs MATCH OFFSET DATA(lv_rhs_off).
             IF sy-subrc = 0.
-              " absolute offset of '(' in lv_call_label
-              DATA(lv_abs_paren) = lv_eq_off + lv_rhs_off + 1. " +1: include the '(' itself
+              DATA(lv_abs_paren) = lv_eq_off + lv_rhs_off + 1.
               lv_call_label = |{ lv_call_label(lv_abs_paren) } )|.
             ELSE.
               lv_call_label = |{ lv_call_label }( )|.
             ENDIF.
           ELSE.
-            " No ' = ': plain call like "PERFORM foo( ...)" — use first '('
             FIND FIRST OCCURRENCE OF '(' IN lv_call_label MATCH OFFSET DATA(lv_off).
             IF sy-subrc = 0.
               lv_call_label = |{ lv_call_label(lv_off) }( )|.
@@ -193,17 +186,44 @@ DATA(lv_maxlen) = 200.
             ENDIF.
           ENDIF.
 
-          " Node: full assignment with stripped params
           DATA(name2) = format_node_label( i_code = lv_call_label i_maxlen = 0 ).
           CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ name2 }"{ box_e }\n|.
 
-          " Subgraph title: only method/form name (subname already contains "NAME( )")
           DATA(lv_sg_title) = format_node_label( i_code = <line>-subname i_maxlen = 0 ).
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ lv_sg_title }"]\n  direction { I_DIRECTION }\n|.
           opened += 1.
         ELSE.
-          " Same-level call: show full original code without truncation, clear edge label
-          DATA(lv_label) = format_node_label( i_code = <line>-code i_maxlen = 0 ).
+          " Same-level call: show full original code.
+          " If the call has bindings (named parameters), insert <br/> before each
+          " parameter so every parameter starts on a new line in the Mermaid node label.
+          DATA(lv_label_code) = <line>-code.
+
+          " Look up the keyword entry for this line to access bindings from tt_calls
+          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+            WITH KEY include = <line>-include INTO DATA(ls_prog_bn).
+          IF sy-subrc = 0.
+            READ TABLE ls_prog_bn-t_keywords
+              WITH KEY line = <line>-line INTO DATA(ls_kw_bn).
+            IF sy-subrc = 0 AND ls_kw_bn-tt_calls IS NOT INITIAL.
+              " Use bindings from the first call entry that has named parameters
+              LOOP AT ls_kw_bn-tt_calls INTO DATA(ls_call_bn).
+                IF ls_call_bn-bindings IS NOT INITIAL.
+                  LOOP AT ls_call_bn-bindings INTO DATA(ls_bind_bn).
+                    IF ls_bind_bn-inner IS INITIAL. CONTINUE. ENDIF.
+                    " Insert <br/> before " INNER =" pattern in the code string
+                    DATA(lv_pattern_bn) = | { ls_bind_bn-inner } =|.
+                    REPLACE ALL OCCURRENCES OF lv_pattern_bn
+                      IN lv_label_code
+                      WITH |<br/>{ lv_pattern_bn }|
+                      IN CHARACTER MODE.
+                  ENDLOOP.
+                  EXIT. " only process bindings of the first matching call
+                ENDIF.
+              ENDLOOP.
+            ENDIF.
+          ENDIF.
+
+          DATA(lv_label) = format_node_label( i_code = lv_label_code i_maxlen = 0 ).
           CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ lv_label }"{ box_e }\n|.
           CLEAR <line>-arrow.
         ENDIF.
