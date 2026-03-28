@@ -348,7 +348,6 @@ SELECTION-SCREEN END OF BLOCK b1.
 *----------------------------------------------------------------------*
 START-OF-SELECTION.
 
-  WRITE 1.
 
   TRY.
       lcl_calculator=>run(
@@ -361,3 +360,6 @@ START-OF-SELECTION.
     CATCH cx_parameter_invalid INTO DATA(lx_err).
       MESSAGE |Calculation error: { lx_err->parameter }| TYPE 'E'.
   ENDTRY.
+
+  lv_total = lv_total + 1.
+  write lv_total.

@@ -725,17 +725,31 @@ CLASS ZCL_ACE IMPLEMENTATION.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(keyword).
       LOOP AT keyword-tt_calls INTO DATA(call).
-        READ TABLE lt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0 OR mt_selected_var IS INITIAL. yes = abap_true. ENDIF.
-        READ TABLE lt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0 OR mt_selected_var IS INITIAL. yes = abap_true. ENDIF.
+        " Check whether any binding's outer or inner side matches a selected variable.
+        " If the variable filter is empty every call qualifies unconditionally.
+        LOOP AT call-bindings INTO DATA(ls_b_chk).
+          READ TABLE lt_selected_var WITH KEY name = ls_b_chk-outer TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0 OR mt_selected_var IS INITIAL. yes = abap_true. ENDIF.
+          READ TABLE lt_selected_var WITH KEY name = ls_b_chk-inner TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0 OR mt_selected_var IS INITIAL. yes = abap_true. ENDIF.
+        ENDLOOP.
       ENDLOOP.
       IF yes = abap_true.
+        " Add all binding sides to the selected-variable set so that downstream
+        " steps that reference the same variables are also included.
         LOOP AT keyword-tt_calls INTO call.
-          READ TABLE lt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
-          IF sy-subrc <> 0. APPEND INITIAL LINE TO lt_selected_var ASSIGNING FIELD-SYMBOL(<selected>). <selected>-name = call-outer. ENDIF.
-          READ TABLE lt_selected_var WITH KEY name = call-inner TRANSPORTING NO FIELDS.
-          IF sy-subrc <> 0. APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>. <selected>-name = call-inner. ENDIF.
+          LOOP AT call-bindings INTO DATA(ls_b_add).
+            READ TABLE lt_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              APPEND INITIAL LINE TO lt_selected_var ASSIGNING FIELD-SYMBOL(<selected>).
+              <selected>-name = ls_b_add-outer.
+            ENDIF.
+            READ TABLE lt_selected_var WITH KEY name = ls_b_add-inner TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>.
+              <selected>-name = ls_b_add-inner.
+            ENDIF.
+          ENDLOOP.
         ENDLOOP.
       ENDIF.
     ENDLOOP.
@@ -763,12 +777,30 @@ CLASS ZCL_ACE IMPLEMENTATION.
           IF sy-subrc = 0. APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>. <selected>-name = composed_var-name. ENDIF.
         ENDLOOP.
         READ TABLE lt_selected_var WITH KEY name = calculated_var-name TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0. APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>. <selected>-name = call-inner. ENDIF.
+        IF sy-subrc = 0.
+          APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>.
+          " Propagate the calculated variable name (inner side of the last processed binding).
+          READ TABLE prog-t_keywords WITH KEY line = step-line INTO DATA(kw_calc).
+          LOOP AT kw_calc-tt_calls INTO DATA(call_calc).
+            LOOP AT call_calc-bindings INTO DATA(ls_b_calc).
+              IF ls_b_calc-inner IS NOT INITIAL.
+                <selected>-name = ls_b_calc-inner.
+              ENDIF.
+            ENDLOOP.
+          ENDLOOP.
+        ENDIF.
       ENDLOOP.
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
+      " For each call, trace bindings: when the outer side is already selected,
+      " add the corresponding inner side to the propagation set.
       LOOP AT keyword-tt_calls INTO call.
-        READ TABLE lt_selected_var WITH KEY name = call-outer TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0. APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>. <selected>-name = call-inner. ENDIF.
+        LOOP AT call-bindings INTO DATA(ls_b_prop).
+          READ TABLE lt_selected_var WITH KEY name = ls_b_prop-outer TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            APPEND INITIAL LINE TO lt_selected_var ASSIGNING <selected>.
+            <selected>-name = ls_b_prop-inner.
+          ENDIF.
+        ENDLOOP.
       ENDLOOP.
     ENDLOOP.
     SORT lt_selected_var. DELETE ADJACENT DUPLICATES FROM lt_selected_var. CLEAR mo_window->mt_coverage.
@@ -858,11 +890,10 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
       IF keyword-tt_calls IS NOT INITIAL.
-        " Build subname and arrow from calls.
-        " New parser fills call-bindings; old parser fills call-outer/inner/type.
+        " Build the subname and arrow label from call bindings.
         DATA(lv_arrow_cnt) = 0.
         LOOP AT keyword-tt_calls INTO call.
-          " subname — name of the called method (take from first call entry)
+          " Derive the display name of the called method from the first call entry.
           IF <line>-subname IS INITIAL.
             <line>-subname = call-name.
             REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
@@ -871,24 +902,22 @@ CLASS ZCL_ACE IMPLEMENTATION.
           ENDIF.
           REPLACE ALL OCCURRENCES OF '"' IN <line>-code WITH ''.
 
-          " Prefer bindings (new parser). Fall back to outer/inner/type (old parser).
-          IF call-bindings IS NOT INITIAL.
-            LOOP AT call-bindings INTO DATA(ls_b).
-              CHECK ls_b-outer IS NOT INITIAL OR ls_b-inner IS NOT INITIAL.
-              IF lv_arrow_cnt > 0. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
-              DATA(lv_sep) = SWITCH string( ls_b-dir
-                WHEN 'I' THEN '->'
-                WHEN 'E' THEN '<-'
-                WHEN 'C' THEN '-> <-'
-                ELSE          '--' ).
-              <line>-arrow = |{ <line>-arrow } { ls_b-outer } { lv_sep } { ls_b-inner }|.
-              lv_arrow_cnt += 1.
-            ENDLOOP.
-          ELSEIF call-outer IS NOT INITIAL AND call-inner IS NOT INITIAL.
+          " Iterate over the BINDINGS table of the current call.
+          " Each row carries: outer (caller-side variable), inner (callee-side parameter), dir.
+          " dir values: 'I' = importing/using  (outer -> inner)
+          "             'E' = exporting/returning (outer <- inner)
+          "             'C' = changing            (outer <-> inner)
+          LOOP AT call-bindings INTO DATA(ls_b).
+            CHECK ls_b-outer IS NOT INITIAL OR ls_b-inner IS NOT INITIAL.
             IF lv_arrow_cnt > 0. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
-            <line>-arrow = |{ <line>-arrow } { call-outer } { call-type } { call-inner }|.
+            DATA(lv_sep) = SWITCH string( ls_b-dir
+              WHEN 'I' THEN '->'
+              WHEN 'E' THEN '<-'
+              WHEN 'C' THEN '-> <-'
+              ELSE          '--' ).
+            <line>-arrow = |{ <line>-arrow } { ls_b-outer } { lv_sep } { ls_b-inner }|.
             lv_arrow_cnt += 1.
-          ENDIF.
+          ENDLOOP.
         ENDLOOP.
       ENDIF.
       REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
@@ -1019,13 +1048,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
       "    keep if: active_root = true, OR own ev_name is active, OR is a call-site into active scope.
       LOOP AT results ASSIGNING <line> WHERE active_root IS INITIAL.
 
-        " Check own scope by ev_name only
+        " Check own scope by ev_name only.
         READ TABLE lt_active_ev WITH KEY table_line = <line>-ev_name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
           CONTINUE. " own scope is active -> keep
         ENDIF.
 
-        " Check if this is a call-site into an active scope
+        " Check if this is a call-site into an active scope.
         IF <line>-subname IS NOT INITIAL.
           READ TABLE lt_active_subnames WITH KEY table_line = <line>-subname TRANSPORTING NO FIELDS.
           IF sy-subrc = 0.
@@ -1033,7 +1062,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-        " Neither condition met -> remove
+        " Neither condition met -> remove.
         <line>-del = abap_true.
       ENDLOOP.
       DELETE results WHERE del = abap_true.
