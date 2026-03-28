@@ -990,44 +990,38 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
     IF i_calc_path = abap_true.
       " -----------------------------------------------------------------------
-      " CALC PATH: preserve the full call-stack context, but only for event
-      " scopes (ev_name + ev_type + include + stack) that contain at least one
-      " line with active_root = X (an actual calculation / assignment).
+      " CALC PATH filter: keep only lines that directly participate in a
+      " calculation or form the structural call-chain leading to one.
       "
-      " KEY RULE: a call-site line (subname IS NOT INITIAL) whose called method
-      " IS in the active set must always be kept — it is the node that opens
-      " the subgraph.  Without it BUILD_NODES cannot create "subgraph S[RUN]".
-      " So we keep a line if ANY of the following is true:
-      "   a) its own scope is active (has calculations), OR
-      "   b) it has a subname (is a call-site) AND the called method's name
-      "      matches a scope in the active set (stack+1 level).
-      " Lines that satisfy neither condition are removed.
+      " A line is kept when it satisfies AT LEAST ONE of these conditions:
+      "   (A) active_root = X  — the line IS a calculation/assignment.
+      "   (B) subname IS NOT INITIAL AND subname is in the active-subname set
+      "       — the line is a call-site whose callee contains calculations.
+      "   (C) cond IS NOT INITIAL (IF/ENDIF/LOOP/…)
+      "       AND the line's ev_name has at least one active_root sibling
+      "       — structural keyword inside an active scope (kept for context).
+      "
+      " Plain non-calculating nodes (active_root = false, subname empty,
+      " cond empty) are removed even when their scope is otherwise active.
       " -----------------------------------------------------------------------
 
-      " 1. Collect ev_names of scopes that contain at least one active_root line.
-      "    Key is ev_name only — ev_type/include/stack can vary within the same
-      "    logical method scope and must not be used for exclusion.
+      " 1. Collect ev_names that own at least one active_root line.
       DATA lt_active_ev TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
-
       LOOP AT results ASSIGNING <line> WHERE active_root = abap_true.
         READ TABLE lt_active_ev WITH KEY table_line = <line>-ev_name TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          INSERT <line>-ev_name INTO TABLE lt_active_ev.
-        ENDIF.
+        IF sy-subrc <> 0. INSERT <line>-ev_name INTO TABLE lt_active_ev. ENDIF.
       ENDLOOP.
 
-      " 2. Collect ev_names of active scopes as starting set for subname lookup.
-      "    Then expand transitively: if a call-site's subname is already in the
-      "    active set, its own ev_name (the calling scope) is added too.
+      " 2. Build the active-subname set (transitive closure over call-sites).
+      "    Seed: every ev_name that is already active is also a reachable subname.
       DATA lt_active_subnames TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
-      LOOP AT lt_active_ev INTO DATA(lv_active_name).
-        READ TABLE lt_active_subnames WITH KEY table_line = lv_active_name TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          INSERT lv_active_name INTO TABLE lt_active_subnames.
-        ENDIF.
+      LOOP AT lt_active_ev INTO DATA(lv_ev).
+        READ TABLE lt_active_subnames WITH KEY table_line = lv_ev TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0. INSERT lv_ev INTO TABLE lt_active_subnames. ENDIF.
       ENDLOOP.
 
-      " Transitive closure: keep adding calling scopes until stable.
+      " Expand: if a call-site's subname is already reachable, its caller scope
+      " becomes reachable too — repeat until no new entries are added.
       DATA lv_expanded TYPE boolean.
       DO.
         CLEAR lv_expanded.
@@ -1044,30 +1038,30 @@ CLASS ZCL_ACE IMPLEMENTATION.
         IF lv_expanded = abap_false. EXIT. ENDIF.
       ENDDO.
 
-      " 3. Mark lines for deletion:
-      "    keep if: active_root = true, OR own ev_name is active, OR is a call-site into active scope.
+      " 3. Mark irrelevant lines for deletion.
+      "    A line without active_root must satisfy (B) or (C) to survive;
+      "    otherwise it is a plain grey node that adds no information.
       LOOP AT results ASSIGNING <line> WHERE active_root IS INITIAL.
 
-        " Check own scope by ev_name only.
-        READ TABLE lt_active_ev WITH KEY table_line = <line>-ev_name TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
-          CONTINUE. " own scope is active -> keep
-        ENDIF.
-
-        " Check if this is a call-site into an active scope.
+        " (B) call-site into an active scope — keep.
         IF <line>-subname IS NOT INITIAL.
           READ TABLE lt_active_subnames WITH KEY table_line = <line>-subname TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0.
-            CONTINUE. " call-site leads into an active scope -> keep
-          ENDIF.
+          IF sy-subrc = 0. CONTINUE. ENDIF.
         ENDIF.
 
-        " Neither condition met -> remove.
+        " (C) structural keyword (IF/LOOP/…) inside an active scope — keep.
+        IF <line>-cond IS NOT INITIAL.
+          READ TABLE lt_active_ev WITH KEY table_line = <line>-ev_name TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0. CONTINUE. ENDIF.
+        ENDIF.
+
+        " Condition (A) is already excluded by the WHERE clause.
+        " None of (B)/(C) matched — remove this irrelevant node.
         <line>-del = abap_true.
       ENDLOOP.
       DELETE results WHERE del = abap_true.
 
-      " 4. Renumber ind sequentially.
+      " 4. Renumber ind sequentially after deletions.
       LOOP AT results ASSIGNING <line>. <line>-ind = sy-tabix. ENDLOOP.
     ENDIF.
   ENDMETHOD.
