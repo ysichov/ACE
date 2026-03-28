@@ -699,10 +699,10 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
 
   METHOD get_code_flow.
-    DATA: add TYPE boolean, sub TYPE string, form TYPE string, direction TYPE string,
-          ind2 TYPE i, start TYPE i, end TYPE i, bool TYPE string, block_first TYPE i,
-          els_before TYPE i, inserted TYPE boolean.
-    DATA: line TYPE ts_line, pre_stack TYPE ts_line, opened TYPE i.
+    DATA: add         TYPE boolean, sub TYPE string, form TYPE string, direction TYPE string,
+          ind2        TYPE i, start TYPE i, end TYPE i, bool TYPE string, block_first TYPE i,
+          els_before  TYPE i, inserted TYPE boolean.
+    DATA: line      TYPE ts_line, pre_stack TYPE ts_line, opened TYPE i.
     READ TABLE mo_window->ms_sources-tt_progs INDEX 1 INTO DATA(prog).
     DATA(lt_selected_var) = mt_selected_var.
     IF mo_window->ms_sel_call IS NOT INITIAL.
@@ -739,7 +739,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
         ENDLOOP.
       ENDIF.
     ENDLOOP.
-    DATA: prev LIKE LINE OF mt_steps, pre_key TYPE string.
+    DATA: prev    LIKE LINE OF mt_steps, pre_key TYPE string.
     READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
     LOOP AT steps ASSIGNING FIELD-SYMBOL(<step>).
       DATA(ind) = sy-tabix.
@@ -898,21 +898,23 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
         " Build arrow label from bindings (outer=actual, inner=formal)
         LOOP AT call-bindings INTO DATA(ls_bind).
+          DATA(lv_sep) = SWITCH string( ls_bind-dir
+           WHEN 'I' THEN '->'
+           WHEN 'E' THEN '<-'
+           WHEN 'C' THEN '-> <-'
+           ELSE          '--' ).
+
           CHECK ls_bind-outer IS NOT INITIAL OR ls_bind-inner IS NOT INITIAL.
           IF <line>-arrow IS NOT INITIAL. <line>-arrow = |{ <line>-arrow }<br/>|. ENDIF.
           IF ls_bind-dir = 'E'.
             IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
-              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer } = { ls_bind-inner }( )|.
+              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }{ lv_sep }{ ls_bind-inner }( )|.
             ELSEIF ls_bind-outer IS NOT INITIAL.
               <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }|.
             ELSE.
               <line>-arrow = |{ <line>-arrow }{ ls_bind-inner }( )|.
             ENDIF.
           ELSE.
-            DATA(lv_sep) = SWITCH string( ls_bind-dir
-              WHEN 'I' THEN '->'
-              WHEN 'C' THEN '-> <-'
-              ELSE          '--' ).
             IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
               <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }{ lv_sep }{ ls_bind-inner }|.
             ELSEIF ls_bind-outer IS NOT INITIAL.
@@ -931,7 +933,7 @@ CLASS ZCL_ACE IMPLEMENTATION.
       REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
       REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''. REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
     ENDLOOP.
-    DATA: if_depth TYPE i, when_count TYPE i.
+    DATA: if_depth   TYPE i, when_count TYPE i.
     LOOP AT results ASSIGNING <line>. <line>-ind = sy-tabix. ENDLOOP.
     LOOP AT results ASSIGNING <line>
       WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE'
@@ -942,38 +944,50 @@ CLASS ZCL_ACE IMPLEMENTATION.
         APPEND INITIAL LINE TO mt_if ASSIGNING <if>. <if>-if_ind = <line>-ind.
       ENDIF.
       IF <line>-cond = 'ENDIF' OR <line>-cond = 'ENDCASE'.
-        IF <if> IS ASSIGNED. <if>-end_ind = <line>-ind. SUBTRACT 1 FROM if_depth.
-          LOOP AT mt_if ASSIGNING <if> WHERE end_ind = 0. ENDLOOP. ENDIF.
+        IF <if> IS ASSIGNED.
+          <if>-end_ind = <line>-ind. SUBTRACT 1 FROM if_depth.
+          LOOP AT mt_if ASSIGNING <if> WHERE end_ind = 0. ENDLOOP.
+        ENDIF.
       ENDIF.
       IF <line>-cond = 'WHEN'. ADD 1 TO when_count. ENDIF.
       IF <line>-cond = 'ELSE' OR <line>-cond = 'ELSEIF'.
         <line>-els_before = els_before. <line>-els_after = <line>-ind.
         DATA(counter) = <line>-ind + 1.
         DO.
-          READ TABLE results INDEX counter INTO line. IF sy-subrc <> 0. CLEAR <line>-els_after. EXIT. ENDIF.
-          IF line-cond = 'ELSE' OR line-cond = 'ELSEIF'. CLEAR <line>-els_after. EXIT.
+          READ TABLE results INDEX counter INTO line.
+          IF sy-subrc <> 0. CLEAR <line>-els_after. EXIT. ENDIF.
+          IF line-cond = 'ELSE' OR line-cond = 'ELSEIF'.
+            CLEAR <line>-els_after. EXIT.
           ELSEIF line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND
                  line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
             <line>-els_after = counter. EXIT.
-          ELSE. ADD 1 TO counter. ENDIF.
+          ELSE.
+            ADD 1 TO counter.
+          ENDIF.
         ENDDO.
       ENDIF.
       IF <line>-cond = 'WHEN'.
         <line>-els_before = els_before. <line>-els_after = <line>-ind.
         counter = <line>-ind + 1.
         DO.
-          READ TABLE results INDEX counter INTO line. IF sy-subrc <> 0. CLEAR <line>-els_after. EXIT. ENDIF.
-          IF line-cond = 'WHEN'. CLEAR <line>-els_after. EXIT.
+          READ TABLE results INDEX counter INTO line.
+          IF sy-subrc <> 0. CLEAR <line>-els_after. EXIT. ENDIF.
+          IF line-cond = 'WHEN'.
+            CLEAR <line>-els_after. EXIT.
           ELSEIF line-cond <> 'DO' AND line-cond <> 'ENDDO' AND line-cond <> 'WHILE' AND
                  line-cond <> 'ENDWHILE' AND line-cond <> 'LOOP' AND line-cond <> 'ENDLOOP'.
             <line>-els_after = counter. EXIT.
-          ELSE. ADD 1 TO counter. ENDIF.
+          ELSE.
+            ADD 1 TO counter.
+          ENDIF.
         ENDDO.
         IF when_count = 1. IF <if> IS ASSIGNED. <if>-if_ind = els_before. ENDIF. CLEAR <line>-els_before. ENDIF.
       ENDIF.
       IF <line>-cond <> 'ELSE' AND <line>-cond <> 'ELSEIF' AND <line>-cond <> 'WHEN'.
         els_before = <line>-ind.
-      ELSE. CLEAR els_before. ENDIF.
+      ELSE.
+        CLEAR els_before.
+      ENDIF.
     ENDLOOP.
     IF mt_if IS INITIAL AND ms_if-if_ind IS NOT INITIAL. INSERT ms_if INTO mt_if INDEX 1. ENDIF.
     IF lines( results ) > 0.
