@@ -461,15 +461,21 @@ DATA(lv_maxlen) = 200.
             events TYPE cntl_simple_events,
             event  LIKE LINE OF events.
 
+      DATA(lv_depth) = mo_viewer->mo_window->m_hist_depth.
+
       button  = VALUE #(
-       ( function = 'TB' icon = CONV #( icon_view_expand_vertical ) quickinfo = 'Vertical' text = '' )
-       ( function = 'LR' icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
-       ( butn_type = 3  )
-       ( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow' text = 'Calls Flow' )
-       ( function = 'FLOW' icon = CONV #( icon_wizard ) quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
-       ( function = 'CALCPATH' icon = CONV #( icon_workflow_process ) quickinfo = 'Calc Path - only assigned variables' text = 'Calc Path' )
-       ( butn_type = 3  )
-       ( function = 'TEXT' icon = CONV #( icon_wd_caption ) quickinfo = 'Mermaid Diagram text' text = '' )
+       ( function = 'TB'       icon = CONV #( icon_view_expand_vertical )   quickinfo = 'Vertical'   text = '' )
+       ( function = 'LR'       icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
+       ( butn_type = 3 )
+       ( function = 'CALLS'    icon = CONV #( icon_workflow_process )       quickinfo = 'Calls Flow'  text = 'Calls Flow' )
+       ( function = 'FLOW'     icon = CONV #( icon_wizard )                 quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
+       ( function = 'CALCPATH' icon = CONV #( icon_workflow_process )       quickinfo = 'Calc Path - only assigned variables' text = 'Calc Path' )
+       ( butn_type = 3 )
+       ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )            quickinfo = 'Decrease depth' text = '' )
+       ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level )  quickinfo = 'Depth level' text = |Depth { lv_depth }| )
+       ( function = 'DEPTH_P'  icon = CONV #( icon_arrow_right )           quickinfo = 'Increase depth' text = '' )
+       ( butn_type = 3 )
+       ( function = 'TEXT'     icon = CONV #( icon_wd_caption )            quickinfo = 'Mermaid Diagram text' text = '' )
                       ).
 
       mo_toolbar->add_button_group( button ).
@@ -548,6 +554,46 @@ DATA(lv_maxlen) = 200.
       ELSEIF fcode = 'CALCPATH'.
         mv_type = 'CALCPATH'.
         mv_calc_path = abap_true.
+      ELSEIF fcode = 'DEPTH_M'.
+        IF mo_viewer->mo_window->m_hist_depth > 0.
+          mo_viewer->mo_window->m_hist_depth -= 1.
+          mo_viewer->mo_window->apply_depth( ).
+        ENDIF.
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'DEPTH'
+                    text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
+      ELSEIF fcode = 'DEPTH_P'.
+        IF mo_viewer->mo_window->m_hist_depth < 99.
+          mo_viewer->mo_window->m_hist_depth += 1.
+          mo_viewer->mo_window->apply_depth( ).
+        ENDIF.
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'DEPTH'
+                    text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
+      ELSEIF fcode = 'DEPTH'.
+        DATA: lv_answer TYPE c LENGTH 1, lv_value1 TYPE spop-varvalue1.
+        CALL FUNCTION 'POPUP_TO_GET_ONE_VALUE'
+          EXPORTING
+            textline1   = |Current depth: { mo_viewer->mo_window->m_hist_depth }. Enter new value (0-99):|
+            titel       = 'Set Depth'
+            valuelength = '2'
+          IMPORTING
+            answer      = lv_answer
+            value1      = lv_value1
+          EXCEPTIONS
+            OTHERS      = 1.
+        IF sy-subrc <> 0 OR lv_answer <> 'J' OR lv_value1 IS INITIAL. RETURN. ENDIF.
+        DATA(lv_new_depth) = CONV i( lv_value1 ).
+        IF lv_new_depth < 0.
+          lv_new_depth = 0.
+        ELSEIF lv_new_depth > 99.
+          lv_new_depth = 99.
+        ENDIF.
+        mo_viewer->mo_window->m_hist_depth = lv_new_depth.
+        mo_viewer->mo_window->apply_depth( ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'DEPTH'
+                    text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
       ELSE.
         mv_type = fcode.
         CLEAR mv_calc_path.
