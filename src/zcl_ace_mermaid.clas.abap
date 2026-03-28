@@ -535,6 +535,8 @@ DATA(lv_maxlen) = 200.
         WHEN 'FLOW'.  magic_search( ).
       ENDCASE.
 
+      mo_box->set_focus( mo_box ).
+
   endmethod.
 
 
@@ -557,19 +559,23 @@ DATA(lv_maxlen) = 200.
       ELSEIF fcode = 'DEPTH_M'.
         IF mo_viewer->mo_window->m_hist_depth > 0.
           mo_viewer->mo_window->m_hist_depth -= 1.
-          mo_viewer->mo_window->apply_depth( ).
         ENDIF.
+        mo_viewer->mo_window->apply_depth( ).
+        mo_box->set_focus( mo_box ).
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
+        RETURN.
       ELSEIF fcode = 'DEPTH_P'.
         IF mo_viewer->mo_window->m_hist_depth < 99.
           mo_viewer->mo_window->m_hist_depth += 1.
-          mo_viewer->mo_window->apply_depth( ).
         ENDIF.
+        mo_viewer->mo_window->apply_depth( ).
+        mo_box->set_focus( mo_box ).
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
+        RETURN.
       ELSEIF fcode = 'DEPTH'.
         DATA: lv_answer TYPE c LENGTH 1, lv_value1 TYPE spop-varvalue1.
         CALL FUNCTION 'POPUP_TO_GET_ONE_VALUE'
@@ -591,9 +597,11 @@ DATA(lv_maxlen) = 200.
         ENDIF.
         mo_viewer->mo_window->m_hist_depth = lv_new_depth.
         mo_viewer->mo_window->apply_depth( ).
+        mo_box->set_focus( mo_box ).
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
+        RETURN.
       ELSE.
         mv_type = fcode.
         CLEAR mv_calc_path.
