@@ -847,93 +847,55 @@ CLASS ZCL_ACE IMPLEMENTATION.
       ind = sy-tabix.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = <line>-include INTO prog.
       READ TABLE prog-t_keywords WITH KEY line = <line>-line INTO keyword.
-      " Collect all tokens; insert <br/> before each new param = pattern (after a value token).
-      " State: lv_prev_was_value = true after we saw  "= VALUE", so next word is a new param name.
-      DATA(lv_in_params)      = abap_false.  " true once we pass first EXPORTING/IMPORTING etc.
-      DATA(lv_after_eq)       = abap_false.  " true right after '='
-      DATA(lv_prev_was_value) = abap_false.  " true after value token following '='
       LOOP AT prog-scan->tokens FROM keyword-from TO keyword-to INTO DATA(token).
-        DATA(lv_tok) = token-str.
-        " Detect entry into param section
-        IF lv_tok = 'EXPORTING' OR lv_tok = 'IMPORTING' OR lv_tok = 'CHANGING'
-           OR lv_tok = 'USING' OR lv_tok = 'TABLES' OR lv_tok = 'RAISING'.
-          lv_in_params      = abap_true.
-          lv_after_eq       = abap_false.
-          lv_prev_was_value = abap_false.
-          IF <line>-code IS INITIAL. <line>-code = lv_tok. ELSE. <line>-code = |{ <line>-code } { lv_tok }|. ENDIF.
-          CONTINUE.
+        IF token-str = 'USING' OR token-str = 'EXPORTING' OR token-str = 'IMPORTING' OR token-str = 'CHANGING'.
+          EXIT.
         ENDIF.
-        IF lv_tok = '='.
-          lv_after_eq       = abap_true.
-          lv_prev_was_value = abap_false.
-          <line>-code = |{ <line>-code } { lv_tok }|.
-          CONTINUE.
-        ENDIF.
-        IF lv_in_params = abap_true.
-          IF lv_after_eq = abap_true.
-            " This is the value token
-            <line>-code = |{ <line>-code } { lv_tok }|.
-            lv_after_eq       = abap_false.
-            lv_prev_was_value = abap_true.
-          ELSEIF lv_prev_was_value = abap_true.
-            " This is the next param name — insert <br/> before it
-            <line>-code = |{ <line>-code }<br/>{ lv_tok }|.
-            lv_prev_was_value = abap_false.
-          ELSE.
-            " First param name after section keyword
-            <line>-code = |{ <line>-code } { lv_tok }|.
-          ENDIF.
+        IF <line>-code IS INITIAL.
+          <line>-code = token-str.
         ELSE.
-          " Before any param section — just append
-          IF <line>-code IS INITIAL. <line>-code = lv_tok. ELSE. <line>-code = |{ <line>-code } { lv_tok }|. ENDIF.
+          <line>-code = |{ <line>-code } { token-str }|.
         ENDIF.
       ENDLOOP.
       IF keyword-tt_calls IS NOT INITIAL.
-        READ TABLE keyword-tt_calls INDEX 1 INTO call.
-        <line>-subname = call-name.
-        REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
-        REPLACE ALL OCCURRENCES OF '(' IN <line>-subname WITH ''.
-        REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
-        REPLACE ALL OCCURRENCES OF '"' IN <line>-code WITH ''.
+        " Build subname and arrow from calls.
+        " New parser fills call-bindings; old parser fills call-outer/inner/type.
+        DATA(lv_arrow_cnt) = 0.
+        LOOP AT keyword-tt_calls INTO call.
+          " subname — name of the called method (take from first call entry)
+          IF <line>-subname IS INITIAL.
+            <line>-subname = call-name.
+            REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
+            REPLACE ALL OCCURRENCES OF '(' IN <line>-subname WITH ''.
+            REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
+          ENDIF.
+          REPLACE ALL OCCURRENCES OF '"' IN <line>-code WITH ''.
 
-        " Build arrow label from bindings (outer=actual, inner=formal)
-        LOOP AT call-bindings INTO DATA(ls_bind).
-          DATA(lv_sep) = SWITCH string( ls_bind-dir
-           WHEN 'I' THEN '->'
-           WHEN 'E' THEN '<-'
-           WHEN 'C' THEN '-> <-'
-           ELSE          '--' ).
-
-          CHECK ls_bind-outer IS NOT INITIAL OR ls_bind-inner IS NOT INITIAL.
-          IF <line>-arrow IS NOT INITIAL. <line>-arrow = |{ <line>-arrow }<br/>|. ENDIF.
-          IF ls_bind-dir = 'E'.
-            IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
-              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }{ lv_sep }{ ls_bind-inner }( )|.
-            ELSEIF ls_bind-outer IS NOT INITIAL.
-              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }|.
-            ELSE.
-              <line>-arrow = |{ <line>-arrow }{ ls_bind-inner }( )|.
-            ENDIF.
-          ELSE.
-            IF ls_bind-outer IS NOT INITIAL AND ls_bind-inner IS NOT INITIAL.
-              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }{ lv_sep }{ ls_bind-inner }|.
-            ELSEIF ls_bind-outer IS NOT INITIAL.
-              <line>-arrow = |{ <line>-arrow }{ ls_bind-outer }|.
-            ELSE.
-              <line>-arrow = |{ <line>-arrow }{ ls_bind-inner }|.
-            ENDIF.
+          " Prefer bindings (new parser). Fall back to outer/inner/type (old parser).
+          IF call-bindings IS NOT INITIAL.
+            LOOP AT call-bindings INTO DATA(ls_b).
+              CHECK ls_b-outer IS NOT INITIAL OR ls_b-inner IS NOT INITIAL.
+              IF lv_arrow_cnt > 0. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
+              DATA(lv_dir) = COND string(
+                WHEN call-type = '<' THEN '<'
+                ELSE                      '>' ).
+              <line>-arrow = |{ <line>-arrow } { ls_b-outer } { lv_dir } { ls_b-inner }|.
+              lv_arrow_cnt += 1.
+            ENDLOOP.
+          ELSEIF call-outer IS NOT INITIAL AND call-inner IS NOT INITIAL.
+            IF lv_arrow_cnt > 0. <line>-arrow = |{ <line>-arrow }, |. ENDIF.
+            <line>-arrow = |{ <line>-arrow } { call-outer } { call-type } { call-inner }|.
+            lv_arrow_cnt += 1.
           ENDIF.
         ENDLOOP.
-
-        " Append ( ) to subname so nodes show as  run( )
-        IF <line>-subname IS NOT INITIAL.
-          <line>-subname = |{ <line>-subname }( )|.
-        ENDIF.
       ENDIF.
       REPLACE ALL OCCURRENCES OF '''' IN <line>-subname WITH ''.
-      REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''. REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
+      REPLACE ALL OCCURRENCES OF '(' IN <line>-arrow WITH ''.
+      REPLACE ALL OCCURRENCES OF ')' IN <line>-arrow WITH ''.
+      REPLACE ALL OCCURRENCES OF '(' IN <line>-subname WITH ''.
+      REPLACE ALL OCCURRENCES OF ')' IN <line>-subname WITH ''.
     ENDLOOP.
-    DATA: if_depth   TYPE i, when_count TYPE i.
+    DATA: if_depth TYPE i, when_count TYPE i.
     LOOP AT results ASSIGNING <line>. <line>-ind = sy-tabix. ENDLOOP.
     LOOP AT results ASSIGNING <line>
       WHERE code <> 'DO' AND code <> 'ENDDO' AND code <> 'WHILE' AND code <> 'ENDWHILE'
@@ -994,8 +956,87 @@ CLASS ZCL_ACE IMPLEMENTATION.
       IF results[ lines( results ) ]-arrow IS NOT INITIAL. CLEAR results[ lines( results ) ]-arrow. ENDIF.
     ENDIF.
     CALL METHOD mark_active_root EXPORTING i_calc_path = i_calc_path CHANGING ct_results = results.
+
     IF i_calc_path = abap_true.
-      DELETE results WHERE active_root IS INITIAL.
+      " -----------------------------------------------------------------------
+      " CALC PATH: preserve the full call-stack context, but only for event
+      " scopes (ev_name + ev_type + include + stack) that contain at least one
+      " line with active_root = X (an actual calculation / assignment).
+      "
+      " KEY RULE: a call-site line (subname IS NOT INITIAL) whose called method
+      " IS in the active set must always be kept — it is the node that opens
+      " the subgraph.  Without it BUILD_NODES cannot create "subgraph S[RUN]".
+      " So we keep a line if ANY of the following is true:
+      "   a) its own scope is active (has calculations), OR
+      "   b) it has a subname (is a call-site) AND the called method's name
+      "      matches a scope in the active set (stack+1 level).
+      " Lines that satisfy neither condition are removed.
+      " -----------------------------------------------------------------------
+
+      " 1. Collect ev_names of scopes that contain at least one active_root line.
+      "    Key is ev_name only — ev_type/include/stack can vary within the same
+      "    logical method scope and must not be used for exclusion.
+      DATA lt_active_ev TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
+
+      LOOP AT results ASSIGNING <line> WHERE active_root = abap_true.
+        READ TABLE lt_active_ev WITH KEY table_line = <line>-ev_name TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          INSERT <line>-ev_name INTO TABLE lt_active_ev.
+        ENDIF.
+      ENDLOOP.
+
+      " 2. Collect ev_names of active scopes as starting set for subname lookup.
+      "    Then expand transitively: if a call-site's subname is already in the
+      "    active set, its own ev_name (the calling scope) is added too.
+      DATA lt_active_subnames TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
+      LOOP AT lt_active_ev INTO DATA(lv_active_name).
+        READ TABLE lt_active_subnames WITH KEY table_line = lv_active_name TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          INSERT lv_active_name INTO TABLE lt_active_subnames.
+        ENDIF.
+      ENDLOOP.
+
+      " Transitive closure: keep adding calling scopes until stable.
+      DATA lv_expanded TYPE boolean.
+      DO.
+        CLEAR lv_expanded.
+        LOOP AT results ASSIGNING <line> WHERE subname IS NOT INITIAL AND active_root IS INITIAL.
+          READ TABLE lt_active_subnames WITH KEY table_line = <line>-subname TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            READ TABLE lt_active_subnames WITH KEY table_line = <line>-ev_name TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              INSERT <line>-ev_name INTO TABLE lt_active_subnames.
+              lv_expanded = abap_true.
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
+        IF lv_expanded = abap_false. EXIT. ENDIF.
+      ENDDO.
+
+      " 3. Mark lines for deletion:
+      "    keep if: active_root = true, OR own ev_name is active, OR is a call-site into active scope.
+      LOOP AT results ASSIGNING <line> WHERE active_root IS INITIAL.
+
+        " Check own scope by ev_name only
+        READ TABLE lt_active_ev WITH KEY table_line = <line>-ev_name TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          CONTINUE. " own scope is active -> keep
+        ENDIF.
+
+        " Check if this is a call-site into an active scope
+        IF <line>-subname IS NOT INITIAL.
+          READ TABLE lt_active_subnames WITH KEY table_line = <line>-subname TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            CONTINUE. " call-site leads into an active scope -> keep
+          ENDIF.
+        ENDIF.
+
+        " Neither condition met -> remove
+        <line>-del = abap_true.
+      ENDLOOP.
+      DELETE results WHERE del = abap_true.
+
+      " 4. Renumber ind sequentially.
       LOOP AT results ASSIGNING <line>. <line>-ind = sy-tabix. ENDLOOP.
     ENDIF.
   ENDMETHOD.

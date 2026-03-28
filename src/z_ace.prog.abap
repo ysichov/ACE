@@ -27,8 +27,8 @@
     PARAMETERS: p_wdc  TYPE string.
   SELECTION-SCREEN END OF BLOCK s1.
 
-  PARAMETERS: n_parser NO-DISPLAY."AS CHECKBOX DEFAULT ' '.
-  PARAMETERS: n_time  NO-DISPLAY  . "AS CHECKBOX DEFAULT ' ' .
+  PARAMETERS: n_parser NO-DISPLAY. "AS CHECKBOX DEFAULT ' '.
+  PARAMETERS: n_time NO-DISPLAY  . "AS CHECKBOX DEFAULT ' ' .
 
   SELECTION-SCREEN SKIP.
 
@@ -86,7 +86,7 @@
 
     ENDIF.
 
-    check sy-ucomm is INITIAL.
+    CHECK sy-ucomm IS INITIAL.
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
     IF sy-dbcnt <> 0.

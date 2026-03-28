@@ -348,6 +348,7 @@ SELECTION-SCREEN END OF BLOCK b1.
 *----------------------------------------------------------------------*
 START-OF-SELECTION.
 
+  WRITE 1.
 
   TRY.
       lcl_calculator=>run(
