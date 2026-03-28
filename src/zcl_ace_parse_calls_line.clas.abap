@@ -116,7 +116,6 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
     READ TABLE io_scan->tokens INDEX stmt-from + 1 INTO DATA(name_tok).
     CHECK sy-subrc = 0.
-    DATA(lv_start_line) = io_scan->tokens[ stmt-from ]-row.
     DATA(lv_evtype) = SWITCH string( i_kw
       WHEN 'FUNCTION' THEN 'FUNCTION' WHEN 'MODULE' THEN 'MODULE'
       WHEN 'FORM'     THEN 'FORM'     ELSE               'METHOD' ).
@@ -134,8 +133,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     IF sy-subrc = 0.
       " Запись создана ON_METHODS_SIG из CU/CO/CI.
       " Обновляем include → реальный CM-инклуд.
-      " index = i_stmt_idx (индекс statement в скане CM, нужен для поиска в t_keywords).
-      " def_line из ON_METHODS_SIG уже содержит строку объявления в CU — не трогаем.
+      " index = i_stmt_idx (индекс statement, нужен для поиска в t_keywords).
       <ex>-include = i_include.
       <ex>-index   = i_stmt_idx.
     ELSE.
@@ -155,8 +153,10 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
           <cl>-index       = ls_def-def_line.
           <cl>-meth_type   = ls_def-meth_type.
         ELSE.
+          " локальный класс без предварительного объявления METHODS —
+          " используем i_stmt_idx (индекс statement), НЕ row токена
           <cl>-def_include = i_include.
-          <cl>-index       = lv_start_line.
+          <cl>-index       = i_stmt_idx.
           <cl>-meth_type   = get_meth_type( i_include ).
         ENDIF.
       ELSE.

@@ -266,9 +266,9 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         WHEN lv_interface IS NOT INITIAL THEN lv_interface
         ELSE '' ).
 
-      IF lv_eff_kw = 'DATA'       OR lv_eff_kw = 'CLASS-DATA'
-      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'
-        OR lv_eff_kw = 'CONSTANTS' .
+*      IF lv_eff_kw = 'DATA'       OR lv_eff_kw = 'CLASS-DATA'
+*      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'
+*        OR lv_eff_kw = 'CONSTANTS' .
         IF lv_vars_class IS NOT INITIAL.
           " Для интерфейса — запускаем всегда (нет секций)
           " Для класса — только если lv_section установлен (находимся внутри DEFINITION)
@@ -289,7 +289,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
               i_section = lv_section
             CHANGING cs_source = cs_source ).
         ENDIF.
-      ENDIF.
+     " ENDIF.
 
     ENDLOOP.
 

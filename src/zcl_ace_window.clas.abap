@@ -228,6 +228,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'DEPTH'     icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
        ( function = 'DEPTH_P'   icon = CONV #( icon_arrow_right )         quickinfo = 'Increase depth'                   text = '' )
        ( butn_type = 3  )
+       ( function = 'METRICS'     icon = CONV #( icon_report )            quickinfo = 'Code Metrics (McCabe CC + Halstead)' text = 'Metrics' )
+       ( butn_type = 3  )
        ( function = 'STEPS'       icon = CONV #( icon_next_step )    quickinfo = 'Steps table'                   text = 'Steps' )
        ( butn_type = 3  )
        ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all )   quickinfo = 'Get local class from Global'   text = 'Get whole Class' )
@@ -456,6 +458,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
         ENDIF.
+
+      WHEN 'METRICS'.
+        zcl_ace_metrics_window=>show(
+          is_parse_data = mo_viewer->mo_window->ms_sources
+          i_program     = mo_viewer->mo_window->m_prg-program ).
 
       WHEN 'INFO'.
         DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
