@@ -4,6 +4,18 @@ CLASS zcl_ace_metrics DEFINITION
 
   PUBLIC SECTION.
 
+    "--- token-level detail for debugging ---
+    TYPES:
+      BEGIN OF ts_token_detail,
+        token    TYPE string,
+        kind     TYPE string,   " OPERATOR(kw) / OPERATOR(sym) / OPERATOR(sub) / OPERAND
+        stmt_idx TYPE i,
+        tok_idx  TYPE i,
+        row      TYPE i,
+      END OF ts_token_detail.
+    TYPES:
+      tt_token_details TYPE STANDARD TABLE OF ts_token_detail WITH EMPTY KEY.
+
     "--- result per code unit (method / form / module / program-level) ---
     TYPES:
       BEGIN OF ts_unit_result,
@@ -28,6 +40,8 @@ CLASS zcl_ace_metrics DEFINITION
         loc             TYPE i,        " total lines in unit
         lloc            TYPE i,        " logical LOC (statements)
         cloc            TYPE i,        " comment lines
+        " Token-level debug detail
+        token_detail    TYPE tt_token_details,
       END OF ts_unit_result.
     TYPES:
       tt_unit_results TYPE STANDARD TABLE OF ts_unit_result WITH EMPTY KEY.
@@ -59,6 +73,10 @@ CLASS zcl_ace_metrics DEFINITION
       IMPORTING i_kw      TYPE string
       RETURNING VALUE(rv) TYPE abap_bool.
 
+    CLASS-METHODS is_sub_keyword
+      IMPORTING i_kw      TYPE string
+      RETURNING VALUE(rv) TYPE abap_bool.
+
     CLASS-METHODS log2
       IMPORTING i_val      TYPE f
       RETURNING VALUE(rv)  TYPE f.
@@ -82,14 +100,23 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       CHECK lo_scan->statements IS NOT INITIAL.
 
       " ---- build ABAP keyword set (= operator vocabulary) ----
+      " Only take first tokens of non-comment, non-COMPUTE statements.
+      " COMPUTE statements (type 'C') start with a variable name, not a keyword —
+      " including them would incorrectly classify variable names as operators.
       DATA lt_ops TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       CLEAR lt_ops.
       LOOP AT lo_scan->statements INTO DATA(ls_s_op).
-        CHECK ls_s_op-type <> 'P'.
+        CHECK ls_s_op-type <> 'P'.   " skip comments
+        CHECK ls_s_op-type <> 'C'.   " skip COMPUTE: first token is a variable, not a keyword
         READ TABLE lo_scan->tokens INDEX ls_s_op-from INTO DATA(ls_t_op).
         CHECK sy-subrc = 0.
         INSERT ls_t_op-str INTO TABLE lt_ops.
       ENDLOOP.
+
+      " For COMPUTE statements the implicit keyword is 'COMPUTE' — add it explicitly
+      " so that it counts as an operator when we later classify tokens.
+      DATA(lv_compute_kw) = CONV string( 'COMPUTE' ).
+      INSERT lv_compute_kw INTO TABLE lt_ops.
 
       " ---- collect unit boundaries ----
       " Sources:
@@ -232,29 +259,64 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
               ADD 1 TO ls_unit-cyclomatic.
             ENDIF.
 
+            " For COMPUTE statements (type 'C') inject the virtual COMPUTE keyword
+            " as an operator occurrence before processing the actual tokens.
+            IF ls_stmt-type = 'C'.
+              ADD 1 TO ls_unit-n1.
+              INSERT lv_compute_kw INTO TABLE lt_dist_ops.
+              APPEND VALUE ts_token_detail(
+                token    = 'COMPUTE'
+                kind     = 'OPERATOR(kw)'
+                stmt_idx = lv_si
+                tok_idx  = 0
+                row      = ls_kw_tok-row
+              ) TO ls_unit-token_detail.
+            ENDIF.
+
             lv_ti = ls_stmt-from.
             WHILE lv_ti <= ls_stmt-to.
               CLEAR ls_tok.
               READ TABLE lo_scan->tokens INDEX lv_ti INTO ls_tok.
               IF sy-subrc <> 0. EXIT. ENDIF.
               IF ls_tok-str IS NOT INITIAL.
+                DATA(lv_kind) = CONV string( '' ).
                 READ TABLE lt_ops WITH TABLE KEY table_line = ls_tok-str
                   TRANSPORTING NO FIELDS.
                 IF sy-subrc = 0.
+                  " Primary keyword (first token of statement)
                   ADD 1 TO ls_unit-n1.
                   INSERT ls_tok-str INTO TABLE lt_dist_ops.
+                  lv_kind = 'OPERATOR(kw)'.
                 ELSE.
                   CASE ls_tok-str.
                     WHEN '+' OR '-' OR '*' OR '/' OR '**' OR '&&'
                       OR '=' OR '<>' OR '<' OR '>' OR '<=' OR '>='
                       OR '(' OR ')' OR ',' OR ':' OR '.' OR '->' OR '=>'.
+                      " Symbolic operator
                       ADD 1 TO ls_unit-n1.
                       INSERT ls_tok-str INTO TABLE lt_dist_ops.
+                      lv_kind = 'OPERATOR(sym)'.
                     WHEN OTHERS.
-                      ADD 1 TO ls_unit-n2.
-                      INSERT ls_tok-str INTO TABLE lt_dist_opd.
+                      IF is_sub_keyword( ls_tok-str ) = abap_true.
+                        " Sub-keyword: structural keyword within a statement
+                        " (e.g. FROM, WHERE, INTO, SINGLE, EXPORTING, ...)
+                        ADD 1 TO ls_unit-n1.
+                        INSERT ls_tok-str INTO TABLE lt_dist_ops.
+                        lv_kind = 'OPERATOR(sub)'.
+                      ELSE.
+                        ADD 1 TO ls_unit-n2.
+                        INSERT ls_tok-str INTO TABLE lt_dist_opd.
+                        lv_kind = 'OPERAND'.
+                      ENDIF.
                   ENDCASE.
                 ENDIF.
+                APPEND VALUE ts_token_detail(
+                  token    = ls_tok-str
+                  kind     = lv_kind
+                  stmt_idx = lv_si
+                  tok_idx  = lv_ti
+                  row      = ls_tok-row
+                ) TO ls_unit-token_detail.
               ENDIF.
               ADD 1 TO lv_ti.
             ENDWHILE.
@@ -313,6 +375,64 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       WHEN OTHERS.
         rv = abap_false.
     ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD is_sub_keyword.
+    " Sub-keywords: structural keywords that appear inside statements
+    " but are never the first token — so they don't get into lt_ops automatically.
+    " Grouped by statement family for readability.
+    CASE i_kw.
+
+      " --- SELECT / OPEN CURSOR ---
+      WHEN 'SINGLE' OR 'DISTINCT'
+        OR 'FROM' OR 'AS' OR 'JOIN' OR 'INNER' OR 'LEFT' OR 'OUTER' OR 'CROSS'
+        OR 'ON' OR 'UP' OR 'TO' OR 'ROWS'
+        OR 'WHERE' OR 'HAVING' OR 'GROUP' OR 'ORDER' OR 'BY'
+        OR 'ASCENDING' OR 'DESCENDING'
+        OR 'INTO' OR 'APPENDING' OR 'CORRESPONDING' OR 'FIELDS'
+        OR 'FOR' OR 'ALL' OR 'ENTRIES' OR 'IN'
+        OR 'UNION' OR 'INTERSECT' OR 'EXCEPT'.
+
+      " --- CALL FUNCTION / CALL METHOD / CALL BADI ---
+      WHEN 'EXPORTING' OR 'IMPORTING' OR 'CHANGING' OR 'TABLES'
+        OR 'EXCEPTIONS' OR 'DESTINATION' OR 'STARTING'
+        OR 'IN' OR 'BACKGROUND' OR 'TASK' OR 'UNIT'.
+
+      " --- READ TABLE / LOOP AT / INSERT / MODIFY / DELETE ---
+      WHEN 'WITH' OR 'KEY' OR 'BINARY' OR 'SEARCH'
+        OR 'TRANSPORTING' OR 'FIELDS' OR 'REFERENCE'
+        OR 'ASSIGNING' OR 'CASTING' OR 'RESULT'
+        OR 'COMPARING' OR 'NO' OR 'FIELDS'.
+
+      " --- MOVE / ASSIGN / CONVERT / WRITE ---
+      WHEN 'CORRESPONDING' OR 'BASE' OR 'MAPPING' OR 'EXCEPT'
+        OR 'DECIMALS' OR 'CURRENCY' OR 'UNIT' OR 'TIMEZONE'
+        OR 'RESPECTING' OR 'BLANKS' OR 'REPLACEMENT' OR 'CHARACTER' OR 'MODE'.
+
+      " --- RAISE / TRY / CATCH / MESSAGE ---
+      WHEN 'RESUMABLE' OR 'SHORTDUMP' OR 'TYPE' OR 'LIKE'
+        OR 'LEVEL' OR 'NUMBER' OR 'WITH'
+        OR 'INTO' OR 'BEFORE' OR 'UNWIND'.
+
+      " --- CREATE OBJECT / DATA / FIELD-SYMBOL ---
+      WHEN 'OBJECT' OR 'AREA' OR 'HANDLE' OR 'SECTION'
+        OR 'OPTIONAL' OR 'PREFERRED' OR 'PARAMETER'
+        OR 'VALUE' OR 'DEFAULT' OR 'INITIAL'.
+
+      " --- APPEND / COLLECT / SORT ---
+      WHEN 'SORTED' OR 'BY' OR 'STABLE' OR 'ADJACENT'
+        OR 'DUPLICATES' OR 'LINES' OR 'RANGE' OR 'STEP'.
+
+      " --- OPEN/CLOSE DATASET ---
+      WHEN 'DATASET' OR 'POSITION' OR 'AT' OR 'END'
+        OR 'FILTER' OR 'ENCODING' OR 'CODE' OR 'PAGE'.
+
+      WHEN OTHERS.
+        rv = abap_false.
+        RETURN.
+    ENDCASE.
+    rv = abap_true.
   ENDMETHOD.
 
 

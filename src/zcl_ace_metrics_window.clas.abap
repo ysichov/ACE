@@ -46,10 +46,10 @@ METHOD show.
            risk        TYPE string,
            n1          TYPE i,
            n2          TYPE i,
+           length      TYPE i,
            eta1        TYPE i,
            eta2        TYPE i,
            vocab       TYPE i,
-           length      TYPE i,
            volume      TYPE string,
            difficulty  TYPE string,
            effort      TYPE string,
@@ -321,10 +321,9 @@ METHOD show.
   cl_demo_output=>write_text( '  50+    CRITICAL Untestable, very high risk' ).
   cl_demo_output=>write_text( '' ).
   cl_demo_output=>write_text( '--- Halstead ---' ).
-  cl_demo_output=>write_text( '  eta1/eta2 = distinct operators/operands' ).
-  cl_demo_output=>write_text( '  N1/N2     = total operators/operands' ).
-  cl_demo_output=>write_text( '  Vocab=eta1+eta2  Length=N1+N2' ).
-  cl_demo_output=>write_text( '  Volume=Length*log2(Vocab)  Diff=(eta1/2)*(N2/eta2)  Effort=Diff*Volume' ).
+  cl_demo_output=>write_text( '  N1/N2 - total operators/operands, Length = N1 + N2' ).
+  cl_demo_output=>write_text( '  eta1/eta2 - distinct operators/operands, Vocab = eta1 + eta2' ).
+  cl_demo_output=>write_text( '  Volume=Length*log2(Vocab)  Diff = (eta1 / 2)*(N2 / eta2)  Effort = Diff * Volume' ).
   cl_demo_output=>write_text( '  CLOC_RATIO = CLOC/LOC %  (comment density)' ).
 
   cl_demo_output=>display( ).
