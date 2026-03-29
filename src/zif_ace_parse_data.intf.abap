@@ -53,7 +53,9 @@ INTERFACE zif_ace_parse_data PUBLIC.
       meth_type   TYPE i,
       eventname   TYPE string,
       redefined   TYPE boolean,
-      index       TYPE i,
+      index       TYPE i,      " stmt index of METHOD/FORM/... in implementation scan
+      def_ind     TYPE i,      " stmt index from METHODS declaration (definition only)
+                               " if index = def_ind → no implementation, skip metrics
       def_include TYPE program,
       def_line    TYPE i,
       is_intf     TYPE boolean,

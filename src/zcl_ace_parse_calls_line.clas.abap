@@ -91,8 +91,6 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
         TO mt_meth_defs.
     ENDIF.
 
-    " Предварительная запись для ВСЕХ методов (не только интерфейсных).
-    " ON_BLOCK_START обновит include → реальный CM-инклуд, meth_type уже правильный.
     READ TABLE cs_source-tt_calls_line
       WITH KEY class = mv_class_name eventtype = 'METHOD' eventname = name_tok-str
       TRANSPORTING NO FIELDS.
@@ -109,6 +107,7 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     <cl>-def_include = i_include.
     <cl>-def_line    = lv_line.
     <cl>-index       = i_stmt_idx.
+    <cl>-def_ind     = i_stmt_idx.  " marks declaration-only until on_block_start updates index
   ENDMETHOD.
 
 
