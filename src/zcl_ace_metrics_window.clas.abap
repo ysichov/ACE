@@ -108,7 +108,7 @@ METHOD show.
   DATA lt_total TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
   APPEND VALUE ts_row(
     name        = |{ i_program } TOTAL|
-    cc          = lv_tot_cc
+    cc          = ''"lv_tot_cc
     risk        = cc_rating( lv_tot_cc )
     n1          = lv_tot_n1      n2   = lv_tot_n2
     loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
@@ -258,10 +258,12 @@ METHOD show.
       lv_ratio = '-'.
     ENDIF.
 
+    SORT lt_rows by cc DESCENDING.
+
     APPEND VALUE ts_row(
       name        = |CLASS TOTAL|
       cc          = lv_tot_cc
-      risk        = cc_rating( lv_tot_cc )
+      risk        = '' "cc_rating( lv_tot_cc )
       n1          = lv_tot_n1      n2  = lv_tot_n2
       loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
       cloc_ratio  = lv_ratio
