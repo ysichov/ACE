@@ -66,7 +66,9 @@ CLASS zcl_ace_metrics DEFINITION
 ENDCLASS.
 
 
-CLASS zcl_ace_metrics IMPLEMENTATION.
+
+CLASS ZCL_ACE_METRICS IMPLEMENTATION.
+
 
   METHOD calculate.
 
@@ -190,7 +192,7 @@ CLASS zcl_ace_metrics IMPLEMENTATION.
         ls_unit-include   = <prog>-include.
         ls_unit-unit_type = ls_b-unit_type.
         ls_unit-unit_name = COND #(
-          WHEN ls_b-class IS NOT INITIAL
+          WHEN ls_b-unit_type =  'METHOD'
           THEN |{ ls_b-class }=>{ ls_b-unit_name }|
           ELSE ls_b-unit_name ).
         ls_unit-cyclomatic = 1.
@@ -318,5 +320,4 @@ CLASS zcl_ace_metrics IMPLEMENTATION.
     IF i_val <= 0. RETURN. ENDIF.
     rv = log( i_val ) / log( CONV f( 2 ) ).
   ENDMETHOD.
-
 ENDCLASS.

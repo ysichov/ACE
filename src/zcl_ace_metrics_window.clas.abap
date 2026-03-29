@@ -26,99 +26,274 @@ ENDCLASS.
 CLASS ZCL_ACE_METRICS_WINDOW IMPLEMENTATION.
 
 
-  METHOD show.
+METHOD show.
 
-    DATA(ls_result) = zcl_ace_metrics=>calculate(
-      is_parse_data = is_parse_data
-      i_program     = i_program ).
+  DATA(ls_result) = zcl_ace_metrics=>calculate(
+    is_parse_data = is_parse_data
+    i_program     = i_program ).
 
-    IF ls_result-units IS INITIAL.
-      cl_demo_output=>display( |No code units found for program { i_program }| ).
-      RETURN.
+  IF ls_result-units IS INITIAL.
+    cl_demo_output=>display( |No code units found for program { i_program }| ).
+    RETURN.
+  ENDIF.
+
+  " ---------------------------------------------------------------
+  " Row type
+  " ---------------------------------------------------------------
+  TYPES: BEGIN OF ts_row,
+           name        TYPE string,
+           cc          TYPE i,
+           risk        TYPE string,
+           n1          TYPE i,
+           n2          TYPE i,
+           eta1        TYPE i,
+           eta2        TYPE i,
+           vocab       TYPE i,
+           length      TYPE i,
+           volume      TYPE string,
+           difficulty  TYPE string,
+           effort      TYPE string,
+           loc         TYPE i,
+           lloc        TYPE i,
+           cloc        TYPE i,
+           cloc_ratio  TYPE string,
+         END OF ts_row.
+
+  DATA ls_u       TYPE zcl_ace_metrics=>ts_unit_result.
+  DATA lv_ratio   TYPE string.
+  DATA lv_tot_cc   TYPE i.
+  DATA lv_tot_loc  TYPE i.
+  DATA lv_tot_lloc TYPE i.
+  DATA lv_tot_cloc TYPE i.
+  DATA lv_tot_vol  TYPE f.
+  DATA lv_tot_eff  TYPE f.
+  DATA lv_tot_n1   TYPE i.
+  DATA lv_tot_n2   TYPE i.
+
+  " ---------------------------------------------------------------
+  " Accumulate grand totals
+  " ---------------------------------------------------------------
+  LOOP AT ls_result-units INTO ls_u.
+    ADD ls_u-cyclomatic TO lv_tot_cc.
+    ADD ls_u-loc        TO lv_tot_loc.
+    ADD ls_u-lloc       TO lv_tot_lloc.
+    ADD ls_u-cloc       TO lv_tot_cloc.
+    ADD ls_u-n1         TO lv_tot_n1.
+    ADD ls_u-n2         TO lv_tot_n2.
+    lv_tot_vol = lv_tot_vol + ls_u-volume.
+    lv_tot_eff = lv_tot_eff + ls_u-effort.
+  ENDLOOP.
+
+  IF lv_tot_loc > 0.
+    lv_ratio = |{ CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%|.
+  ELSE.
+    lv_ratio = '-'.
+  ENDIF.
+
+  " ---------------------------------------------------------------
+  " 1. Text summary (как раньше)
+  " ---------------------------------------------------------------
+  cl_demo_output=>write_text( |=== Code Metrics: { i_program } ===, Units analysed                    : { lines( ls_result-units ) }| ).
+  "cl_demo_output=>write_text( |Units analysed                    : { lines( ls_result-units ) }| ).
+  cl_demo_output=>write_text( |Total Cyclomatic Complexity: { lv_tot_cc },  Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }|  ).
+  "cl_demo_output=>write_text( |Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }| ).
+  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }| ).
+  "cl_demo_output=>write_text( |Total Effort                      : { format_f2( lv_tot_eff ) }| ).
+  cl_demo_output=>write_text( |LOC / LLOC / CLOC/ CLOC Ratio     : { lv_tot_loc } / { lv_tot_lloc } / { lv_tot_cloc } / { CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%| ).
+  "cl_demo_output=>write_text( '' ).
+
+  " ---------------------------------------------------------------
+  " 2. TOTAL — одна строка таблицей
+  " ---------------------------------------------------------------
+  DATA lt_total TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+  APPEND VALUE ts_row(
+    name        = |{ i_program } TOTAL|
+    cc          = lv_tot_cc
+    risk        = cc_rating( lv_tot_cc )
+    n1          = lv_tot_n1      n2   = lv_tot_n2
+    loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
+    cloc_ratio  = lv_ratio
+    volume      = format_f2( lv_tot_vol )
+    effort      = format_f2( lv_tot_eff )
+  ) TO lt_total.
+
+  cl_demo_output=>write_data( value = lt_total name = `Total` ).
+  "cl_demo_output=>write_text( '' ).
+
+  " ---------------------------------------------------------------
+  " 3. EVENTS (не METHOD и не FORM)
+  " ---------------------------------------------------------------
+  DATA lt_events TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+  LOOP AT ls_result-units INTO ls_u
+    WHERE unit_type <> 'METHOD' AND unit_type <> 'FORM'.
+    IF ls_u-loc > 0.
+      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
+    ELSE.
+      lv_ratio = '-'.
     ENDIF.
+    APPEND VALUE ts_row(
+      name        = |{ ls_u-unit_name }|
+      cc          = ls_u-cyclomatic
+      risk        = cc_rating( ls_u-cyclomatic )
+      n1          = ls_u-n1        n2   = ls_u-n2
+      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
+      vocab       = ls_u-vocabulary
+      length      = ls_u-prog_length
+      volume      = format_f2( ls_u-volume )
+      difficulty  = format_f2( ls_u-difficulty )
+      effort      = format_f2( ls_u-effort )
+      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
+      cloc_ratio  = lv_ratio
+    ) TO lt_events.
+  ENDLOOP.
 
-    " ---------------------------------------------------------------
-    " Summary
-    " ---------------------------------------------------------------
-    cl_demo_output=>write_text( |=== Code Metrics: { i_program } ===| ).
-    cl_demo_output=>write_text( |Units analysed    : { lines( ls_result-units ) }| ).
-    cl_demo_output=>write_text( |Total Cyclomatic Complexity: { ls_result-total_cyclomatic }| ).
-    cl_demo_output=>write_text( |Avg Cyclomatic Complexity per unit   : { format_f2( ls_result-avg_cyclomatic ) }| ).
-    cl_demo_output=>write_text( |Total Halstead Vol: { format_f2( ls_result-total_volume ) }| ).
-    cl_demo_output=>write_text( |Total Effort      : { format_f2( ls_result-total_effort ) }| ).
-    cl_demo_output=>write_text(
-      |LOC / LLOC / CLOC : { ls_result-total_loc } / { ls_result-total_lloc } / { ls_result-total_cloc }| ).
+  IF lt_events IS NOT INITIAL.
+    "cl_demo_output=>write_text( '--- Events ---' ).
+    cl_demo_output=>write_data( value = lt_events name = `Events` ).
     cl_demo_output=>write_text( '' ).
+  ENDIF.
 
-    " ---------------------------------------------------------------
-    " Per-unit detail table
-    " ---------------------------------------------------------------
-    cl_demo_output=>write_text( '--- Per-Unit Detail ---' ).
+  " ---------------------------------------------------------------
+  " 4. FORMs
+  " ---------------------------------------------------------------
+  DATA lt_forms TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+  LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'FORM'.
+    IF ls_u-loc > 0.
+      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
+    ELSE.
+      lv_ratio = '-'.
+    ENDIF.
+    APPEND VALUE ts_row(
+      name        = ls_u-unit_name
+      cc          = ls_u-cyclomatic
+      risk        = cc_rating( ls_u-cyclomatic )
+      n1          = ls_u-n1        n2   = ls_u-n2
+      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
+      vocab       = ls_u-vocabulary
+      length      = ls_u-prog_length
+      volume      = format_f2( ls_u-volume )
+      difficulty  = format_f2( ls_u-difficulty )
+      effort      = format_f2( ls_u-effort )
+      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
+      cloc_ratio  = lv_ratio
+    ) TO lt_forms.
+  ENDLOOP.
 
-    TYPES: BEGIN OF ts_row,
-             type       TYPE string,
-             name       TYPE string,
-             cc         TYPE i,
-             risk       TYPE string,
-             n1         TYPE i,
-             n2         TYPE i,
-             eta1       TYPE i,
-             eta2       TYPE i,
-             vocab      TYPE i,
-             length     TYPE i,
-             volume     TYPE string,
-             difficulty TYPE string,
-             effort     TYPE string,
-             loc        TYPE i,
-             lloc       TYPE i,
-             cloc       TYPE i,
-           END OF ts_row.
-    DATA lt_rows TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+  IF lt_forms IS NOT INITIAL.
+    "cl_demo_output=>write_text( '--- FORMs ---' ).
+    cl_demo_output=>write_data( value = lt_forms name = `Forms` ).
+    cl_demo_output=>write_text( '' ).
+  ENDIF.
 
-    LOOP AT ls_result-units INTO DATA(ls_u).
+  " ---------------------------------------------------------------
+  " 5. METHODs grouped by class
+  " ---------------------------------------------------------------
+  DATA lt_classes TYPE STANDARD TABLE OF string WITH EMPTY KEY.
+  LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
+    DATA(lv_class) = ls_u-unit_name.
+    FIND FIRST OCCURRENCE OF '=>' IN lv_class MATCH OFFSET DATA(lv_off).
+    IF sy-subrc = 0.
+      lv_class = lv_class(lv_off).
+    ENDIF.
+    READ TABLE lt_classes WITH KEY table_line = lv_class TRANSPORTING NO FIELDS.
+    IF sy-subrc <> 0.
+      APPEND lv_class TO lt_classes.
+    ENDIF.
+  ENDLOOP.
+
+  DATA lt_rows TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+
+  LOOP AT lt_classes INTO DATA(lv_cls).
+    CLEAR lt_rows.
+    CLEAR: lv_tot_cc, lv_tot_loc, lv_tot_lloc, lv_tot_cloc,
+           lv_tot_vol, lv_tot_eff, lv_tot_n1, lv_tot_n2.
+
+    LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
+      DATA(lv_mname) = ls_u-unit_name.
+      DATA(lv_mcls)  = ls_u-unit_name.
+      FIND FIRST OCCURRENCE OF '=>' IN lv_mname MATCH OFFSET DATA(lv_moff).
+      IF sy-subrc = 0.
+        lv_mcls  = lv_mname(lv_moff).
+        DATA(lv_moff2) = lv_moff + 2.
+        lv_mname = lv_mname+lv_moff2.
+      ENDIF.
+      CHECK lv_mcls = lv_cls.
+
+      IF ls_u-loc > 0.
+        lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
+      ELSE.
+        lv_ratio = '-'.
+      ENDIF.
+
       APPEND VALUE ts_row(
-        type       = ls_u-unit_type
-        name       = ls_u-unit_name
-        cc         = ls_u-cyclomatic
-        risk       = cc_rating( ls_u-cyclomatic )
-        n1         = ls_u-n1
-        n2         = ls_u-n2
-        eta1       = ls_u-big_n1
-        eta2       = ls_u-big_n2
-        vocab      = ls_u-vocabulary
-        length     = ls_u-prog_length
-        volume     = format_f2( ls_u-volume )
-        difficulty = format_f2( ls_u-difficulty )
-        effort     = format_f2( ls_u-effort )
-        loc        = ls_u-loc
-        lloc       = ls_u-lloc
-        cloc       = ls_u-cloc
+        name        = lv_mname
+        cc          = ls_u-cyclomatic
+        risk        = cc_rating( ls_u-cyclomatic )
+        n1          = ls_u-n1        n2   = ls_u-n2
+        eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
+        vocab       = ls_u-vocabulary
+        length      = ls_u-prog_length
+        volume      = format_f2( ls_u-volume )
+        difficulty  = format_f2( ls_u-difficulty )
+        effort      = format_f2( ls_u-effort )
+        loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
+        cloc_ratio  = lv_ratio
       ) TO lt_rows.
+
+      ADD ls_u-cyclomatic TO lv_tot_cc.
+      ADD ls_u-loc        TO lv_tot_loc.
+      ADD ls_u-lloc       TO lv_tot_lloc.
+      ADD ls_u-cloc       TO lv_tot_cloc.
+      ADD ls_u-n1         TO lv_tot_n1.
+      ADD ls_u-n2         TO lv_tot_n2.
+      lv_tot_vol = lv_tot_vol + ls_u-volume.
+      lv_tot_eff = lv_tot_eff + ls_u-effort.
     ENDLOOP.
 
-    cl_demo_output=>write( lt_rows ).
+    CHECK lt_rows IS NOT INITIAL.
+
+    IF lv_tot_loc > 0.
+      lv_ratio = |{ CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%|.
+    ELSE.
+      lv_ratio = '-'.
+    ENDIF.
+
+    APPEND VALUE ts_row(
+      name        = |{ lv_cls } TOTAL|
+      cc          = lv_tot_cc
+      risk        = cc_rating( lv_tot_cc )
+      n1          = lv_tot_n1      n2  = lv_tot_n2
+      loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
+      cloc_ratio  = lv_ratio
+      volume      = format_f2( lv_tot_vol )
+      effort      = format_f2( lv_tot_eff )
+    ) TO lt_rows.
+
+    "cl_demo_output=>write_text( |--- { lv_cls } ---| ).
+    cl_demo_output=>write_data( value = lt_rows name = lv_cls ).
     cl_demo_output=>write_text( '' ).
 
-    " ---------------------------------------------------------------
-    " Legend
-    " ---------------------------------------------------------------
-    cl_demo_output=>write_text( '--- McCabe CC Risk ---' ).
-    cl_demo_output=>write_text( '  Cyclomatic Complexity  1-10  LOW      Simple, low risk' ).
-    cl_demo_output=>write_text( '  Cyclomatic Complexity 11-20  MEDIUM   Moderate complexity' ).
-    cl_demo_output=>write_text( '  Cyclomatic Complexity 21-50  HIGH     High risk, refactor recommended' ).
-    cl_demo_output=>write_text( '  Cyclomatic Complexity 50+  CRITICAL Untestable, very high risk' ).
-    cl_demo_output=>write_text( '' ).
-    cl_demo_output=>write_text( '--- Halstead Symbols ---' ).
-    cl_demo_output=>write_text( '  eta1/eta2 = distinct operators/operands' ).
-    cl_demo_output=>write_text( '  N1/N2     = total operators/operands' ).
-    cl_demo_output=>write_text( '  Vocab     = eta1+eta2   Length = N1+N2' ).
-    cl_demo_output=>write_text( '  Volume    = Length * log2(Vocab)' ).
-    cl_demo_output=>write_text( '  Diff      = (eta1/2) * (N2/eta2)' ).
-    cl_demo_output=>write_text( '  Effort    = Diff * Volume  (mental work units)' ).
+  ENDLOOP.
 
-    cl_demo_output=>display( ).
+  " ---------------------------------------------------------------
+  " Legend
+  " ---------------------------------------------------------------
+  cl_demo_output=>write_text( '--- McCabe CC Risk ---' ).
+  cl_demo_output=>write_text( '  1-10   LOW      Simple, low risk' ).
+  cl_demo_output=>write_text( '  11-20  MEDIUM   Moderate complexity' ).
+  cl_demo_output=>write_text( '  21-50  HIGH     High risk, refactor recommended' ).
+  cl_demo_output=>write_text( '  50+    CRITICAL Untestable, very high risk' ).
+  cl_demo_output=>write_text( '' ).
+  cl_demo_output=>write_text( '--- Halstead ---' ).
+  cl_demo_output=>write_text( '  eta1/eta2 = distinct operators/operands' ).
+  cl_demo_output=>write_text( '  N1/N2     = total operators/operands' ).
+  cl_demo_output=>write_text( '  Vocab=eta1+eta2  Length=N1+N2' ).
+  cl_demo_output=>write_text( '  Volume=Length*log2(Vocab)  Diff=(eta1/2)*(N2/eta2)  Effort=Diff*Volume' ).
+  cl_demo_output=>write_text( '  CLOC_RATIO = CLOC/LOC %  (comment density)' ).
 
-  ENDMETHOD.
+  cl_demo_output=>display( ).
+
+ENDMETHOD.
 
 
   METHOD format_f2.
