@@ -122,23 +122,21 @@ CLASS ZCL_ACE_METRICS_WINDOW IMPLEMENTATION.
 
 
   METHOD format_f2.
-    IF i_val = 0. rv = '0.00'. RETURN. ENDIF.
-    DATA lv_str TYPE string.
-    lv_str = i_val.
-    CONDENSE lv_str NO-GAPS.
-    DATA(lv_dot) = find( val = lv_str sub = '.' ).
-    IF lv_dot < 0.
-      rv = |{ lv_str }.00|.
-    ELSE.
-      DATA(lv_dec) = strlen( lv_str ) - lv_dot - 1.
-      IF lv_dec >= 2.
-        rv = substring( val = lv_str len = lv_dot + 3 ).
-      ELSEIF lv_dec = 1.
-        rv = |{ lv_str }0|.
-      ELSE.
-        rv = |{ lv_str }00|.
-      ENDIF.
+    " Correctly format a TYPE F value to 2 decimal places.
+    " The old approach (lv_str = i_val) produced scientific notation
+    " like '1.84E+06', so format_f2 was returning just '1.84' instead
+    " of the real value ~1,840,000.
+    IF i_val = 0.
+      rv = '0.00'.
+      RETURN.
     ENDIF.
+
+    " Use ABAP string template with DECIMALS modifier - this respects
+    " the full magnitude of the float, not just its mantissa.
+    DATA lv_dec TYPE decfloat34.
+    lv_dec = i_val.
+    rv = |{ lv_dec DECIMALS = 2 }|.
+    CONDENSE rv NO-GAPS.
   ENDMETHOD.
 
 
