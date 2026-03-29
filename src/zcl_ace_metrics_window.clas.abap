@@ -259,7 +259,7 @@ METHOD show.
     ENDIF.
 
     APPEND VALUE ts_row(
-      name        = |{ lv_cls } TOTAL|
+      name        = |CLASS TOTAL|
       cc          = lv_tot_cc
       risk        = cc_rating( lv_tot_cc )
       n1          = lv_tot_n1      n2  = lv_tot_n2
