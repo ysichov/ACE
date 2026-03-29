@@ -137,8 +137,8 @@ INTERFACE zif_ace_parse_data PUBLIC.
       include    TYPE program,
       type       TYPE string,
       stmnt_type TYPE string,
-      stmnt_from TYPE string,
-      stmnt_to   TYPE string,
+      stmnt_from TYPE i,
+      stmnt_to   TYPE i,
       name       TYPE string,
       line       TYPE i,
     END OF ts_event .

@@ -278,6 +278,40 @@ METHOD show.
   ENDLOOP.
 
   " ---------------------------------------------------------------
+  " 6. All methods across all classes — sorted by CC DESC
+  " ---------------------------------------------------------------
+  DATA lt_all TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+
+  LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
+    IF ls_u-loc > 0.
+      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
+    ELSE.
+      lv_ratio = '-'.
+    ENDIF.
+    APPEND VALUE ts_row(
+      name        = ls_u-unit_name
+      cc          = ls_u-cyclomatic
+      risk        = cc_rating( ls_u-cyclomatic )
+      n1          = ls_u-n1        n2   = ls_u-n2
+      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
+      vocab       = ls_u-vocabulary
+      length      = ls_u-prog_length
+      volume      = format_f2( ls_u-volume )
+      difficulty  = format_f2( ls_u-difficulty )
+      effort      = format_f2( ls_u-effort )
+      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
+      cloc_ratio  = lv_ratio
+    ) TO lt_all.
+  ENDLOOP.
+
+  SORT lt_all BY cc DESCENDING.
+
+  IF lt_all IS NOT INITIAL.
+    cl_demo_output=>write_data( value = lt_all name = `All Methods (sorted by CC)` ).
+    cl_demo_output=>write_text( '' ).
+  ENDIF.
+
+  " ---------------------------------------------------------------
   " Legend
   " ---------------------------------------------------------------
   cl_demo_output=>write_text( '--- McCabe CC Risk ---' ).
