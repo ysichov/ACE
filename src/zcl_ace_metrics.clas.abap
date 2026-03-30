@@ -16,6 +16,9 @@ CLASS zcl_ace_metrics DEFINITION
     TYPES:
       tt_token_details TYPE STANDARD TABLE OF ts_token_detail WITH EMPTY KEY.
 
+        TYPES: tt_abap_statements TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+
+
     "--- result per code unit (method / form / module / program-level) ---
     TYPES:
       BEGIN OF ts_unit_result,
@@ -72,53 +75,45 @@ CLASS zcl_ace_metrics DEFINITION
         i_program        TYPE program
       RETURNING
         VALUE(rs_result) TYPE ts_result.
-  PRIVATE SECTION.
+private section.
 
-    TYPES:
-  BEGIN OF ts_known_operand,
+  types:
+    BEGIN OF ts_known_operand,
     name TYPE string,
-  END OF ts_known_operand.
-TYPES:
-  tt_known_operands TYPE HASHED TABLE OF ts_known_operand
-    WITH UNIQUE KEY name.
+  END OF ts_known_operand .
+  types:
+    tt_known_operands TYPE HASHED TABLE OF ts_known_operand
+    WITH UNIQUE KEY name .
 
-CLASS-METHODS is_branch_keyword
-  IMPORTING i_kw      TYPE string
-  RETURNING VALUE(rv) TYPE abap_bool.
+  class-data MT_STATEMENTS type TT_ABAP_STATEMENTS .
 
-CLASS-METHODS build_operand_set
-  IMPORTING
-    is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
-    i_include     TYPE program
-    i_unit_type   TYPE string
-    i_unit_name   TYPE string
-    i_class       TYPE string
-  RETURNING
-    VALUE(rt_ops) TYPE tt_known_operands.
-
-CLASS-METHODS classify_token
-  IMPORTING
-    i_token        TYPE string
-    i_is_first     TYPE abap_bool
-    it_operands    TYPE tt_known_operands
-  RETURNING
-    VALUE(rv_kind) TYPE string.
-
-CLASS-METHODS is_numeric_literal
-  IMPORTING i_token   TYPE string
-  RETURNING VALUE(rv) TYPE abap_bool.
-
-CLASS-METHODS is_string_literal
-  IMPORTING i_token   TYPE string
-  RETURNING VALUE(rv) TYPE abap_bool.
-
-CLASS-METHODS is_symbolic_operator
-  IMPORTING i_token   TYPE string
-  RETURNING VALUE(rv) TYPE abap_bool.
-
-CLASS-METHODS log2
-  IMPORTING i_val      TYPE f
-  RETURNING VALUE(rv)  TYPE f.
+  class-methods IS_BRANCH_KEYWORD
+    importing
+      !I_KW type STRING
+    returning
+      value(RV) type ABAP_BOOL .
+  class-methods BUILD_OPERAND_SET
+    importing
+      !IS_PARSE_DATA type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
+      !I_INCLUDE type PROGRAM
+      !I_UNIT_TYPE type STRING
+      !I_UNIT_NAME type STRING
+      !I_CLASS type STRING
+    returning
+      value(RT_OPS) type TT_KNOWN_OPERANDS .
+  class-methods CLASSIFY_TOKEN
+    importing
+      !I_TOKEN type STRING
+      !I_IS_FIRST type ABAP_BOOL
+      !IT_OPERANDS type TT_KNOWN_OPERANDS
+    returning
+      value(RV_KIND) type STRING .
+  class-methods LOG2
+    importing
+      !I_VAL type F
+    returning
+      value(RV) type F .
+  class-methods FILL_STATEMENTS .
 ENDCLASS.
 
 
@@ -126,7 +121,11 @@ ENDCLASS.
 CLASS ZCL_ACE_METRICS IMPLEMENTATION.
 
 
-METHOD calculate.
+  METHOD calculate.
+
+    IF mt_statements IS INITIAL.
+      fill_statements( ).
+    ENDIF.
 
     rs_result-program = i_program.
 
@@ -203,19 +202,23 @@ METHOD calculate.
 
       CHECK lt_boundaries IS NOT INITIAL.
 
+      " Build operand set ONCE per include, not per unit
+      DATA(lt_operands) = build_operand_set(
+        is_parse_data = is_parse_data
+        i_include     = <prog>-include
+        i_unit_type   = ''
+        i_unit_name   = ''
+        i_class       = '' ).
+
       DATA lv_first_row TYPE i.
       DATA lv_last_row  TYPE i.
-      DATA lv_si        TYPE i.
-      DATA lv_ti        TYPE i.
       DATA lt_dist_ops  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       DATA lt_dist_opd  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       DATA ls_stmt_f    LIKE LINE OF lo_scan->statements.
       DATA ls_stmt_t    LIKE LINE OF lo_scan->statements.
       DATA ls_tok_f     LIKE LINE OF lo_scan->tokens.
       DATA ls_tok_t     LIKE LINE OF lo_scan->tokens.
-      DATA ls_stmt      LIKE LINE OF lo_scan->statements.
       DATA ls_kw_tok    LIKE LINE OF lo_scan->tokens.
-      DATA ls_tok       LIKE LINE OF lo_scan->tokens.
 
       LOOP AT lt_boundaries INTO DATA(ls_b).
 
@@ -249,80 +252,110 @@ METHOD calculate.
           ls_unit-loc = lv_last_row - lv_first_row + 1.
         ENDIF.
 
-        DATA(lt_operands) = build_operand_set(
-          is_parse_data = is_parse_data
-          i_include     = <prog>-include
-          i_unit_type   = ls_b-unit_type
-          i_unit_name   = ls_b-unit_name
-          i_class       = ls_b-class ).
+        LOOP AT lo_scan->statements ASSIGNING FIELD-SYMBOL(<stmt>)
+          FROM ls_b-stmt_from TO ls_b-stmt_to.
 
-        lv_si = ls_b-stmt_from.
-        WHILE lv_si <= ls_b-stmt_to.
-          CLEAR ls_stmt.
-          READ TABLE lo_scan->statements INDEX lv_si INTO ls_stmt.
-          IF sy-subrc <> 0. EXIT. ENDIF.
-
-          IF ls_stmt-type = 'P'.
+          IF <stmt>-type = 'P'.
             ADD 1 TO ls_unit-cloc.
           ELSE.
             ADD 1 TO ls_unit-lloc.
             CLEAR ls_kw_tok.
-            READ TABLE lo_scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
+            READ TABLE lo_scan->tokens INDEX <stmt>-from INTO ls_kw_tok.
             IF sy-subrc = 0 AND is_branch_keyword( ls_kw_tok-str ) = abap_true.
               ADD 1 TO ls_unit-cyclomatic.
             ENDIF.
 
-            IF ls_stmt-type = 'C'.
+            IF <stmt>-type = 'C'.
               ADD 1 TO ls_unit-n1.
               INSERT CONV string( 'COMPUTE' ) INTO TABLE lt_dist_ops.
               APPEND VALUE ts_token_detail(
                 token    = 'COMPUTE'
                 kind     = 'OPERATOR'
-                stmt_idx = lv_si
+                stmt_idx = sy-tabix
                 tok_idx  = 0
                 row      = ls_kw_tok-row
               ) TO ls_unit-token_detail.
             ENDIF.
-            lv_ti = ls_stmt-from.
-            WHILE lv_ti <= ls_stmt-to.
-              CLEAR ls_tok.
-              READ TABLE lo_scan->tokens INDEX lv_ti INTO ls_tok.
-              IF sy-subrc <> 0. EXIT. ENDIF.
 
-              DATA lv_is_first TYPE boolean.
-              IF ls_tok-str IS NOT INITIAL.
-                IF  lv_ti = ls_stmt-from AND ls_stmt-type <> 'C'.
+            DATA(lv_stmt_tabix) = sy-tabix.
+            LOOP AT lo_scan->tokens ASSIGNING FIELD-SYMBOL(<tok>)
+              FROM <stmt>-from TO <stmt>-to.
+
+              IF <tok>-str IS NOT INITIAL.
+                DATA lv_is_first TYPE boolean.
+                IF sy-tabix = <stmt>-from AND <stmt>-type <> 'C'.
                   lv_is_first = abap_true.
                 ELSE.
                   CLEAR lv_is_first.
                 ENDIF.
 
-                DATA(lv_kind) = classify_token(
-                  i_token     = ls_tok-str
-                  i_is_first  = lv_is_first
-                  it_operands = lt_operands ).
+                DATA(lv_tok_up)      = to_upper( <tok>-str ).
+                DATA(lv_inline_name) = ``.
 
-                IF lv_kind = 'OPERATOR'.
-                  ADD 1 TO ls_unit-n1.
-                  INSERT ls_tok-str INTO TABLE lt_dist_ops.
-                ELSE.
-                  ADD 1 TO ls_unit-n2.
-                  INSERT ls_tok-str INTO TABLE lt_dist_opd.
+                IF lv_tok_up CP 'DATA(*)' AND strlen( lv_tok_up ) > 5.
+                  DATA(lv_tmp) = <tok>-str+5.
+                  DATA(lv_tmp_len) = strlen( lv_tmp ) - 1.
+                  IF lv_tmp_len > 0.
+                    lv_inline_name = lv_tmp(lv_tmp_len).
+                  ENDIF.
+                ELSEIF lv_tok_up CP 'FIELD-SYMBOL(<*)' AND strlen( lv_tok_up ) > 14.
+                  DATA(lv_fs_tmp) = <tok>-str+14.
+                  DATA(lv_fs_len) = strlen( lv_fs_tmp ) - 2.
+                  IF lv_fs_len > 0.
+                    lv_inline_name = lv_fs_tmp(lv_fs_len).
+                  ENDIF.
                 ENDIF.
 
-                APPEND VALUE ts_token_detail(
-                  token    = ls_tok-str
-                  kind     = lv_kind
-                  stmt_idx = lv_si
-                  tok_idx  = lv_ti
-                  row      = ls_tok-row
-                ) TO ls_unit-token_detail.
+                IF lv_inline_name IS NOT INITIAL.
+                  DATA(lv_kw_part) = COND string(
+                    WHEN lv_tok_up CP 'DATA(*)'          THEN 'DATA'
+                    WHEN lv_tok_up CP 'FIELD-SYMBOL(<*)' THEN 'FIELD-SYMBOL'
+                    ELSE 'DATA' ).
+                  ADD 1 TO ls_unit-n1.
+                  INSERT lv_kw_part INTO TABLE lt_dist_ops.
+                  APPEND VALUE ts_token_detail(
+                    token    = lv_kw_part
+                    kind     = 'OPERATOR'
+                    stmt_idx = lv_stmt_tabix
+                    tok_idx  = sy-tabix
+                    row      = <tok>-row
+                  ) TO ls_unit-token_detail.
+                  ADD 1 TO ls_unit-n2.
+                  INSERT to_upper( lv_inline_name ) INTO TABLE lt_dist_opd.
+                  APPEND VALUE ts_token_detail(
+                    token    = lv_inline_name
+                    kind     = 'OPERAND'
+                    stmt_idx = lv_stmt_tabix
+                    tok_idx  = sy-tabix
+                    row      = <tok>-row
+                  ) TO ls_unit-token_detail.
+                ELSE.
+                  DATA(lv_kind) = classify_token(
+                    i_token     = <tok>-str
+                    i_is_first  = lv_is_first
+                    it_operands = lt_operands ).
+
+                  IF lv_kind = 'OPERATOR'.
+                    ADD 1 TO ls_unit-n1.
+                    INSERT <tok>-str INTO TABLE lt_dist_ops.
+                  ELSE.
+                    ADD 1 TO ls_unit-n2.
+                    INSERT <tok>-str INTO TABLE lt_dist_opd.
+                  ENDIF.
+
+                  APPEND VALUE ts_token_detail(
+                    token    = <tok>-str
+                    kind     = lv_kind
+                    stmt_idx = lv_stmt_tabix
+                    tok_idx  = sy-tabix
+                    row      = <tok>-row
+                  ) TO ls_unit-token_detail.
+                ENDIF.
+
               ENDIF.
-              ADD 1 TO lv_ti.
-            ENDWHILE.
+            ENDLOOP. " tokens
           ENDIF.
-          ADD 1 TO lv_si.
-        ENDWHILE.
+        ENDLOOP. " statements
 
         ls_unit-big_n1      = lines( lt_dist_ops ).
         ls_unit-big_n2      = lines( lt_dist_opd ).
@@ -408,33 +441,46 @@ METHOD calculate.
     " No scope filtering by class/method — a token found in code is checked
     " against these sets by name only.
 
-    LOOP AT is_parse_data-t_vars INTO DATA(ls_v)
+    " Operands = all known named identifiers:
+    "   1. Variable/field-symbol names from t_vars (this include)
+    "   2. Parameter names from t_params (this include)
+    "   3. Unit names (eventname) from tt_calls_line (this include)
+    "   4. Class/interface names from tt_class_defs
+    " No scope filtering by class/method — a token found in code is checked
+    " against these sets by name only.
+
+    FIELD-SYMBOLS: <ls_v>  LIKE LINE OF is_parse_data-t_vars,
+                  <ls_p>  LIKE LINE OF is_parse_data-t_params,
+                  <ls_cl> LIKE LINE OF is_parse_data-tt_calls_line,
+                  <ls_cd> LIKE LINE OF is_parse_data-tt_class_defs.
+
+    LOOP AT is_parse_data-t_vars ASSIGNING <ls_v>
       WHERE include = i_include.
-      IF ls_v-name IS NOT INITIAL.
-        INSERT VALUE ts_known_operand( name = to_upper( ls_v-name ) ) INTO TABLE rt_ops.
+      IF <ls_v>-name IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_v>-name ) ) INTO TABLE rt_ops.
       ENDIF.
     ENDLOOP.
 
-    LOOP AT is_parse_data-t_params INTO DATA(ls_p)
+    LOOP AT is_parse_data-t_params ASSIGNING <ls_p>
       WHERE include = i_include.
-      IF ls_p-param IS NOT INITIAL.
-        INSERT VALUE ts_known_operand( name = to_upper( ls_p-param ) ) INTO TABLE rt_ops.
+      IF <ls_p>-param IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_p>-param ) ) INTO TABLE rt_ops.
       ENDIF.
     ENDLOOP.
 
-    LOOP AT is_parse_data-tt_calls_line INTO DATA(ls_cl)
+    LOOP AT is_parse_data-tt_calls_line ASSIGNING <ls_cl>
       WHERE include = i_include.
-      IF ls_cl-eventname IS NOT INITIAL.
-        INSERT VALUE ts_known_operand( name = to_upper( ls_cl-eventname ) ) INTO TABLE rt_ops.
+      IF <ls_cl>-eventname IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_cl>-eventname ) ) INTO TABLE rt_ops.
       ENDIF.
     ENDLOOP.
 
-    LOOP AT is_parse_data-tt_class_defs INTO DATA(ls_cd).
-      IF ls_cd-class IS NOT INITIAL.
-        INSERT VALUE ts_known_operand( name = to_upper( ls_cd-class ) ) INTO TABLE rt_ops.
+    LOOP AT is_parse_data-tt_class_defs ASSIGNING <ls_cd>.
+      IF <ls_cd>-class IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_cd>-class ) ) INTO TABLE rt_ops.
       ENDIF.
-      IF ls_cd-super IS NOT INITIAL.
-        INSERT VALUE ts_known_operand( name = to_upper( ls_cd-super ) ) INTO TABLE rt_ops.
+      IF <ls_cd>-super IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_cd>-super ) ) INTO TABLE rt_ops.
       ENDIF.
     ENDLOOP.
 
@@ -442,124 +488,329 @@ METHOD calculate.
 
 
   METHOD classify_token.
-    " OPERAND if:
-    "   a) string literal  'text' or `text`
-    "   b) numeric literal  42 / 3.14
-    "   c) known named identifier (exact match)
-    "   d) component access: LS_LINE-BALANCE, <FS>-FIELD, LO_OBJ->ATTR
-    "      → base part before first '-' or '->' is a known identifier
-    " OPERATOR: everything else — first token of statement, symbolic operators,
-    "           ABAP keyword / sub-keyword not in the known-operand set.
 
-    " First token of any non-comment statement is always a keyword
-    IF i_is_first = abap_true.
+
+    IF line_exists( mt_statements[ table_line = i_token ] ).
       rv_kind = 'OPERATOR'.
-      RETURN.
-    ENDIF.
-
-    " Symbolic operators  (includes '->' so must check BEFORE dash logic)
-    IF is_symbolic_operator( i_token ) = abap_true.
-      rv_kind = 'OPERATOR'.
-      RETURN.
-    ENDIF.
-
-    " String literals
-    IF is_string_literal( i_token ) = abap_true.
+    else.
       rv_kind = 'OPERAND'.
-      RETURN.
     ENDIF.
-
-    " Numeric literals
-    IF is_numeric_literal( i_token ) = abap_true.
-      rv_kind = 'OPERAND'.
-      RETURN.
-    ENDIF.
-
-    DATA(lv_upper) = to_upper( i_token ).
-
-    " Exact match in known operands
-    READ TABLE it_operands WITH TABLE KEY name = lv_upper
-      TRANSPORTING NO FIELDS.
-    IF sy-subrc = 0.
-      rv_kind = 'OPERAND'.
-      RETURN.
-    ENDIF.
-
-    " Component / attribute access: TOKEN contains '-' not at position 0.
-    " Examples: LS_LINE-BALANCE  LT_TAB-*  LO_OBJ->METHOD (-> already filtered above
-    " as symbolic operator, but the scanner may keep the whole 'LO_OBJ->ATTR' as one token).
-    " Strategy: find first '-' at position > 0; take substring before it as base name.
-    DATA(lv_len)  = strlen( lv_upper ).
-    DATA(lv_dash) = find( val = lv_upper sub = '-' occ = 1 ).
-    IF lv_dash > 0 AND lv_dash < lv_len.
-      " Make sure it is not '->' (object dereference written as single token)
-      DATA(lv_char_after) = lv_upper+lv_dash(1).   " the '-' char
-      DATA lv_next TYPE c.
-      IF lv_dash + 1 < lv_len.
-        lv_next = lv_upper+lv_dash(1).  " reread: this is '-'; get char at lv_dash+1
-        DATA(lv_after_idx) = lv_dash + 1.
-        lv_next = lv_upper+lv_after_idx(1).
-      ENDIF.
-      IF lv_next <> '>'.   " not '->'
-        DATA(lv_base) = lv_upper(lv_dash).
-        READ TABLE it_operands WITH TABLE KEY name = lv_base
-          TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
-          rv_kind = 'OPERAND'.
-          RETURN.
-        ENDIF.
-      ENDIF.
-    ENDIF.
-
-    " Catch-all: unknown word → ABAP keyword or sub-keyword → OPERATOR
-    rv_kind = 'OPERATOR'.
 
   ENDMETHOD.
 
 
-  METHOD is_numeric_literal.
-    IF i_token IS INITIAL. rv = abap_false. RETURN. ENDIF.
-    DATA(lv_c) = i_token(1).
-    " Starts with digit
-    IF lv_c CA '0123456789'.
-      rv = abap_true. RETURN.
-    ENDIF.
-    " Signed number: -7 or +3
-    DATA(lv_len) = strlen( i_token ).
-    IF lv_len > 1 AND ( lv_c = '-' OR lv_c = '+' ).
-      DATA(lv_c2) = i_token+1(1).
-      IF lv_c2 CA '0123456789'.
-        rv = abap_true. RETURN.
-      ENDIF.
-    ENDIF.
-    rv = abap_false.
-  ENDMETHOD.
+  METHOD fill_statements.
+    mt_statements = VALUE tt_abap_statements(
+      ( `ABS` )
+      ( `ABSTRACT` )
+      ( `ADD` )
+      ( `ADD-CORRESPONDING` )
+      ( `ALIASES` )
+      ( `ALL` )
+      ( `AND` )
+      ( `ANY` )
+      ( `APPEND` )
+      ( `APPENDING` )
+      ( `AS` )
+      ( `ASCENDING` )
+      ( `ASSERT` )
+      ( `ASSIGN` )
+      ( `ASSIGNING` )
+      ( `AT` )
+      ( `AUTHORITY-CHECK` )
+      ( `AVG` )
+      ( `BEGIN` )
+      ( `BETWEEN` )
+      ( `BINARY` )
+      ( `BREAK-POINT` )
+      ( `BUFFER` )
+      ( `BY` )
+      ( `BYPASSING` )
+      ( `CALL` )
+      ( `CASE` )
+      ( `CAST` )
+      ( `CATCH` )
+      ( `CEIL` )
+      ( `CHANGING` )
+      ( `CHECK` )
+      ( `CLASS` )
+      ( `CLASS-DATA` )
+      ( `CLASS-EVENTS` )
+      ( `CLASS-METHODS` )
+      ( `CLEANUP` )
+      ( `CLEAR` )
+      ( `CLIENT` )
+      ( `CLOSE` )
+      ( `COALESCE` )
+      ( `COLLECT` )
+      ( `COMMIT` )
+      ( `COMMUNICATION` )
+      ( `COMPARING` )
+      ( `COMPUTE` )
+      ( `CONCAT` )
+      ( `CONCATENATE` )
+      ( `CONDENSE` )
+      ( `COND` )
+      ( `CONNECTION` )
+      ( `CONSTANTS` )
+      ( `CONTINUE` )
+      ( `CONTROLS` )
+      ( `CONV` )
+      ( `CORRESPONDING` )
+      ( `COUNT` )
+      ( `CREATE` )
+      ( `CURRENT` )
+      ( `CURSOR` )
+      ( `DATA` )
+      ( `DATASET` )
+      ( `DEFAULT` )
+      ( `DEFINE` )
+      ( `DEFINITION` )
+      ( `DELETE` )
+      ( `DESCENDING` )
+      ( `DESCRIBE` )
+      ( `DIALOG` )
+      ( `DISTINCT` )
+      ( `DISTANCE` )
+      ( `DIVIDE` )
+      ( `DIVIDE-CORRESPONDING` )
+      ( `DO` )
+      ( `DYNPRO` )
+      ( `ELSE` )
+      ( `ELSEIF` )
+      ( `ENCODING` )
+      ( `END` )
+      ( `END-OF-PAGE` )
+      ( `END-OF-SELECTION` )
+      ( `ENDCASE` )
+      ( `ENDCLASS` )
+      ( `ENDDO` )
+      ( `ENDFORM` )
+      ( `ENDFUNCTION` )
+      ( `ENDIF` )
+      ( `ENDINTERFACE` )
+      ( `ENDLOOP` )
+      ( `ENDMETHOD` )
+      ( `ENDMODULE` )
+      ( `ENDON` )
+      ( `ENDPROVIDE` )
+      ( `ENDSELECT` )
+      ( `ENDTRY` )
+      ( `ENDWHILE` )
+      ( `ENTRIES` )
+      ( `ESCAPE` )
+      ( `EVENT` )
+      ( `EVENTS` )
+      ( `EXACT` )
+      ( `EXCEPT` )
+      ( `EXCEPTIONS` )
+      ( `EXISTS` )
+      ( `EXIT` )
+      ( `EXPORT` )
+      ( `EXPORTING` )
+      ( `EXTRACT` )
+      ( `FETCH` )
+      ( `FIELD-GROUPS` )
+      ( `FIELD-SYMBOLS` )
+      ( `FIELDS` )
+      ( `FILTER` )
+      ( `FINAL` )
+      ( `FIND` )
+      ( `FIRST` )
+      ( `FLOOR` )
+      ( `FOR` )
+      ( `FORM` )
+      ( `FORMAT` )
+      ( `FREE` )
+      ( `FROM` )
+      ( `FULL` )
+      ( `FUNCTION` )
+      ( `FUNCTION-POOL` )
+      ( `GENERATE` )
+      ( `GET` )
+      ( `GROUP` )
+      ( `HANDLER` )
+      ( `HASHED` )
+      ( `HAVING` )
+      ( `HEADER` )
+      ( `IF` )
+      ( `IMPLEMENTATION` )
+      ( `IMPORT` )
+      ( `IMPORTING` )
+      ( `IN` )
+      ( `INCLUDE` )
+      ( `INDEX` )
+      ( `INFOTYPES` )
+      ( `INHERITING` )
+      ( `INITIAL` )
+      ( `INITIALIZATION` )
+      ( `INNER` )
+      ( `INPUT` )
+      ( `INSERT` )
+      ( `INSTANCE` )
+      ( `INSTR` )
+      ( `INTERFACE` )
+      ( `INTERFACES` )
+      ( `INTERSECT` )
+      ( `INTO` )
+      ( `IS` )
+      ( `JOIN` )
+      ( `KEY` )
+      ( `LAST` )
+      ( `LEAVE` )
+      ( `LEFT` )
+      ( `LENGTH` )
+      ( `LET` )
+      ( `LIKE` )
+      ( `LINE` )
+      ( `LINE-SELECTION` )
+      ( `LINES` )
+      ( `LIST-PROCESSING` )
+      ( `LOAD-OF-PROGRAM` )
+      ( `LOCAL` )
+      ( `LOG-POINT` )
+      ( `LOOP` )
+      ( `LOWER` )
+      ( `LPAD` )
+      ( `MATCH` )
+      ( `MAX` )
+      ( `MESSAGE` )
+      ( `METHOD` )
+      ( `METHODS` )
+      ( `MIN` )
+      ( `MODE` )
+      ( `MODIFY` )
+      ( `MODULE` )
+      ( `MOVE` )
+      ( `MOVE-CORRESPONDING` )
+      ( `MULTIPLY` )
+      ( `MULTIPLY-CORRESPONDING` )
+      ( `NEW` )
+      ( `NEW-LINE` )
+      ( `NEW-PAGE` )
+      ( `NEXT` )
+      ( `NON-UNIQUE` )
+      ( `NOT` )
+      ( `NULL` )
+      ( `OBJECT` )
+      ( `OF` )
+      ( `OFFSET` )
+      ( `ON` )
+      ( `OPEN` )
+      ( `OPTIONAL` )
+      ( `OR` )
+      ( `ORDER` )
+      ( `OTHERS` )
+      ( `OUTER` )
+      ( `OUTPUT` )
+      ( `OVERLAY` )
+      ( `PACK` )
+      ( `PACKAGE` )
+      ( `PARAMETER` )
+      ( `PARAMETERS` )
+      ( `PERFORM` )
+      ( `PF-STATUS` )
+      ( `POOL` )
+      ( `PRIVATE` )
+      ( `PROCESS` )
+      ( `PROGRAM` )
+      ( `PROTECTED` )
+      ( `PROVIDE` )
+      ( `PUBLIC` )
+      ( `RAISE` )
+      ( `RAISING` )
+      ( `RANGES` )
+      ( `READ` )
+      ( `RECEIVE` )
+      ( `REDUCE` )
+      ( `REF` )
+      ( `REFERENCE` )
+      ( `REFRESH` )
+      ( `REPLACE` )
+      ( `REPORT` )
+      ( `RESERVE` )
+      ( `RESUME` )
+      ( `RETRY` )
+      ( `RETURN` )
+      ( `RETURNING` )
+      ( `RIGHT` )
+      ( `ROLLBACK` )
+      ( `ROUND` )
+      ( `ROWS` )
+      ( `RPAD` )
+      ( `RUN` )
+      ( `SCREEN` )
+      ( `SCROLL` )
+      ( `SEARCH` )
+      ( `SECONDS` )
+      ( `SECTION` )
+      ( `SELECT` )
+      ( `SELECT-OPTIONS` )
+      ( `SELECTION-SCREEN` )
+      ( `SET` )
+      ( `SHIFT` )
+      ( `SINGLE` )
+      ( `SIZE` )
+      ( `SKIP` )
+      ( `SOME` )
+      ( `SORT` )
+      ( `SORTED` )
+      ( `SPECIFIED` )
+      ( `SPLIT` )
+      ( `STABLE` )
+      ( `STANDARD` )
+      ( `START-OF-SELECTION` )
+      ( `STATICS` )
+      ( `STOP` )
+      ( `STRUCTURE` )
+      ( `SUBMIT` )
+      ( `SUBSTR` )
+      ( `SUBSTRING` )
+      ( `SUBTRACT` )
+      ( `SUBTRACT-CORRESPONDING` )
+      ( `SUBROUTINE` )
+      ( `SUM` )
+      ( `SUPPRESS` )
+      ( `SWITCH` )
+      ( `TABLE` )
+      ( `TABLES` )
+      ( `THEN` )
+      ( `TIME` )
+      ( `TITLEBAR` )
+      ( `TO` )
+      ( `TO_LOWER` )
+      ( `TO_UPPER` )
+      ( `TOP-OF-PAGE` )
+      ( `TRANSACTION` )
+      ( `TRANSFER` )
+      ( `TRANSLATE` )
+      ( `TRANSPORTING` )
+      ( `TRY` )
+      ( `TYPE` )
+      ( `TYPE-POOL` )
+      ( `TYPE-POOLS` )
+      ( `TYPES` )
+      ( `UNASSIGN` )
+      ( `UNION` )
+      ( `UNIQUE` )
+      ( `UNPACK` )
+      ( `UNTIL` )
+      ( `UP` )
+      ( `UPDATE` )
+      ( `UPPER` )
+      ( `ULINE` )
+      ( `USER-COMMAND` )
+      ( `USING` )
+      ( `VALUE` )
+      ( `WAIT` )
+      ( `WHEN` )
+      ( `WHERE` )
+      ( `WHILE` )
+      ( `WITH` )
+      ( `WINDOW` )
+      ( `WORK` )
+      ( `WRITE` )
+    ).
 
-
-  METHOD is_string_literal.
-    DATA(lv_len) = strlen( i_token ).
-    IF lv_len >= 2.
-      DATA(lv_first) = i_token(1).
-      DATA(lv_last_idx) = lv_len - 1.
-      DATA(lv_last) = i_token+lv_last_idx(1).
-      IF ( lv_first = '''' AND lv_last = '''' )
-      OR ( lv_first = '`'  AND lv_last = '`'  ).
-        rv = abap_true.
-        RETURN.
-      ENDIF.
-    ENDIF.
-    rv = abap_false.
-  ENDMETHOD.
-
-
-  METHOD is_symbolic_operator.
-    CASE i_token.
-      WHEN '+' OR '-' OR '*' OR '/' OR '**' OR '&&'
-        OR '=' OR '<>' OR '<' OR '>' OR '<=' OR '>='
-        OR '(' OR ')' OR ',' OR ':' OR '.' OR '->' OR '=>' OR '|'.
-        rv = abap_true.
-      WHEN OTHERS.
-        rv = abap_false.
-    ENDCASE.
   ENDMETHOD.
 ENDCLASS.
