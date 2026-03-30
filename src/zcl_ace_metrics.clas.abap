@@ -36,6 +36,8 @@ CLASS zcl_ace_metrics DEFINITION
         volume          TYPE f,        " V = N * log2(η)
         difficulty      TYPE f,        " D = (η1/2) * (N2/η2)
         effort          TYPE f,        " E = D * V
+        time_t          TYPE f,        " T = E / 18     (Stroud number: mental discriminations/sec)
+        bugs            TYPE f,        " B = V / 3000   (expected delivered bugs, Halstead)
         " Lines of code
         loc             TYPE i,        " total lines in unit
         lloc            TYPE i,        " logical LOC (statements)
@@ -54,6 +56,8 @@ CLASS zcl_ace_metrics DEFINITION
         total_cyclomatic     TYPE i,
         total_volume         TYPE f,
         total_effort         TYPE f,
+        total_time_t         TYPE f,        " T = E / 18   summed across all units
+        total_bugs           TYPE f,        " B = V / 3000 summed across all units
         total_loc            TYPE i,
         total_lloc           TYPE i,
         total_cloc           TYPE i,
@@ -69,18 +73,51 @@ CLASS zcl_ace_metrics DEFINITION
 
   PRIVATE SECTION.
 
-    CLASS-METHODS is_branch_keyword
-      IMPORTING i_kw      TYPE string
-      RETURNING VALUE(rv) TYPE abap_bool.
+    TYPES:
+  BEGIN OF ts_known_operand,
+    name TYPE string,
+  END OF ts_known_operand.
+TYPES:
+  tt_known_operands TYPE HASHED TABLE OF ts_known_operand
+    WITH UNIQUE KEY name.
 
-    CLASS-METHODS is_sub_keyword
-      IMPORTING i_kw      TYPE string
-      RETURNING VALUE(rv) TYPE abap_bool.
+CLASS-METHODS is_branch_keyword
+  IMPORTING i_kw      TYPE string
+  RETURNING VALUE(rv) TYPE abap_bool.
 
-    CLASS-METHODS log2
-      IMPORTING i_val      TYPE f
-      RETURNING VALUE(rv)  TYPE f.
+CLASS-METHODS build_operand_set
+  IMPORTING
+    is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
+    i_include     TYPE program
+    i_unit_type   TYPE string
+    i_unit_name   TYPE string
+    i_class       TYPE string
+  RETURNING
+    VALUE(rt_ops) TYPE tt_known_operands.
 
+CLASS-METHODS classify_token
+  IMPORTING
+    i_token        TYPE string
+    i_is_first     TYPE abap_bool
+    it_operands    TYPE tt_known_operands
+  RETURNING
+    VALUE(rv_kind) TYPE string.
+
+CLASS-METHODS is_numeric_literal
+  IMPORTING i_token   TYPE string
+  RETURNING VALUE(rv) TYPE abap_bool.
+
+CLASS-METHODS is_string_literal
+  IMPORTING i_token   TYPE string
+  RETURNING VALUE(rv) TYPE abap_bool.
+
+CLASS-METHODS is_symbolic_operator
+  IMPORTING i_token   TYPE string
+  RETURNING VALUE(rv) TYPE abap_bool.
+
+CLASS-METHODS log2
+  IMPORTING i_val      TYPE f
+  RETURNING VALUE(rv)  TYPE f.
 ENDCLASS.
 
 
@@ -99,30 +136,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       CHECK lo_scan IS BOUND.
       CHECK lo_scan->statements IS NOT INITIAL.
 
-      " ---- build ABAP keyword set (= operator vocabulary) ----
-      " Only take first tokens of non-comment, non-COMPUTE statements.
-      " COMPUTE statements (type 'C') start with a variable name, not a keyword —
-      " including them would incorrectly classify variable names as operators.
-      DATA lt_ops TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      CLEAR lt_ops.
-      LOOP AT lo_scan->statements INTO DATA(ls_s_op).
-        CHECK ls_s_op-type <> 'P'.   " skip comments
-        CHECK ls_s_op-type <> 'C'.   " skip COMPUTE: first token is a variable, not a keyword
-        READ TABLE lo_scan->tokens INDEX ls_s_op-from INTO DATA(ls_t_op).
-        CHECK sy-subrc = 0.
-        INSERT ls_t_op-str INTO TABLE lt_ops.
-      ENDLOOP.
-
-      " For COMPUTE statements the implicit keyword is 'COMPUTE' — add it explicitly
-      " so that it counts as an operator when we later classify tokens.
-      DATA(lv_compute_kw) = CONV string( 'COMPUTE' ).
-      INSERT lv_compute_kw INTO TABLE lt_ops.
-
-      " ---- collect unit boundaries ----
-      " Sources:
-      "   1. tt_calls_line  → METHOD / FORM / MODULE / FUNCTION blocks
-      "   2. t_events       → START-OF-SELECTION / INITIALIZATION / AT ... event blocks
-      " index = def_ind means no implementation (interface/abstract) → skip
       TYPES: BEGIN OF ts_boundary,
                stmt_from TYPE i,
                stmt_to   TYPE i,
@@ -134,7 +147,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         WITH UNIQUE KEY stmt_from.
       CLEAR lt_boundaries.
 
-      " --- source 1: calls_line ---
       LOOP AT is_parse_data-tt_calls_line INTO DATA(ls_cl)
         WHERE include  = <prog>-include
           AND index    > 0
@@ -142,9 +154,7 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
              OR eventtype = 'MODULE'   OR eventtype = 'FUNCTION' ).
 
         CHECK ls_cl-index <> ls_cl-def_ind.
-
-        READ TABLE lt_boundaries WITH KEY stmt_from = ls_cl-index
-          TRANSPORTING NO FIELDS.
+        READ TABLE lt_boundaries WITH KEY stmt_from = ls_cl-index TRANSPORTING NO FIELDS.
         CHECK sy-subrc <> 0.
 
         DATA(lv_end_kw) = SWITCH string( ls_cl-eventtype
@@ -152,13 +162,11 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
           WHEN 'FORM'     THEN 'ENDFORM'
           WHEN 'MODULE'   THEN 'ENDMODULE'
           WHEN 'FUNCTION' THEN 'ENDFUNCTION'
-          ELSE                 '' ).
+          ELSE '' ).
 
-        DATA lv_stmt_to TYPE i.
-        lv_stmt_to = 0.
+        DATA lv_stmt_to TYPE i VALUE 0.
         LOOP AT <prog>-t_keywords INTO DATA(ls_kw)
-          WHERE index > ls_cl-index
-            AND name  = lv_end_kw.
+          WHERE index > ls_cl-index AND name = lv_end_kw.
           lv_stmt_to = ls_kw-index.
           EXIT.
         ENDLOOP.
@@ -174,14 +182,12 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
 
       ENDLOOP.
 
-      " --- source 2: t_events (START-OF-SELECTION, INITIALIZATION, AT ...) ---
       LOOP AT is_parse_data-t_events INTO DATA(ls_ev)
-        WHERE include     = <prog>-include
-          AND stmnt_from  > 0
-          AND stmnt_to    > 0.
+        WHERE include    = <prog>-include
+          AND stmnt_from > 0
+          AND stmnt_to   > 0.
 
-        READ TABLE lt_boundaries WITH KEY stmt_from = ls_ev-stmnt_from
-          TRANSPORTING NO FIELDS.
+        READ TABLE lt_boundaries WITH KEY stmt_from = ls_ev-stmnt_from TRANSPORTING NO FIELDS.
         CHECK sy-subrc <> 0.
 
         INSERT VALUE ts_boundary(
@@ -196,7 +202,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
 
       CHECK lt_boundaries IS NOT INITIAL.
 
-      " ---- metric calculation per unit ----
       DATA lv_first_row TYPE i.
       DATA lv_last_row  TYPE i.
       DATA lv_si        TYPE i.
@@ -219,7 +224,7 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         ls_unit-include   = <prog>-include.
         ls_unit-unit_type = ls_b-unit_type.
         ls_unit-unit_name = COND #(
-          WHEN ls_b-unit_type =  'METHOD'
+          WHEN ls_b-unit_type = 'METHOD' AND ls_b-class IS NOT INITIAL
           THEN |{ ls_b-class }=>{ ls_b-unit_name }|
           ELSE ls_b-unit_name ).
         ls_unit-cyclomatic = 1.
@@ -243,6 +248,13 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
           ls_unit-loc = lv_last_row - lv_first_row + 1.
         ENDIF.
 
+        DATA(lt_operands) = build_operand_set(
+          is_parse_data = is_parse_data
+          i_include     = <prog>-include
+          i_unit_type   = ls_b-unit_type
+          i_unit_name   = ls_b-unit_name
+          i_class       = ls_b-class ).
+
         lv_si = ls_b-stmt_from.
         WHILE lv_si <= ls_b-stmt_to.
           CLEAR ls_stmt.
@@ -263,53 +275,42 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
             " as an operator occurrence before processing the actual tokens.
             IF ls_stmt-type = 'C'.
               ADD 1 TO ls_unit-n1.
-              INSERT lv_compute_kw INTO TABLE lt_dist_ops.
+              INSERT CONV string( 'COMPUTE' ) INTO TABLE lt_dist_ops.
               APPEND VALUE ts_token_detail(
                 token    = 'COMPUTE'
-                kind     = 'OPERATOR(kw)'
+                kind     = 'OPERATOR'
                 stmt_idx = lv_si
                 tok_idx  = 0
                 row      = ls_kw_tok-row
               ) TO ls_unit-token_detail.
             ENDIF.
-
             lv_ti = ls_stmt-from.
             WHILE lv_ti <= ls_stmt-to.
               CLEAR ls_tok.
               READ TABLE lo_scan->tokens INDEX lv_ti INTO ls_tok.
               IF sy-subrc <> 0. EXIT. ENDIF.
+
+              DATA lv_is_first TYPE boolean.
               IF ls_tok-str IS NOT INITIAL.
-                DATA(lv_kind) = CONV string( '' ).
-                READ TABLE lt_ops WITH TABLE KEY table_line = ls_tok-str
-                  TRANSPORTING NO FIELDS.
-                IF sy-subrc = 0.
-                  " Primary keyword (first token of statement)
+                IF  lv_ti = ls_stmt-from AND ls_stmt-type <> 'C'.
+                  lv_is_first = abap_true.
+                else.
+                  clear lv_is_first.
+                ENDIF.
+
+                DATA(lv_kind) = classify_token(
+                  i_token     = ls_tok-str
+                  i_is_first  = lv_is_first
+                  it_operands = lt_operands ).
+
+                IF lv_kind = 'OPERATOR'.
                   ADD 1 TO ls_unit-n1.
                   INSERT ls_tok-str INTO TABLE lt_dist_ops.
-                  lv_kind = 'OPERATOR(kw)'.
                 ELSE.
-                  CASE ls_tok-str.
-                    WHEN '+' OR '-' OR '*' OR '/' OR '**' OR '&&'
-                      OR '=' OR '<>' OR '<' OR '>' OR '<=' OR '>='
-                      OR '(' OR ')' OR ',' OR ':' OR '.' OR '->' OR '=>'.
-                      " Symbolic operator
-                      ADD 1 TO ls_unit-n1.
-                      INSERT ls_tok-str INTO TABLE lt_dist_ops.
-                      lv_kind = 'OPERATOR(sym)'.
-                    WHEN OTHERS.
-                      IF is_sub_keyword( ls_tok-str ) = abap_true.
-                        " Sub-keyword: structural keyword within a statement
-                        " (e.g. FROM, WHERE, INTO, SINGLE, EXPORTING, ...)
-                        ADD 1 TO ls_unit-n1.
-                        INSERT ls_tok-str INTO TABLE lt_dist_ops.
-                        lv_kind = 'OPERATOR(sub)'.
-                      ELSE.
-                        ADD 1 TO ls_unit-n2.
-                        INSERT ls_tok-str INTO TABLE lt_dist_opd.
-                        lv_kind = 'OPERAND'.
-                      ENDIF.
-                  ENDCASE.
+                  ADD 1 TO ls_unit-n2.
+                  INSERT ls_tok-str INTO TABLE lt_dist_opd.
                 ENDIF.
+
                 APPEND VALUE ts_token_detail(
                   token    = ls_tok-str
                   kind     = lv_kind
@@ -339,6 +340,8 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
               * ( CONV f( ls_unit-n2 ) / CONV f( ls_unit-big_n2 ) ).
           ENDIF.
           ls_unit-effort = ls_unit-difficulty * ls_unit-volume.
+          ls_unit-time_t = ls_unit-effort / 18.
+          ls_unit-bugs   = ls_unit-volume  / 3000.
         ENDIF.
 
         APPEND ls_unit TO rs_result-units.
@@ -347,12 +350,13 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
 
     ENDLOOP.
 
-    " ---- aggregate totals ----
     DATA lv_cnt TYPE i.
     LOOP AT rs_result-units INTO DATA(ls_u).
       ADD ls_u-cyclomatic TO rs_result-total_cyclomatic.
       rs_result-total_volume = rs_result-total_volume + ls_u-volume.
       rs_result-total_effort = rs_result-total_effort + ls_u-effort.
+      rs_result-total_time_t = rs_result-total_time_t + ls_u-time_t.
+      rs_result-total_bugs   = rs_result-total_bugs   + ls_u-bugs.
       ADD ls_u-loc  TO rs_result-total_loc.
       ADD ls_u-lloc TO rs_result-total_lloc.
       ADD ls_u-cloc TO rs_result-total_cloc.
@@ -378,66 +382,144 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD is_sub_keyword.
-    " Sub-keywords: structural keywords that appear inside statements
-    " but are never the first token — so they don't get into lt_ops automatically.
-    " Grouped by statement family for readability.
-    CASE i_kw.
-
-      " --- SELECT / OPEN CURSOR ---
-      WHEN 'SINGLE' OR 'DISTINCT'
-        OR 'FROM' OR 'AS' OR 'JOIN' OR 'INNER' OR 'LEFT' OR 'OUTER' OR 'CROSS'
-        OR 'ON' OR 'UP' OR 'TO' OR 'ROWS'
-        OR 'WHERE' OR 'HAVING' OR 'GROUP' OR 'ORDER' OR 'BY'
-        OR 'ASCENDING' OR 'DESCENDING'
-        OR 'INTO' OR 'APPENDING' OR 'CORRESPONDING' OR 'FIELDS'
-        OR 'FOR' OR 'ALL' OR 'ENTRIES' OR 'IN'
-        OR 'UNION' OR 'INTERSECT' OR 'EXCEPT'.
-
-      " --- CALL FUNCTION / CALL METHOD / CALL BADI ---
-      WHEN 'EXPORTING' OR 'IMPORTING' OR 'CHANGING' OR 'TABLES'
-        OR 'EXCEPTIONS' OR 'DESTINATION' OR 'STARTING'
-        OR 'IN' OR 'BACKGROUND' OR 'TASK' OR 'UNIT'.
-
-      " --- READ TABLE / LOOP AT / INSERT / MODIFY / DELETE ---
-      WHEN 'WITH' OR 'KEY' OR 'BINARY' OR 'SEARCH'
-        OR 'TRANSPORTING' OR 'FIELDS' OR 'REFERENCE'
-        OR 'ASSIGNING' OR 'CASTING' OR 'RESULT'
-        OR 'COMPARING' OR 'NO' OR 'FIELDS'.
-
-      " --- MOVE / ASSIGN / CONVERT / WRITE ---
-      WHEN 'CORRESPONDING' OR 'BASE' OR 'MAPPING' OR 'EXCEPT'
-        OR 'DECIMALS' OR 'CURRENCY' OR 'UNIT' OR 'TIMEZONE'
-        OR 'RESPECTING' OR 'BLANKS' OR 'REPLACEMENT' OR 'CHARACTER' OR 'MODE'.
-
-      " --- RAISE / TRY / CATCH / MESSAGE ---
-      WHEN 'RESUMABLE' OR 'SHORTDUMP' OR 'TYPE' OR 'LIKE'
-        OR 'LEVEL' OR 'NUMBER' OR 'WITH'
-        OR 'INTO' OR 'BEFORE' OR 'UNWIND'.
-
-      " --- CREATE OBJECT / DATA / FIELD-SYMBOL ---
-      WHEN 'OBJECT' OR 'AREA' OR 'HANDLE' OR 'SECTION'
-        OR 'OPTIONAL' OR 'PREFERRED' OR 'PARAMETER'
-        OR 'VALUE' OR 'DEFAULT' OR 'INITIAL'.
-
-      " --- APPEND / COLLECT / SORT ---
-      WHEN 'SORTED' OR 'BY' OR 'STABLE' OR 'ADJACENT'
-        OR 'DUPLICATES' OR 'LINES' OR 'RANGE' OR 'STEP'.
-
-      " --- OPEN/CLOSE DATASET ---
-      WHEN 'DATASET' OR 'POSITION' OR 'AT' OR 'END'
-        OR 'FILTER' OR 'ENCODING' OR 'CODE' OR 'PAGE'.
-
-      WHEN OTHERS.
-        rv = abap_false.
-        RETURN.
-    ENDCASE.
-    rv = abap_true.
-  ENDMETHOD.
-
-
   METHOD log2.
     IF i_val <= 0. RETURN. ENDIF.
     rv = log( i_val ) / log( CONV f( 2 ) ).
+  ENDMETHOD.
+
+
+  METHOD build_operand_set.
+    " Operands = all known named identifiers visible in this unit:
+    "   1. Variables/field-symbols from t_vars (unit scope + class scope)
+    "   2. Parameters from t_params
+    "   3. All unit names (eventname) in this include — e.g. 'test' in METHOD test.
+    "   4. Class/interface names from tt_class_defs
+
+    LOOP AT is_parse_data-t_vars INTO DATA(ls_v)
+      WHERE include = i_include
+        AND ( eventname = i_unit_name OR eventname IS INITIAL OR eventtype = 'CLASS' ).
+      IF ls_v-name IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( ls_v-name ) ) INTO TABLE rt_ops.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT is_parse_data-t_params INTO DATA(ls_p)
+      WHERE include = i_include AND event = i_unit_name.
+      IF ls_p-param IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( ls_p-param ) ) INTO TABLE rt_ops.
+      ENDIF.
+    ENDLOOP.
+
+    " All unit names in this include are operands at their declaration/call sites
+    LOOP AT is_parse_data-tt_calls_line INTO DATA(ls_cl)
+      WHERE include = i_include.
+      IF ls_cl-eventname IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( ls_cl-eventname ) ) INTO TABLE rt_ops.
+      ENDIF.
+    ENDLOOP.
+
+    " Class and interface names
+    LOOP AT is_parse_data-tt_class_defs INTO DATA(ls_cd).
+      IF ls_cd-class IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( ls_cd-class ) ) INTO TABLE rt_ops.
+      ENDIF.
+      IF ls_cd-super IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( ls_cd-super ) ) INTO TABLE rt_ops.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD classify_token.
+    " OPERAND if:
+    "   a) string literal  'text' or `text`
+    "   b) numeric literal  42 / 3.14
+    "   c) known named identifier (var / param / unit name / class name)
+    " OPERATOR: everything else — first token of statement, symbolic operators,
+    "           any ABAP keyword / sub-keyword not in the known-operand set.
+
+    " First token of any non-comment statement is always a keyword
+    IF i_is_first = abap_true.
+      rv_kind = 'OPERATOR'.
+      RETURN.
+    ENDIF.
+
+    " Symbolic operators
+    IF is_symbolic_operator( i_token ) = abap_true.
+      rv_kind = 'OPERATOR'.
+      RETURN.
+    ENDIF.
+
+    " String literals
+    IF is_string_literal( i_token ) = abap_true.
+      rv_kind = 'OPERAND'.
+      RETURN.
+    ENDIF.
+
+    " Numeric literals
+    IF is_numeric_literal( i_token ) = abap_true.
+      rv_kind = 'OPERAND'.
+      RETURN.
+    ENDIF.
+
+    " Known named identifier?
+    READ TABLE it_operands WITH TABLE KEY name = to_upper( i_token )
+      TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      rv_kind = 'OPERAND'.
+      RETURN.
+    ENDIF.
+
+    " Catch-all: unknown word → ABAP keyword or sub-keyword → OPERATOR
+    rv_kind = 'OPERATOR'.
+
+  ENDMETHOD.
+
+
+  METHOD is_numeric_literal.
+    IF i_token IS INITIAL. rv = abap_false. RETURN. ENDIF.
+    DATA(lv_c) = i_token(1).
+    " Starts with digit
+    IF lv_c CA '0123456789'.
+      rv = abap_true. RETURN.
+    ENDIF.
+    " Signed number: -7 or +3
+    DATA(lv_len) = strlen( i_token ).
+    IF lv_len > 1 AND ( lv_c = '-' OR lv_c = '+' ).
+      DATA(lv_c2) = i_token+1(1).
+      IF lv_c2 CA '0123456789'.
+        rv = abap_true. RETURN.
+      ENDIF.
+    ENDIF.
+    rv = abap_false.
+  ENDMETHOD.
+
+
+  METHOD is_string_literal.
+    DATA(lv_len) = strlen( i_token ).
+    IF lv_len >= 2.
+      DATA(lv_first) = i_token(1).
+      DATA(lv_last_idx) = lv_len - 1.
+      DATA(lv_last) = i_token+lv_last_idx(1).
+      IF ( lv_first = '''' AND lv_last = '''' )
+      OR ( lv_first = '`'  AND lv_last = '`'  ).
+        rv = abap_true.
+        RETURN.
+      ENDIF.
+    ENDIF.
+    rv = abap_false.
+  ENDMETHOD.
+
+
+  METHOD is_symbolic_operator.
+    CASE i_token.
+      WHEN '+' OR '-' OR '*' OR '/' OR '**' OR '&&'
+        OR '=' OR '<>' OR '<' OR '>' OR '<=' OR '>='
+        OR '(' OR ')' OR ',' OR ':' OR '.' OR '->' OR '=>' OR '|'.
+        rv = abap_true.
+      WHEN OTHERS.
+        rv = abap_false.
+    ENDCASE.
   ENDMETHOD.
 ENDCLASS.

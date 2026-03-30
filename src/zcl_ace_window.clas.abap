@@ -228,7 +228,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'DEPTH'     icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
        ( function = 'DEPTH_P'   icon = CONV #( icon_arrow_right )         quickinfo = 'Increase depth'                   text = '' )
        ( butn_type = 3  )
-       ( function = 'METRICS'     icon = CONV #( icon_report )            quickinfo = 'Code Metrics (McCabe CC + Halstead)' text = 'Metrics' )
+       ( function = 'METRICS'   icon = CONV #( icon_report )              quickinfo = 'Code Metrics (McCabe CC + Halstead)' text = 'Metrics' )
+       ( function = 'MDEBUG'    icon = CONV #( icon_tools )               quickinfo = 'Metrics Debug: operators/operands per block' text = 'Mdebug' )
        ( butn_type = 3  )
        ( function = 'STEPS'       icon = CONV #( icon_next_step )    quickinfo = 'Steps table'                   text = 'Steps' )
        ( butn_type = 3  )
@@ -352,60 +353,39 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'CALLS'.
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
-          " Diagram window does not exist yet — create it.
           mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CALLS' ).
         ELSE.
-          " Diagram window is already open — bring it to the front.
           mo_mermaid->mo_box->set_focus( mo_mermaid->mo_box ).
         ENDIF.
 
       WHEN 'CODEMIX'.
-        " Full code flow: all executed statements grouped by method/form scope.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         mo_viewer->get_code_mix( ).
         mo_viewer->mo_window->show_stack( ).
 
       WHEN 'CALCONLY'.
-        " Calculation only: same as Code Flow but filtered to lines that
-        " actually assign or compute values (i_calc_path = true).
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         mo_viewer->get_code_mix( i_calc_path = abap_true ).
         mo_viewer->mo_window->show_stack( ).
 
       WHEN 'HANDLERS'.
-        " Each handler gets two steps:
-        "   stack=1 → virtual event node  (EVENT: clicked)
-        "   stack=2 → the handler method itself
-        " This produces an arrow  EVENT → handler  in the diagram.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
 
-        LOOP AT mo_viewer->mo_window->ms_sources-tt_handler_map
-          INTO DATA(ls_hm).
-
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_handler_map INTO DATA(ls_hm).
           CHECK ls_hm-hdl_method IS NOT INITIAL.
-
           DATA(lv_hdl_class) = ls_hm-hdl_class.
-
-          " If the class is not filled — look it up in calls_line by method name.
           IF lv_hdl_class IS INITIAL.
-            LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line
-              INTO DATA(ls_cl_hdl)
+            LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(ls_cl_hdl)
               WHERE eventname = ls_hm-hdl_method AND eventtype = 'METHOD'.
               lv_hdl_class = ls_cl_hdl-class. EXIT.
             ENDLOOP.
           ENDIF.
-
-          " Find the handler entry point in calls_line.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
             INTO DATA(ls_call_hdl)
-            WITH KEY class     = lv_hdl_class
-                     eventtype = 'METHOD'
-                     eventname = ls_hm-hdl_method.
+            WITH KEY class = lv_hdl_class eventtype = 'METHOD' eventname = ls_hm-hdl_method.
           CHECK sy-subrc = 0.
-
-          " Add a virtual step for the event at stack=1.
           ADD 1 TO mo_viewer->m_step.
           APPEND VALUE zcl_ace=>t_step_counter(
             step       = mo_viewer->m_step
@@ -415,8 +395,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             program    = ls_call_hdl-program
             include    = ls_call_hdl-include
           ) TO mo_viewer->mt_steps.
-
-          " Handler at stack=2 — child of the event node.
           zcl_ace_source_parser=>parse_call(
             EXPORTING
               i_index     = ls_call_hdl-index
@@ -433,7 +411,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           MESSAGE 'No event handlers found. Run CodeMix first to parse the source.' TYPE 'I'.
           RETURN.
         ENDIF.
-
         mo_viewer->get_code_mix( ).
         mo_viewer->mo_window->show_stack( ).
         mo_viewer->mo_window->mo_box->set_caption(
@@ -461,6 +438,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'METRICS'.
         zcl_ace_metrics_window=>show(
+          is_parse_data = mo_viewer->mo_window->ms_sources
+          i_program     = mo_viewer->mo_window->m_prg-program ).
+
+      WHEN 'MDEBUG'.
+        zcl_ace_metrics_window=>show_debug(
           is_parse_data = mo_viewer->mo_window->ms_sources
           i_program     = mo_viewer->mo_window->m_prg-program ).
 

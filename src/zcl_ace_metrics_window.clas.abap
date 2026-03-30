@@ -9,6 +9,10 @@ CLASS zcl_ace_metrics_window DEFINITION
         is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
         i_program     TYPE program.
 
+    CLASS-METHODS show_debug
+  IMPORTING
+    is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
+    i_program     TYPE program.
   PRIVATE SECTION.
 
     CLASS-METHODS format_f2
@@ -53,6 +57,8 @@ METHOD show.
            volume      TYPE string,
            difficulty  TYPE string,
            effort      TYPE string,
+           time_t      TYPE string,
+           bugs        TYPE string,
            loc         TYPE i,
            lloc        TYPE i,
            cloc        TYPE i,
@@ -67,6 +73,8 @@ METHOD show.
   DATA lv_tot_cloc TYPE i.
   DATA lv_tot_vol  TYPE f.
   DATA lv_tot_eff  TYPE f.
+  DATA lv_tot_time_t TYPE f.
+  DATA lv_tot_bugs   TYPE f.
   DATA lv_tot_n1   TYPE i.
   DATA lv_tot_n2   TYPE i.
 
@@ -82,6 +90,8 @@ METHOD show.
     ADD ls_u-n2         TO lv_tot_n2.
     lv_tot_vol = lv_tot_vol + ls_u-volume.
     lv_tot_eff = lv_tot_eff + ls_u-effort.
+    lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
+    lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
   ENDLOOP.
 
   IF lv_tot_loc > 0.
@@ -97,7 +107,7 @@ METHOD show.
   "cl_demo_output=>write_text( |Units analysed                    : { lines( ls_result-units ) }| ).
   cl_demo_output=>write_text( |Total Cyclomatic Complexity: { lv_tot_cc },  Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }|  ).
   "cl_demo_output=>write_text( |Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }| ).
-  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }| ).
+  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }, Time: { format_f2( lv_tot_time_t ) }s, Expected Bugs: { format_f2( lv_tot_bugs ) }| ).
   "cl_demo_output=>write_text( |Total Effort                      : { format_f2( lv_tot_eff ) }| ).
   cl_demo_output=>write_text( |LOC / LLOC / CLOC/ CLOC Ratio     : { lv_tot_loc } / { lv_tot_lloc } / { lv_tot_cloc } / { CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%| ).
   "cl_demo_output=>write_text( '' ).
@@ -115,6 +125,8 @@ METHOD show.
     cloc_ratio  = lv_ratio
     volume      = format_f2( lv_tot_vol )
     effort      = format_f2( lv_tot_eff )
+    time_t      = format_f2( lv_tot_time_t )
+    bugs        = format_f2( lv_tot_bugs )
   ) TO lt_total.
 
   cl_demo_output=>write_data( value = lt_total name = `Total` ).
@@ -142,6 +154,8 @@ METHOD show.
       volume      = format_f2( ls_u-volume )
       difficulty  = format_f2( ls_u-difficulty )
       effort      = format_f2( ls_u-effort )
+      time_t      = format_f2( ls_u-time_t )
+      bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
     ) TO lt_events.
@@ -174,6 +188,8 @@ METHOD show.
       volume      = format_f2( ls_u-volume )
       difficulty  = format_f2( ls_u-difficulty )
       effort      = format_f2( ls_u-effort )
+      time_t      = format_f2( ls_u-time_t )
+      bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
     ) TO lt_forms.
@@ -206,7 +222,8 @@ METHOD show.
   LOOP AT lt_classes INTO DATA(lv_cls).
     CLEAR lt_rows.
     CLEAR: lv_tot_cc, lv_tot_loc, lv_tot_lloc, lv_tot_cloc,
-           lv_tot_vol, lv_tot_eff, lv_tot_n1, lv_tot_n2.
+           lv_tot_vol, lv_tot_eff, lv_tot_time_t, lv_tot_bugs,
+           lv_tot_n1, lv_tot_n2.
 
     LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
       DATA(lv_mname) = ls_u-unit_name.
@@ -248,6 +265,8 @@ METHOD show.
       ADD ls_u-n2         TO lv_tot_n2.
       lv_tot_vol = lv_tot_vol + ls_u-volume.
       lv_tot_eff = lv_tot_eff + ls_u-effort.
+      lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
+      lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
     ENDLOOP.
 
     CHECK lt_rows IS NOT INITIAL.
@@ -269,6 +288,8 @@ METHOD show.
       cloc_ratio  = lv_ratio
       volume      = format_f2( lv_tot_vol )
       effort      = format_f2( lv_tot_eff )
+      time_t      = format_f2( lv_tot_time_t )
+      bugs        = format_f2( lv_tot_bugs )
     ) TO lt_rows.
 
     "cl_demo_output=>write_text( |--- { lv_cls } ---| ).
@@ -299,6 +320,8 @@ METHOD show.
       volume      = format_f2( ls_u-volume )
       difficulty  = format_f2( ls_u-difficulty )
       effort      = format_f2( ls_u-effort )
+      time_t      = format_f2( ls_u-time_t )
+      bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
     ) TO lt_all.
@@ -324,6 +347,8 @@ METHOD show.
   cl_demo_output=>write_text( '  N1/N2 - total operators/operands, Length = N1 + N2' ).
   cl_demo_output=>write_text( '  eta1/eta2 - distinct operators/operands, Vocab = eta1 + eta2' ).
   cl_demo_output=>write_text( '  Volume=Length*log2(Vocab)  Diff = (eta1 / 2)*(N2 / eta2)  Effort = Diff * Volume' ).
+  cl_demo_output=>write_text( '  Time (T) = Effort / 18  (Stroud number: 18 mental discriminations/sec — pure thinking time)' ).
+  cl_demo_output=>write_text( '  Bugs (B) = Volume / 3000  (expected delivered defects, Halstead empirical formula)' ).
   cl_demo_output=>write_text( '  CLOC_RATIO = CLOC/LOC %  (comment density)' ).
 
   cl_demo_output=>display( ).
@@ -360,5 +385,92 @@ ENDMETHOD.
     ELSE.
       rv = 'CRITICAL'.
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD show_debug.
+    " For each code unit shows:
+    "   - header with unit name and summary counts
+    "   - table of OPERATORS: token | occurrences | is_unique (first time seen)
+    "   - table of OPERANDS:  token | occurrences | is_unique
+
+    DATA(ls_result) = zcl_ace_metrics=>calculate(
+      is_parse_data = is_parse_data
+      i_program     = i_program ).
+
+    IF ls_result-units IS INITIAL.
+      cl_demo_output=>display( |No code units found for program { i_program }| ).
+      RETURN.
+    ENDIF.
+
+    TYPES: BEGIN OF ts_tok_row,
+             token      TYPE string,
+             count      TYPE i,
+             first_row  TYPE i,   " source row where first seen
+           END OF ts_tok_row.
+    TYPES tt_tok_rows TYPE STANDARD TABLE OF ts_tok_row WITH EMPTY KEY.
+
+    cl_demo_output=>write_text( |=== Metrics Debug: { i_program } ===| ).
+
+    LOOP AT ls_result-units INTO DATA(ls_u).
+
+      cl_demo_output=>write_text(
+        |--- { ls_u-unit_type }: { ls_u-unit_name } | &
+        |  N1={ ls_u-n1 } η1={ ls_u-big_n1 } | &
+        |  N2={ ls_u-n2 } η2={ ls_u-big_n2 } | &
+        |  CC={ ls_u-cyclomatic }| ).
+
+      " --- Build operator frequency table ---
+      DATA lt_ops  TYPE tt_tok_rows.
+      DATA lt_opds TYPE tt_tok_rows.
+      CLEAR: lt_ops, lt_opds.
+
+      LOOP AT ls_u-token_detail INTO DATA(ls_td).
+        IF ls_td-kind = 'OPERATOR'.
+          READ TABLE lt_ops WITH KEY token = ls_td-token ASSIGNING FIELD-SYMBOL(<op>).
+          IF sy-subrc = 0.
+            ADD 1 TO <op>-count.
+          ELSE.
+            APPEND VALUE ts_tok_row(
+              token     = ls_td-token
+              count     = 1
+              first_row = ls_td-row
+            ) TO lt_ops.
+          ENDIF.
+        ELSE.
+          READ TABLE lt_opds WITH KEY token = ls_td-token ASSIGNING FIELD-SYMBOL(<opd>).
+          IF sy-subrc = 0.
+            ADD 1 TO <opd>-count.
+          ELSE.
+            APPEND VALUE ts_tok_row(
+              token     = ls_td-token
+              count     = 1
+              first_row = ls_td-row
+            ) TO lt_opds.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+
+      SORT lt_ops  BY count DESCENDING token ASCENDING.
+      SORT lt_opds BY count DESCENDING token ASCENDING.
+
+      IF lt_ops IS NOT INITIAL.
+        cl_demo_output=>write_data(
+          value = lt_ops
+          name  = |Operators (distinct={ lines( lt_ops ) }, total={ ls_u-n1 })| ).
+      ENDIF.
+
+      IF lt_opds IS NOT INITIAL.
+        cl_demo_output=>write_data(
+          value = lt_opds
+          name  = |Operands (distinct={ lines( lt_opds ) }, total={ ls_u-n2 })| ).
+      ENDIF.
+
+      cl_demo_output=>write_text( '' ).
+
+    ENDLOOP.
+
+    cl_demo_output=>display( ).
+
   ENDMETHOD.
 ENDCLASS.
