@@ -63,6 +63,8 @@ METHOD show.
            lloc        TYPE i,
            cloc        TYPE i,
            cloc_ratio  TYPE string,
+           mi          TYPE string,
+           mi_rating   TYPE string,
          END OF ts_row.
 
   DATA ls_u       TYPE zcl_ace_metrics=>ts_unit_result.
@@ -101,16 +103,12 @@ METHOD show.
   ENDIF.
 
   " ---------------------------------------------------------------
-  " 1. Text summary (как раньше)
+  " 1. Text summary
   " ---------------------------------------------------------------
   cl_demo_output=>write_text( |=== Code Metrics: { i_program } ===, Units analysed                    : { lines( ls_result-units ) }| ).
-  "cl_demo_output=>write_text( |Units analysed                    : { lines( ls_result-units ) }| ).
   cl_demo_output=>write_text( |Total Cyclomatic Complexity: { lv_tot_cc },  Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }|  ).
-  "cl_demo_output=>write_text( |Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }| ).
   cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }, Time: { format_f2( lv_tot_time_t ) }s, Expected Bugs: { format_f2( lv_tot_bugs ) }| ).
-  "cl_demo_output=>write_text( |Total Effort                      : { format_f2( lv_tot_eff ) }| ).
   cl_demo_output=>write_text( |LOC / LLOC / CLOC/ CLOC Ratio     : { lv_tot_loc } / { lv_tot_lloc } / { lv_tot_cloc } / { CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%| ).
-  "cl_demo_output=>write_text( '' ).
 
   " ---------------------------------------------------------------
   " 2. TOTAL — одна строка таблицей
@@ -119,7 +117,7 @@ METHOD show.
   APPEND VALUE ts_row(
     name        = |{ i_program } TOTAL|
     cc          = lv_tot_cc
-    risk        = '' "cc_rating( lv_tot_cc )
+    risk        = ''
     n1          = lv_tot_n1      n2   = lv_tot_n2
     loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
     cloc_ratio  = lv_ratio
@@ -130,10 +128,13 @@ METHOD show.
   ) TO lt_total.
 
   cl_demo_output=>write_data( value = lt_total name = `Total` ).
-  "cl_demo_output=>write_text( '' ).
 
   " ---------------------------------------------------------------
-  " 3. EVENTS (не METHOD и не FORM)
+  " Helper: inline MI formatting macro (via local method reference)
+  " ---------------------------------------------------------------
+
+  " ---------------------------------------------------------------
+  " 3. EVENTS
   " ---------------------------------------------------------------
   DATA lt_events TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
   LOOP AT ls_result-units INTO ls_u
@@ -143,6 +144,12 @@ METHOD show.
     ELSE.
       lv_ratio = '-'.
     ENDIF.
+    DATA(lv_mi_str)   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
+    DATA(lv_mi_grade) = COND string(
+      WHEN ls_u-mi = 0     THEN '-'
+      WHEN ls_u-mi >= 85   THEN 'HIGH'
+      WHEN ls_u-mi >= 65   THEN 'MEDIUM'
+      ELSE                      'LOW' ).
     APPEND VALUE ts_row(
       name        = |{ ls_u-unit_name }|
       cc          = ls_u-cyclomatic
@@ -158,11 +165,12 @@ METHOD show.
       bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
+      mi          = lv_mi_str
+      mi_rating   = lv_mi_grade
     ) TO lt_events.
   ENDLOOP.
 
   IF lt_events IS NOT INITIAL.
-    "cl_demo_output=>write_text( '--- Events ---' ).
     cl_demo_output=>write_data( value = lt_events name = `Events` ).
     cl_demo_output=>write_text( '' ).
   ENDIF.
@@ -177,6 +185,12 @@ METHOD show.
     ELSE.
       lv_ratio = '-'.
     ENDIF.
+    lv_mi_str   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
+    lv_mi_grade = COND string(
+      WHEN ls_u-mi = 0     THEN '-'
+      WHEN ls_u-mi >= 85   THEN 'HIGH'
+      WHEN ls_u-mi >= 65   THEN 'MEDIUM'
+      ELSE                      'LOW' ).
     APPEND VALUE ts_row(
       name        = ls_u-unit_name
       cc          = ls_u-cyclomatic
@@ -192,11 +206,12 @@ METHOD show.
       bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
+      mi          = lv_mi_str
+      mi_rating   = lv_mi_grade
     ) TO lt_forms.
   ENDLOOP.
 
   IF lt_forms IS NOT INITIAL.
-    "cl_demo_output=>write_text( '--- FORMs ---' ).
     cl_demo_output=>write_data( value = lt_forms name = `Forms` ).
     cl_demo_output=>write_text( '' ).
   ENDIF.
@@ -241,6 +256,12 @@ METHOD show.
       ELSE.
         lv_ratio = '-'.
       ENDIF.
+      lv_mi_str   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
+      lv_mi_grade = COND string(
+        WHEN ls_u-mi = 0     THEN '-'
+        WHEN ls_u-mi >= 85   THEN 'HIGH'
+        WHEN ls_u-mi >= 65   THEN 'MEDIUM'
+        ELSE                      'LOW' ).
 
       APPEND VALUE ts_row(
         name        = lv_mname
@@ -255,6 +276,8 @@ METHOD show.
         effort      = format_f2( ls_u-effort )
         loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
         cloc_ratio  = lv_ratio
+        mi          = lv_mi_str
+        mi_rating   = lv_mi_grade
       ) TO lt_rows.
 
       ADD ls_u-cyclomatic TO lv_tot_cc.
@@ -277,12 +300,12 @@ METHOD show.
       lv_ratio = '-'.
     ENDIF.
 
-    SORT lt_rows by cc DESCENDING.
+    SORT lt_rows BY cc DESCENDING.
 
     APPEND VALUE ts_row(
       name        = |CLASS TOTAL|
       cc          = lv_tot_cc
-      risk        = '' "cc_rating( lv_tot_cc )
+      risk        = ''
       n1          = lv_tot_n1      n2  = lv_tot_n2
       loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
       cloc_ratio  = lv_ratio
@@ -292,14 +315,13 @@ METHOD show.
       bugs        = format_f2( lv_tot_bugs )
     ) TO lt_rows.
 
-    "cl_demo_output=>write_text( |--- { lv_cls } ---| ).
     cl_demo_output=>write_data( value = lt_rows name = lv_cls ).
     cl_demo_output=>write_text( '' ).
 
   ENDLOOP.
 
   " ---------------------------------------------------------------
-  " 6. All methods across all classes — sorted by CC DESC
+  " 6. All methods sorted by CC DESC
   " ---------------------------------------------------------------
   DATA lt_all TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
 
@@ -309,6 +331,12 @@ METHOD show.
     ELSE.
       lv_ratio = '-'.
     ENDIF.
+    lv_mi_str   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
+    lv_mi_grade = COND string(
+      WHEN ls_u-mi = 0     THEN '-'
+      WHEN ls_u-mi >= 85   THEN 'HIGH'
+      WHEN ls_u-mi >= 65   THEN 'MEDIUM'
+      ELSE                      'LOW' ).
     APPEND VALUE ts_row(
       name        = ls_u-unit_name
       cc          = ls_u-cyclomatic
@@ -324,6 +352,8 @@ METHOD show.
       bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
+      mi          = lv_mi_str
+      mi_rating   = lv_mi_grade
     ) TO lt_all.
   ENDLOOP.
 
@@ -343,11 +373,17 @@ METHOD show.
   cl_demo_output=>write_text( '  21-50  HIGH     High risk, refactor recommended' ).
   cl_demo_output=>write_text( '  50+    CRITICAL Untestable, very high risk' ).
   cl_demo_output=>write_text( '' ).
+  cl_demo_output=>write_text( '--- Maintainability Index (MI) ---' ).
+  cl_demo_output=>write_text( '  MI = 171 - 5.2*ln(V) - 0.23*G - 16.2*ln(LOC)' ).
+  cl_demo_output=>write_text( '  >= 85  HIGH    Easy to maintain' ).
+  cl_demo_output=>write_text( '  65-84  MEDIUM  Moderate maintainability' ).
+  cl_demo_output=>write_text( '  < 65   LOW     Hard to maintain, refactor recommended' ).
+  cl_demo_output=>write_text( '' ).
   cl_demo_output=>write_text( '--- Halstead ---' ).
   cl_demo_output=>write_text( '  N1/N2 - total operators/operands, Length = N1 + N2' ).
   cl_demo_output=>write_text( '  eta1/eta2 - distinct operators/operands, Vocab = eta1 + eta2' ).
   cl_demo_output=>write_text( '  Volume=Length*log2(Vocab)  Diff = (eta1 / 2)*(N2 / eta2)  Effort = Diff * Volume' ).
-  cl_demo_output=>write_text( '  Time (T) = Effort / 18  (Stroud number: 18 mental discriminations/sec — pure thinking time)' ).
+  cl_demo_output=>write_text( '  Time (T) = Effort / 18  (Stroud number: 18 mental discriminations/sec)' ).
   cl_demo_output=>write_text( '  Bugs (B) = Volume / 3000  (expected delivered defects, Halstead empirical formula)' ).
   cl_demo_output=>write_text( '  CLOC_RATIO = CLOC/LOC %  (comment density)' ).
 
