@@ -904,7 +904,6 @@ METHOD get_code_flow.
                                       AND lines( splits_prg ) = 1.
       events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder )
         i_rel = mo_tree_local->main_node_key i_tree = VALUE #( ) ).
-      " kind='E', ev_type='EVENT', ev_name = event name — needed for single-event scanner on dblclick
       mo_tree_local->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event ) i_rel = events_rel
         i_tree = VALUE #( kind    = 'E'
                           value   = first_step-line
@@ -919,7 +918,6 @@ METHOD get_code_flow.
           events_rel = mo_tree_local->add_node( i_name = 'Events' i_icon = CONV #( icon_folder )
             i_rel = mo_tree_local->main_node_key i_tree = VALUE #( ) ).
         ENDIF.
-        " kind='E', ev_type='EVENT', ev_name = event name — needed for single-event scanner on dblclick
         mo_tree_local->add_node( i_name = event-name i_icon = CONV #( icon_oo_event ) i_rel = events_rel
           i_tree = VALUE #( kind    = 'E'
                             include = event-include
@@ -948,25 +946,19 @@ METHOD get_code_flow.
                import_parameter = import_parameter changing_parameter = changing_parameter
                tables_parameter = tables_parameter EXCEPTIONS OTHERS = 4.
       IF sy-subrc = 0.
-        LOOP AT import_parameter   INTO DATA(imp).    mo_tree_local->add_node( i_name = CONV #( imp-parameter    ) i_icon = CONV #( icon_parameter_import   ) i_rel = func_rel ). ENDLOOP.
-        LOOP AT export_parameter   INTO DATA(exp).    mo_tree_local->add_node( i_name = CONV #( exp-parameter    ) i_icon = CONV #( icon_parameter_export   ) i_rel = func_rel ). ENDLOOP.
+        LOOP AT import_parameter INTO DATA(imp).     mo_tree_local->add_node( i_name = CONV #( imp-parameter     ) i_icon = CONV #( icon_parameter_import   ) i_rel = func_rel ). ENDLOOP.
+        LOOP AT export_parameter INTO DATA(exp).     mo_tree_local->add_node( i_name = CONV #( exp-parameter     ) i_icon = CONV #( icon_parameter_export   ) i_rel = func_rel ). ENDLOOP.
         LOOP AT mo_window->ms_sources-t_params INTO DATA(change). mo_tree_local->add_node( i_name = CONV #( change-param ) i_icon = CONV #( icon_parameter_changing ) i_rel = func_rel ). ENDLOOP.
-        LOOP AT tables_parameter   INTO DATA(table_p). mo_tree_local->add_node( i_name = CONV #( table_p-parameter ) i_icon = CONV #( icon_parameter_table   ) i_rel = func_rel ). ENDLOOP.
+        LOOP AT tables_parameter INTO DATA(table_p). mo_tree_local->add_node( i_name = CONV #( table_p-parameter ) i_icon = CONV #( icon_parameter_table    ) i_rel = func_rel ). ENDLOOP.
       ENDIF.
     ENDLOOP.
     IF lines( splits_prg ) = 1.
-      " Считаем локальные классы и интерфейсы через tt_class_defs.
-      " Фильтр по program = mv_prog — только объекты этой программы.
       DATA(lv_cls_cnt)  = 0.
       DATA(lv_intf_cnt) = 0.
       LOOP AT mo_window->ms_sources-tt_class_defs INTO DATA(ls_cd)
         WHERE class   <> splits_prg[ 1 ]
           AND program =  mv_prog.
-        IF ls_cd-is_intf = abap_true.
-          lv_intf_cnt += 1.
-        ELSE.
-          lv_cls_cnt  += 1.
-        ENDIF.
+        IF ls_cd-is_intf = abap_true. lv_intf_cnt += 1. ELSE. lv_cls_cnt += 1. ENDIF.
       ENDLOOP.
       DATA(lv_loc_cnt) = lv_cls_cnt + lv_intf_cnt.
       IF lv_loc_cnt <= c_lazy_threshold.
@@ -985,50 +977,37 @@ METHOD get_code_flow.
         ENDIF.
       ENDIF.
     ENDIF.
+
+    " --- Class hierarchy (main class and its inheritance chain) ---
     IF class_rel IS INITIAL. classes_rel = class_rel = mo_tree_local->main_node_key. ENDIF.
     SORT mo_window->ms_sources-tt_calls_line BY program class eventtype meth_type eventname.
     cl_name = splits_prg[ 1 ].
     READ TABLE mo_window->ms_sources-tt_class_defs WITH KEY class = CONV #( cl_name )
       TRANSPORTING NO FIELDS.
     IF sy-subrc = 0.
-    DO.
-      READ TABLE mo_window->ms_sources-t_classes WITH KEY clsname = cl_name reltype = '2' INTO DATA(ls_class).
-      IF sy-subrc <> 0. EXIT. ENDIF. cl_name = ls_class-refclsname.
-    ENDDO.
-    DO.
-      DATA lv_show_def_inc  TYPE program.
-      DATA lv_show_def_line TYPE i.
-      LOOP AT mo_window->ms_sources-tt_progs INTO DATA(lv_dp).
-        LOOP AT lv_dp-t_keywords INTO DATA(lv_dk) WHERE name = 'CLASS'.
-          LOOP AT lv_dp-scan->statements INTO DATA(lv_ds).
-            READ TABLE lv_dp-scan->tokens INDEX lv_ds-from INTO DATA(lv_dt0).
-            IF sy-subrc = 0 AND lv_dt0-row = lv_dk-line AND lv_dt0-str = 'CLASS'.
-              READ TABLE lv_dp-scan->tokens INDEX lv_ds-from + 1 INTO DATA(lv_dt1).
-              IF sy-subrc = 0 AND lv_dt1-str = cl_name.
-                READ TABLE lv_dp-scan->tokens INDEX lv_ds-from + 2 INTO DATA(lv_dt2).
-                IF sy-subrc = 0 AND lv_dt2-str = 'DEFINITION'.
-                  READ TABLE lv_dp-scan->tokens INDEX lv_ds-from + 3 INTO DATA(lv_dt3).
-                  IF NOT ( sy-subrc = 0 AND lv_dt3-str = 'DEFERRED' ).
-                    lv_show_def_inc  = lv_dp-include.
-                    lv_show_def_line = COND i( WHEN lv_dk-v_line > 0 THEN lv_dk-v_line ELSE lv_dk-line ).
-                  ENDIF.
-                ENDIF.
-              ENDIF.
-              EXIT.
-            ENDIF.
-          ENDLOOP.
-          IF lv_show_def_inc IS NOT INITIAL. EXIT. ENDIF.
-        ENDLOOP.
-        IF lv_show_def_inc IS NOT INITIAL. EXIT. ENDIF.
-      ENDLOOP.
-      add_class( i_class = cl_name i_refnode = classes_rel
-                 i_tree = VALUE #( kind    = 'C'
-                                   include = lv_show_def_inc
-                                   value   = lv_show_def_line ) ).
-      READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2' INTO ls_class.
-      IF sy-subrc <> 0. EXIT. ENDIF. cl_name = ls_class-clsname.
-    ENDDO.
+      " Walk UP to the root of the inheritance chain
+      DO.
+        READ TABLE mo_window->ms_sources-t_classes WITH KEY clsname = cl_name reltype = '2'
+          INTO DATA(ls_class).
+        IF sy-subrc <> 0. EXIT. ENDIF.
+        cl_name = ls_class-refclsname.
+      ENDDO.
+      " Walk DOWN from root, adding each class node; use tt_class_defs for def location
+      DO.
+        READ TABLE mo_window->ms_sources-tt_class_defs WITH KEY class = CONV #( cl_name )
+          INTO DATA(ls_cd_show).
+        add_class( i_class  = cl_name
+                   i_refnode = classes_rel
+                   i_tree   = VALUE #( kind    = 'C'
+                                       include = ls_cd_show-def_include
+                                       value   = ls_cd_show-def_line ) ).
+        READ TABLE mo_window->ms_sources-t_classes WITH KEY refclsname = cl_name reltype = '2'
+          INTO ls_class.
+        IF sy-subrc <> 0. EXIT. ENDIF.
+        cl_name = ls_class-clsname.
+      ENDDO.
     ENDIF.
+
     DATA(lv_form_cnt) = 0. DATA(lv_mod_cnt) = 0.
     LOOP AT mo_window->ms_sources-tt_calls_line INTO DATA(subs2).
       IF subs2-eventtype = 'FORM'   AND subs2-program = splits_prg[ 1 ]. lv_form_cnt += 1. ENDIF.
