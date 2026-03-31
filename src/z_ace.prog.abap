@@ -44,19 +44,8 @@
       TABLES
         p_exclude = itab.
 
-  AT SELECTION-SCREEN.
-    CHECK sy-ucomm <> 'DUMMY'.
 
-    IF p_odata IS NOT INITIAL.
-      DATA(serv) = p_odata && '_SRV'.
-
-      SELECT SINGLE class_name INTO p_class
-        FROM /iwbep/i_mgw_srh WHERE technical_name = serv.
-    ENDIF.
-
-    IF p_wdc IS NOT INITIAL.
-      p_class = cl_wdy_wb_naming_service=>get_classname_for_component( p_component = CONV #( p_wdc ) ).
-    ENDIF.
+  AT SELECTION-SCREEN ON p_class.
 
     IF p_class IS NOT INITIAL.
       SELECT SINGLE clstype INTO @DATA(clstype)
@@ -74,6 +63,21 @@
 
     ENDIF.
 
+AT SELECTION-SCREEN ON p_odata.
+
+   IF p_odata IS NOT INITIAL.
+      DATA(serv) = p_odata && '_SRV'.
+
+      SELECT SINGLE class_name INTO p_class
+        FROM /iwbep/i_mgw_srh WHERE technical_name = serv.
+    ENDIF.
+
+    IF p_wdc IS NOT INITIAL.
+      p_class = cl_wdy_wb_naming_service=>get_classname_for_component( p_component = CONV #( p_wdc ) ).
+    ENDIF.
+
+AT SELECTION-SCREEN ON p_func.
+
     IF p_func IS NOT INITIAL.
       SELECT SINGLE pname, include INTO ( @DATA(func_incl), @DATA(incl_num) )
         FROM tfdir
@@ -86,14 +90,10 @@
 
     ENDIF.
 
-    CHECK sy-ucomm IS INITIAL.
-    SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
+  AT SELECTION-SCREEN.
 
-    IF sy-dbcnt <> 0.
-      DATA(gv_ace) = NEW zcl_ace( i_prog = p_prog i_new_parser = n_parser i_show_parse_time = n_time ).
-    ELSE.
-      MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
-    ENDIF.
+    CHECK sy-ucomm <> 'DUMMY'.
+    perform run_ace.
 
   AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_wdc.
 
@@ -125,3 +125,16 @@
       TABLES
         p_exclude = itab.
   ENDFORM.
+
+  form run_ace.
+
+    CHECK sy-ucomm IS INITIAL.
+    SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
+
+    IF sy-dbcnt <> 0.
+      DATA(gv_ace) = NEW zcl_ace( i_prog = p_prog i_new_parser = n_parser i_show_parse_time = n_time ).
+    ELSE.
+      MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
+    ENDIF.
+
+  endform.

@@ -1,27 +1,59 @@
-CLASS zcl_ace_metrics DEFINITION
-  PUBLIC
-  CREATE PUBLIC.
+class ZCL_ACE_METRICS definition
+  public
+  create public .
 
-  PUBLIC SECTION.
+public section.
 
+  types:
     "--- token-level detail for debugging ---
-    TYPES:
-      BEGIN OF ts_token_detail,
+    BEGIN OF ts_token_detail,
         token    TYPE string,
         kind     TYPE string,   " OPERATOR(kw) / OPERATOR(sym) / OPERATOR(sub) / OPERAND
         stmt_idx TYPE i,
         tok_idx  TYPE i,
         row      TYPE i,
-      END OF ts_token_detail.
-    TYPES:
-      tt_token_details TYPE STANDARD TABLE OF ts_token_detail WITH EMPTY KEY.
+      END OF ts_token_detail .
+  types:
+    tt_token_details TYPE STANDARD TABLE OF ts_token_detail WITH EMPTY KEY .
+  types:
+    tt_abap_statements TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line .
 
-        TYPES: tt_abap_statements TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+  "--- aggregate result per class (for includes containing OO code) ---
+  TYPES:
+    BEGIN OF ts_class_result,
+      class_name       TYPE string,
+      " McCabe / LOC totals (same semantics as ts_result fields)
+      total_cyclomatic TYPE i,
+      avg_cyclomatic   TYPE f,
+      total_loc        TYPE i,
+      total_lloc       TYPE i,
+      total_cloc       TYPE i,
+      " Halstead totals (summed N1/N2 across all methods of the class)
+      total_n1         TYPE i,
+      total_n2         TYPE i,
+      total_volume     TYPE f,
+      total_effort     TYPE f,
+      total_time_t     TYPE f,
+      total_bugs       TYPE f,
+      " Class-scope Halstead (unique dictionaries merged across all methods)
+      cls_big_n1       TYPE i,   " η1 — distinct operators, class scope
+      cls_big_n2       TYPE i,   " η2 — distinct operands,  class scope
+      cls_vocabulary   TYPE i,   " η  = η1 + η2
+      cls_prog_length  TYPE i,   " N  = total_n1 + total_n2
+      cls_volume       TYPE f,   " V  = N * log2(η)
+      cls_difficulty   TYPE f,   " D  = (η1/2) * (N2/η2)
+      cls_effort       TYPE f,   " E  = D * V
+      cls_time_t       TYPE f,   " T  = E / 18
+      cls_bugs         TYPE f,   " B  = V / 3000
+    END OF ts_class_result.
 
+ TYPES:
+    tt_class_results TYPE STANDARD TABLE OF ts_class_result
+      WITH EMPTY KEY.
 
+  types:
     "--- result per code unit (method / form / module / program-level) ---
-    TYPES:
-      BEGIN OF ts_unit_result,
+    BEGIN OF ts_unit_result,
         program      TYPE program,
         include      TYPE program,
         unit_type    TYPE string,   " METHOD / FORM / MODULE / FUNCTION / PROGRAM
@@ -49,32 +81,49 @@ CLASS zcl_ace_metrics DEFINITION
         cloc         TYPE i,        " comment lines
         " Token-level debug detail
         token_detail TYPE tt_token_details,
-      END OF ts_unit_result.
-    TYPES:
-      tt_unit_results TYPE STANDARD TABLE OF ts_unit_result WITH EMPTY KEY.
+      END OF ts_unit_result .
+  types:
+    tt_unit_results TYPE STANDARD TABLE OF ts_unit_result WITH EMPTY KEY .
 
-    "--- aggregate result for whole program ---
-    TYPES:
-      BEGIN OF ts_result,
-        program          TYPE program,
-        units            TYPE tt_unit_results,
-        total_cyclomatic TYPE i,
-        total_volume     TYPE f,
-        total_effort     TYPE f,
-        total_time_t     TYPE f,        " T = E / 18   summed across all units
-        total_bugs       TYPE f,        " B = V / 3000 summed across all units
-        total_loc        TYPE i,
-        total_lloc       TYPE i,
-        total_cloc       TYPE i,
-        avg_cyclomatic   TYPE f,
-      END OF ts_result.
+     "--- aggregate result for whole program ---
+TYPES:
+  BEGIN OF ts_result,
+    program          TYPE program,
+    units            TYPE tt_unit_results,
+    total_cyclomatic TYPE i,
+    total_volume     TYPE f,
+    total_effort     TYPE f,
+    total_time_t     TYPE f,        " T = E / 18   summed across all units
+    total_bugs       TYPE f,        " B = V / 3000 summed across all units
+    total_loc        TYPE i,
+    total_lloc       TYPE i,
+    total_cloc       TYPE i,
+    avg_cyclomatic   TYPE f,
+    " Include-level Halstead (unique dicts merged across ALL units of include)
+    total_n1         TYPE i,        " sum of N1 across all units
+    total_n2         TYPE i,        " sum of N2 across all units
+    incl_big_n1      TYPE i,        " η1 — distinct operators, include scope
+    incl_big_n2      TYPE i,        " η2 — distinct operands,  include scope
+    incl_vocabulary  TYPE i,        " η  = η1 + η2
+    incl_prog_length TYPE i,        " N  = total_n1 + total_n2
+    incl_volume      TYPE f,        " V  = N * log2(η)
+    incl_difficulty  TYPE f,        " D  = (η1/2) * (N2/η2)
+    incl_effort      TYPE f,        " E  = D * V
+    incl_time_t      TYPE f,        " T  = E / 18
+    incl_bugs        TYPE f,        " B  = V / 3000
+    class_totals     TYPE tt_class_results,
+  END OF ts_result.
 
-    CLASS-METHODS calculate
-      IMPORTING
-        is_parse_data    TYPE zif_ace_parse_data=>ts_parse_data
-        i_program        TYPE program
-      RETURNING
-        VALUE(rs_result) TYPE ts_result.
+
+
+
+
+  class-methods CALCULATE
+    importing
+      !IS_PARSE_DATA type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
+      !I_PROGRAM type PROGRAM
+    returning
+      value(RS_RESULT) type TS_RESULT .
 private section.
 
   types:
@@ -214,6 +263,15 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       DATA lv_last_row  TYPE i.
       DATA lt_dist_ops  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       DATA lt_dist_opd  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+      " Include-level accumulated unique dictionaries (never cleared between units)
+      DATA lt_incl_ops  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+      DATA lt_incl_opd  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+      " Class-level unique dictionaries: key = class~token
+      TYPES: BEGIN OF ts_cls_tok,
+               cls_token TYPE string,   " |CLASSNAME~TOKEN|
+             END OF ts_cls_tok.
+      DATA lt_cls_ops TYPE HASHED TABLE OF ts_cls_tok WITH UNIQUE KEY cls_token.
+      DATA lt_cls_opd TYPE HASHED TABLE OF ts_cls_tok WITH UNIQUE KEY cls_token.
       DATA ls_stmt_f    LIKE LINE OF lo_scan->statements.
       DATA ls_stmt_t    LIKE LINE OF lo_scan->statements.
       DATA ls_tok_f     LIKE LINE OF lo_scan->tokens.
@@ -268,6 +326,10 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
             IF <stmt>-type = 'C'.
               ADD 1 TO ls_unit-n1.
               INSERT CONV string( 'COMPUTE' ) INTO TABLE lt_dist_ops.
+              INSERT CONV string( 'COMPUTE' ) INTO TABLE lt_incl_ops.
+              IF ls_b-class IS NOT INITIAL.
+                INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~COMPUTE| ) INTO TABLE lt_cls_ops.
+              ENDIF.
               APPEND VALUE ts_token_detail(
                 token    = 'COMPUTE'
                 kind     = 'OPERATOR'
@@ -313,6 +375,10 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
                     ELSE 'DATA' ).
                   ADD 1 TO ls_unit-n1.
                   INSERT lv_kw_part INTO TABLE lt_dist_ops.
+                  INSERT lv_kw_part INTO TABLE lt_incl_ops.
+                  IF ls_b-class IS NOT INITIAL.
+                    INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ lv_kw_part }| ) INTO TABLE lt_cls_ops.
+                  ENDIF.
                   APPEND VALUE ts_token_detail(
                     token    = lv_kw_part
                     kind     = 'OPERATOR'
@@ -322,6 +388,10 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
                   ) TO ls_unit-token_detail.
                   ADD 1 TO ls_unit-n2.
                   INSERT to_upper( lv_inline_name ) INTO TABLE lt_dist_opd.
+                  INSERT to_upper( lv_inline_name ) INTO TABLE lt_incl_opd.
+                  IF ls_b-class IS NOT INITIAL.
+                    INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ to_upper( lv_inline_name ) }| ) INTO TABLE lt_cls_opd.
+                  ENDIF.
                   APPEND VALUE ts_token_detail(
                     token    = lv_inline_name
                     kind     = 'OPERAND'
@@ -338,9 +408,17 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
                   IF lv_kind = 'OPERATOR'.
                     ADD 1 TO ls_unit-n1.
                     INSERT <tok>-str INTO TABLE lt_dist_ops.
+                    INSERT <tok>-str INTO TABLE lt_incl_ops.
+                    IF ls_b-class IS NOT INITIAL.
+                      INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ <tok>-str }| ) INTO TABLE lt_cls_ops.
+                    ENDIF.
                   ELSE.
                     ADD 1 TO ls_unit-n2.
                     INSERT <tok>-str INTO TABLE lt_dist_opd.
+                    INSERT <tok>-str INTO TABLE lt_incl_opd.
+                    IF ls_b-class IS NOT INITIAL.
+                      INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ <tok>-str }| ) INTO TABLE lt_cls_opd.
+                    ENDIF.
                   ENDIF.
 
                   APPEND VALUE ts_token_detail(
@@ -390,13 +468,80 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
 
         APPEND ls_unit TO rs_result-units.
 
+      ENDLOOP. " lt_boundaries
+
+      " Fill include-level Halstead aggregates
+      rs_result-incl_big_n1     = lines( lt_incl_ops ).
+      rs_result-incl_big_n2     = lines( lt_incl_opd ).
+      rs_result-incl_vocabulary  = rs_result-incl_big_n1 + rs_result-incl_big_n2.
+
+      " ---------------------------------------------------------------
+      " Build per-class Halstead dictionaries while lt_cls_ops/opd are
+      " still in scope (inside LOOP AT tt_progs).
+      " ---------------------------------------------------------------
+      TYPES: BEGIN OF ts_cls_count,
+               class_name TYPE string,
+               big_n1     TYPE i,
+               big_n2     TYPE i,
+             END OF ts_cls_count.
+      DATA lt_cls_counts TYPE HASHED TABLE OF ts_cls_count
+        WITH UNIQUE KEY class_name.
+      CLEAR lt_cls_counts.
+
+      " Count unique operators per class
+      LOOP AT lt_cls_ops INTO DATA(ls_co).
+        DATA(lv_tilde_pos) = find( val = ls_co-cls_token sub = '~' ).
+        CHECK lv_tilde_pos > 0.
+        DATA(lv_cname) = ls_co-cls_token(lv_tilde_pos).
+        READ TABLE lt_cls_counts WITH KEY class_name = lv_cname
+          ASSIGNING FIELD-SYMBOL(<lcc>).
+        IF sy-subrc <> 0.
+          INSERT VALUE ts_cls_count( class_name = lv_cname ) INTO TABLE lt_cls_counts.
+          READ TABLE lt_cls_counts WITH KEY class_name = lv_cname
+            ASSIGNING <lcc>.
+        ENDIF.
+        ADD 1 TO <lcc>-big_n1.
       ENDLOOP.
 
-    ENDLOOP.
+      " Count unique operands per class
+      LOOP AT lt_cls_opd INTO DATA(ls_cd).
+        DATA(lv_tilde_pos2) = find( val = ls_cd-cls_token sub = '~' ).
+        CHECK lv_tilde_pos2 > 0.
+        DATA(lv_cname2) = ls_cd-cls_token(lv_tilde_pos2).
+        READ TABLE lt_cls_counts WITH KEY class_name = lv_cname2
+          ASSIGNING FIELD-SYMBOL(<lcc2>).
+        IF sy-subrc <> 0.
+          INSERT VALUE ts_cls_count( class_name = lv_cname2 ) INTO TABLE lt_cls_counts.
+          READ TABLE lt_cls_counts WITH KEY class_name = lv_cname2
+            ASSIGNING <lcc2>.
+        ENDIF.
+        ADD 1 TO <lcc2>-big_n2.
+      ENDLOOP.
+
+      " Transfer counts into rs_result-class_totals entries
+      LOOP AT lt_cls_counts INTO DATA(ls_cc).
+        READ TABLE rs_result-class_totals
+          WITH KEY class_name = ls_cc-class_name
+          ASSIGNING FIELD-SYMBOL(<lct_hal>).
+        IF sy-subrc <> 0.
+          APPEND VALUE ts_class_result( class_name = ls_cc-class_name )
+            TO rs_result-class_totals.
+          READ TABLE rs_result-class_totals
+            WITH KEY class_name = ls_cc-class_name
+            ASSIGNING <lct_hal>.
+        ENDIF.
+        " Accumulate across includes (in case same class spans multiple includes)
+        ADD ls_cc-big_n1 TO <lct_hal>-cls_big_n1.
+        ADD ls_cc-big_n2 TO <lct_hal>-cls_big_n2.
+      ENDLOOP.
+
+    ENDLOOP. " tt_progs
 
     DATA lv_cnt TYPE i.
     LOOP AT rs_result-units INTO DATA(ls_u).
       ADD ls_u-cyclomatic TO rs_result-total_cyclomatic.
+      ADD ls_u-n1 TO rs_result-total_n1.
+      ADD ls_u-n2 TO rs_result-total_n2.
       rs_result-total_volume = rs_result-total_volume + ls_u-volume.
       rs_result-total_effort = rs_result-total_effort + ls_u-effort.
       rs_result-total_time_t = rs_result-total_time_t + ls_u-time_t.
@@ -411,6 +556,93 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         CONV f( rs_result-total_cyclomatic ) / CONV f( lv_cnt ).
     ENDIF.
 
+    " Derive incl_prog_length, volume, difficulty, effort, time_t, bugs
+    rs_result-incl_prog_length = rs_result-total_n1 + rs_result-total_n2.
+    IF rs_result-incl_vocabulary > 0 AND rs_result-incl_prog_length > 0.
+      DATA(lv_ivoc) = CONV f( rs_result-incl_vocabulary ).
+      DATA(lv_ilen) = CONV f( rs_result-incl_prog_length ).
+      rs_result-incl_volume = lv_ilen * log2( lv_ivoc ).
+      IF rs_result-incl_big_n2 > 0.
+        rs_result-incl_difficulty =
+          ( CONV f( rs_result-incl_big_n1 ) / 2 )
+          * ( CONV f( rs_result-total_n2 ) / CONV f( rs_result-incl_big_n2 ) ).
+      ENDIF.
+      rs_result-incl_effort = rs_result-incl_difficulty * rs_result-incl_volume.
+      rs_result-incl_time_t = rs_result-incl_effort / 18.
+      rs_result-incl_bugs   = rs_result-incl_volume  / 3000.
+    ENDIF.
+
+    " ---------------------------------------------------------------
+    " Build per-class totals from rs_result-units + finalize Halstead
+    " ---------------------------------------------------------------
+    LOOP AT rs_result-units INTO DATA(ls_cu)
+      WHERE unit_type = 'METHOD'.
+
+      " Extract class name: unit_name has format "CLASSNAME=>METHODNAME"
+      DATA(lv_cls_sep) = find( val = ls_cu-unit_name sub = '=>' ).
+      CHECK lv_cls_sep > 0.
+      DATA(lv_cls_name) = to_upper( ls_cu-unit_name(lv_cls_sep) ).
+
+      READ TABLE rs_result-class_totals
+        WITH KEY class_name = lv_cls_name
+        ASSIGNING FIELD-SYMBOL(<lct>).
+      IF sy-subrc <> 0.
+        APPEND VALUE ts_class_result( class_name = lv_cls_name )
+          TO rs_result-class_totals.
+        READ TABLE rs_result-class_totals
+          WITH KEY class_name = lv_cls_name
+          ASSIGNING <lct>.
+      ENDIF.
+
+      ADD ls_cu-cyclomatic TO <lct>-total_cyclomatic.
+      ADD ls_cu-n1         TO <lct>-total_n1.
+      ADD ls_cu-n2         TO <lct>-total_n2.
+      <lct>-total_volume = <lct>-total_volume + ls_cu-volume.
+      <lct>-total_effort = <lct>-total_effort + ls_cu-effort.
+      <lct>-total_time_t = <lct>-total_time_t + ls_cu-time_t.
+      <lct>-total_bugs   = <lct>-total_bugs   + ls_cu-bugs.
+      ADD ls_cu-loc  TO <lct>-total_loc.
+      ADD ls_cu-lloc TO <lct>-total_lloc.
+      ADD ls_cu-cloc TO <lct>-total_cloc.
+
+    ENDLOOP.
+
+    " Derive averages and class-scope Halstead for each class
+    LOOP AT rs_result-class_totals ASSIGNING FIELD-SYMBOL(<lct2>).
+
+      " avg_cyclomatic
+      DATA(lv_cls_cnt) = 0.
+      LOOP AT rs_result-units INTO DATA(ls_cu2)
+        WHERE unit_type = 'METHOD'.
+        DATA(lv_sep2) = find( val = ls_cu2-unit_name sub = '=>' ).
+        IF lv_sep2 > 0 AND to_upper( ls_cu2-unit_name(lv_sep2) ) = <lct2>-class_name.
+          ADD 1 TO lv_cls_cnt.
+        ENDIF.
+      ENDLOOP.
+      IF lv_cls_cnt > 0.
+        <lct2>-avg_cyclomatic =
+          CONV f( <lct2>-total_cyclomatic ) / CONV f( lv_cls_cnt ).
+      ENDIF.
+
+      " cls_big_n1 / cls_big_n2 were filled inside LOOP AT tt_progs above
+      <lct2>-cls_vocabulary  = <lct2>-cls_big_n1 + <lct2>-cls_big_n2.
+      <lct2>-cls_prog_length = <lct2>-total_n1   + <lct2>-total_n2.
+
+      IF <lct2>-cls_vocabulary > 0 AND <lct2>-cls_prog_length > 0.
+        DATA(lv_cvoc) = CONV f( <lct2>-cls_vocabulary ).
+        DATA(lv_clen) = CONV f( <lct2>-cls_prog_length ).
+        <lct2>-cls_volume = lv_clen * log2( lv_cvoc ).
+        IF <lct2>-cls_big_n2 > 0.
+          <lct2>-cls_difficulty =
+            ( CONV f( <lct2>-cls_big_n1 ) / 2 )
+            * ( CONV f( <lct2>-total_n2 ) / CONV f( <lct2>-cls_big_n2 ) ).
+        ENDIF.
+        <lct2>-cls_effort = <lct2>-cls_difficulty * <lct2>-cls_volume.
+        <lct2>-cls_time_t = <lct2>-cls_effort / 18.
+        <lct2>-cls_bugs   = <lct2>-cls_volume  / 3000.
+      ENDIF.
+
+    ENDLOOP.
   ENDMETHOD.
 
 

@@ -120,13 +120,18 @@ METHOD show.
     name        = |{ i_program } TOTAL|
     cc          = lv_tot_cc
     risk        = ''
-    n1          = lv_tot_n1      n2   = lv_tot_n2
-    loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
+    n1          = lv_tot_n1        n2     = lv_tot_n2
+    eta1        = ls_result-incl_big_n1
+    eta2        = ls_result-incl_big_n2
+    vocab       = ls_result-incl_vocabulary
+    length      = ls_result-incl_prog_length
+    loc         = lv_tot_loc       lloc   = lv_tot_lloc   cloc = lv_tot_cloc
     cloc_ratio  = lv_ratio
-    volume      = format_f2( lv_tot_vol )
-    effort      = format_f2( lv_tot_eff )
-    time_t      = format_f2( lv_tot_time_t )
-    bugs        = format_f2( lv_tot_bugs )
+    volume      = format_f2( ls_result-incl_volume )
+    difficulty  = format_f2( ls_result-incl_difficulty )
+    effort      = format_f2( ls_result-incl_effort )
+    time_t      = format_f2( ls_result-incl_time_t )
+    bugs        = format_f2( ls_result-incl_bugs )
   ) TO lt_total.
 
   cl_demo_output=>write_data( value = lt_total name = `Total` ).
