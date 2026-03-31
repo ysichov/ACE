@@ -603,7 +603,7 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       ( `EVENTS` )
       ( `EXACT` )
       ( `EXCEPT` )
-      ( `EXCEPTIONS` )
+      ( `EXCEPTION` )
       ( `EXISTS` )
       ( `EXIT` )
       ( `EXPORT` )

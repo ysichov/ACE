@@ -733,32 +733,37 @@ CLASS zcl_ace_metrics DEFINITION
     TYPES:
       tt_token_details TYPE STANDARD TABLE OF ts_token_detail WITH EMPTY KEY.
 
+        TYPES: tt_abap_statements TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
     "--- result per code unit (method / form / module / program-level) ---
     TYPES:
       BEGIN OF ts_unit_result,
-        program         TYPE program,
-        include         TYPE program,
-        unit_type       TYPE string,   " METHOD / FORM / MODULE / FUNCTION / PROGRAM
-        unit_name       TYPE string,
+        program      TYPE program,
+        include      TYPE program,
+        unit_type    TYPE string,   " METHOD / FORM / MODULE / FUNCTION / PROGRAM
+        unit_name    TYPE string,
         " McCabe cyclomatic complexity
-        cyclomatic      TYPE i,
+        cyclomatic   TYPE i,
         " Halstead raw counts
-        n1              TYPE i,        " total operators
-        n2              TYPE i,        " total operands
-        big_n1          TYPE i,        " distinct operators
-        big_n2          TYPE i,        " distinct operands
+        n1           TYPE i,        " total operators
+        n2           TYPE i,        " total operands
+        big_n1       TYPE i,        " distinct operators
+        big_n2       TYPE i,        " distinct operands
         " Halstead derived
-        vocabulary      TYPE i,        " η = η1 + η2
-        prog_length     TYPE i,        " N = N1 + N2
-        volume          TYPE f,        " V = N * log2(η)
-        difficulty      TYPE f,        " D = (η1/2) * (N2/η2)
-        effort          TYPE f,        " E = D * V
+        vocabulary   TYPE i,        " η = η1 + η2
+        prog_length  TYPE i,        " N = N1 + N2
+        volume       TYPE f,        " V = N * log2(η)
+        difficulty   TYPE f,        " D = (η1/2) * (N2/η2)
+        effort       TYPE f,        " E = D * V
+        time_t       TYPE f,        " T = E / 18     (Stroud number: mental discriminations/sec)
+        bugs         TYPE f,        " B = V / 3000   (expected delivered bugs, Halstead)
+        " Maintainability Index
+        mi           TYPE f,        " MI = 171 - 5.2*ln(V) - 0.23*G - 16.2*ln(LOC)
         " Lines of code
-        loc             TYPE i,        " total lines in unit
-        lloc            TYPE i,        " logical LOC (statements)
-        cloc            TYPE i,        " comment lines
+        loc          TYPE i,        " total lines in unit
+        lloc         TYPE i,        " logical LOC (statements)
+        cloc         TYPE i,        " comment lines
         " Token-level debug detail
-        token_detail    TYPE tt_token_details,
+        token_detail TYPE tt_token_details,
       END OF ts_unit_result.
     TYPES:
       tt_unit_results TYPE STANDARD TABLE OF ts_unit_result WITH EMPTY KEY.
@@ -766,38 +771,64 @@ CLASS zcl_ace_metrics DEFINITION
     "--- aggregate result for whole program ---
     TYPES:
       BEGIN OF ts_result,
-        program              TYPE program,
-        units                TYPE tt_unit_results,
-        total_cyclomatic     TYPE i,
-        total_volume         TYPE f,
-        total_effort         TYPE f,
-        total_loc            TYPE i,
-        total_lloc           TYPE i,
-        total_cloc           TYPE i,
-        avg_cyclomatic       TYPE f,
+        program          TYPE program,
+        units            TYPE tt_unit_results,
+        total_cyclomatic TYPE i,
+        total_volume     TYPE f,
+        total_effort     TYPE f,
+        total_time_t     TYPE f,        " T = E / 18   summed across all units
+        total_bugs       TYPE f,        " B = V / 3000 summed across all units
+        total_loc        TYPE i,
+        total_lloc       TYPE i,
+        total_cloc       TYPE i,
+        avg_cyclomatic   TYPE f,
       END OF ts_result.
 
     CLASS-METHODS calculate
       IMPORTING
-        is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
-        i_program     TYPE program
+        is_parse_data    TYPE zif_ace_parse_data=>ts_parse_data
+        i_program        TYPE program
       RETURNING
         VALUE(rs_result) TYPE ts_result.
+private section.
 
-  PRIVATE SECTION.
+  types:
+    BEGIN OF ts_known_operand,
+    name TYPE string,
+  END OF ts_known_operand .
+  types:
+    tt_known_operands TYPE HASHED TABLE OF ts_known_operand
+    WITH UNIQUE KEY name .
 
-    CLASS-METHODS is_branch_keyword
-      IMPORTING i_kw      TYPE string
-      RETURNING VALUE(rv) TYPE abap_bool.
+  class-data MT_STATEMENTS type TT_ABAP_STATEMENTS .
 
-    CLASS-METHODS is_sub_keyword
-      IMPORTING i_kw      TYPE string
-      RETURNING VALUE(rv) TYPE abap_bool.
-
-    CLASS-METHODS log2
-      IMPORTING i_val      TYPE f
-      RETURNING VALUE(rv)  TYPE f.
-
+  class-methods IS_BRANCH_KEYWORD
+    importing
+      !I_KW type STRING
+    returning
+      value(RV) type ABAP_BOOL .
+  class-methods BUILD_OPERAND_SET
+    importing
+      !IS_PARSE_DATA type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
+      !I_INCLUDE type PROGRAM
+      !I_UNIT_TYPE type STRING
+      !I_UNIT_NAME type STRING
+      !I_CLASS type STRING
+    returning
+      value(RT_OPS) type TT_KNOWN_OPERANDS .
+  class-methods CLASSIFY_TOKEN
+    importing
+      !I_TOKEN type STRING
+      !I_IS_FIRST type ABAP_BOOL
+      !IT_OPERANDS type TT_KNOWN_OPERANDS
+    returning
+      value(RV_KIND) type STRING .
+  class-methods LOG2
+    importing
+      !I_VAL type F
+    returning
+      value(RV) type F .
+  class-methods FILL_STATEMENTS .
 ENDCLASS.
 CLASS zcl_ace_metrics_window DEFINITION
   CREATE PUBLIC.
@@ -809,6 +840,10 @@ CLASS zcl_ace_metrics_window DEFINITION
         is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
         i_program     TYPE program.
 
+    CLASS-METHODS show_debug
+  IMPORTING
+    is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
+    i_program     TYPE program.
   PRIVATE SECTION.
 
     CLASS-METHODS format_f2
@@ -1812,7 +1847,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'DEPTH'     icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
        ( function = 'DEPTH_P'   icon = CONV #( icon_arrow_right )         quickinfo = 'Increase depth'                   text = '' )
        ( butn_type = 3  )
-       ( function = 'METRICS'     icon = CONV #( icon_report )            quickinfo = 'Code Metrics (McCabe CC + Halstead)' text = 'Metrics' )
+       ( function = 'METRICS'   icon = CONV #( icon_report )              quickinfo = 'Code Metrics (McCabe CC + Halstead)' text = 'Metrics' )
+       ( function = 'MDEBUG'    icon = CONV #( icon_tools )               quickinfo = 'Metrics Debug: operators/operands per block' text = 'Mdebug' )
        ( butn_type = 3  )
        ( function = 'STEPS'       icon = CONV #( icon_next_step )    quickinfo = 'Steps table'                   text = 'Steps' )
        ( butn_type = 3  )
@@ -1930,60 +1966,39 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'CALLS'.
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
-          " Diagram window does not exist yet — create it.
           mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CALLS' ).
         ELSE.
-          " Diagram window is already open — bring it to the front.
           mo_mermaid->mo_box->set_focus( mo_mermaid->mo_box ).
         ENDIF.
 
       WHEN 'CODEMIX'.
-        " Full code flow: all executed statements grouped by method/form scope.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         mo_viewer->get_code_mix( ).
         mo_viewer->mo_window->show_stack( ).
 
       WHEN 'CALCONLY'.
-        " Calculation only: same as Code Flow but filtered to lines that
-        " actually assign or compute values (i_calc_path = true).
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         mo_viewer->get_code_mix( i_calc_path = abap_true ).
         mo_viewer->mo_window->show_stack( ).
 
       WHEN 'HANDLERS'.
-        " Each handler gets two steps:
-        "   stack=1 → virtual event node  (EVENT: clicked)
-        "   stack=2 → the handler method itself
-        " This produces an arrow  EVENT → handler  in the diagram.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
 
-        LOOP AT mo_viewer->mo_window->ms_sources-tt_handler_map
-          INTO DATA(ls_hm).
-
+        LOOP AT mo_viewer->mo_window->ms_sources-tt_handler_map INTO DATA(ls_hm).
           CHECK ls_hm-hdl_method IS NOT INITIAL.
-
           DATA(lv_hdl_class) = ls_hm-hdl_class.
-
-          " If the class is not filled — look it up in calls_line by method name.
           IF lv_hdl_class IS INITIAL.
-            LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line
-              INTO DATA(ls_cl_hdl)
+            LOOP AT mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(ls_cl_hdl)
               WHERE eventname = ls_hm-hdl_method AND eventtype = 'METHOD'.
               lv_hdl_class = ls_cl_hdl-class. EXIT.
             ENDLOOP.
           ENDIF.
-
-          " Find the handler entry point in calls_line.
           READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
             INTO DATA(ls_call_hdl)
-            WITH KEY class     = lv_hdl_class
-                     eventtype = 'METHOD'
-                     eventname = ls_hm-hdl_method.
+            WITH KEY class = lv_hdl_class eventtype = 'METHOD' eventname = ls_hm-hdl_method.
           CHECK sy-subrc = 0.
-
-          " Add a virtual step for the event at stack=1.
           ADD 1 TO mo_viewer->m_step.
           APPEND VALUE zcl_ace=>t_step_counter(
             step       = mo_viewer->m_step
@@ -1993,8 +2008,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             program    = ls_call_hdl-program
             include    = ls_call_hdl-include
           ) TO mo_viewer->mt_steps.
-
-          " Handler at stack=2 — child of the event node.
           zcl_ace_source_parser=>parse_call(
             EXPORTING
               i_index     = ls_call_hdl-index
@@ -2011,7 +2024,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           MESSAGE 'No event handlers found. Run CodeMix first to parse the source.' TYPE 'I'.
           RETURN.
         ENDIF.
-
         mo_viewer->get_code_mix( ).
         mo_viewer->mo_window->show_stack( ).
         mo_viewer->mo_window->mo_box->set_caption(
@@ -2039,6 +2051,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'METRICS'.
         zcl_ace_metrics_window=>show(
+          is_parse_data = mo_viewer->mo_window->ms_sources
+          i_program     = mo_viewer->mo_window->m_prg-program ).
+
+      WHEN 'MDEBUG'.
+        zcl_ace_metrics_window=>show_debug(
           is_parse_data = mo_viewer->mo_window->ms_sources
           i_program     = mo_viewer->mo_window->m_prg-program ).
 
@@ -8389,10 +8406,14 @@ METHOD show.
            volume      TYPE string,
            difficulty  TYPE string,
            effort      TYPE string,
+           time_t      TYPE string,
+           bugs        TYPE string,
            loc         TYPE i,
            lloc        TYPE i,
            cloc        TYPE i,
            cloc_ratio  TYPE string,
+           mi          TYPE string,
+           mi_rating   TYPE string,
          END OF ts_row.
 
   DATA ls_u       TYPE zcl_ace_metrics=>ts_unit_result.
@@ -8403,6 +8424,8 @@ METHOD show.
   DATA lv_tot_cloc TYPE i.
   DATA lv_tot_vol  TYPE f.
   DATA lv_tot_eff  TYPE f.
+  DATA lv_tot_time_t TYPE f.
+  DATA lv_tot_bugs   TYPE f.
   DATA lv_tot_n1   TYPE i.
   DATA lv_tot_n2   TYPE i.
 
@@ -8418,6 +8441,8 @@ METHOD show.
     ADD ls_u-n2         TO lv_tot_n2.
     lv_tot_vol = lv_tot_vol + ls_u-volume.
     lv_tot_eff = lv_tot_eff + ls_u-effort.
+    lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
+    lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
   ENDLOOP.
 
   IF lv_tot_loc > 0.
@@ -8427,16 +8452,12 @@ METHOD show.
   ENDIF.
 
   " ---------------------------------------------------------------
-  " 1. Text summary (как раньше)
+  " 1. Text summary
   " ---------------------------------------------------------------
   cl_demo_output=>write_text( |=== Code Metrics: { i_program } ===, Units analysed                    : { lines( ls_result-units ) }| ).
-  "cl_demo_output=>write_text( |Units analysed                    : { lines( ls_result-units ) }| ).
   cl_demo_output=>write_text( |Total Cyclomatic Complexity: { lv_tot_cc },  Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }|  ).
-  "cl_demo_output=>write_text( |Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }| ).
-  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }| ).
-  "cl_demo_output=>write_text( |Total Effort                      : { format_f2( lv_tot_eff ) }| ).
+  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }, Time: { format_f2( lv_tot_time_t ) }s, Expected Bugs: { format_f2( lv_tot_bugs ) }| ).
   cl_demo_output=>write_text( |LOC / LLOC / CLOC/ CLOC Ratio     : { lv_tot_loc } / { lv_tot_lloc } / { lv_tot_cloc } / { CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%| ).
-  "cl_demo_output=>write_text( '' ).
 
   " ---------------------------------------------------------------
   " 2. TOTAL — одна строка таблицей
@@ -8445,19 +8466,24 @@ METHOD show.
   APPEND VALUE ts_row(
     name        = |{ i_program } TOTAL|
     cc          = lv_tot_cc
-    risk        = '' "cc_rating( lv_tot_cc )
+    risk        = ''
     n1          = lv_tot_n1      n2   = lv_tot_n2
     loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
     cloc_ratio  = lv_ratio
     volume      = format_f2( lv_tot_vol )
     effort      = format_f2( lv_tot_eff )
+    time_t      = format_f2( lv_tot_time_t )
+    bugs        = format_f2( lv_tot_bugs )
   ) TO lt_total.
 
   cl_demo_output=>write_data( value = lt_total name = `Total` ).
-  "cl_demo_output=>write_text( '' ).
 
   " ---------------------------------------------------------------
-  " 3. EVENTS (не METHOD и не FORM)
+  " Helper: inline MI formatting macro (via local method reference)
+  " ---------------------------------------------------------------
+
+  " ---------------------------------------------------------------
+  " 3. EVENTS
   " ---------------------------------------------------------------
   DATA lt_events TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
   LOOP AT ls_result-units INTO ls_u
@@ -8467,6 +8493,12 @@ METHOD show.
     ELSE.
       lv_ratio = '-'.
     ENDIF.
+    DATA(lv_mi_str)   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
+    DATA(lv_mi_grade) = COND string(
+      WHEN ls_u-mi = 0     THEN '-'
+      WHEN ls_u-mi >= 85   THEN 'HIGH'
+      WHEN ls_u-mi >= 65   THEN 'MEDIUM'
+      ELSE                      'LOW' ).
     APPEND VALUE ts_row(
       name        = |{ ls_u-unit_name }|
       cc          = ls_u-cyclomatic
@@ -8478,13 +8510,16 @@ METHOD show.
       volume      = format_f2( ls_u-volume )
       difficulty  = format_f2( ls_u-difficulty )
       effort      = format_f2( ls_u-effort )
+      time_t      = format_f2( ls_u-time_t )
+      bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
+      mi          = lv_mi_str
+      mi_rating   = lv_mi_grade
     ) TO lt_events.
   ENDLOOP.
 
   IF lt_events IS NOT INITIAL.
-    "cl_demo_output=>write_text( '--- Events ---' ).
     cl_demo_output=>write_data( value = lt_events name = `Events` ).
     cl_demo_output=>write_text( '' ).
   ENDIF.
@@ -8499,6 +8534,12 @@ METHOD show.
     ELSE.
       lv_ratio = '-'.
     ENDIF.
+    lv_mi_str   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
+    lv_mi_grade = COND string(
+      WHEN ls_u-mi = 0     THEN '-'
+      WHEN ls_u-mi >= 85   THEN 'HIGH'
+      WHEN ls_u-mi >= 65   THEN 'MEDIUM'
+      ELSE                      'LOW' ).
     APPEND VALUE ts_row(
       name        = ls_u-unit_name
       cc          = ls_u-cyclomatic
@@ -8510,13 +8551,16 @@ METHOD show.
       volume      = format_f2( ls_u-volume )
       difficulty  = format_f2( ls_u-difficulty )
       effort      = format_f2( ls_u-effort )
+      time_t      = format_f2( ls_u-time_t )
+      bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
+      mi          = lv_mi_str
+      mi_rating   = lv_mi_grade
     ) TO lt_forms.
   ENDLOOP.
 
   IF lt_forms IS NOT INITIAL.
-    "cl_demo_output=>write_text( '--- FORMs ---' ).
     cl_demo_output=>write_data( value = lt_forms name = `Forms` ).
     cl_demo_output=>write_text( '' ).
   ENDIF.
@@ -8542,7 +8586,8 @@ METHOD show.
   LOOP AT lt_classes INTO DATA(lv_cls).
     CLEAR lt_rows.
     CLEAR: lv_tot_cc, lv_tot_loc, lv_tot_lloc, lv_tot_cloc,
-           lv_tot_vol, lv_tot_eff, lv_tot_n1, lv_tot_n2.
+           lv_tot_vol, lv_tot_eff, lv_tot_time_t, lv_tot_bugs,
+           lv_tot_n1, lv_tot_n2.
 
     LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
       DATA(lv_mname) = ls_u-unit_name.
@@ -8560,6 +8605,12 @@ METHOD show.
       ELSE.
         lv_ratio = '-'.
       ENDIF.
+      lv_mi_str   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
+      lv_mi_grade = COND string(
+        WHEN ls_u-mi = 0     THEN '-'
+        WHEN ls_u-mi >= 85   THEN 'HIGH'
+        WHEN ls_u-mi >= 65   THEN 'MEDIUM'
+        ELSE                      'LOW' ).
 
       APPEND VALUE ts_row(
         name        = lv_mname
@@ -8574,6 +8625,8 @@ METHOD show.
         effort      = format_f2( ls_u-effort )
         loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
         cloc_ratio  = lv_ratio
+        mi          = lv_mi_str
+        mi_rating   = lv_mi_grade
       ) TO lt_rows.
 
       ADD ls_u-cyclomatic TO lv_tot_cc.
@@ -8584,6 +8637,8 @@ METHOD show.
       ADD ls_u-n2         TO lv_tot_n2.
       lv_tot_vol = lv_tot_vol + ls_u-volume.
       lv_tot_eff = lv_tot_eff + ls_u-effort.
+      lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
+      lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
     ENDLOOP.
 
     CHECK lt_rows IS NOT INITIAL.
@@ -8594,27 +8649,28 @@ METHOD show.
       lv_ratio = '-'.
     ENDIF.
 
-    SORT lt_rows by cc DESCENDING.
+    SORT lt_rows BY cc DESCENDING.
 
     APPEND VALUE ts_row(
       name        = |CLASS TOTAL|
       cc          = lv_tot_cc
-      risk        = '' "cc_rating( lv_tot_cc )
+      risk        = ''
       n1          = lv_tot_n1      n2  = lv_tot_n2
       loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
       cloc_ratio  = lv_ratio
       volume      = format_f2( lv_tot_vol )
       effort      = format_f2( lv_tot_eff )
+      time_t      = format_f2( lv_tot_time_t )
+      bugs        = format_f2( lv_tot_bugs )
     ) TO lt_rows.
 
-    "cl_demo_output=>write_text( |--- { lv_cls } ---| ).
     cl_demo_output=>write_data( value = lt_rows name = lv_cls ).
     cl_demo_output=>write_text( '' ).
 
   ENDLOOP.
 
   " ---------------------------------------------------------------
-  " 6. All methods across all classes — sorted by CC DESC
+  " 6. All methods sorted by CC DESC
   " ---------------------------------------------------------------
   DATA lt_all TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
 
@@ -8624,6 +8680,12 @@ METHOD show.
     ELSE.
       lv_ratio = '-'.
     ENDIF.
+    lv_mi_str   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
+    lv_mi_grade = COND string(
+      WHEN ls_u-mi = 0     THEN '-'
+      WHEN ls_u-mi >= 85   THEN 'HIGH'
+      WHEN ls_u-mi >= 65   THEN 'MEDIUM'
+      ELSE                      'LOW' ).
     APPEND VALUE ts_row(
       name        = ls_u-unit_name
       cc          = ls_u-cyclomatic
@@ -8635,8 +8697,12 @@ METHOD show.
       volume      = format_f2( ls_u-volume )
       difficulty  = format_f2( ls_u-difficulty )
       effort      = format_f2( ls_u-effort )
+      time_t      = format_f2( ls_u-time_t )
+      bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
+      mi          = lv_mi_str
+      mi_rating   = lv_mi_grade
     ) TO lt_all.
   ENDLOOP.
 
@@ -8656,10 +8722,18 @@ METHOD show.
   cl_demo_output=>write_text( '  21-50  HIGH     High risk, refactor recommended' ).
   cl_demo_output=>write_text( '  50+    CRITICAL Untestable, very high risk' ).
   cl_demo_output=>write_text( '' ).
+  cl_demo_output=>write_text( '--- Maintainability Index (MI) ---' ).
+  cl_demo_output=>write_text( '  MI = 171 - 5.2*ln(V) - 0.23*G - 16.2*ln(LOC)' ).
+  cl_demo_output=>write_text( '  >= 85  HIGH    Easy to maintain' ).
+  cl_demo_output=>write_text( '  65-84  MEDIUM  Moderate maintainability' ).
+  cl_demo_output=>write_text( '  < 65   LOW     Hard to maintain, refactor recommended' ).
+  cl_demo_output=>write_text( '' ).
   cl_demo_output=>write_text( '--- Halstead ---' ).
   cl_demo_output=>write_text( '  N1/N2 - total operators/operands, Length = N1 + N2' ).
   cl_demo_output=>write_text( '  eta1/eta2 - distinct operators/operands, Vocab = eta1 + eta2' ).
   cl_demo_output=>write_text( '  Volume=Length*log2(Vocab)  Diff = (eta1 / 2)*(N2 / eta2)  Effort = Diff * Volume' ).
+  cl_demo_output=>write_text( '  Time (T) = Effort / 18  (Stroud number: 18 mental discriminations/sec)' ).
+  cl_demo_output=>write_text( '  Bugs (B) = Volume / 3000  (expected delivered defects, Halstead empirical formula)' ).
   cl_demo_output=>write_text( '  CLOC_RATIO = CLOC/LOC %  (comment density)' ).
 
   cl_demo_output=>display( ).
@@ -8693,10 +8767,99 @@ ENDMETHOD.
       rv = 'CRITICAL'.
     ENDIF.
   ENDMETHOD.
+  METHOD show_debug.
+    " For each code unit shows:
+    "   - header with unit name and summary counts
+    "   - table of OPERATORS: token | occurrences | is_unique (first time seen)
+    "   - table of OPERANDS:  token | occurrences | is_unique
+
+    DATA(ls_result) = zcl_ace_metrics=>calculate(
+      is_parse_data = is_parse_data
+      i_program     = i_program ).
+
+    IF ls_result-units IS INITIAL.
+      cl_demo_output=>display( |No code units found for program { i_program }| ).
+      RETURN.
+    ENDIF.
+
+    TYPES: BEGIN OF ts_tok_row,
+             token      TYPE string,
+             count      TYPE i,
+             first_row  TYPE i,   " source row where first seen
+           END OF ts_tok_row.
+    TYPES tt_tok_rows TYPE STANDARD TABLE OF ts_tok_row WITH EMPTY KEY.
+
+    cl_demo_output=>write_text( |=== Metrics Debug: { i_program } ===| ).
+
+    LOOP AT ls_result-units INTO DATA(ls_u).
+
+      cl_demo_output=>write_text(
+        |--- { ls_u-unit_type }: { ls_u-unit_name } | &
+        |  N1={ ls_u-n1 } η1={ ls_u-big_n1 } | &
+        |  N2={ ls_u-n2 } η2={ ls_u-big_n2 } | &
+        |  CC={ ls_u-cyclomatic }| ).
+
+      " --- Build operator frequency table ---
+      DATA lt_ops  TYPE tt_tok_rows.
+      DATA lt_opds TYPE tt_tok_rows.
+      CLEAR: lt_ops, lt_opds.
+
+      LOOP AT ls_u-token_detail INTO DATA(ls_td).
+        IF ls_td-kind = 'OPERATOR'.
+          READ TABLE lt_ops WITH KEY token = ls_td-token ASSIGNING FIELD-SYMBOL(<op>).
+          IF sy-subrc = 0.
+            ADD 1 TO <op>-count.
+          ELSE.
+            APPEND VALUE ts_tok_row(
+              token     = ls_td-token
+              count     = 1
+              first_row = ls_td-row
+            ) TO lt_ops.
+          ENDIF.
+        ELSE.
+          READ TABLE lt_opds WITH KEY token = ls_td-token ASSIGNING FIELD-SYMBOL(<opd>).
+          IF sy-subrc = 0.
+            ADD 1 TO <opd>-count.
+          ELSE.
+            APPEND VALUE ts_tok_row(
+              token     = ls_td-token
+              count     = 1
+              first_row = ls_td-row
+            ) TO lt_opds.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+
+      SORT lt_ops  BY count DESCENDING token ASCENDING.
+      SORT lt_opds BY count DESCENDING token ASCENDING.
+
+      IF lt_ops IS NOT INITIAL.
+        cl_demo_output=>write_data(
+          value = lt_ops
+          name  = |Operators (distinct={ lines( lt_ops ) }, total={ ls_u-n1 })| ).
+      ENDIF.
+
+      IF lt_opds IS NOT INITIAL.
+        cl_demo_output=>write_data(
+          value = lt_opds
+          name  = |Operands (distinct={ lines( lt_opds ) }, total={ ls_u-n2 })| ).
+      ENDIF.
+
+      cl_demo_output=>write_text( '' ).
+
+    ENDLOOP.
+
+    cl_demo_output=>display( ).
+
+  ENDMETHOD.
 ENDCLASS.
 
 CLASS ZCL_ACE_METRICS IMPLEMENTATION.
   METHOD calculate.
+
+    IF mt_statements IS INITIAL.
+      fill_statements( ).
+    ENDIF.
 
     rs_result-program = i_program.
 
@@ -8707,30 +8870,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       CHECK lo_scan IS BOUND.
       CHECK lo_scan->statements IS NOT INITIAL.
 
-      " ---- build ABAP keyword set (= operator vocabulary) ----
-      " Only take first tokens of non-comment, non-COMPUTE statements.
-      " COMPUTE statements (type 'C') start with a variable name, not a keyword —
-      " including them would incorrectly classify variable names as operators.
-      DATA lt_ops TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      CLEAR lt_ops.
-      LOOP AT lo_scan->statements INTO DATA(ls_s_op).
-        CHECK ls_s_op-type <> 'P'.   " skip comments
-        CHECK ls_s_op-type <> 'C'.   " skip COMPUTE: first token is a variable, not a keyword
-        READ TABLE lo_scan->tokens INDEX ls_s_op-from INTO DATA(ls_t_op).
-        CHECK sy-subrc = 0.
-        INSERT ls_t_op-str INTO TABLE lt_ops.
-      ENDLOOP.
-
-      " For COMPUTE statements the implicit keyword is 'COMPUTE' — add it explicitly
-      " so that it counts as an operator when we later classify tokens.
-      DATA(lv_compute_kw) = CONV string( 'COMPUTE' ).
-      INSERT lv_compute_kw INTO TABLE lt_ops.
-
-      " ---- collect unit boundaries ----
-      " Sources:
-      "   1. tt_calls_line  → METHOD / FORM / MODULE / FUNCTION blocks
-      "   2. t_events       → START-OF-SELECTION / INITIALIZATION / AT ... event blocks
-      " index = def_ind means no implementation (interface/abstract) → skip
       TYPES: BEGIN OF ts_boundary,
                stmt_from TYPE i,
                stmt_to   TYPE i,
@@ -8742,7 +8881,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         WITH UNIQUE KEY stmt_from.
       CLEAR lt_boundaries.
 
-      " --- source 1: calls_line ---
       LOOP AT is_parse_data-tt_calls_line INTO DATA(ls_cl)
         WHERE include  = <prog>-include
           AND index    > 0
@@ -8750,9 +8888,7 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
              OR eventtype = 'MODULE'   OR eventtype = 'FUNCTION' ).
 
         CHECK ls_cl-index <> ls_cl-def_ind.
-
-        READ TABLE lt_boundaries WITH KEY stmt_from = ls_cl-index
-          TRANSPORTING NO FIELDS.
+        READ TABLE lt_boundaries WITH KEY stmt_from = ls_cl-index TRANSPORTING NO FIELDS.
         CHECK sy-subrc <> 0.
 
         DATA(lv_end_kw) = SWITCH string( ls_cl-eventtype
@@ -8760,13 +8896,11 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
           WHEN 'FORM'     THEN 'ENDFORM'
           WHEN 'MODULE'   THEN 'ENDMODULE'
           WHEN 'FUNCTION' THEN 'ENDFUNCTION'
-          ELSE                 '' ).
+          ELSE '' ).
 
-        DATA lv_stmt_to TYPE i.
-        lv_stmt_to = 0.
+        DATA lv_stmt_to TYPE i VALUE 0.
         LOOP AT <prog>-t_keywords INTO DATA(ls_kw)
-          WHERE index > ls_cl-index
-            AND name  = lv_end_kw.
+          WHERE index > ls_cl-index AND name = lv_end_kw.
           lv_stmt_to = ls_kw-index.
           EXIT.
         ENDLOOP.
@@ -8782,14 +8916,12 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
 
       ENDLOOP.
 
-      " --- source 2: t_events (START-OF-SELECTION, INITIALIZATION, AT ...) ---
       LOOP AT is_parse_data-t_events INTO DATA(ls_ev)
-        WHERE include     = <prog>-include
-          AND stmnt_from  > 0
-          AND stmnt_to    > 0.
+        WHERE include    = <prog>-include
+          AND stmnt_from > 0
+          AND stmnt_to   > 0.
 
-        READ TABLE lt_boundaries WITH KEY stmt_from = ls_ev-stmnt_from
-          TRANSPORTING NO FIELDS.
+        READ TABLE lt_boundaries WITH KEY stmt_from = ls_ev-stmnt_from TRANSPORTING NO FIELDS.
         CHECK sy-subrc <> 0.
 
         INSERT VALUE ts_boundary(
@@ -8804,20 +8936,23 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
 
       CHECK lt_boundaries IS NOT INITIAL.
 
-      " ---- metric calculation per unit ----
+      " Build operand set ONCE per include, not per unit
+      DATA(lt_operands) = build_operand_set(
+        is_parse_data = is_parse_data
+        i_include     = <prog>-include
+        i_unit_type   = ''
+        i_unit_name   = ''
+        i_class       = '' ).
+
       DATA lv_first_row TYPE i.
       DATA lv_last_row  TYPE i.
-      DATA lv_si        TYPE i.
-      DATA lv_ti        TYPE i.
       DATA lt_dist_ops  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       DATA lt_dist_opd  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       DATA ls_stmt_f    LIKE LINE OF lo_scan->statements.
       DATA ls_stmt_t    LIKE LINE OF lo_scan->statements.
       DATA ls_tok_f     LIKE LINE OF lo_scan->tokens.
       DATA ls_tok_t     LIKE LINE OF lo_scan->tokens.
-      DATA ls_stmt      LIKE LINE OF lo_scan->statements.
       DATA ls_kw_tok    LIKE LINE OF lo_scan->tokens.
-      DATA ls_tok       LIKE LINE OF lo_scan->tokens.
 
       LOOP AT lt_boundaries INTO DATA(ls_b).
 
@@ -8827,7 +8962,7 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         ls_unit-include   = <prog>-include.
         ls_unit-unit_type = ls_b-unit_type.
         ls_unit-unit_name = COND #(
-          WHEN ls_b-unit_type =  'METHOD'
+          WHEN ls_b-unit_type = 'METHOD' AND ls_b-class IS NOT INITIAL
           THEN |{ ls_b-class }=>{ ls_b-unit_name }|
           ELSE ls_b-unit_name ).
         ls_unit-cyclomatic = 1.
@@ -8851,86 +8986,110 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
           ls_unit-loc = lv_last_row - lv_first_row + 1.
         ENDIF.
 
-        lv_si = ls_b-stmt_from.
-        WHILE lv_si <= ls_b-stmt_to.
-          CLEAR ls_stmt.
-          READ TABLE lo_scan->statements INDEX lv_si INTO ls_stmt.
-          IF sy-subrc <> 0. EXIT. ENDIF.
+        LOOP AT lo_scan->statements ASSIGNING FIELD-SYMBOL(<stmt>)
+          FROM ls_b-stmt_from TO ls_b-stmt_to.
 
-          IF ls_stmt-type = 'P'.
+          IF <stmt>-type = 'P'.
             ADD 1 TO ls_unit-cloc.
           ELSE.
             ADD 1 TO ls_unit-lloc.
             CLEAR ls_kw_tok.
-            READ TABLE lo_scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
+            READ TABLE lo_scan->tokens INDEX <stmt>-from INTO ls_kw_tok.
             IF sy-subrc = 0 AND is_branch_keyword( ls_kw_tok-str ) = abap_true.
               ADD 1 TO ls_unit-cyclomatic.
             ENDIF.
 
-            " For COMPUTE statements (type 'C') inject the virtual COMPUTE keyword
-            " as an operator occurrence before processing the actual tokens.
-            IF ls_stmt-type = 'C'.
+            IF <stmt>-type = 'C'.
               ADD 1 TO ls_unit-n1.
-              INSERT lv_compute_kw INTO TABLE lt_dist_ops.
+              INSERT CONV string( 'COMPUTE' ) INTO TABLE lt_dist_ops.
               APPEND VALUE ts_token_detail(
                 token    = 'COMPUTE'
-                kind     = 'OPERATOR(kw)'
-                stmt_idx = lv_si
+                kind     = 'OPERATOR'
+                stmt_idx = sy-tabix
                 tok_idx  = 0
                 row      = ls_kw_tok-row
               ) TO ls_unit-token_detail.
             ENDIF.
 
-            lv_ti = ls_stmt-from.
-            WHILE lv_ti <= ls_stmt-to.
-              CLEAR ls_tok.
-              READ TABLE lo_scan->tokens INDEX lv_ti INTO ls_tok.
-              IF sy-subrc <> 0. EXIT. ENDIF.
-              IF ls_tok-str IS NOT INITIAL.
-                DATA(lv_kind) = CONV string( '' ).
-                READ TABLE lt_ops WITH TABLE KEY table_line = ls_tok-str
-                  TRANSPORTING NO FIELDS.
-                IF sy-subrc = 0.
-                  " Primary keyword (first token of statement)
-                  ADD 1 TO ls_unit-n1.
-                  INSERT ls_tok-str INTO TABLE lt_dist_ops.
-                  lv_kind = 'OPERATOR(kw)'.
+            DATA(lv_stmt_tabix) = sy-tabix.
+            LOOP AT lo_scan->tokens ASSIGNING FIELD-SYMBOL(<tok>)
+              FROM <stmt>-from TO <stmt>-to.
+
+              IF <tok>-str IS NOT INITIAL.
+                DATA lv_is_first TYPE boolean.
+                IF sy-tabix = <stmt>-from AND <stmt>-type <> 'C'.
+                  lv_is_first = abap_true.
                 ELSE.
-                  CASE ls_tok-str.
-                    WHEN '+' OR '-' OR '*' OR '/' OR '**' OR '&&'
-                      OR '=' OR '<>' OR '<' OR '>' OR '<=' OR '>='
-                      OR '(' OR ')' OR ',' OR ':' OR '.' OR '->' OR '=>'.
-                      " Symbolic operator
-                      ADD 1 TO ls_unit-n1.
-                      INSERT ls_tok-str INTO TABLE lt_dist_ops.
-                      lv_kind = 'OPERATOR(sym)'.
-                    WHEN OTHERS.
-                      IF is_sub_keyword( ls_tok-str ) = abap_true.
-                        " Sub-keyword: structural keyword within a statement
-                        " (e.g. FROM, WHERE, INTO, SINGLE, EXPORTING, ...)
-                        ADD 1 TO ls_unit-n1.
-                        INSERT ls_tok-str INTO TABLE lt_dist_ops.
-                        lv_kind = 'OPERATOR(sub)'.
-                      ELSE.
-                        ADD 1 TO ls_unit-n2.
-                        INSERT ls_tok-str INTO TABLE lt_dist_opd.
-                        lv_kind = 'OPERAND'.
-                      ENDIF.
-                  ENDCASE.
+                  CLEAR lv_is_first.
                 ENDIF.
-                APPEND VALUE ts_token_detail(
-                  token    = ls_tok-str
-                  kind     = lv_kind
-                  stmt_idx = lv_si
-                  tok_idx  = lv_ti
-                  row      = ls_tok-row
-                ) TO ls_unit-token_detail.
+
+                DATA(lv_tok_up)      = to_upper( <tok>-str ).
+                DATA(lv_inline_name) = ``.
+
+                IF lv_tok_up CP 'DATA(*)' AND strlen( lv_tok_up ) > 5.
+                  DATA(lv_tmp) = <tok>-str+5.
+                  DATA(lv_tmp_len) = strlen( lv_tmp ) - 1.
+                  IF lv_tmp_len > 0.
+                    lv_inline_name = lv_tmp(lv_tmp_len).
+                  ENDIF.
+                ELSEIF lv_tok_up CP 'FIELD-SYMBOL(<*)' AND strlen( lv_tok_up ) > 14.
+                  DATA(lv_fs_tmp) = <tok>-str+14.
+                  DATA(lv_fs_len) = strlen( lv_fs_tmp ) - 2.
+                  IF lv_fs_len > 0.
+                    lv_inline_name = lv_fs_tmp(lv_fs_len).
+                  ENDIF.
+                ENDIF.
+
+                IF lv_inline_name IS NOT INITIAL.
+                  DATA(lv_kw_part) = COND string(
+                    WHEN lv_tok_up CP 'DATA(*)'          THEN 'DATA'
+                    WHEN lv_tok_up CP 'FIELD-SYMBOL(<*)' THEN 'FIELD-SYMBOL'
+                    ELSE 'DATA' ).
+                  ADD 1 TO ls_unit-n1.
+                  INSERT lv_kw_part INTO TABLE lt_dist_ops.
+                  APPEND VALUE ts_token_detail(
+                    token    = lv_kw_part
+                    kind     = 'OPERATOR'
+                    stmt_idx = lv_stmt_tabix
+                    tok_idx  = sy-tabix
+                    row      = <tok>-row
+                  ) TO ls_unit-token_detail.
+                  ADD 1 TO ls_unit-n2.
+                  INSERT to_upper( lv_inline_name ) INTO TABLE lt_dist_opd.
+                  APPEND VALUE ts_token_detail(
+                    token    = lv_inline_name
+                    kind     = 'OPERAND'
+                    stmt_idx = lv_stmt_tabix
+                    tok_idx  = sy-tabix
+                    row      = <tok>-row
+                  ) TO ls_unit-token_detail.
+                ELSE.
+                  DATA(lv_kind) = classify_token(
+                    i_token     = <tok>-str
+                    i_is_first  = lv_is_first
+                    it_operands = lt_operands ).
+
+                  IF lv_kind = 'OPERATOR'.
+                    ADD 1 TO ls_unit-n1.
+                    INSERT <tok>-str INTO TABLE lt_dist_ops.
+                  ELSE.
+                    ADD 1 TO ls_unit-n2.
+                    INSERT <tok>-str INTO TABLE lt_dist_opd.
+                  ENDIF.
+
+                  APPEND VALUE ts_token_detail(
+                    token    = <tok>-str
+                    kind     = lv_kind
+                    stmt_idx = lv_stmt_tabix
+                    tok_idx  = sy-tabix
+                    row      = <tok>-row
+                  ) TO ls_unit-token_detail.
+                ENDIF.
+
               ENDIF.
-              ADD 1 TO lv_ti.
-            ENDWHILE.
+            ENDLOOP. " tokens
           ENDIF.
-          ADD 1 TO lv_si.
-        ENDWHILE.
+        ENDLOOP. " statements
 
         ls_unit-big_n1      = lines( lt_dist_ops ).
         ls_unit-big_n2      = lines( lt_dist_opd ).
@@ -8947,6 +9106,20 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
               * ( CONV f( ls_unit-n2 ) / CONV f( ls_unit-big_n2 ) ).
           ENDIF.
           ls_unit-effort = ls_unit-difficulty * ls_unit-volume.
+          ls_unit-time_t = ls_unit-effort / 18.
+          ls_unit-bugs   = ls_unit-volume  / 3000.
+        ENDIF.
+
+        " Maintainability Index
+        " MI = 171 - 5.2 * ln(V) - 0.23 * G - 16.2 * ln(LOC)
+        IF ls_unit-volume > 0 AND ls_unit-loc > 0.
+          DATA(lv_ln_vol) = log( ls_unit-volume ).
+          DATA(lv_ln_loc) = log( CONV f( ls_unit-loc ) ).
+          DATA(lv_cc_f)   = CONV f( ls_unit-cyclomatic ).
+          ls_unit-mi = 171
+            - ( CONV f( '5.2'  ) * lv_ln_vol )
+            - ( CONV f( '0.23' ) * lv_cc_f   )
+            - ( CONV f( '16.2' ) * lv_ln_loc ).
         ENDIF.
 
         APPEND ls_unit TO rs_result-units.
@@ -8955,12 +9128,13 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
 
     ENDLOOP.
 
-    " ---- aggregate totals ----
     DATA lv_cnt TYPE i.
     LOOP AT rs_result-units INTO DATA(ls_u).
       ADD ls_u-cyclomatic TO rs_result-total_cyclomatic.
       rs_result-total_volume = rs_result-total_volume + ls_u-volume.
       rs_result-total_effort = rs_result-total_effort + ls_u-effort.
+      rs_result-total_time_t = rs_result-total_time_t + ls_u-time_t.
+      rs_result-total_bugs   = rs_result-total_bugs   + ls_u-bugs.
       ADD ls_u-loc  TO rs_result-total_loc.
       ADD ls_u-lloc TO rs_result-total_lloc.
       ADD ls_u-cloc TO rs_result-total_cloc.
@@ -8982,65 +9156,384 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         rv = abap_false.
     ENDCASE.
   ENDMETHOD.
-  METHOD is_sub_keyword.
-    " Sub-keywords: structural keywords that appear inside statements
-    " but are never the first token — so they don't get into lt_ops automatically.
-    " Grouped by statement family for readability.
-    CASE i_kw.
-
-      " --- SELECT / OPEN CURSOR ---
-      WHEN 'SINGLE' OR 'DISTINCT'
-        OR 'FROM' OR 'AS' OR 'JOIN' OR 'INNER' OR 'LEFT' OR 'OUTER' OR 'CROSS'
-        OR 'ON' OR 'UP' OR 'TO' OR 'ROWS'
-        OR 'WHERE' OR 'HAVING' OR 'GROUP' OR 'ORDER' OR 'BY'
-        OR 'ASCENDING' OR 'DESCENDING'
-        OR 'INTO' OR 'APPENDING' OR 'CORRESPONDING' OR 'FIELDS'
-        OR 'FOR' OR 'ALL' OR 'ENTRIES' OR 'IN'
-        OR 'UNION' OR 'INTERSECT' OR 'EXCEPT'.
-
-      " --- CALL FUNCTION / CALL METHOD / CALL BADI ---
-      WHEN 'EXPORTING' OR 'IMPORTING' OR 'CHANGING' OR 'TABLES'
-        OR 'EXCEPTIONS' OR 'DESTINATION' OR 'STARTING'
-        OR 'IN' OR 'BACKGROUND' OR 'TASK' OR 'UNIT'.
-
-      " --- READ TABLE / LOOP AT / INSERT / MODIFY / DELETE ---
-      WHEN 'WITH' OR 'KEY' OR 'BINARY' OR 'SEARCH'
-        OR 'TRANSPORTING' OR 'FIELDS' OR 'REFERENCE'
-        OR 'ASSIGNING' OR 'CASTING' OR 'RESULT'
-        OR 'COMPARING' OR 'NO' OR 'FIELDS'.
-
-      " --- MOVE / ASSIGN / CONVERT / WRITE ---
-      WHEN 'CORRESPONDING' OR 'BASE' OR 'MAPPING' OR 'EXCEPT'
-        OR 'DECIMALS' OR 'CURRENCY' OR 'UNIT' OR 'TIMEZONE'
-        OR 'RESPECTING' OR 'BLANKS' OR 'REPLACEMENT' OR 'CHARACTER' OR 'MODE'.
-
-      " --- RAISE / TRY / CATCH / MESSAGE ---
-      WHEN 'RESUMABLE' OR 'SHORTDUMP' OR 'TYPE' OR 'LIKE'
-        OR 'LEVEL' OR 'NUMBER' OR 'WITH'
-        OR 'INTO' OR 'BEFORE' OR 'UNWIND'.
-
-      " --- CREATE OBJECT / DATA / FIELD-SYMBOL ---
-      WHEN 'OBJECT' OR 'AREA' OR 'HANDLE' OR 'SECTION'
-        OR 'OPTIONAL' OR 'PREFERRED' OR 'PARAMETER'
-        OR 'VALUE' OR 'DEFAULT' OR 'INITIAL'.
-
-      " --- APPEND / COLLECT / SORT ---
-      WHEN 'SORTED' OR 'BY' OR 'STABLE' OR 'ADJACENT'
-        OR 'DUPLICATES' OR 'LINES' OR 'RANGE' OR 'STEP'.
-
-      " --- OPEN/CLOSE DATASET ---
-      WHEN 'DATASET' OR 'POSITION' OR 'AT' OR 'END'
-        OR 'FILTER' OR 'ENCODING' OR 'CODE' OR 'PAGE'.
-
-      WHEN OTHERS.
-        rv = abap_false.
-        RETURN.
-    ENDCASE.
-    rv = abap_true.
-  ENDMETHOD.
   METHOD log2.
     IF i_val <= 0. RETURN. ENDIF.
     rv = log( i_val ) / log( CONV f( 2 ) ).
+  ENDMETHOD.
+  METHOD build_operand_set.
+    " Operands = all known named identifiers:
+    "   1. Variable/field-symbol names from t_vars (this include)
+    "   2. Parameter names from t_params (this include)
+    "   3. Unit names (eventname) from tt_calls_line (this include)
+    "   4. Class/interface names from tt_class_defs
+    " No scope filtering by class/method — a token found in code is checked
+    " against these sets by name only.
+
+    " Operands = all known named identifiers:
+    "   1. Variable/field-symbol names from t_vars (this include)
+    "   2. Parameter names from t_params (this include)
+    "   3. Unit names (eventname) from tt_calls_line (this include)
+    "   4. Class/interface names from tt_class_defs
+    " No scope filtering by class/method — a token found in code is checked
+    " against these sets by name only.
+
+    FIELD-SYMBOLS: <ls_v>  LIKE LINE OF is_parse_data-t_vars,
+                  <ls_p>  LIKE LINE OF is_parse_data-t_params,
+                  <ls_cl> LIKE LINE OF is_parse_data-tt_calls_line,
+                  <ls_cd> LIKE LINE OF is_parse_data-tt_class_defs.
+
+    LOOP AT is_parse_data-t_vars ASSIGNING <ls_v>
+      WHERE include = i_include.
+      IF <ls_v>-name IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_v>-name ) ) INTO TABLE rt_ops.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT is_parse_data-t_params ASSIGNING <ls_p>
+      WHERE include = i_include.
+      IF <ls_p>-param IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_p>-param ) ) INTO TABLE rt_ops.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT is_parse_data-tt_calls_line ASSIGNING <ls_cl>
+      WHERE include = i_include.
+      IF <ls_cl>-eventname IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_cl>-eventname ) ) INTO TABLE rt_ops.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT is_parse_data-tt_class_defs ASSIGNING <ls_cd>.
+      IF <ls_cd>-class IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_cd>-class ) ) INTO TABLE rt_ops.
+      ENDIF.
+      IF <ls_cd>-super IS NOT INITIAL.
+        INSERT VALUE ts_known_operand( name = to_upper( <ls_cd>-super ) ) INTO TABLE rt_ops.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+  METHOD classify_token.
+    IF line_exists( mt_statements[ table_line = i_token ] ).
+      rv_kind = 'OPERATOR'.
+    else.
+      rv_kind = 'OPERAND'.
+    ENDIF.
+
+  ENDMETHOD.
+  METHOD fill_statements.
+    mt_statements = VALUE tt_abap_statements(
+      ( `ABS` )
+      ( `ABSTRACT` )
+      ( `ADD` )
+      ( `ADD-CORRESPONDING` )
+      ( `ALIASES` )
+      ( `ALL` )
+      ( `AND` )
+      ( `ANY` )
+      ( `APPEND` )
+      ( `APPENDING` )
+      ( `AS` )
+      ( `ASCENDING` )
+      ( `ASSERT` )
+      ( `ASSIGN` )
+      ( `ASSIGNING` )
+      ( `AT` )
+      ( `AUTHORITY-CHECK` )
+      ( `AVG` )
+      ( `BEGIN` )
+      ( `BETWEEN` )
+      ( `BINARY` )
+      ( `BREAK-POINT` )
+      ( `BUFFER` )
+      ( `BY` )
+      ( `BYPASSING` )
+      ( `CALL` )
+      ( `CASE` )
+      ( `CAST` )
+      ( `CATCH` )
+      ( `CEIL` )
+      ( `CHANGING` )
+      ( `CHECK` )
+      ( `CLASS` )
+      ( `CLASS-DATA` )
+      ( `CLASS-EVENTS` )
+      ( `CLASS-METHODS` )
+      ( `CLEANUP` )
+      ( `CLEAR` )
+      ( `CLIENT` )
+      ( `CLOSE` )
+      ( `COALESCE` )
+      ( `COLLECT` )
+      ( `COMMIT` )
+      ( `COMMUNICATION` )
+      ( `COMPARING` )
+      ( `COMPUTE` )
+      ( `CONCAT` )
+      ( `CONCATENATE` )
+      ( `CONDENSE` )
+      ( `COND` )
+      ( `CONNECTION` )
+      ( `CONSTANTS` )
+      ( `CONTINUE` )
+      ( `CONTROLS` )
+      ( `CONV` )
+      ( `CORRESPONDING` )
+      ( `COUNT` )
+      ( `CREATE` )
+      ( `CURRENT` )
+      ( `CURSOR` )
+      ( `DATA` )
+      ( `DATASET` )
+      ( `DEFAULT` )
+      ( `DEFINE` )
+      ( `DEFINITION` )
+      ( `DELETE` )
+      ( `DESCENDING` )
+      ( `DESCRIBE` )
+      ( `DIALOG` )
+      ( `DISTINCT` )
+      ( `DISTANCE` )
+      ( `DIVIDE` )
+      ( `DIVIDE-CORRESPONDING` )
+      ( `DO` )
+      ( `DYNPRO` )
+      ( `ELSE` )
+      ( `ELSEIF` )
+      ( `ENCODING` )
+      ( `END` )
+      ( `END-OF-PAGE` )
+      ( `END-OF-SELECTION` )
+      ( `ENDCASE` )
+      ( `ENDCLASS` )
+      ( `ENDDO` )
+      ( `ENDFORM` )
+      ( `ENDFUNCTION` )
+      ( `ENDIF` )
+      ( `ENDINTERFACE` )
+      ( `ENDLOOP` )
+      ( `ENDMETHOD` )
+      ( `ENDMODULE` )
+      ( `ENDON` )
+      ( `ENDPROVIDE` )
+      ( `ENDSELECT` )
+      ( `ENDTRY` )
+      ( `ENDWHILE` )
+      ( `ENTRIES` )
+      ( `ESCAPE` )
+      ( `EVENT` )
+      ( `EVENTS` )
+      ( `EXACT` )
+      ( `EXCEPT` )
+      ( `EXCEPTIONS` )
+      ( `EXISTS` )
+      ( `EXIT` )
+      ( `EXPORT` )
+      ( `EXPORTING` )
+      ( `EXTRACT` )
+      ( `FETCH` )
+      ( `FIELD-GROUPS` )
+      ( `FIELD-SYMBOLS` )
+      ( `FIELDS` )
+      ( `FILTER` )
+      ( `FINAL` )
+      ( `FIND` )
+      ( `FIRST` )
+      ( `FLOOR` )
+      ( `FOR` )
+      ( `FORM` )
+      ( `FORMAT` )
+      ( `FREE` )
+      ( `FROM` )
+      ( `FULL` )
+      ( `FUNCTION` )
+      ( `FUNCTION-POOL` )
+      ( `GENERATE` )
+      ( `GET` )
+      ( `GROUP` )
+      ( `HANDLER` )
+      ( `HASHED` )
+      ( `HAVING` )
+      ( `HEADER` )
+      ( `IF` )
+      ( `IMPLEMENTATION` )
+      ( `IMPORT` )
+      ( `IMPORTING` )
+      ( `IN` )
+      ( `INCLUDE` )
+      ( `INDEX` )
+      ( `INFOTYPES` )
+      ( `INHERITING` )
+      ( `INITIAL` )
+      ( `INITIALIZATION` )
+      ( `INNER` )
+      ( `INPUT` )
+      ( `INSERT` )
+      ( `INSTANCE` )
+      ( `INSTR` )
+      ( `INTERFACE` )
+      ( `INTERFACES` )
+      ( `INTERSECT` )
+      ( `INTO` )
+      ( `IS` )
+      ( `JOIN` )
+      ( `KEY` )
+      ( `LAST` )
+      ( `LEAVE` )
+      ( `LEFT` )
+      ( `LENGTH` )
+      ( `LET` )
+      ( `LIKE` )
+      ( `LINE` )
+      ( `LINE-SELECTION` )
+      ( `LINES` )
+      ( `LIST-PROCESSING` )
+      ( `LOAD-OF-PROGRAM` )
+      ( `LOCAL` )
+      ( `LOG-POINT` )
+      ( `LOOP` )
+      ( `LOWER` )
+      ( `LPAD` )
+      ( `MATCH` )
+      ( `MAX` )
+      ( `MESSAGE` )
+      ( `METHOD` )
+      ( `METHODS` )
+      ( `MIN` )
+      ( `MODE` )
+      ( `MODIFY` )
+      ( `MODULE` )
+      ( `MOVE` )
+      ( `MOVE-CORRESPONDING` )
+      ( `MULTIPLY` )
+      ( `MULTIPLY-CORRESPONDING` )
+      ( `NEW` )
+      ( `NEW-LINE` )
+      ( `NEW-PAGE` )
+      ( `NEXT` )
+      ( `NON-UNIQUE` )
+      ( `NOT` )
+      ( `NULL` )
+      ( `OBJECT` )
+      ( `OF` )
+      ( `OFFSET` )
+      ( `ON` )
+      ( `OPEN` )
+      ( `OPTIONAL` )
+      ( `OR` )
+      ( `ORDER` )
+      ( `OTHERS` )
+      ( `OUTER` )
+      ( `OUTPUT` )
+      ( `OVERLAY` )
+      ( `PACK` )
+      ( `PACKAGE` )
+      ( `PARAMETER` )
+      ( `PARAMETERS` )
+      ( `PERFORM` )
+      ( `PF-STATUS` )
+      ( `POOL` )
+      ( `PRIVATE` )
+      ( `PROCESS` )
+      ( `PROGRAM` )
+      ( `PROTECTED` )
+      ( `PROVIDE` )
+      ( `PUBLIC` )
+      ( `RAISE` )
+      ( `RAISING` )
+      ( `RANGES` )
+      ( `READ` )
+      ( `RECEIVE` )
+      ( `REDUCE` )
+      ( `REF` )
+      ( `REFERENCE` )
+      ( `REFRESH` )
+      ( `REPLACE` )
+      ( `REPORT` )
+      ( `RESERVE` )
+      ( `RESUME` )
+      ( `RETRY` )
+      ( `RETURN` )
+      ( `RETURNING` )
+      ( `RIGHT` )
+      ( `ROLLBACK` )
+      ( `ROUND` )
+      ( `ROWS` )
+      ( `RPAD` )
+      ( `RUN` )
+      ( `SCREEN` )
+      ( `SCROLL` )
+      ( `SEARCH` )
+      ( `SECONDS` )
+      ( `SECTION` )
+      ( `SELECT` )
+      ( `SELECT-OPTIONS` )
+      ( `SELECTION-SCREEN` )
+      ( `SET` )
+      ( `SHIFT` )
+      ( `SINGLE` )
+      ( `SIZE` )
+      ( `SKIP` )
+      ( `SOME` )
+      ( `SORT` )
+      ( `SORTED` )
+      ( `SPECIFIED` )
+      ( `SPLIT` )
+      ( `STABLE` )
+      ( `STANDARD` )
+      ( `START-OF-SELECTION` )
+      ( `STATICS` )
+      ( `STOP` )
+      ( `STRUCTURE` )
+      ( `SUBMIT` )
+      ( `SUBSTR` )
+      ( `SUBSTRING` )
+      ( `SUBTRACT` )
+      ( `SUBTRACT-CORRESPONDING` )
+      ( `SUBROUTINE` )
+      ( `SUM` )
+      ( `SUPPRESS` )
+      ( `SWITCH` )
+      ( `TABLE` )
+      ( `TABLES` )
+      ( `THEN` )
+      ( `TIME` )
+      ( `TITLEBAR` )
+      ( `TO` )
+      ( `TO_LOWER` )
+      ( `TO_UPPER` )
+      ( `TOP-OF-PAGE` )
+      ( `TRANSACTION` )
+      ( `TRANSFER` )
+      ( `TRANSLATE` )
+      ( `TRANSPORTING` )
+      ( `TRY` )
+      ( `TYPE` )
+      ( `TYPE-POOL` )
+      ( `TYPE-POOLS` )
+      ( `TYPES` )
+      ( `UNASSIGN` )
+      ( `UNION` )
+      ( `UNIQUE` )
+      ( `UNPACK` )
+      ( `UNTIL` )
+      ( `UP` )
+      ( `UPDATE` )
+      ( `UPPER` )
+      ( `ULINE` )
+      ( `USER-COMMAND` )
+      ( `USING` )
+      ( `VALUE` )
+      ( `WAIT` )
+      ( `WHEN` )
+      ( `WHERE` )
+      ( `WHILE` )
+      ( `WITH` )
+      ( `WINDOW` )
+      ( `WORK` )
+      ( `WRITE` )
+    ).
+
   ENDMETHOD.
 ENDCLASS.
 
@@ -11064,8 +11557,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-03-30T09:39:00.040Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-30T09:39:00.040Z`.
+* abapmerge 0.16.7 - 2026-03-31T05:58:00.080Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-31T05:58:00.080Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
