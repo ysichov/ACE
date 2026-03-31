@@ -8394,26 +8394,26 @@ METHOD show.
   " Row type
   " ---------------------------------------------------------------
   TYPES: BEGIN OF ts_row,
-           name        TYPE string,
-           cc          TYPE i,
-           risk        TYPE string,
-           n1          TYPE i,
-           n2          TYPE i,
-           length      TYPE i,
-           eta1        TYPE i,
-           eta2        TYPE i,
-           vocab       TYPE i,
-           volume      TYPE string,
-           difficulty  TYPE string,
-           effort      TYPE string,
-           time_t      TYPE string,
-           bugs        TYPE string,
-           loc         TYPE i,
-           lloc        TYPE i,
-           cloc        TYPE i,
-           cloc_ratio  TYPE string,
-           mi          TYPE string,
-           mi_rating   TYPE string,
+           name       TYPE string,
+           cc         TYPE i,
+           risk       TYPE string,
+           n1         TYPE i,
+           n2         TYPE i,
+           length     TYPE i,
+           eta1       TYPE i,
+           eta2       TYPE i,
+           vocab      TYPE i,
+           volume     TYPE string,
+           difficulty TYPE string,
+           effort     TYPE string,
+           time_t     TYPE string,
+           bugs       TYPE string,
+           loc        TYPE i,
+           lloc       TYPE i,
+           cloc       TYPE i,
+           cloc_ratio TYPE string,
+           mi         TYPE string,
+           mi_rating  TYPE string,
          END OF ts_row.
 
   DATA ls_u       TYPE zcl_ace_metrics=>ts_unit_result.
@@ -8456,7 +8456,9 @@ METHOD show.
   " ---------------------------------------------------------------
   cl_demo_output=>write_text( |=== Code Metrics: { i_program } ===, Units analysed                    : { lines( ls_result-units ) }| ).
   cl_demo_output=>write_text( |Total Cyclomatic Complexity: { lv_tot_cc },  Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }|  ).
-  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }, Time: { format_f2( lv_tot_time_t ) }s, Expected Bugs: { format_f2( lv_tot_bugs ) }| ).
+  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }| ).
+  cl_demo_output=>write_text( |Time: { format_f2( lv_tot_time_t / 3600 ) }hrs, Expected Bugs: { format_f2( lv_tot_bugs ) }| ).
+
   cl_demo_output=>write_text( |LOC / LLOC / CLOC/ CLOC Ratio     : { lv_tot_loc } / { lv_tot_lloc } / { lv_tot_cloc } / { CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%| ).
 
   " ---------------------------------------------------------------
@@ -8722,19 +8724,21 @@ METHOD show.
   cl_demo_output=>write_text( '  21-50  HIGH     High risk, refactor recommended' ).
   cl_demo_output=>write_text( '  50+    CRITICAL Untestable, very high risk' ).
   cl_demo_output=>write_text( '' ).
+  cl_demo_output=>write_text( '--- Halstead ---' ).
+  cl_demo_output=>write_text( '  N1/N2 - total operators/operands, Length = N1 + N2' ).
+  cl_demo_output=>write_text( '  eta1/eta2 - distinct operators/operands, Vocab = eta1 + eta2' ).
+  cl_demo_output=>write_text( '  Volume=Length*log2(Vocab)  Diff = (eta1 / 2)*(N2 / eta2)  Effort = Diff * Volume' ).
+  cl_demo_output=>write_text( '' ).
+  cl_demo_output=>write_text( '  Time (T) = Effort / 18  (Stroud number: 18 mental discriminations/sec)' ).
+  cl_demo_output=>write_text( '  Bugs (B) = Volume / 3000  (expected delivered defects, Halstead empirical formula)' ).
+  cl_demo_output=>write_text( '  CLOC_RATIO = CLOC/LOC %  (comment density)' ).
+
+  cl_demo_output=>write_text( '' ).
   cl_demo_output=>write_text( '--- Maintainability Index (MI) ---' ).
   cl_demo_output=>write_text( '  MI = 171 - 5.2*ln(V) - 0.23*G - 16.2*ln(LOC)' ).
   cl_demo_output=>write_text( '  >= 85  HIGH    Easy to maintain' ).
   cl_demo_output=>write_text( '  65-84  MEDIUM  Moderate maintainability' ).
   cl_demo_output=>write_text( '  < 65   LOW     Hard to maintain, refactor recommended' ).
-  cl_demo_output=>write_text( '' ).
-  cl_demo_output=>write_text( '--- Halstead ---' ).
-  cl_demo_output=>write_text( '  N1/N2 - total operators/operands, Length = N1 + N2' ).
-  cl_demo_output=>write_text( '  eta1/eta2 - distinct operators/operands, Vocab = eta1 + eta2' ).
-  cl_demo_output=>write_text( '  Volume=Length*log2(Vocab)  Diff = (eta1 / 2)*(N2 / eta2)  Effort = Diff * Volume' ).
-  cl_demo_output=>write_text( '  Time (T) = Effort / 18  (Stroud number: 18 mental discriminations/sec)' ).
-  cl_demo_output=>write_text( '  Bugs (B) = Volume / 3000  (expected delivered defects, Halstead empirical formula)' ).
-  cl_demo_output=>write_text( '  CLOC_RATIO = CLOC/LOC %  (comment density)' ).
 
   cl_demo_output=>display( ).
 
@@ -9325,7 +9329,7 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       ( `EVENTS` )
       ( `EXACT` )
       ( `EXCEPT` )
-      ( `EXCEPTIONS` )
+      ( `EXCEPTION` )
       ( `EXISTS` )
       ( `EXIT` )
       ( `EXPORT` )
@@ -11557,8 +11561,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-03-31T05:58:00.080Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-31T05:58:00.080Z`.
+* abapmerge 0.16.7 - 2026-03-31T06:05:21.454Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-03-31T06:05:21.454Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
