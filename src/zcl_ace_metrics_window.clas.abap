@@ -107,8 +107,14 @@ METHOD show.
   " ---------------------------------------------------------------
   cl_demo_output=>write_text( |=== Code Metrics: { i_program } ===, Units analysed                    : { lines( ls_result-units ) }| ).
   cl_demo_output=>write_text( |Total Cyclomatic Complexity: { lv_tot_cc },  Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }|  ).
-  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }| ).
-  cl_demo_output=>write_text( |Time: { format_f2( lv_tot_time_t / 3600 ) }hrs, Expected Bugs: { format_f2( lv_tot_bugs ) }| ).
+  " incl_* = Halstead over unique dicts merged across all units (program-scope)
+  cl_demo_output=>write_text(
+    |Halstead Volume: { format_f2( ls_result-incl_volume ) } (program-scope) | &
+    |/ { format_f2( lv_tot_vol ) } (sum of units)| ).
+  cl_demo_output=>write_text(
+    |Effort: { format_f2( ls_result-incl_effort ) } (program-scope) | &
+    |/ { format_f2( lv_tot_eff ) } (sum of units)| ).
+  cl_demo_output=>write_text( |Time: { format_f2( ls_result-incl_time_t / 3600 ) }hrs, Expected Bugs: { format_f2( ls_result-incl_bugs ) }| ).
 
   cl_demo_output=>write_text( |LOC / LLOC / CLOC/ CLOC Ratio     : { lv_tot_loc } / { lv_tot_lloc } / { lv_tot_cloc } / { CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%| ).
 
