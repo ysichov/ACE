@@ -897,6 +897,10 @@ CLASS zcl_ace_metrics_window DEFINITION
       IMPORTING i_val     TYPE f
       RETURNING VALUE(rv) TYPE string.
 
+    CLASS-METHODS format_time
+      IMPORTING i_seconds TYPE f
+      RETURNING VALUE(rv) TYPE string.
+
     CLASS-METHODS cc_rating
       IMPORTING i_cc      TYPE i
       RETURNING VALUE(rv) TYPE string.
@@ -8503,14 +8507,9 @@ METHOD show.
   " ---------------------------------------------------------------
   cl_demo_output=>write_text( |=== Code Metrics: { i_program } ===, Units analysed                    : { lines( ls_result-units ) }| ).
   cl_demo_output=>write_text( |Total Cyclomatic Complexity: { lv_tot_cc },  Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }|  ).
-  " incl_* = Halstead over unique dicts merged across all units (program-scope)
-  cl_demo_output=>write_text(
-    |Halstead Volume: { format_f2( ls_result-incl_volume ) } (program-scope) | &
-    |/ { format_f2( lv_tot_vol ) } (sum of units)| ).
-  cl_demo_output=>write_text(
-    |Effort: { format_f2( ls_result-incl_effort ) } (program-scope) | &
-    |/ { format_f2( lv_tot_eff ) } (sum of units)| ).
-  cl_demo_output=>write_text( |Time: { format_f2( ls_result-incl_time_t / 3600 ) }hrs, Expected Bugs: { format_f2( ls_result-incl_bugs ) }| ).
+  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }| ).
+  DATA(lv_sum_time_t) = lv_tot_eff / 18.
+  cl_demo_output=>write_text( |Time: { format_time( lv_sum_time_t ) }, Expected Bugs: { format_f2( lv_tot_bugs ) }| ).
 
   cl_demo_output=>write_text( |LOC / LLOC / CLOC/ CLOC Ratio     : { lv_tot_loc } / { lv_tot_lloc } / { lv_tot_cloc } / { CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%| ).
 
@@ -8532,15 +8531,11 @@ METHOD show.
     volume      = format_f2( ls_result-incl_volume )
     difficulty  = format_f2( ls_result-incl_difficulty )
     effort      = format_f2( ls_result-incl_effort )
-    time_t      = format_f2( ls_result-incl_time_t )
+    time_t      = format_time( lv_tot_time_t )
     bugs        = format_f2( ls_result-incl_bugs )
   ) TO lt_total.
 
   cl_demo_output=>write_data( value = lt_total name = `Total` ).
-
-  " ---------------------------------------------------------------
-  " Helper: inline MI formatting macro (via local method reference)
-  " ---------------------------------------------------------------
 
   " ---------------------------------------------------------------
   " 3. EVENTS
@@ -8570,7 +8565,7 @@ METHOD show.
       volume      = format_f2( ls_u-volume )
       difficulty  = format_f2( ls_u-difficulty )
       effort      = format_f2( ls_u-effort )
-      time_t      = format_f2( ls_u-time_t )
+      time_t      = format_time( ls_u-time_t )
       bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
@@ -8611,7 +8606,7 @@ METHOD show.
       volume      = format_f2( ls_u-volume )
       difficulty  = format_f2( ls_u-difficulty )
       effort      = format_f2( ls_u-effort )
-      time_t      = format_f2( ls_u-time_t )
+      time_t      = format_time( ls_u-time_t )
       bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
@@ -8683,7 +8678,7 @@ METHOD show.
         volume      = format_f2( ls_u-volume )
         difficulty  = format_f2( ls_u-difficulty )
         effort      = format_f2( ls_u-effort )
-        time_t      = format_f2( ls_u-time_t )
+        time_t      = format_time( ls_u-time_t )
         bugs        = format_f2( ls_u-bugs )
         loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
         cloc_ratio  = lv_ratio
@@ -8697,8 +8692,8 @@ METHOD show.
       ADD ls_u-cloc       TO lv_tot_cloc.
       ADD ls_u-n1         TO lv_tot_n1.
       ADD ls_u-n2         TO lv_tot_n2.
-      lv_tot_vol = lv_tot_vol + ls_u-volume.
-      lv_tot_eff = lv_tot_eff + ls_u-effort.
+      lv_tot_vol    = lv_tot_vol    + ls_u-volume.
+      lv_tot_eff    = lv_tot_eff    + ls_u-effort.
       lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
       lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
     ENDLOOP.
@@ -8713,7 +8708,9 @@ METHOD show.
 
     SORT lt_rows BY cc DESCENDING.
 
-    " Read pre-computed class-scope Halstead from ls_result-class_totals
+    " Read pre-computed class-scope Halstead from ls_result-class_totals.
+    " eta1/eta2/vocab/difficulty — structural (class-scope unique dictionaries).
+    " VOLUME / EFFORT / TIME_T / BUGS in CLASS TOTAL = sum of methods (correct).
     READ TABLE ls_result-class_totals
       WITH KEY class_name = lv_cls
       INTO DATA(ls_ct).
@@ -8723,17 +8720,21 @@ METHOD show.
       name        = |CLASS TOTAL|
       cc          = lv_tot_cc
       risk        = ''
-      n1          = lv_tot_n1        n2         = lv_tot_n2
-      eta1        = ls_ct-cls_big_n1  eta2       = ls_ct-cls_big_n2
+      n1          = lv_tot_n1
+      n2          = lv_tot_n2
+      eta1        = ls_ct-cls_big_n1
+      eta2        = ls_ct-cls_big_n2
       vocab       = ls_ct-cls_vocabulary
       length      = ls_ct-cls_prog_length
-      loc         = lv_tot_loc        lloc       = lv_tot_lloc   cloc = lv_tot_cloc
+      loc         = lv_tot_loc
+      lloc        = lv_tot_lloc
+      cloc        = lv_tot_cloc
       cloc_ratio  = lv_ratio
-      volume      = format_f2( ls_ct-cls_volume )
+      volume      = format_f2( lv_tot_vol )
       difficulty  = format_f2( ls_ct-cls_difficulty )
-      effort      = format_f2( ls_ct-cls_effort )
-      time_t      = format_f2( ls_ct-cls_time_t )
-      bugs        = format_f2( ls_ct-cls_bugs )
+      effort      = format_f2( lv_tot_eff )
+      time_t      = format_time( lv_tot_time_t )
+      bugs        = format_f2( lv_tot_bugs )
     ) TO lt_rows.
 
     cl_demo_output=>write_data( value = lt_rows name = lv_cls ).
@@ -8769,7 +8770,7 @@ METHOD show.
       volume      = format_f2( ls_u-volume )
       difficulty  = format_f2( ls_u-difficulty )
       effort      = format_f2( ls_u-effort )
-      time_t      = format_f2( ls_u-time_t )
+      time_t      = format_time( ls_u-time_t )
       bugs        = format_f2( ls_u-bugs )
       loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
       cloc_ratio  = lv_ratio
@@ -8829,6 +8830,20 @@ ENDMETHOD.
     lv_dec = i_val.
     rv = |{ lv_dec DECIMALS = 2 }|.
     CONDENSE rv NO-GAPS.
+  ENDMETHOD.
+  METHOD format_time.
+    " Convert seconds (TYPE F) to "Xh Ym" string, e.g. "2h 10m" or "45m" or "30s"
+    DATA(lv_secs) = CONV i( i_seconds ).
+    DATA(lv_h)    = lv_secs DIV 3600.
+    DATA(lv_m)    = ( lv_secs MOD 3600 ) DIV 60.
+    DATA(lv_s)    = lv_secs MOD 60.
+    IF lv_h > 0.
+      rv = |{ lv_h }h { lv_m }m|.
+    ELSEIF lv_m > 0.
+      rv = |{ lv_m }m { lv_s }s|.
+    ELSE.
+      rv = |{ lv_s }s|.
+    ENDIF.
   ENDMETHOD.
   METHOD cc_rating.
     IF i_cc <= 10.
@@ -9357,6 +9372,7 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       ADD ls_cu-n1         TO <lct>-total_n1.
       ADD ls_cu-n2         TO <lct>-total_n2.
       <lct>-total_volume = <lct>-total_volume + ls_cu-volume.
+      " effort / time_t / bugs — sum across methods (correct semantics)
       <lct>-total_effort = <lct>-total_effort + ls_cu-effort.
       <lct>-total_time_t = <lct>-total_time_t + ls_cu-time_t.
       <lct>-total_bugs   = <lct>-total_bugs   + ls_cu-bugs.
@@ -9383,7 +9399,8 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
           CONV f( <lct2>-total_cyclomatic ) / CONV f( lv_cls_cnt ).
       ENDIF.
 
-      " cls_big_n1 / cls_big_n2 were filled inside LOOP AT tt_progs above
+      " cls_big_n1 / cls_big_n2 filled above — unique operator/operand dictionaries
+      " across all methods of the class (used for structural complexity analysis)
       <lct2>-cls_vocabulary  = <lct2>-cls_big_n1 + <lct2>-cls_big_n2.
       <lct2>-cls_prog_length = <lct2>-total_n1   + <lct2>-total_n2.
 
@@ -9396,6 +9413,9 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
             ( CONV f( <lct2>-cls_big_n1 ) / 2 )
             * ( CONV f( <lct2>-total_n2 ) / CONV f( <lct2>-cls_big_n2 ) ).
         ENDIF.
+        " cls_effort / cls_time_t / cls_bugs — derived from class-scope volume/difficulty.
+        " These are ANALYTICAL metrics showing vocabulary-based complexity.
+        " For effort planning use total_effort / total_time_t / total_bugs (sum of methods).
         <lct2>-cls_effort = <lct2>-cls_difficulty * <lct2>-cls_volume.
         <lct2>-cls_time_t = <lct2>-cls_effort / 18.
         <lct2>-cls_bugs   = <lct2>-cls_volume  / 3000.
@@ -11825,8 +11845,8 @@ AT SELECTION-SCREEN ON p_func.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-04-01T08:20:22.711Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-04-01T08:20:22.711Z`.
+* abapmerge 0.16.7 - 2026-04-01T10:43:43.346Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-04-01T10:43:43.346Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
