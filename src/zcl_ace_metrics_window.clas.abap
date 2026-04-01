@@ -281,6 +281,8 @@ METHOD show.
         volume      = format_f2( ls_u-volume )
         difficulty  = format_f2( ls_u-difficulty )
         effort      = format_f2( ls_u-effort )
+        time_t      = format_f2( ls_u-time_t )
+        bugs        = format_f2( ls_u-bugs )
         loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
         cloc_ratio  = lv_ratio
         mi          = lv_mi_str
@@ -309,17 +311,27 @@ METHOD show.
 
     SORT lt_rows BY cc DESCENDING.
 
+    " Read pre-computed class-scope Halstead from ls_result-class_totals
+    READ TABLE ls_result-class_totals
+      WITH KEY class_name = lv_cls
+      INTO DATA(ls_ct).
+    IF sy-subrc <> 0. CLEAR ls_ct. ENDIF.
+
     APPEND VALUE ts_row(
       name        = |CLASS TOTAL|
       cc          = lv_tot_cc
       risk        = ''
-      n1          = lv_tot_n1      n2  = lv_tot_n2
-      loc         = lv_tot_loc     lloc = lv_tot_lloc   cloc = lv_tot_cloc
+      n1          = lv_tot_n1        n2         = lv_tot_n2
+      eta1        = ls_ct-cls_big_n1  eta2       = ls_ct-cls_big_n2
+      vocab       = ls_ct-cls_vocabulary
+      length      = ls_ct-cls_prog_length
+      loc         = lv_tot_loc        lloc       = lv_tot_lloc   cloc = lv_tot_cloc
       cloc_ratio  = lv_ratio
-      volume      = format_f2( lv_tot_vol )
-      effort      = format_f2( lv_tot_eff )
-      time_t      = format_f2( lv_tot_time_t )
-      bugs        = format_f2( lv_tot_bugs )
+      volume      = format_f2( ls_ct-cls_volume )
+      difficulty  = format_f2( ls_ct-cls_difficulty )
+      effort      = format_f2( ls_ct-cls_effort )
+      time_t      = format_f2( ls_ct-cls_time_t )
+      bugs        = format_f2( ls_ct-cls_bugs )
     ) TO lt_rows.
 
     cl_demo_output=>write_data( value = lt_rows name = lv_cls ).
