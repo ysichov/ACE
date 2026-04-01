@@ -598,6 +598,7 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       ADD ls_cu-n1         TO <lct>-total_n1.
       ADD ls_cu-n2         TO <lct>-total_n2.
       <lct>-total_volume = <lct>-total_volume + ls_cu-volume.
+      " effort / time_t / bugs — sum across methods (correct semantics)
       <lct>-total_effort = <lct>-total_effort + ls_cu-effort.
       <lct>-total_time_t = <lct>-total_time_t + ls_cu-time_t.
       <lct>-total_bugs   = <lct>-total_bugs   + ls_cu-bugs.
@@ -624,7 +625,8 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
           CONV f( <lct2>-total_cyclomatic ) / CONV f( lv_cls_cnt ).
       ENDIF.
 
-      " cls_big_n1 / cls_big_n2 were filled inside LOOP AT tt_progs above
+      " cls_big_n1 / cls_big_n2 filled above — unique operator/operand dictionaries
+      " across all methods of the class (used for structural complexity analysis)
       <lct2>-cls_vocabulary  = <lct2>-cls_big_n1 + <lct2>-cls_big_n2.
       <lct2>-cls_prog_length = <lct2>-total_n1   + <lct2>-total_n2.
 
@@ -637,6 +639,9 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
             ( CONV f( <lct2>-cls_big_n1 ) / 2 )
             * ( CONV f( <lct2>-total_n2 ) / CONV f( <lct2>-cls_big_n2 ) ).
         ENDIF.
+        " cls_effort / cls_time_t / cls_bugs — derived from class-scope volume/difficulty.
+        " These are ANALYTICAL metrics showing vocabulary-based complexity.
+        " For effort planning use total_effort / total_time_t / total_bugs (sum of methods).
         <lct2>-cls_effort = <lct2>-cls_difficulty * <lct2>-cls_volume.
         <lct2>-cls_time_t = <lct2>-cls_effort / 18.
         <lct2>-cls_bugs   = <lct2>-cls_volume  / 3000.
