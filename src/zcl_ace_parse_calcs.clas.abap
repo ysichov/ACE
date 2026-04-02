@@ -193,9 +193,8 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
 
       LOOP AT <kword>-tt_calls INTO DATA(ls_call).
         DATA(lv_bind_cnt) = lines( ls_call-bindings ).
-        "MESSAGE |  CALL { ls_call-name } bindings={ lv_bind_cnt }| TYPE 'I'.
+        DATA(lv_has_e_bind) = abap_false.
         LOOP AT ls_call-bindings INTO DATA(ls_bind).
-          "MESSAGE |    dir={ ls_bind-dir } inner={ ls_bind-inner } outer={ ls_bind-outer }| TYPE 'I'.
           DATA(lv_outer) = ls_bind-outer.
           CHECK lv_outer IS NOT INITIAL.
           REPLACE ALL OCCURRENCES OF ')' IN lv_outer WITH ''.
@@ -212,6 +211,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
                                      i_line    = lv_line
                            CHANGING  cs_source = cs_source ).
             WHEN 'E' OR 'C'.
+              lv_has_e_bind = abap_true.
               append_comp( EXPORTING i_name    = lv_outer
                                      i_program = i_program
                                      i_include = i_include
@@ -224,6 +224,26 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
                            CHANGING  cs_source = cs_source ).
           ENDCASE.
         ENDLOOP.
+        " Нет binding dir='E' — вызов встроен в выражение (rv = A * meth(...)).
+        " Добавляем RETURNING-параметр метода в t_calculated чтобы
+        " propagate_vars_backward мог по нему найти входные параметры.
+        IF lv_has_e_bind = abap_false.
+          DATA(lv_ret_cls) = COND string(
+            WHEN ls_call-class IS NOT INITIAL THEN ls_call-class
+            ELSE i_class ).
+          LOOP AT cs_source-t_params INTO DATA(ls_ret_p)
+            WHERE class = lv_ret_cls
+              AND event = 'METHOD'
+              AND name  = ls_call-name
+              AND type  = 'R'.
+            append_calc( EXPORTING i_name    = ls_ret_p-param
+                                   i_program = i_program
+                                   i_include = i_include
+                                   i_line    = lv_line
+                         CHANGING  cs_source = cs_source ).
+            EXIT.
+          ENDLOOP.
+        ENDIF.
       ENDLOOP.
       EXIT.
     ENDLOOP.

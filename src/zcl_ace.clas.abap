@@ -1201,21 +1201,15 @@ METHOD propagate_vars_backward.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var) WHERE line = step-line.
         ADD 1 TO ind.
-        LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
-          READ TABLE ct_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0.
-            APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
-            <sel>-name = comp_var-name.
-          ENDIF.
-        ENDLOOP.
         READ TABLE ct_selected_var WITH KEY name = calc_var-name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
-          APPEND INITIAL LINE TO ct_selected_var ASSIGNING <sel>.
-          READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
-          LOOP AT keyword-tt_calls INTO DATA(call_calc).
-            LOOP AT call_calc-bindings INTO DATA(b_calc).
-              IF b_calc-inner IS NOT INITIAL. <sel>-name = b_calc-inner. ENDIF.
-            ENDLOOP.
+          " calc_var найден в ct_selected_var → добавляем все composed этой строки
+          LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
+            READ TABLE ct_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
+              <sel>-name = comp_var-name.
+            ENDIF.
           ENDLOOP.
         ENDIF.
       ENDLOOP.

@@ -303,17 +303,10 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         ENDIF.
 
       ELSEIF lv_tstr CA '(' AND NOT lv_tstr CS '->' AND NOT lv_tstr CS '=>'.
-        " Токен вида NAME( без стрелки.
-        " Пропускаем если это LHS-переменная (следующий токен = '=')
-        " или это оператор/конструктор языка.
         READ TABLE io_scan->tokens INDEX lv_ti + 1 INTO DATA(ls_after).
         IF ls_after-str = '='.
-          " Это LHS: VAR( ... ) = ... — не вызов метода
           lv_ti += 1. CONTINUE.
         ENDIF.
-        " Пропускаем первый токен statement если он — простая переменная
-        " без скобки в конце (т.е. LHS в VAR = expr), уже обработано выше.
-        " Пропускаем языковые конструкторы.
         IF lv_tstr CP 'DATA(*'
           OR lv_tstr CP 'FIELD-SYMBOL(*'
           OR lv_tstr CP 'FINAL(*'
@@ -325,9 +318,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           OR lv_tstr CP 'SWITCH(*'.
           lv_ti += 1. CONTINUE.
         ENDIF.
-        " Для первого токена statement дополнительно проверяем:
-        " если за ним стоит '=', это LHS — пропускаем.
-        " (уже обработано выше, но оставим на случай склеенного токена)
         lv_arrow = '->'.
         lv_left  = 'ME'.
         lv_right = lv_tstr.
@@ -384,9 +374,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       lv_call_cls = COND #( WHEN lv_c-class IS NOT INITIAL THEN lv_c-class ELSE mv_class_name ).
 
       " ── LHS: lv_x = meth(…) → RETURNING ──────────────────────────
-      " Ищем ближайший '=' левее текущей позиции — это LHS для данного вызова.
-      " Важно: в выражении A * FUNC1(...) + FUNC2(...) у каждого вызова свой
-      " контекст bindings, но RETURNING пишется только если вызов прямо после '='.
       CLEAR lv_lhs.
       DATA(lv_lhs_pos) = lv_ti - 1.
       IF lv_lhs_pos >= i_stmt-from.
@@ -466,15 +453,19 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         APPEND ls_b TO lt_bind.
       ENDIF.
 
-      IF lv_lhs IS NOT INITIAL.
-        CLEAR lv_ret.
-        LOOP AT cs_source-t_params INTO DATA(ls_ret)
-          WHERE class = lv_call_cls AND event = 'METHOD'
-            AND name = lv_c-name   AND type  = 'R'.
-          lv_ret = ls_ret-param. EXIT.
-        ENDLOOP.
-        CLEAR ls_b. ls_b-outer = lv_lhs. ls_b-inner = lv_ret.
-        ls_b-dir = 'E'.
+      " ── RETURNING: добавляем биндинг всегда, если параметр существует ──
+      " inner = имя RETURNING-параметра; outer = LHS-переменная (или пусто)
+      CLEAR lv_ret.
+      LOOP AT cs_source-t_params INTO DATA(ls_ret)
+        WHERE class = lv_call_cls AND event = 'METHOD'
+          AND name  = lv_c-name   AND type  = 'R'.
+        lv_ret = ls_ret-param. EXIT.
+      ENDLOOP.
+      IF lv_ret IS NOT INITIAL.
+        CLEAR ls_b.
+        ls_b-inner = lv_ret.
+        ls_b-outer = lv_lhs.   " пусто, если нет явного присваивания
+        ls_b-dir   = 'E'.
         APPEND ls_b TO lt_bind.
       ENDIF.
 
