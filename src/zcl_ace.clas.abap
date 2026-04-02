@@ -1216,10 +1216,14 @@ METHOD propagate_vars_backward.
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
       LOOP AT keyword-tt_calls INTO DATA(call).
         LOOP AT call-bindings INTO DATA(b_prop).
-          READ TABLE ct_selected_var WITH KEY name = b_prop-outer TRANSPORTING NO FIELDS.
+          " backward: inner (параметр) найден → добавляем outer (переменная вызывающего)
+          READ TABLE ct_selected_var WITH KEY name = b_prop-inner TRANSPORTING NO FIELDS.
           IF sy-subrc = 0.
-            APPEND INITIAL LINE TO ct_selected_var ASSIGNING <sel>.
-            <sel>-name = b_prop-inner.
+            READ TABLE ct_selected_var WITH KEY name = b_prop-outer TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              APPEND INITIAL LINE TO ct_selected_var ASSIGNING <sel>.
+              <sel>-name = b_prop-outer.
+            ENDIF.
           ENDIF.
         ENDLOOP.
       ENDLOOP.

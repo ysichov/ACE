@@ -6400,6 +6400,7 @@ WHEN OTHERS.
           " Ищем тип: NEW ClassName( или CAST ClassName(
           DATA lv_new_next TYPE abap_bool.
           DATA lv_cast_next TYPE abap_bool.
+          DATA lv_inline_added TYPE abap_bool.
           LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(dtok_i).
             DATA(lv_up_i) = to_upper( dtok_i-str ).
             IF lv_new_next = abap_true OR lv_cast_next = abap_true.
@@ -6413,6 +6414,7 @@ WHEN OTHERS.
                                       i_program = i_program
                                       i_include = i_include
                             CHANGING  cs_source = cs_source ).
+                lv_inline_added = abap_true.
               ENDIF.
               EXIT.
             ENDIF.
@@ -6421,6 +6423,16 @@ WHEN OTHERS.
               IF lv_up_i = 'CAST'. lv_cast_next = abap_true. ENDIF.
             ENDIF.
           ENDLOOP.
+          " Простое присваивание DATA(lv_x) = expr — тип неизвестен, переменную всё равно регистрируем
+          IF lv_inline_added = abap_false.
+            append_var( EXPORTING i_name    = conv #( lv_inline_name )
+                                  i_type    = ''
+                                  i_icon    = resolve_icon( i_type = '' i_ref = abap_false )
+                                  i_line    = lv_line
+                                  i_program = i_program
+                                  i_include = i_include
+                        CHANGING  cs_source = cs_source ).
+          ENDIF.
           RETURN.
         ENDIF.
 
@@ -7526,17 +7538,10 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         ENDIF.
 
       ELSEIF lv_tstr CA '(' AND NOT lv_tstr CS '->' AND NOT lv_tstr CS '=>'.
-        " Токен вида NAME( без стрелки.
-        " Пропускаем если это LHS-переменная (следующий токен = '=')
-        " или это оператор/конструктор языка.
         READ TABLE io_scan->tokens INDEX lv_ti + 1 INTO DATA(ls_after).
         IF ls_after-str = '='.
-          " Это LHS: VAR( ... ) = ... — не вызов метода
           lv_ti += 1. CONTINUE.
         ENDIF.
-        " Пропускаем первый токен statement если он — простая переменная
-        " без скобки в конце (т.е. LHS в VAR = expr), уже обработано выше.
-        " Пропускаем языковые конструкторы.
         IF lv_tstr CP 'DATA(*'
           OR lv_tstr CP 'FIELD-SYMBOL(*'
           OR lv_tstr CP 'FINAL(*'
@@ -7548,9 +7553,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
           OR lv_tstr CP 'SWITCH(*'.
           lv_ti += 1. CONTINUE.
         ENDIF.
-        " Для первого токена statement дополнительно проверяем:
-        " если за ним стоит '=', это LHS — пропускаем.
-        " (уже обработано выше, но оставим на случай склеенного токена)
         lv_arrow = '->'.
         lv_left  = 'ME'.
         lv_right = lv_tstr.
@@ -7607,9 +7609,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       lv_call_cls = COND #( WHEN lv_c-class IS NOT INITIAL THEN lv_c-class ELSE mv_class_name ).
 
       " ── LHS: lv_x = meth(…) → RETURNING ──────────────────────────
-      " Ищем ближайший '=' левее текущей позиции — это LHS для данного вызова.
-      " Важно: в выражении A * FUNC1(...) + FUNC2(...) у каждого вызова свой
-      " контекст bindings, но RETURNING пишется только если вызов прямо после '='.
       CLEAR lv_lhs.
       DATA(lv_lhs_pos) = lv_ti - 1.
       IF lv_lhs_pos >= i_stmt-from.
@@ -7689,15 +7688,19 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
         APPEND ls_b TO lt_bind.
       ENDIF.
 
-      IF lv_lhs IS NOT INITIAL.
-        CLEAR lv_ret.
-        LOOP AT cs_source-t_params INTO DATA(ls_ret)
-          WHERE class = lv_call_cls AND event = 'METHOD'
-            AND name = lv_c-name   AND type  = 'R'.
-          lv_ret = ls_ret-param. EXIT.
-        ENDLOOP.
-        CLEAR ls_b. ls_b-outer = lv_lhs. ls_b-inner = lv_ret.
-        ls_b-dir = 'E'.
+      " ── RETURNING: добавляем биндинг всегда, если параметр существует ──
+      " inner = имя RETURNING-параметра; outer = LHS-переменная (или пусто)
+      CLEAR lv_ret.
+      LOOP AT cs_source-t_params INTO DATA(ls_ret)
+        WHERE class = lv_call_cls AND event = 'METHOD'
+          AND name  = lv_c-name   AND type  = 'R'.
+        lv_ret = ls_ret-param. EXIT.
+      ENDLOOP.
+      IF lv_ret IS NOT INITIAL.
+        CLEAR ls_b.
+        ls_b-inner = lv_ret.
+        ls_b-outer = lv_lhs.   " пусто, если нет явного присваивания
+        ls_b-dir   = 'E'.
         APPEND ls_b TO lt_bind.
       ENDIF.
 
@@ -7948,49 +7951,16 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
   METHOD zif_ace_stmt_handler~handle.
     CHECK i_stmt_idx > 0.
 
+    DATA(lv_is_call_method) = abap_false.
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(ls_stmt).
     CHECK sy-subrc = 0.
+    DATA(lv_stmt_kw) = SWITCH string( ls_stmt-type
+      WHEN 'A' THEN '+CALL_METHOD'
+      ELSE '' ).
+    IF lv_stmt_kw = '+CALL_METHOD'. lv_is_call_method = abap_true. ENDIF.
+
     READ TABLE io_scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw).
     CHECK sy-subrc = 0.
-
-    " ── Контекст ─────────────────────────────────────────────────
-*    CASE ls_kw-str.
-*      WHEN 'CLASS'.
-*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_n).
-*        IF sy-subrc = 0. mv_class = ls_n-str. ENDIF.
-*        LOOP AT io_scan->tokens FROM ls_stmt-from TO ls_stmt-to INTO DATA(ls_ct).
-*          IF ls_ct-str = 'IMPLEMENTATION'. mv_in_impl = abap_true. EXIT. ENDIF.
-*        ENDLOOP.
-*        RETURN.
-*      WHEN 'ENDCLASS'.
-*        CLEAR: mv_class, mv_in_impl, mv_eventtype, mv_eventname. RETURN.
-*      WHEN 'METHOD'.
-*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
-*        IF sy-subrc = 0. mv_eventtype = 'METHOD'. mv_eventname = ls_n-str. ENDIF.
-*        RETURN.
-*      WHEN 'ENDMETHOD'. CLEAR: mv_eventtype, mv_eventname. RETURN.
-*      WHEN 'FORM'.
-*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
-*        IF sy-subrc = 0. mv_eventtype = 'FORM'. mv_eventname = ls_n-str. ENDIF.
-*        RETURN.
-*      WHEN 'ENDFORM'. CLEAR: mv_eventtype, mv_eventname. RETURN.
-*      WHEN 'FUNCTION'.
-*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
-*        IF sy-subrc = 0.
-*          mv_eventtype = 'FUNCTION'. mv_eventname = ls_n-str.
-*          REPLACE ALL OCCURRENCES OF '''' IN mv_eventname WITH ''.
-*        ENDIF.
-*        RETURN.
-*      WHEN 'ENDFUNCTION'. CLEAR: mv_eventtype, mv_eventname. RETURN.
-*      WHEN 'MODULE'.
-*        READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_n.
-*        IF sy-subrc = 0. mv_eventtype = 'MODULE'. mv_eventname = ls_n-str. ENDIF.
-*        RETURN.
-*      WHEN 'ENDMODULE'. CLEAR: mv_eventtype, mv_eventname. RETURN.
-*    ENDCASE.
-
-    " ── Только COMPUTE (тип C и D) ───────────────────────────────
-    "CHECK ls_stmt-type = 'C' OR ls_stmt-type = 'D'.
 
     DATA(lv_line) = ls_kw-row.
 
@@ -8004,8 +7974,9 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
       IF ls_tok-str = '='. lv_eq_idx = lv_tok_pos. EXIT. ENDIF.
       lv_tok_pos += 1.
     ENDWHILE.
-    CHECK lv_eq_idx > 0.
+    CHECK lv_eq_idx > 0 OR lv_is_call_method = abap_true.
 
+    IF lv_is_call_method = abap_false.
     " ── LHS → t_calculated ───────────────────────────────────────
     lv_tok_pos = ls_stmt-from.
     WHILE lv_tok_pos < lv_eq_idx.
@@ -8031,58 +8002,65 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
       lv_tok_pos += 1.
     ENDWHILE.
 
-    " ── RHS → t_composed ─────────────────────────────────────────
-    DATA lv_prev_arrow TYPE abap_bool.
-    DATA lv_skip_next  TYPE abap_bool.
+    " ── RHS → t_composed (только переменные вне вызовов) ─────────
+    DATA lv_prev_arrow  TYPE abap_bool.
+    DATA lv_skip_next   TYPE abap_bool.
+    DATA lv_call_depth  TYPE i VALUE 0.
     lv_tok_pos = lv_eq_idx + 1.
     WHILE lv_tok_pos <= ls_stmt-to.
       READ TABLE io_scan->tokens INDEX lv_tok_pos INTO ls_tok.
       IF sy-subrc <> 0. EXIT. ENDIF.
       DATA(lv_rhs) = ls_tok-str.
 
-      " Токен содержит '->' или '=>': obj->attr / obj->meth( / cls=>meth(
-      IF lv_rhs CS '->' OR lv_rhs CS '=>'.
-        DATA lv_al TYPE string.
-        DATA lv_ar TYPE string.
-        IF lv_rhs CS '->'.
-          SPLIT lv_rhs AT '->' INTO lv_al lv_ar.
-          " Атрибут obj->attr (нет скобки) — obj является переменной
-          IF NOT lv_ar CS '(' AND is_varname( lv_al ) = abap_true.
-            append_comp( EXPORTING i_name    = lv_al
-                                   i_program = i_program
-                                   i_include = i_include
-                                   i_line    = lv_line
-                         CHANGING  cs_source = cs_source ).
-          ENDIF.
-          " obj->meth( — вызов, obj не нужен
-        ENDIF.
-        " CLS=>anything — класс, пропускаем
+      IF ( lv_rhs CS '->' OR lv_rhs CS '=>' ) AND lv_rhs CS '('.
+        lv_call_depth += 1.
         lv_prev_arrow = abap_false.
         lv_tok_pos += 1. CONTINUE.
       ENDIF.
 
-      " Стрелка отдельным токеном
       IF lv_rhs = '->' OR lv_rhs = '=>'.
         lv_prev_arrow = abap_true.
         lv_tok_pos += 1. CONTINUE.
       ENDIF.
 
-      " Токен сразу после отдельной стрелки
       IF lv_prev_arrow = abap_true.
         lv_prev_arrow = abap_false.
         IF lv_rhs CS '('.
-          " obj -> meth( — вызов: убираем obj, который был добавлен как обычный токен
           READ TABLE io_scan->tokens INDEX lv_tok_pos - 2 INTO DATA(ls_prev_obj).
           IF sy-subrc = 0.
             DELETE cs_source-t_composed WHERE program = i_program
               AND include = i_include AND line = lv_line AND name = ls_prev_obj-str.
           ENDIF.
+          lv_call_depth += 1.
         ENDIF.
-        " obj -> attr — obj оставляем (добавлен ранее), атрибут не добавляем
         lv_tok_pos += 1. CONTINUE.
       ENDIF.
 
-      " NEW/CAST/REF — следующий токен это имя типа, не переменная
+      IF lv_rhs CS '(' AND NOT lv_rhs = '('.
+        IF NOT ( lv_rhs CP 'DATA(*' OR lv_rhs CP 'FIELD-SYMBOL(*' OR
+                 lv_rhs CP 'FINAL(*' OR lv_rhs CP 'VALUE(*' OR
+                 lv_rhs CP 'CONV(*'  OR lv_rhs CP 'CAST(*'  OR
+                 lv_rhs CP 'COND(*'  OR lv_rhs CP 'SWITCH(*' OR
+                 lv_rhs CP 'REF(*' ).
+          lv_call_depth += 1.
+          lv_tok_pos += 1. CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      DATA(lv_close_count) = strlen( lv_rhs )
+        - strlen( replace( val = lv_rhs sub = ')' with = '' occ = 0 ) ).
+      IF lv_close_count > 0.
+        IF lv_call_depth >= lv_close_count.
+          lv_call_depth -= lv_close_count.
+        ELSE.
+          lv_call_depth = 0.
+        ENDIF.
+      ENDIF.
+
+      IF lv_call_depth > 0.
+        lv_tok_pos += 1. CONTINUE.
+      ENDIF.
+
       IF lv_rhs = 'NEW' OR lv_rhs = 'CAST' OR lv_rhs = 'REF'.
         lv_skip_next = abap_true.
         lv_tok_pos += 1. CONTINUE.
@@ -8092,7 +8070,6 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
         lv_tok_pos += 1. CONTINUE.
       ENDIF.
 
-      " Обычный токен — кандидат в переменную
       DATA(lv_comp) = lv_rhs.
       REPLACE ALL OCCURRENCES OF ')' IN lv_comp WITH ''.
       REPLACE ALL OCCURRENCES OF '(' IN lv_comp WITH ''.
@@ -8109,6 +8086,79 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
       ENDIF.
       lv_tok_pos += 1.
     ENDWHILE.
+
+    ENDIF. " lv_is_call_method = abap_false
+
+    " ── TT_CALLS BINDINGS → t_composed / t_calculated ────────────
+    LOOP AT cs_source-tt_progs ASSIGNING FIELD-SYMBOL(<prog>)
+      WHERE include = i_include.
+      READ TABLE <prog>-t_keywords WITH KEY index = i_stmt_idx
+        ASSIGNING FIELD-SYMBOL(<kword>) BINARY SEARCH.
+      IF sy-subrc <> 0.
+       " MESSAGE |CALCS: stmt={ i_stmt_idx } line={ lv_line } — keyword NOT FOUND in t_keywords| TYPE 'I'.
+        EXIT.
+      ENDIF.
+
+      DATA(lv_calls_cnt) = lines( <kword>-tt_calls ).
+      "MESSAGE |CALCS: stmt={ i_stmt_idx } line={ lv_line } kw={ <kword>-name } calls={ lv_calls_cnt }| TYPE 'I'.
+
+      LOOP AT <kword>-tt_calls INTO DATA(ls_call).
+        DATA(lv_bind_cnt) = lines( ls_call-bindings ).
+        DATA(lv_has_e_bind) = abap_false.
+        LOOP AT ls_call-bindings INTO DATA(ls_bind).
+          DATA(lv_outer) = ls_bind-outer.
+          CHECK lv_outer IS NOT INITIAL.
+          REPLACE ALL OCCURRENCES OF ')' IN lv_outer WITH ''.
+          CONDENSE lv_outer NO-GAPS.
+          IF lv_outer CS '-'.
+            SPLIT lv_outer AT '-' INTO lv_outer lv_dummy.
+          ENDIF.
+          CHECK is_varname( lv_outer ) = abap_true.
+          CASE ls_bind-dir.
+            WHEN 'I'.
+              append_comp( EXPORTING i_name    = lv_outer
+                                     i_program = i_program
+                                     i_include = i_include
+                                     i_line    = lv_line
+                           CHANGING  cs_source = cs_source ).
+            WHEN 'E' OR 'C'.
+              lv_has_e_bind = abap_true.
+              append_comp( EXPORTING i_name    = lv_outer
+                                     i_program = i_program
+                                     i_include = i_include
+                                     i_line    = lv_line
+                           CHANGING  cs_source = cs_source ).
+              append_calc( EXPORTING i_name    = lv_outer
+                                     i_program = i_program
+                                     i_include = i_include
+                                     i_line    = lv_line
+                           CHANGING  cs_source = cs_source ).
+          ENDCASE.
+        ENDLOOP.
+        " Нет binding dir='E' — вызов встроен в выражение (rv = A * meth(...)).
+        " Добавляем RETURNING-параметр метода в t_calculated чтобы
+        " propagate_vars_backward мог по нему найти входные параметры.
+        IF lv_has_e_bind = abap_false.
+          DATA(lv_ret_cls) = COND string(
+            WHEN ls_call-class IS NOT INITIAL THEN ls_call-class
+            ELSE i_class ).
+          LOOP AT cs_source-t_params INTO DATA(ls_ret_p)
+            WHERE class = lv_ret_cls
+              AND event = 'METHOD'
+              AND name  = ls_call-name
+              AND type  = 'R'.
+            append_calc( EXPORTING i_name    = ls_ret_p-param
+                                   i_program = i_program
+                                   i_include = i_include
+                                   i_line    = lv_line
+                         CHANGING  cs_source = cs_source ).
+            EXIT.
+          ENDLOOP.
+        ENDIF.
+      ENDLOOP.
+      EXIT.
+    ENDLOOP.
+
   ENDMETHOD.
   METHOD is_varname.
     CHECK i_str IS NOT INITIAL.
@@ -8202,21 +8252,8 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       ENDIF.
       DATA(lv_inc2) = CONV program( i_include ).
       DATA(lv_prg2) = CONV program( i_program ).
-      IF lv_key2-name = 'DATA' OR lv_key2-name = 'CLASS-DATA' OR lv_key2-name = 'COMPUTE'.
-        DATA(lo_vars2) = NEW zcl_ace_parse_vars( ).
-        lo_vars2->zif_ace_stmt_handler~handle(
-          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
-            i_program = lv_prg2 i_include = lv_inc2
-            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
-          CHANGING cs_source = cs_source ).
-      ENDIF.
-      IF lv_key2-name = 'COMPUTE'.
-        DATA(lo_calcs2) = NEW zcl_ace_parse_calcs( ).
-        lo_calcs2->zif_ace_stmt_handler~handle(
-          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
-            i_program = lv_prg2 i_include = lv_inc2
-          CHANGING cs_source = cs_source ).
-      ENDIF.
+
+      " ── Сначала parse_calls — заполняет tt_calls с bindings ──────
       READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff2 TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         IF lv_eff2 = 'RAISE EVENT'.
@@ -8235,6 +8272,24 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
             CHANGING cs_source = cs_source ).
         ENDIF.
       ENDIF.
+
+      " ── Затем parse_vars и parse_calcs — читают tt_calls-bindings ─
+      IF lv_key2-name = 'DATA' OR lv_key2-name = 'CLASS-DATA' OR lv_key2-name = 'COMPUTE'.
+        DATA(lo_vars2) = NEW zcl_ace_parse_vars( ).
+        lo_vars2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+          CHANGING cs_source = cs_source ).
+      ENDIF.
+      IF lv_key2-name = 'COMPUTE' OR lv_key2-name = '+CALL_METHOD'.
+        DATA(lo_calcs2) = NEW zcl_ace_parse_calcs( ).
+        lo_calcs2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+          CHANGING cs_source = cs_source ).
+      ENDIF.
+
       READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw2>).
       IF sy-subrc = 0. <kw2>-calls_parsed = abap_true. ENDIF.
       RETURN.
@@ -8244,7 +8299,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     CHECK sy-subrc <> 0.
 
     IF i_class IS NOT INITIAL. lv_class = i_class. ENDIF.
-    " Для инклудов глобального класса (CU/CO/CI/CP) — класс определяем из имени инклуда
     IF lv_class IS INITIAL AND i_include IS NOT INITIAL.
       DATA(lv_inc_len2) = strlen( i_include ).
       IF lv_inc_len2 >= 2.
@@ -8297,7 +8351,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
       DATA(lv_kw_idx) = sy-tabix.
 
-      " Skip comment statements: 'P'
       CHECK ls_kw_stmt-type <> 'P'.
 
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from     INTO DATA(ls_kw_tok).
@@ -8376,21 +8429,12 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " Определяем имя класса/интерфейса для vars:
-      " — внутри CLASS...ENDCLASS: lv_class заполнен, lv_section тоже (PUBLIC/PROTECTED/PRIVATE)
-      " — внутри INTERFACE...ENDINTERFACE: lv_class пуст, lv_interface заполнен, lv_section пуст
-      " Для интерфейса запускаем vars безусловно (нет секций), для класса — только внутри секции
       DATA(lv_vars_class) = COND string(
         WHEN lv_class     IS NOT INITIAL THEN lv_class
         WHEN lv_interface IS NOT INITIAL THEN lv_interface
         ELSE '' ).
 
-*      IF lv_eff_kw = 'DATA'       OR lv_eff_kw = 'CLASS-DATA'
-*      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'
-*        OR lv_eff_kw = 'CONSTANTS' .
         IF lv_vars_class IS NOT INITIAL.
-          " Для интерфейса — запускаем всегда (нет секций)
-          " Для класса — только если lv_section установлен (находимся внутри DEFINITION)
           IF lv_interface IS NOT INITIAL OR lv_section IS NOT INITIAL.
             lo_vars->zif_ace_stmt_handler~handle(
               EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
@@ -8400,7 +8444,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
               CHANGING cs_source = cs_source ).
           ENDIF.
         ELSE.
-          " Нет класса/интерфейса — глобальные или локальные переменные программы
           lo_vars->zif_ace_stmt_handler~handle(
             EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
               i_program = i_program i_include = i_include
@@ -8408,7 +8451,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
               i_section = lv_section
             CHANGING cs_source = cs_source ).
         ENDIF.
-     " ENDIF.
 
     ENDLOOP.
 
@@ -11328,23 +11370,34 @@ METHOD enrich_result_lines.
       ENDIF.
     ENDIF.
   ENDMETHOD.
-METHOD expand_selected_vars_forward.
+  METHOD expand_selected_vars_forward.
     DATA: keyword TYPE ts_kword, prog TYPE LINE OF zif_ace_parse_data=>tt_progs.
     DATA yes TYPE xfeld.
     LOOP AT it_steps INTO DATA(step).
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
+
+      " Check if any binding in this step matches ct_selected_var (or no filter at all)
+      CLEAR yes.
       LOOP AT keyword-tt_calls INTO DATA(call).
         LOOP AT call-bindings INTO DATA(ls_b_chk).
           READ TABLE ct_selected_var WITH KEY name = ls_b_chk-outer TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0 OR mt_selected_var IS INITIAL. yes = abap_true. ENDIF.
+          IF sy-subrc = 0 OR mt_selected_var IS INITIAL.
+            yes = abap_true.
+          ENDIF.
           READ TABLE ct_selected_var WITH KEY name = ls_b_chk-inner TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0 OR mt_selected_var IS INITIAL. yes = abap_true. ENDIF.
+          IF sy-subrc = 0 OR mt_selected_var IS INITIAL.
+            yes = abap_true.
+          ENDIF.
         ENDLOOP.
       ENDLOOP.
-      IF yes = abap_true.
-        LOOP AT keyword-tt_calls INTO call.
-          LOOP AT call-bindings INTO DATA(ls_b_add).
+
+      CHECK yes = abap_true.
+
+      LOOP AT keyword-tt_calls INTO call.
+        LOOP AT call-bindings INTO DATA(ls_b_add).
+          IF mt_selected_var IS INITIAL.
+            " No filter — add both outer and inner with uniqueness check
             READ TABLE ct_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
@@ -11355,9 +11408,29 @@ METHOD expand_selected_vars_forward.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING <sel>.
               <sel>-name = ls_b_add-inner.
             ENDIF.
-          ENDLOOP.
+          ELSE.
+            " Filter active — add only the opposite side of the matched binding
+            READ TABLE ct_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
+            IF sy-subrc = 0.
+              " outer matched — add inner
+              READ TABLE ct_selected_var WITH KEY name = ls_b_add-inner TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0.
+                APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel_i>).
+                <sel_i>-name = ls_b_add-inner.
+              ENDIF.
+            ENDIF.
+            READ TABLE ct_selected_var WITH KEY name = ls_b_add-inner TRANSPORTING NO FIELDS.
+            IF sy-subrc = 0.
+              " inner matched — add outer
+              READ TABLE ct_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0.
+                APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel_o>).
+                <sel_o>-name = ls_b_add-outer.
+              ENDIF.
+            ENDIF.
+          ENDIF.
         ENDLOOP.
-      ENDIF.
+      ENDLOOP.
     ENDLOOP.
   ENDMETHOD.
 METHOD parse_sel_call.
@@ -11388,21 +11461,15 @@ METHOD propagate_vars_backward.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var) WHERE line = step-line.
         ADD 1 TO ind.
-        LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
-          READ TABLE ct_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0.
-            APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
-            <sel>-name = comp_var-name.
-          ENDIF.
-        ENDLOOP.
         READ TABLE ct_selected_var WITH KEY name = calc_var-name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
-          APPEND INITIAL LINE TO ct_selected_var ASSIGNING <sel>.
-          READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
-          LOOP AT keyword-tt_calls INTO DATA(call_calc).
-            LOOP AT call_calc-bindings INTO DATA(b_calc).
-              IF b_calc-inner IS NOT INITIAL. <sel>-name = b_calc-inner. ENDIF.
-            ENDLOOP.
+          " calc_var найден в ct_selected_var → добавляем все composed этой строки
+          LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
+            READ TABLE ct_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
+              <sel>-name = comp_var-name.
+            ENDIF.
           ENDLOOP.
         ENDIF.
       ENDLOOP.
@@ -11842,8 +11909,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-04-02T06:57:39.787Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-04-02T06:57:39.787Z`.
+* abapmerge 0.16.7 - 2026-04-02T13:28:14.088Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-04-02T13:28:14.088Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
