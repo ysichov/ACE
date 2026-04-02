@@ -83,21 +83,8 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       ENDIF.
       DATA(lv_inc2) = CONV program( i_include ).
       DATA(lv_prg2) = CONV program( i_program ).
-      IF lv_key2-name = 'DATA' OR lv_key2-name = 'CLASS-DATA' OR lv_key2-name = 'COMPUTE'.
-        DATA(lo_vars2) = NEW zcl_ace_parse_vars( ).
-        lo_vars2->zif_ace_stmt_handler~handle(
-          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
-            i_program = lv_prg2 i_include = lv_inc2
-            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
-          CHANGING cs_source = cs_source ).
-      ENDIF.
-      IF lv_key2-name = 'COMPUTE'.
-        DATA(lo_calcs2) = NEW zcl_ace_parse_calcs( ).
-        lo_calcs2->zif_ace_stmt_handler~handle(
-          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
-            i_program = lv_prg2 i_include = lv_inc2
-          CHANGING cs_source = cs_source ).
-      ENDIF.
+
+      " ── Сначала parse_calls — заполняет tt_calls с bindings ──────
       READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff2 TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         IF lv_eff2 = 'RAISE EVENT'.
@@ -116,6 +103,24 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
             CHANGING cs_source = cs_source ).
         ENDIF.
       ENDIF.
+
+      " ── Затем parse_vars и parse_calcs — читают tt_calls-bindings ─
+      IF lv_key2-name = 'DATA' OR lv_key2-name = 'CLASS-DATA' OR lv_key2-name = 'COMPUTE'.
+        DATA(lo_vars2) = NEW zcl_ace_parse_vars( ).
+        lo_vars2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+          CHANGING cs_source = cs_source ).
+      ENDIF.
+      IF lv_key2-name = 'COMPUTE' OR lv_key2-name = '+CALL_METHOD'.
+        DATA(lo_calcs2) = NEW zcl_ace_parse_calcs( ).
+        lo_calcs2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+          CHANGING cs_source = cs_source ).
+      ENDIF.
+
       READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw2>).
       IF sy-subrc = 0. <kw2>-calls_parsed = abap_true. ENDIF.
       RETURN.
@@ -125,7 +130,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     CHECK sy-subrc <> 0.
 
     IF i_class IS NOT INITIAL. lv_class = i_class. ENDIF.
-    " Для инклудов глобального класса (CU/CO/CI/CP) — класс определяем из имени инклуда
     IF lv_class IS INITIAL AND i_include IS NOT INITIAL.
       DATA(lv_inc_len2) = strlen( i_include ).
       IF lv_inc_len2 >= 2.
@@ -178,7 +182,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
 
       DATA(lv_kw_idx) = sy-tabix.
 
-      " Skip comment statements: 'P'
       CHECK ls_kw_stmt-type <> 'P'.
 
       READ TABLE lo_scan->tokens INDEX ls_kw_stmt-from     INTO DATA(ls_kw_tok).
@@ -257,21 +260,12 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " Определяем имя класса/интерфейса для vars:
-      " — внутри CLASS...ENDCLASS: lv_class заполнен, lv_section тоже (PUBLIC/PROTECTED/PRIVATE)
-      " — внутри INTERFACE...ENDINTERFACE: lv_class пуст, lv_interface заполнен, lv_section пуст
-      " Для интерфейса запускаем vars безусловно (нет секций), для класса — только внутри секции
       DATA(lv_vars_class) = COND string(
         WHEN lv_class     IS NOT INITIAL THEN lv_class
         WHEN lv_interface IS NOT INITIAL THEN lv_interface
         ELSE '' ).
 
-*      IF lv_eff_kw = 'DATA'       OR lv_eff_kw = 'CLASS-DATA'
-*      OR lv_eff_kw = 'PARAMETERS' OR lv_eff_kw = 'SELECT-OPTIONS'
-*        OR lv_eff_kw = 'CONSTANTS' .
         IF lv_vars_class IS NOT INITIAL.
-          " Для интерфейса — запускаем всегда (нет секций)
-          " Для класса — только если lv_section установлен (находимся внутри DEFINITION)
           IF lv_interface IS NOT INITIAL OR lv_section IS NOT INITIAL.
             lo_vars->zif_ace_stmt_handler~handle(
               EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
@@ -281,7 +275,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
               CHANGING cs_source = cs_source ).
           ENDIF.
         ELSE.
-          " Нет класса/интерфейса — глобальные или локальные переменные программы
           lo_vars->zif_ace_stmt_handler~handle(
             EXPORTING io_scan = lo_scan i_stmt_idx = lv_kw_idx
               i_program = i_program i_include = i_include
@@ -289,7 +282,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
               i_section = lv_section
             CHANGING cs_source = cs_source ).
         ENDIF.
-     " ENDIF.
 
     ENDLOOP.
 

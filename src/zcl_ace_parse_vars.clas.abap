@@ -144,6 +144,7 @@ WHEN OTHERS.
           " Ищем тип: NEW ClassName( или CAST ClassName(
           DATA lv_new_next TYPE abap_bool.
           DATA lv_cast_next TYPE abap_bool.
+          DATA lv_inline_added TYPE abap_bool.
           LOOP AT io_scan->tokens FROM stmt-from TO stmt-to INTO DATA(dtok_i).
             DATA(lv_up_i) = to_upper( dtok_i-str ).
             IF lv_new_next = abap_true OR lv_cast_next = abap_true.
@@ -157,6 +158,7 @@ WHEN OTHERS.
                                       i_program = i_program
                                       i_include = i_include
                             CHANGING  cs_source = cs_source ).
+                lv_inline_added = abap_true.
               ENDIF.
               EXIT.
             ENDIF.
@@ -165,6 +167,16 @@ WHEN OTHERS.
               IF lv_up_i = 'CAST'. lv_cast_next = abap_true. ENDIF.
             ENDIF.
           ENDLOOP.
+          " Простое присваивание DATA(lv_x) = expr — тип неизвестен, переменную всё равно регистрируем
+          IF lv_inline_added = abap_false.
+            append_var( EXPORTING i_name    = conv #( lv_inline_name )
+                                  i_type    = ''
+                                  i_icon    = resolve_icon( i_type = '' i_ref = abap_false )
+                                  i_line    = lv_line
+                                  i_program = i_program
+                                  i_include = i_include
+                        CHANGING  cs_source = cs_source ).
+          ENDIF.
           RETURN.
         ENDIF.
 

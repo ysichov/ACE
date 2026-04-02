@@ -87,6 +87,7 @@ ENDCLASS.
 
 CLASS lcl_annuity IMPLEMENTATION.
   METHOD get_factor.
+    data i type i.
     DATA(lv_r) = iv_rate_monthly.
     DATA(lv_n) = iv_months.
     rv_factor = lv_r * ( 1 + lv_r ) ** lv_n
