@@ -342,7 +342,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   ENDMETHOD.
 
 
-
   method COLLECT_ENHANCEMENTS.
 
       DATA: form_name    TYPE string,
@@ -830,6 +829,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       IF lines( meth_includes ) IS INITIAL. statement = i_index. ELSE. statement = 1. ENDIF.
     ENDIF.
 
+    " Если передан конкретный индекс statement через i_stmt_idx — использовать его
+    IF i_stmt_idx > 0.
+      statement = i_stmt_idx.
+    ENDIF.
+
     IF i_include IS NOT INITIAL.
       READ TABLE io_debugger->mo_window->ms_sources-tt_progs
         WITH KEY include = i_include INTO DATA(prog).
@@ -870,13 +874,12 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           CHANGING
             cs_source  = io_debugger->mo_window->ms_sources ).
         " Перечитываем key — calls_parsed = true, tt_calls заполнен
-        "READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
+        READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
       ENDIF.
 
-            IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS' OR key-name IS INITIAL.
+      IF key-name = 'DATA' OR key-name = 'TYPES' OR key-name = 'CONSTANTS' OR key-name IS INITIAL.
         ADD 1 TO statement. CONTINUE.
       ENDIF.
-
 
       READ TABLE io_debugger->mt_steps
         WITH KEY line = key-line program = i_program include = key-include
@@ -955,14 +958,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     ENDIF.
 
     zcl_ace_source_parser=>collect_enhancements( i_program = lv_inc io_debugger = io_debugger ).
-
-    READ TABLE io_debugger->mo_window->mt_calls
-      WITH KEY include = lv_inc ev_name = i_call_name TRANSPORTING NO FIELDS.
-    IF sy-subrc = 0. RETURN.
-    ELSE.
-      APPEND INITIAL LINE TO io_debugger->mo_window->mt_calls ASSIGNING FIELD-SYMBOL(<mc>).
-      <mc>-include = lv_inc. <mc>-ev_name = i_call_name.
-    ENDIF.
 
     DATA(lv_stack) = i_stack + 1.
     CHECK lv_stack <= io_debugger->mo_window->m_hist_depth.

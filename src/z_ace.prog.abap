@@ -63,9 +63,9 @@
 
     ENDIF.
 
-AT SELECTION-SCREEN ON p_odata.
+  AT SELECTION-SCREEN ON p_odata.
 
-   IF p_odata IS NOT INITIAL.
+    IF p_odata IS NOT INITIAL.
       DATA(serv) = p_odata && '_SRV'.
 
       SELECT SINGLE class_name INTO p_class
@@ -76,7 +76,7 @@ AT SELECTION-SCREEN ON p_odata.
       p_class = cl_wdy_wb_naming_service=>get_classname_for_component( p_component = CONV #( p_wdc ) ).
     ENDIF.
 
-AT SELECTION-SCREEN ON p_func.
+  AT SELECTION-SCREEN ON p_func.
 
     IF p_func IS NOT INITIAL.
       SELECT SINGLE pname, include INTO ( @DATA(func_incl), @DATA(incl_num) )
@@ -93,7 +93,7 @@ AT SELECTION-SCREEN ON p_func.
   AT SELECTION-SCREEN.
 
     CHECK sy-ucomm <> 'DUMMY'.
-    perform run_ace.
+    PERFORM run_ace.
 
   AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_wdc.
 
@@ -126,7 +126,7 @@ AT SELECTION-SCREEN ON p_func.
         p_exclude = itab.
   ENDFORM.
 
-  form run_ace.
+  FORM run_ace.
 
     CHECK sy-ucomm IS INITIAL.
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
@@ -137,4 +137,4 @@ AT SELECTION-SCREEN ON p_func.
       MESSAGE 'Program is not found' TYPE 'E' DISPLAY LIKE 'I'.
     ENDIF.
 
-  endform.
+  ENDFORM.
