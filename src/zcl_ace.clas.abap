@@ -1106,23 +1106,34 @@ METHOD enrich_result_lines.
   ENDMETHOD.
 
 
-METHOD expand_selected_vars_forward.
+  METHOD expand_selected_vars_forward.
     DATA: keyword TYPE ts_kword, prog TYPE LINE OF zif_ace_parse_data=>tt_progs.
     DATA yes TYPE xfeld.
     LOOP AT it_steps INTO DATA(step).
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
+
+      " Check if any binding in this step matches ct_selected_var (or no filter at all)
+      CLEAR yes.
       LOOP AT keyword-tt_calls INTO DATA(call).
         LOOP AT call-bindings INTO DATA(ls_b_chk).
           READ TABLE ct_selected_var WITH KEY name = ls_b_chk-outer TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0 OR mt_selected_var IS INITIAL. yes = abap_true. ENDIF.
+          IF sy-subrc = 0 OR mt_selected_var IS INITIAL.
+            yes = abap_true.
+          ENDIF.
           READ TABLE ct_selected_var WITH KEY name = ls_b_chk-inner TRANSPORTING NO FIELDS.
-          IF sy-subrc = 0 OR mt_selected_var IS INITIAL. yes = abap_true. ENDIF.
+          IF sy-subrc = 0 OR mt_selected_var IS INITIAL.
+            yes = abap_true.
+          ENDIF.
         ENDLOOP.
       ENDLOOP.
-      IF yes = abap_true.
-        LOOP AT keyword-tt_calls INTO call.
-          LOOP AT call-bindings INTO DATA(ls_b_add).
+
+      CHECK yes = abap_true.
+
+      LOOP AT keyword-tt_calls INTO call.
+        LOOP AT call-bindings INTO DATA(ls_b_add).
+          IF mt_selected_var IS INITIAL.
+            " No filter — add both outer and inner with uniqueness check
             READ TABLE ct_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
@@ -1133,9 +1144,29 @@ METHOD expand_selected_vars_forward.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING <sel>.
               <sel>-name = ls_b_add-inner.
             ENDIF.
-          ENDLOOP.
+          ELSE.
+            " Filter active — add only the opposite side of the matched binding
+            READ TABLE ct_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
+            IF sy-subrc = 0.
+              " outer matched — add inner
+              READ TABLE ct_selected_var WITH KEY name = ls_b_add-inner TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0.
+                APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel_i>).
+                <sel_i>-name = ls_b_add-inner.
+              ENDIF.
+            ENDIF.
+            READ TABLE ct_selected_var WITH KEY name = ls_b_add-inner TRANSPORTING NO FIELDS.
+            IF sy-subrc = 0.
+              " inner matched — add outer
+              READ TABLE ct_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0.
+                APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel_o>).
+                <sel_o>-name = ls_b_add-outer.
+              ENDIF.
+            ENDIF.
+          ENDIF.
         ENDLOOP.
-      ENDIF.
+      ENDLOOP.
     ENDLOOP.
   ENDMETHOD.
 
