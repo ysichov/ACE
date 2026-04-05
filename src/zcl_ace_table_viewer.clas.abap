@@ -35,6 +35,12 @@ public section.
       !IO_WINDOW type ref to ZCL_ACE_WINDOW .
   methods REFRESH_TABLE
     for event SELECTION_DONE of ZCL_ACE_SEL_OPT .
+  CLASS-METHODS open_int_table
+    IMPORTING
+      !it_tab    TYPE ANY TABLE OPTIONAL
+      !it_ref    TYPE REF TO data OPTIONAL
+      !i_name    TYPE string
+      !io_window TYPE REF TO zcl_ace_window .
 protected section.
 private section.
 
@@ -563,6 +569,15 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
 
 
   endmethod.
+
+
+  METHOD open_int_table.
+    DATA r_tab TYPE REF TO data.
+    IF it_ref IS BOUND. r_tab = it_ref. ELSE. GET REFERENCE OF it_tab INTO r_tab. ENDIF.
+    APPEND INITIAL LINE TO zcl_ace=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>).
+    <obj>-alv_viewer = NEW zcl_ace_table_viewer( i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
+    <obj>-alv_viewer->mo_sel->raise_selection_done( ).
+  ENDMETHOD.
 
 
   method REFRESH_TABLE.

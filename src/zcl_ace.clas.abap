@@ -276,13 +276,7 @@ CLASS zcl_ace DEFINITION
     DATA mt_if TYPE tt_if .
 
     CLASS-METHODS init_icons_table .
-    CLASS-METHODS check_mermaid .
-    CLASS-METHODS open_int_table
-      IMPORTING
-        !it_tab    TYPE ANY TABLE OPTIONAL
-        !it_ref    TYPE REF TO data OPTIONAL
-        !i_name    TYPE string
-        !io_window TYPE REF TO zcl_ace_window .
+    " open_int_table moved to ZCL_ACE_TABLE_VIEWER
 
     METHODS constructor
       IMPORTING
@@ -360,15 +354,6 @@ ENDCLASS.
 CLASS ZCL_ACE IMPLEMENTATION.
 
 
-  METHOD check_mermaid.
-    CALL FUNCTION 'SEO_CLASS_EXISTENCE_CHECK'
-      EXPORTING clskey = 'ZCL_WD_GUI_MERMAID_JS_DIAGRAM '
-      EXCEPTIONS not_specified = 1 not_existing = 2 i_interface = 3
-                 no_text = 4 inconsistent = 5 OTHERS = 6.
-    IF sy-subrc = 0. i_mermaid_active = abap_true. ENDIF.
-  ENDMETHOD.
-
-
   METHOD init_icons_table.
     m_option_icons = VALUE #(
      ( sign = space option = space  icon_name = icon_led_inactive )
@@ -395,19 +380,13 @@ CLASS ZCL_ACE IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD open_int_table.
-    DATA r_tab TYPE REF TO data.
-    IF it_ref IS BOUND. r_tab = it_ref. ELSE. GET REFERENCE OF it_tab INTO r_tab. ENDIF.
-    APPEND INITIAL LINE TO zcl_ace=>mt_obj ASSIGNING FIELD-SYMBOL(<obj>).
-    <obj>-alv_viewer = NEW zcl_ace_table_viewer( i_additional_name = i_name ir_tab = r_tab io_window = io_window ).
-    <obj>-alv_viewer->mo_sel->raise_selection_done( ).
-  ENDMETHOD.
+
 
 
   METHOD constructor.
     CONSTANTS: c_mask TYPE x VALUE '01'.
     mv_prog = i_prog. mv_show_parse_time = i_show_parse_time. i_step = abap_on.
-    zcl_ace=>check_mermaid( ). zcl_ace=>init_icons_table( ).
+    zcl_ace_mermaid=>check_mermaid( ). zcl_ace=>init_icons_table( ).
     mo_window = NEW zcl_ace_window( me ). mo_window->mv_new_parser = i_new_parser.
     mo_tree_local = NEW zcl_ace_rtti_tree( i_header = 'Objects & Code Flow' i_type = 'L'
                                            i_cont = mo_window->mo_locals_container i_debugger = me ).
@@ -998,4 +977,5 @@ METHOD remove_empty_loop_pairs.
       IF lv_changed = abap_false. EXIT. ENDIF.
     ENDDO.
   ENDMETHOD.
+
 ENDCLASS.

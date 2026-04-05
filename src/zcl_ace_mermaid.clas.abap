@@ -5,6 +5,8 @@ class ZCL_ACE_MERMAID definition
 
 public section.
 
+  class-methods CHECK_MERMAID .
+
   data MO_VIEWER type ref to ZCL_ACE .
   data MO_MM_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_MM_TOOLBAR type ref to CL_GUI_CONTAINER .
@@ -63,6 +65,19 @@ ENDCLASS.
 
 
 CLASS ZCL_ACE_MERMAID IMPLEMENTATION.
+
+
+  METHOD check_mermaid.
+    CALL FUNCTION 'SEO_CLASS_EXISTENCE_CHECK'
+      EXPORTING clskey = 'ZCL_WD_GUI_MERMAID_JS_DIAGRAM '
+      EXCEPTIONS not_specified = 1 not_existing = 2 i_interface = 3
+                 no_text = 4 inconsistent = 5 OTHERS = 6.
+    IF sy-subrc = 0.
+      zcl_ace=>i_mermaid_active = abap_true.
+    ELSE.
+      CLEAR zcl_ace=>i_mermaid_active.
+    ENDIF.
+  ENDMETHOD.
 
 
   method FORMAT_NODE_LABEL.
