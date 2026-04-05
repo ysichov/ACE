@@ -14,6 +14,7 @@
   " & https://github.com/WegnerDan/abapMermaid
   " & https://github.com/oisee/vibing-steampunk
 
+  " Main input fields for selecting the source object
   SELECTION-SCREEN BEGIN OF BLOCK s1 WITH FRAME TITLE TEXT-004.
     SELECTION-SCREEN BEGIN OF LINE.
       SELECTION-SCREEN COMMENT (29) TEXT-002 FOR FIELD p_prog.
@@ -45,6 +46,7 @@
         p_exclude = itab.
 
 
+  " Resolve class name to generated class/interface program
   AT SELECTION-SCREEN ON p_class.
 
     IF p_class IS NOT INITIAL.
@@ -63,6 +65,7 @@
 
     ENDIF.
 
+  " Resolve OData service or WDC component to backend class
   AT SELECTION-SCREEN ON p_odata.
 
     IF p_odata IS NOT INITIAL.
@@ -76,6 +79,7 @@
       p_class = cl_wdy_wb_naming_service=>get_classname_for_component( p_component = CONV #( p_wdc ) ).
     ENDIF.
 
+  " Resolve function module to generated include program
   AT SELECTION-SCREEN ON p_func.
 
     IF p_func IS NOT INITIAL.
@@ -90,11 +94,13 @@
 
     ENDIF.
 
+  " Trigger ACE execution after selection-screen validation
   AT SELECTION-SCREEN.
 
     CHECK sy-ucomm <> 'DUMMY'.
     PERFORM run_ace.
 
+  " Provide F4 help for custom Web Dynpro components
   AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_wdc.
 
     DATA: gt_tab TYPE TABLE OF rseui_f4.
@@ -126,6 +132,7 @@
         p_exclude = itab.
   ENDFORM.
 
+  " Run ACE only when target program exists in repository
   FORM run_ace.
 
     CHECK sy-ucomm IS INITIAL.
