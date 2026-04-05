@@ -275,7 +275,6 @@ CLASS zcl_ace DEFINITION
     DATA ms_if TYPE ts_if .
     DATA mt_if TYPE tt_if .
 
-    CLASS-METHODS init_icons_table .
     " open_int_table moved to ZCL_ACE_TABLE_VIEWER
 
     METHODS constructor
@@ -354,39 +353,10 @@ ENDCLASS.
 CLASS ZCL_ACE IMPLEMENTATION.
 
 
-  METHOD init_icons_table.
-    m_option_icons = VALUE #(
-     ( sign = space option = space  icon_name = icon_led_inactive )
-     ( sign = 'I' option = 'EQ' icon_name = icon_equal_green )
-     ( sign = 'I' option = 'NE' icon_name = icon_not_equal_green )
-     ( sign = 'I' option = 'LT' icon_name = icon_less_green )
-     ( sign = 'I' option = 'LE' icon_name = icon_less_equal_green )
-     ( sign = 'I' option = 'GT' icon_name = icon_greater_green )
-     ( sign = 'I' option = 'GE' icon_name = icon_greater_equal_green )
-     ( sign = 'I' option = 'CP' icon_name = icon_pattern_include_green )
-     ( sign = 'I' option = 'NP' icon_name = icon_pattern_exclude_green )
-     ( sign = 'I' option = 'BT' icon_name = icon_interval_include_green )
-     ( sign = 'I' option = 'NB' icon_name = icon_interval_exclude_green )
-     ( sign = 'E' option = 'EQ' icon_name = icon_equal_red )
-     ( sign = 'E' option = 'NE' icon_name = icon_not_equal_red )
-     ( sign = 'E' option = 'LT' icon_name = icon_less_red )
-     ( sign = 'E' option = 'LE' icon_name = icon_less_equal_red )
-     ( sign = 'E' option = 'GT' icon_name = icon_greater_red )
-     ( sign = 'E' option = 'GE' icon_name = icon_greater_equal_red )
-     ( sign = 'E' option = 'CP' icon_name = icon_pattern_include_red )
-     ( sign = 'E' option = 'NP' icon_name = icon_pattern_exclude_red )
-     ( sign = 'E' option = 'BT' icon_name = icon_interval_include_red )
-     ( sign = 'E' option = 'NB' icon_name = icon_interval_exclude_red ) ).
-  ENDMETHOD.
-
-
-
-
-
   METHOD constructor.
     CONSTANTS: c_mask TYPE x VALUE '01'.
     mv_prog = i_prog. mv_show_parse_time = i_show_parse_time. i_step = abap_on.
-    zcl_ace_mermaid=>check_mermaid( ). zcl_ace=>init_icons_table( ).
+    zcl_ace_mermaid=>check_mermaid( ). zcl_ace_sel_opt=>init_icons_table( ).
     mo_window = NEW zcl_ace_window( me ). mo_window->mv_new_parser = i_new_parser.
     mo_tree_local = NEW zcl_ace_rtti_tree( i_header = 'Objects & Code Flow' i_type = 'L'
                                            i_cont = mo_window->mo_locals_container i_debugger = me ).
@@ -653,7 +623,7 @@ METHOD build_result_lines.
         ADD 1 TO ind.
         LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
           READ TABLE it_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
-          " composed var already in filter — no action needed here (filter is read-only in this method)
+          " composed var already in filter - no action needed here (filter is read-only in this method)
         ENDLOOP.
         READ TABLE it_selected_var WITH KEY name = calc_var-name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0 OR iv_no_filter = abap_true.
@@ -833,7 +803,7 @@ METHOD enrich_result_lines.
       LOOP AT keyword-tt_calls INTO call.
         LOOP AT call-bindings INTO DATA(ls_b_add).
           IF mt_selected_var IS INITIAL.
-            " No filter — add both outer and inner with uniqueness check
+            " No filter - add both outer and inner with uniqueness check
             READ TABLE ct_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
@@ -845,10 +815,10 @@ METHOD enrich_result_lines.
               <sel>-name = ls_b_add-inner.
             ENDIF.
           ELSE.
-            " Filter active — add only the opposite side of the matched binding
+            " Filter active - add only the opposite side of the matched binding
             READ TABLE ct_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
             IF sy-subrc = 0.
-              " outer matched — add inner
+              " outer matched - add inner
               READ TABLE ct_selected_var WITH KEY name = ls_b_add-inner TRANSPORTING NO FIELDS.
               IF sy-subrc <> 0.
                 APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel_i>).
@@ -857,7 +827,7 @@ METHOD enrich_result_lines.
             ENDIF.
             READ TABLE ct_selected_var WITH KEY name = ls_b_add-inner TRANSPORTING NO FIELDS.
             IF sy-subrc = 0.
-              " inner matched — add outer
+              " inner matched - add outer
               READ TABLE ct_selected_var WITH KEY name = ls_b_add-outer TRANSPORTING NO FIELDS.
               IF sy-subrc <> 0.
                 APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel_o>).
@@ -903,7 +873,7 @@ METHOD propagate_vars_backward.
         ADD 1 TO ind.
         READ TABLE ct_selected_var WITH KEY name = calc_var-name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
-          " calc_var найден в ct_selected_var → добавляем все composed этой строки
+          " calc_var found in ct_selected_var - add all composed vars of this line
           LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
             READ TABLE ct_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
@@ -916,7 +886,7 @@ METHOD propagate_vars_backward.
       READ TABLE prog-t_keywords WITH KEY line = step-line INTO keyword.
       LOOP AT keyword-tt_calls INTO DATA(call).
         LOOP AT call-bindings INTO DATA(b_prop).
-          " backward: inner (параметр) найден → добавляем outer (переменная вызывающего)
+          " backward: inner (parameter) found - add outer (caller variable)
           READ TABLE ct_selected_var WITH KEY name = b_prop-inner TRANSPORTING NO FIELDS.
           IF sy-subrc = 0.
             READ TABLE ct_selected_var WITH KEY name = b_prop-outer TRANSPORTING NO FIELDS.

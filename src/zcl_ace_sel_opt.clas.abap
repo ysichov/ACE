@@ -17,6 +17,7 @@ public section.
     importing
       !IO_VIEWER type ref to ZCL_ACE_TABLE_VIEWER
       !IO_CONTAINER type ref to CL_GUI_CONTAINER .
+  CLASS-METHODS init_icons_table .
   methods RAISE_SELECTION_DONE .
   methods UPDATE_SEL_TAB .
   methods SET_VALUE
@@ -539,6 +540,33 @@ CLASS ZCL_ACE_SEL_OPT IMPLEMENTATION.
       RAISE EVENT selection_done.
 
 
+  endmethod.
+
+
+  method INIT_ICONS_TABLE.
+    " Populate sign/option icon mapping table used in UPDATE_SEL_ROW
+    ZCL_ACE=>m_option_icons = VALUE #(
+     ( sign = space option = space  icon_name = icon_led_inactive )
+     ( sign = 'I' option = 'EQ' icon_name = icon_equal_green )
+     ( sign = 'I' option = 'NE' icon_name = icon_not_equal_green )
+     ( sign = 'I' option = 'LT' icon_name = icon_less_green )
+     ( sign = 'I' option = 'LE' icon_name = icon_less_equal_green )
+     ( sign = 'I' option = 'GT' icon_name = icon_greater_green )
+     ( sign = 'I' option = 'GE' icon_name = icon_greater_equal_green )
+     ( sign = 'I' option = 'CP' icon_name = icon_pattern_include_green )
+     ( sign = 'I' option = 'NP' icon_name = icon_pattern_exclude_green )
+     ( sign = 'I' option = 'BT' icon_name = icon_interval_include_green )
+     ( sign = 'I' option = 'NB' icon_name = icon_interval_exclude_green )
+     ( sign = 'E' option = 'EQ' icon_name = icon_equal_red )
+     ( sign = 'E' option = 'NE' icon_name = icon_not_equal_red )
+     ( sign = 'E' option = 'LT' icon_name = icon_less_red )
+     ( sign = 'E' option = 'LE' icon_name = icon_less_equal_red )
+     ( sign = 'E' option = 'GT' icon_name = icon_greater_red )
+     ( sign = 'E' option = 'GE' icon_name = icon_greater_equal_red )
+     ( sign = 'E' option = 'CP' icon_name = icon_pattern_include_red )
+     ( sign = 'E' option = 'NP' icon_name = icon_pattern_exclude_red )
+     ( sign = 'E' option = 'BT' icon_name = icon_interval_include_red )
+     ( sign = 'E' option = 'NB' icon_name = icon_interval_exclude_red ) ).
   endmethod.
 
 
