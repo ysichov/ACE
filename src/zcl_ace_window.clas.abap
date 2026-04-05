@@ -453,7 +453,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
 
       WHEN 'STEPS'.
-        zcl_ace=>open_int_table( i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
+        zcl_ace_table_viewer=>open_int_table( i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
 
       WHEN 'WHOLE_CLASS'.
         DATA: lt_whole_class  TYPE sci_include,
