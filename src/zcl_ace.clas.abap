@@ -109,14 +109,17 @@ public section.
     BEGIN OF ts_var,
         program   TYPE string,
         include   TYPE string,
+        class     TYPE string,
+        eventtype TYPE string,
+        eventname TYPE string,
         line      TYPE i,
         name(100) TYPE c,
         type      TYPE string,
       END OF ts_var .
   types:
-    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
   types:
-    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
   types:
     BEGIN OF ts_int_tabs,
         eventtype TYPE string,
@@ -606,9 +609,13 @@ METHOD build_result_lines.
         <line>-class   = step-class.        inserted = abap_true.
       ENDIF.
       CLEAR ind.
-      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var) WHERE line = step-line.
+      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var)
+          WHERE include = step-include AND class = step-class
+            AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
         ADD 1 TO ind.
-        LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
+        LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var)
+            WHERE include = step-include AND class = step-class
+              AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
           READ TABLE it_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
           " composed var already in filter - no action needed here (filter is read-only in this method)
         ENDLOOP.
@@ -856,12 +863,16 @@ METHOD propagate_vars_backward.
     DATA: prog TYPE LINE OF zif_ace_parse_data=>tt_progs, keyword TYPE ts_kword, ind TYPE i.
     LOOP AT it_steps INTO DATA(step).
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
-      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var) WHERE line = step-line.
+      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var)
+          WHERE include = step-include AND class = step-class
+            AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
         ADD 1 TO ind.
         READ TABLE ct_selected_var WITH KEY name = calc_var-name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
           " calc_var found in ct_selected_var - add all composed vars of this line
-          LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
+          LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var)
+              WHERE include = step-include AND class = step-class
+                AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
             READ TABLE ct_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
