@@ -950,65 +950,70 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   endmethod.
 
 
-  method SHOW_COVERAGE.
-      DATA: split TYPE TABLE OF string.
-      CLEAR: mt_watch, mt_coverage.
-      LOOP AT mo_viewer->mt_steps INTO DATA(step).
-        READ TABLE mt_stack WITH KEY include = step-include TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO mt_stack ASSIGNING FIELD-SYMBOL(<stack>).
-          MOVE-CORRESPONDING step TO <stack>.
-          SPLIT <stack>-program AT '=' INTO TABLE split.
-          <stack>-prg = <stack>-program.
-          <stack>-program = split[ 1 ].
-        ENDIF.
-        IF step-include <> mo_viewer->mo_window->m_prg-include. CONTINUE. ENDIF.
-      ENDLOOP.
-      IF mt_stack IS INITIAL.
-        SORT ms_sources-tt_progs BY stack.
-        LOOP AT ms_sources-tt_progs INTO DATA(prog).
-          CHECK prog-t_keywords IS NOT INITIAL.
-          APPEND INITIAL LINE TO mt_stack ASSIGNING <stack>.
-          MOVE-CORRESPONDING prog TO <stack>.
-          SPLIT <stack>-program AT '=' INTO TABLE split.
-          <stack>-prg = <stack>-program.
-          <stack>-program = split[ 1 ].
-          <stack>-stacklevel = prog-stack.
-          DATA(pos) = strlen( <stack>-program ).
-          pos = pos - 2.
-          IF pos > 0.
-            DATA(incl) = <stack>-include+pos(2).
-            SELECT SINGLE funcname INTO @<stack>-eventname FROM tfdir
-              WHERE pname_main = @<stack>-program AND include = @incl.
-            IF sy-subrc = 0. <stack>-eventtype = 'FUNCTION'. CONTINUE. ENDIF.
-          ENDIF.
-          DATA: cl_key TYPE seoclskey, meth_includes TYPE seop_methods_w_include.
-          cl_key = <stack>-program.
-          CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-            EXPORTING clskey = cl_key IMPORTING includes = meth_includes
-            EXCEPTIONS _internal_class_not_existing = 1 OTHERS = 2.
-          IF sy-subrc = 0.
-            READ TABLE meth_includes[] WITH KEY incname = <stack>-include INTO DATA(include).
-            IF sy-subrc = 0.
-              <stack>-eventtype = 'METHOD'. <stack>-eventname = include-cpdkey-cpdname.
-            ENDIF.
-          ENDIF.
-          SPLIT <stack>-include AT '=' INTO TABLE split.
-          CASE split[ lines( split ) ].
-            WHEN 'CP'.    <stack>-eventtype = 'Class Pool'.
-            WHEN 'CU'.    <stack>-eventtype = 'Public Section'.
-            WHEN 'CI'.    <stack>-eventtype = 'Private Section'.
-            WHEN 'CO'.    <stack>-eventtype = 'Protected Section'.
-            WHEN 'IU'.    <stack>-eventtype = 'Interface Public Section'.
-            WHEN 'CCAU'.  <stack>-eventtype = 'Unit Test Classes'.
-            WHEN 'CCIMP'. <stack>-eventtype = 'Local helper classes'.
-            WHEN 'CCDEF'. <stack>-eventtype = 'Local Definitions/Implementations'.
-            WHEN 'CCMAC'. <stack>-eventtype = 'Macros'.
-          ENDCASE.
-        ENDLOOP.
+  METHOD show_coverage.
+    DATA: split TYPE TABLE OF string.
+    CLEAR: mt_watch, mt_coverage.
+    LOOP AT mo_viewer->mt_steps INTO DATA(step).
+      READ TABLE mt_stack WITH KEY include = step-include TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        APPEND INITIAL LINE TO mt_stack ASSIGNING FIELD-SYMBOL(<stack>).
+        MOVE-CORRESPONDING step TO <stack>.
+        SPLIT <stack>-program AT '=' INTO TABLE split.
+        <stack>-prg = <stack>-program.
+        <stack>-program = split[ 1 ].
       ENDIF.
-      SORT mt_coverage. DELETE ADJACENT DUPLICATES FROM mt_coverage.
-  endmethod.
+      IF step-include <> mo_viewer->mo_window->m_prg-include. CONTINUE. ENDIF.
+    ENDLOOP.
+    IF mt_stack IS INITIAL.
+      SORT ms_sources-tt_progs BY stack.
+      LOOP AT ms_sources-tt_progs INTO DATA(prog) WHERE program IS NOT INITIAL.
+        CHECK prog-t_keywords IS NOT INITIAL.
+        APPEND INITIAL LINE TO mt_stack ASSIGNING <stack>.
+        MOVE-CORRESPONDING prog TO <stack>.
+        SPLIT <stack>-program AT '=' INTO TABLE split.
+        <stack>-prg = <stack>-program.
+        <stack>-program = split[ 1 ].
+        <stack>-stacklevel = prog-stack.
+        DATA(pos) = strlen( <stack>-program ).
+        pos = pos - 2.
+        IF pos > 0.
+          DATA(incl) = <stack>-include+pos(2).
+          SELECT SINGLE funcname INTO @<stack>-eventname FROM tfdir
+            WHERE pname_main = @<stack>-program AND include = @incl.
+          IF sy-subrc = 0. <stack>-eventtype = 'FUNCTION'. CONTINUE. ENDIF.
+        ENDIF.
+        DATA: cl_key        TYPE seoclskey, meth_includes TYPE seop_methods_w_include.
+        cl_key = <stack>-program.
+        CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+          EXPORTING
+            clskey                       = cl_key
+          IMPORTING
+            includes                     = meth_includes
+          EXCEPTIONS
+            _internal_class_not_existing = 1
+            OTHERS                       = 2.
+        IF sy-subrc = 0.
+          READ TABLE meth_includes[] WITH KEY incname = <stack>-include INTO DATA(include).
+          IF sy-subrc = 0.
+            <stack>-eventtype = 'METHOD'. <stack>-eventname = include-cpdkey-cpdname.
+          ENDIF.
+        ENDIF.
+        SPLIT <stack>-include AT '=' INTO TABLE split.
+        CASE split[ lines( split ) ].
+          WHEN 'CP'.    <stack>-eventtype = 'Class Pool'.
+          WHEN 'CU'.    <stack>-eventtype = 'Public Section'.
+          WHEN 'CI'.    <stack>-eventtype = 'Private Section'.
+          WHEN 'CO'.    <stack>-eventtype = 'Protected Section'.
+          WHEN 'IU'.    <stack>-eventtype = 'Interface Public Section'.
+          WHEN 'CCAU'.  <stack>-eventtype = 'Unit Test Classes'.
+          WHEN 'CCIMP'. <stack>-eventtype = 'Local helper classes'.
+          WHEN 'CCDEF'. <stack>-eventtype = 'Local Definitions/Implementations'.
+          WHEN 'CCMAC'. <stack>-eventtype = 'Macros'.
+        ENDCASE.
+      ENDLOOP.
+    ENDIF.
+    SORT mt_coverage. DELETE ADJACENT DUPLICATES FROM mt_coverage.
+  ENDMETHOD.
 
 
   METHOD apply_depth.

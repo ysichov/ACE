@@ -165,6 +165,7 @@ public section.
         param    TYPE string,
         program  TYPE program,
         include  TYPE program,
+        class    type string,
         ev_type  TYPE string,
         ev_name  TYPE string,
         enh_id   TYPE i,
