@@ -230,6 +230,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( butn_type = 3  )
        ( function = 'METRICS'   icon = CONV #( icon_report )              quickinfo = 'Code Metrics (McCabe CC + Halstead)' text = 'Metrics' )
        ( function = 'MDEBUG'    icon = CONV #( icon_tools )               quickinfo = 'Metrics Debug: operators/operands per block' text = 'Mdebug' )
+       ( function = 'MHTML'     icon = CONV #( icon_htm )                quickinfo = 'Metrics HTML popup'                        text = 'MetricsHTML' )
        ( butn_type = 3  )
        ( function = 'STEPS'       icon = CONV #( icon_next_step )    quickinfo = 'Steps table'                   text = 'Steps' )
        ( butn_type = 3  )
@@ -445,6 +446,64 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         zcl_ace_metrics_window=>show_debug(
           is_parse_data = mo_viewer->mo_window->ms_sources
           i_program     = mo_viewer->mo_window->m_prg-program ).
+
+      WHEN 'MHTML'.
+        DATA(ls_mhtml) = zcl_ace_metrics=>calculate(
+          is_parse_data = mo_viewer->mo_window->ms_sources
+          i_program     = mo_viewer->mo_window->m_prg-program ).
+        IF ls_mhtml-units IS INITIAL.
+          MESSAGE 'No code units found' TYPE 'S'.
+        ELSE.
+          DATA lt_html TYPE w3htmltab.
+          CLEAR lt_html.
+          APPEND '<html><head><style>' TO lt_html.
+          APPEND 'body{font-family:Consolas,monospace;margin:16px}' TO lt_html.
+          APPEND 'table{border-collapse:collapse;width:100%}' TO lt_html.
+          APPEND 'th,td{border:1px solid #999;padding:4px 8px}' TO lt_html.
+          APPEND 'th{background:#4472C4;color:#fff;text-align:left}' TO lt_html.
+          APPEND 'td{text-align:left}' TO lt_html.
+          APPEND 'tr:nth-child(even){background:#f2f2f2}' TO lt_html.
+          APPEND '</style></head><body>' TO lt_html.
+          DATA(lv_prg) = mo_viewer->mo_window->m_prg-program.
+          APPEND |<h2>Metrics: { lv_prg }</h2>| TO lt_html.
+          APPEND |<p>Units analysed: { lines( ls_mhtml-units ) }</p>| TO lt_html.
+          APPEND '<table>' TO lt_html.
+          APPEND '<tr><th>Metric</th><th>Value</th></tr>' TO lt_html.
+          APPEND |<tr><td>Total Cyclomatic Complexity</td>| &&
+                 |<td>{ ls_mhtml-total_cyclomatic }</td></tr>| TO lt_html.
+          DATA(lv_avg_cc) = CONV decfloat34( ls_mhtml-avg_cyclomatic ).
+          APPEND |<tr><td>Avg Cyclomatic / unit</td>| &&
+                 |<td>{ lv_avg_cc DECIMALS = 2 }</td></tr>| TO lt_html.
+          APPEND |<tr><td>LOC (Lines of Code)</td>| &&
+                 |<td>{ ls_mhtml-total_loc }</td></tr>| TO lt_html.
+          APPEND |<tr><td>LLOC (Logical LOC)</td>| &&
+                 |<td>{ ls_mhtml-total_lloc }</td></tr>| TO lt_html.
+          APPEND |<tr><td>CLOC (Comment Lines)</td>| &&
+                 |<td>{ ls_mhtml-total_cloc }</td></tr>| TO lt_html.
+          DATA(lv_vol) = CONV decfloat34( ls_mhtml-total_volume ).
+          APPEND |<tr><td>Total Halstead Volume</td>| &&
+                 |<td>{ lv_vol DECIMALS = 2 }</td></tr>| TO lt_html.
+          DATA(lv_eff) = CONV decfloat34( ls_mhtml-total_effort ).
+          APPEND |<tr><td>Total Effort</td>| &&
+                 |<td>{ lv_eff DECIMALS = 2 }</td></tr>| TO lt_html.
+          DATA(lv_time) = CONV decfloat34( ls_mhtml-total_time_t ).
+          APPEND |<tr><td>Time (seconds)</td>| &&
+                 |<td>{ lv_time DECIMALS = 2 }</td></tr>| TO lt_html.
+          DATA(lv_bugs) = CONV decfloat34( ls_mhtml-total_bugs ).
+          APPEND |<tr><td>Expected Bugs</td>| &&
+                 |<td>{ lv_bugs DECIMALS = 2 }</td></tr>| TO lt_html.
+          APPEND '</table></body></html>' TO lt_html.
+
+          DATA(lo_html_popup) = NEW zcl_ace_html_viewer(
+            it_html  = lt_html
+            i_title  = CONV #( |Metrics: { lv_prg }| ) ).
+          IF lo_html_popup->mo_box IS NOT INITIAL.
+            APPEND INITIAL LINE TO zcl_ace=>mt_popups
+              ASSIGNING FIELD-SYMBOL(<mhtml_popup>).
+            <mhtml_popup>-parent = mo_viewer->mo_window->mo_box.
+            <mhtml_popup>-child  = lo_html_popup->mo_box.
+          ENDIF.
+        ENDIF.
 
       WHEN 'INFO'.
         DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
