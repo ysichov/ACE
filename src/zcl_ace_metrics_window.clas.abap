@@ -10,10 +10,42 @@ CLASS zcl_ace_metrics_window DEFINITION
         i_program     TYPE program.
 
     CLASS-METHODS show_debug
-  IMPORTING
-    is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
-    i_program     TYPE program.
+      IMPORTING
+        is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
+        i_program     TYPE program.
+
+    CLASS-METHODS build_html
+      IMPORTING
+        is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
+        i_program     TYPE program
+      RETURNING
+        VALUE(rv)     TYPE w3htmltab.
+
   PRIVATE SECTION.
+
+    TYPES: BEGIN OF ts_row,
+             name       TYPE string,
+             cc         TYPE i,
+             risk       TYPE string,
+             n1         TYPE i,
+             n2         TYPE i,
+             length     TYPE i,
+             eta1       TYPE i,
+             eta2       TYPE i,
+             vocab      TYPE i,
+             volume     TYPE string,
+             difficulty TYPE string,
+             effort     TYPE string,
+             time_t     TYPE string,
+             bugs       TYPE string,
+             loc        TYPE i,
+             lloc       TYPE i,
+             cloc       TYPE i,
+             cloc_ratio TYPE string,
+             mi         TYPE string,
+             mi_rating  TYPE string,
+           END OF ts_row.
+    TYPES tt_row TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
 
     CLASS-METHODS format_f2
       IMPORTING i_val     TYPE f
@@ -26,6 +58,22 @@ CLASS zcl_ace_metrics_window DEFINITION
     CLASS-METHODS cc_rating
       IMPORTING i_cc      TYPE i
       RETURNING VALUE(rv) TYPE string.
+
+    CLASS-METHODS mi_grade
+      IMPORTING i_mi      TYPE f
+      RETURNING VALUE(rv) TYPE string.
+
+    CLASS-METHODS html_hdr
+      CHANGING ct_html TYPE w3htmltab.
+
+    CLASS-METHODS html_row
+      IMPORTING is_row  TYPE ts_row
+      CHANGING  ct_html TYPE w3htmltab.
+
+    CLASS-METHODS html_section
+      IMPORTING i_name  TYPE string
+                it_rows TYPE tt_row
+      CHANGING  ct_html TYPE w3htmltab.
 
 ENDCLASS.
 
@@ -44,32 +92,6 @@ METHOD show.
     cl_demo_output=>display( |No code units found for program { i_program }| ).
     RETURN.
   ENDIF.
-
-  " ---------------------------------------------------------------
-  " Row type
-  " ---------------------------------------------------------------
-  TYPES: BEGIN OF ts_row,
-           name       TYPE string,
-           cc         TYPE i,
-           risk       TYPE string,
-           n1         TYPE i,
-           n2         TYPE i,
-           length     TYPE i,
-           eta1       TYPE i,
-           eta2       TYPE i,
-           vocab      TYPE i,
-           volume     TYPE string,
-           difficulty TYPE string,
-           effort     TYPE string,
-           time_t     TYPE string,
-           bugs       TYPE string,
-           loc        TYPE i,
-           lloc       TYPE i,
-           cloc       TYPE i,
-           cloc_ratio TYPE string,
-           mi         TYPE string,
-           mi_rating  TYPE string,
-         END OF ts_row.
 
   DATA ls_u       TYPE zcl_ace_metrics=>ts_unit_result.
   DATA lv_ratio   TYPE string.
@@ -312,9 +334,6 @@ METHOD show.
 
     SORT lt_rows BY cc DESCENDING.
 
-    " Read pre-computed class-scope Halstead from ls_result-class_totals.
-    " eta1/eta2/vocab/difficulty — structural (class-scope unique dictionaries).
-    " VOLUME / EFFORT / TIME_T / BUGS in CLASS TOTAL = sum of methods (correct).
     READ TABLE ls_result-class_totals
       WITH KEY class_name = lv_cls
       INTO DATA(ls_ct).
@@ -420,6 +439,418 @@ METHOD show.
 ENDMETHOD.
 
 
+METHOD build_html.
+
+  DATA(ls_result) = zcl_ace_metrics=>calculate(
+    is_parse_data = is_parse_data
+    i_program     = i_program ).
+
+  IF ls_result-units IS INITIAL.
+    APPEND |<p>No code units found for { i_program }</p>| TO rv.
+    RETURN.
+  ENDIF.
+
+  DATA ls_u          TYPE zcl_ace_metrics=>ts_unit_result.
+  DATA lv_ratio      TYPE string.
+  DATA lv_tot_cc     TYPE i.
+  DATA lv_tot_loc    TYPE i.
+  DATA lv_tot_lloc   TYPE i.
+  DATA lv_tot_cloc   TYPE i.
+  DATA lv_tot_vol    TYPE f.
+  DATA lv_tot_eff    TYPE f.
+  DATA lv_tot_time_t TYPE f.
+  DATA lv_tot_bugs   TYPE f.
+  DATA lv_tot_n1     TYPE i.
+  DATA lv_tot_n2     TYPE i.
+
+  LOOP AT ls_result-units INTO ls_u.
+    ADD ls_u-cyclomatic TO lv_tot_cc.
+    ADD ls_u-loc        TO lv_tot_loc.
+    ADD ls_u-lloc       TO lv_tot_lloc.
+    ADD ls_u-cloc       TO lv_tot_cloc.
+    ADD ls_u-n1         TO lv_tot_n1.
+    ADD ls_u-n2         TO lv_tot_n2.
+    lv_tot_vol    = lv_tot_vol    + ls_u-volume.
+    lv_tot_eff    = lv_tot_eff    + ls_u-effort.
+    lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
+    lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
+  ENDLOOP.
+
+  IF lv_tot_loc > 0.
+    lv_ratio = |{ CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%|.
+  ELSE.
+    lv_ratio = '-'.
+  ENDIF.
+
+  " --- HTML head + CSS ---
+  APPEND '<!DOCTYPE html><html><head><meta charset="utf-8">' TO rv.
+  APPEND '<style>' TO rv.
+  APPEND 'body{font-family:Consolas,monospace;margin:16px;font-size:12px}' TO rv.
+  APPEND 'h2{color:#2F5496;margin-bottom:4px}' TO rv.
+  APPEND 'h3{color:#2F5496;margin-top:20px;margin-bottom:4px}' TO rv.
+  APPEND 'table{border-collapse:collapse;width:100%;margin-bottom:12px}' TO rv.
+  APPEND 'th{background:#BDD7EE;color:#1F3864;border:1px solid #9DC3E6;' TO rv.
+  APPEND '   padding:4px 7px;text-align:left;font-weight:bold}' TO rv.
+  APPEND 'td{border:1px solid #BDD7EE;padding:3px 7px;text-align:left}' TO rv.
+  APPEND 'tr:nth-child(even) td{background:#EEF3FB}' TO rv.
+  APPEND '.low{color:green}.med{color:darkorange}' TO rv.
+  APPEND '.high{color:orangered;font-weight:bold}' TO rv.
+  APPEND '.crit{color:red;font-weight:bold}' TO rv.
+  APPEND '.mi-h{color:green}.mi-m{color:darkorange}' TO rv.
+  APPEND '.mi-l{color:red;font-weight:bold}' TO rv.
+  APPEND '.tot td{background:#D6E4F7;font-weight:bold}' TO rv.
+  APPEND 'pre{background:#f5f5f5;padding:8px;font-size:11px;' TO rv.
+  APPEND '    border:1px solid #ddd;white-space:pre-wrap;margin:4px 0}' TO rv.
+  APPEND '</style></head><body>' TO rv.
+
+  " --- Section 1: Summary ---
+  APPEND |<h2>Code Metrics: { i_program }</h2>| TO rv.
+  APPEND |<p>Units analysed: <b>{ lines( ls_result-units ) }</b></p>| TO rv.
+  APPEND |<p>Total Cyclomatic Complexity: <b>{ lv_tot_cc }</b>| TO rv.
+  APPEND |&nbsp;&nbsp;Avg CC / unit: | &&
+         |<b>{ format_f2( ls_result-avg_cyclomatic ) }</b></p>| TO rv.
+  APPEND |<p>Halstead Volume: <b>{ format_f2( lv_tot_vol ) }</b>| to rv.
+  DATA(lv_sum_time) = lv_tot_eff / 18.
+  APPEND |&nbsp;&nbsp;Effort: <b>{ format_f2( lv_tot_eff ) }</b></p>| TO rv.
+  APPEND |<p>Time: <b>{ format_time( lv_sum_time ) }</b>| &&
+         |&nbsp;&nbsp;Expected Bugs: | &&
+         |<b>{ format_f2( lv_tot_bugs ) }</b></p>| TO rv.
+  APPEND |<p>LOC / LLOC / CLOC / CLOC%: | &&
+         |<b>{ lv_tot_loc }</b> / <b>{ lv_tot_lloc }</b> / | TO rv.
+  APPEND |<b>{ lv_tot_cloc }</b> / <b>{ lv_ratio }</b></p>| TO rv.
+
+  " --- Section 2: Total ---
+  DATA lt_total TYPE tt_row.
+  APPEND VALUE ts_row(
+    name        = |{ i_program } TOTAL|
+    cc          = lv_tot_cc
+    risk        = ''
+    n1          = lv_tot_n1        n2     = lv_tot_n2
+    eta1        = ls_result-incl_big_n1
+    eta2        = ls_result-incl_big_n2
+    vocab       = ls_result-incl_vocabulary
+    length      = ls_result-incl_prog_length
+    loc         = lv_tot_loc       lloc   = lv_tot_lloc   cloc = lv_tot_cloc
+    cloc_ratio  = lv_ratio
+    volume      = format_f2( ls_result-incl_volume )
+    difficulty  = format_f2( ls_result-incl_difficulty )
+    effort      = format_f2( ls_result-incl_effort )
+    time_t      = format_time( lv_tot_time_t )
+    bugs        = format_f2( ls_result-incl_bugs )
+  ) TO lt_total.
+  html_section( i_name = 'Total' it_rows = lt_total CHANGING ct_html = rv ).
+
+  " --- Section 3: Events ---
+  DATA lt_events TYPE tt_row.
+  LOOP AT ls_result-units INTO ls_u
+    WHERE unit_type <> 'METHOD' AND unit_type <> 'FORM'.
+    IF ls_u-loc > 0.
+      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
+    ELSE.
+      lv_ratio = '-'.
+    ENDIF.
+    APPEND VALUE ts_row(
+      name        = ls_u-unit_name
+      cc          = ls_u-cyclomatic
+      risk        = cc_rating( ls_u-cyclomatic )
+      n1          = ls_u-n1        n2   = ls_u-n2
+      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
+      vocab       = ls_u-vocabulary
+      length      = ls_u-prog_length
+      volume      = format_f2( ls_u-volume )
+      difficulty  = format_f2( ls_u-difficulty )
+      effort      = format_f2( ls_u-effort )
+      time_t      = format_time( ls_u-time_t )
+      bugs        = format_f2( ls_u-bugs )
+      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
+      cloc_ratio  = lv_ratio
+      mi          = COND #( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' )
+      mi_rating   = mi_grade( ls_u-mi )
+    ) TO lt_events.
+  ENDLOOP.
+  IF lt_events IS NOT INITIAL.
+    html_section( i_name = 'Events' it_rows = lt_events CHANGING ct_html = rv ).
+  ENDIF.
+
+  " --- Section 4: Forms ---
+  DATA lt_forms TYPE tt_row.
+  LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'FORM'.
+    IF ls_u-loc > 0.
+      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
+    ELSE.
+      lv_ratio = '-'.
+    ENDIF.
+    APPEND VALUE ts_row(
+      name        = ls_u-unit_name
+      cc          = ls_u-cyclomatic
+      risk        = cc_rating( ls_u-cyclomatic )
+      n1          = ls_u-n1        n2   = ls_u-n2
+      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
+      vocab       = ls_u-vocabulary
+      length      = ls_u-prog_length
+      volume      = format_f2( ls_u-volume )
+      difficulty  = format_f2( ls_u-difficulty )
+      effort      = format_f2( ls_u-effort )
+      time_t      = format_time( ls_u-time_t )
+      bugs        = format_f2( ls_u-bugs )
+      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
+      cloc_ratio  = lv_ratio
+      mi          = COND #( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' )
+      mi_rating   = mi_grade( ls_u-mi )
+    ) TO lt_forms.
+  ENDLOOP.
+  IF lt_forms IS NOT INITIAL.
+    html_section( i_name = 'Forms' it_rows = lt_forms CHANGING ct_html = rv ).
+  ENDIF.
+
+  " --- Section 5: Methods grouped by class ---
+  DATA lt_classes TYPE STANDARD TABLE OF string WITH EMPTY KEY.
+  LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
+    DATA(lv_class) = ls_u-unit_name.
+    FIND FIRST OCCURRENCE OF '=>' IN lv_class MATCH OFFSET DATA(lv_off).
+    IF sy-subrc = 0.
+      lv_class = lv_class(lv_off).
+    ENDIF.
+    READ TABLE lt_classes WITH KEY table_line = lv_class TRANSPORTING NO FIELDS.
+    IF sy-subrc <> 0.
+      APPEND lv_class TO lt_classes.
+    ENDIF.
+  ENDLOOP.
+
+  LOOP AT lt_classes INTO DATA(lv_cls).
+    DATA lt_rows TYPE tt_row.
+    CLEAR lt_rows.
+    CLEAR: lv_tot_cc, lv_tot_loc, lv_tot_lloc, lv_tot_cloc,
+           lv_tot_vol, lv_tot_eff, lv_tot_time_t, lv_tot_bugs,
+           lv_tot_n1, lv_tot_n2.
+
+    LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
+      DATA(lv_mname) = ls_u-unit_name.
+      DATA(lv_mcls)  = ls_u-unit_name.
+      FIND FIRST OCCURRENCE OF '=>' IN lv_mname MATCH OFFSET DATA(lv_moff).
+      IF sy-subrc = 0.
+        lv_mcls  = lv_mname(lv_moff).
+        DATA(lv_moff2) = lv_moff + 2.
+        lv_mname = lv_mname+lv_moff2.
+      ENDIF.
+      CHECK lv_mcls = lv_cls.
+
+      IF ls_u-loc > 0.
+        lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
+      ELSE.
+        lv_ratio = '-'.
+      ENDIF.
+
+      APPEND VALUE ts_row(
+        name        = lv_mname
+        cc          = ls_u-cyclomatic
+        risk        = cc_rating( ls_u-cyclomatic )
+        n1          = ls_u-n1        n2   = ls_u-n2
+        eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
+        vocab       = ls_u-vocabulary
+        length      = ls_u-prog_length
+        volume      = format_f2( ls_u-volume )
+        difficulty  = format_f2( ls_u-difficulty )
+        effort      = format_f2( ls_u-effort )
+        time_t      = format_time( ls_u-time_t )
+        bugs        = format_f2( ls_u-bugs )
+        loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
+        cloc_ratio  = lv_ratio
+        mi          = COND #( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' )
+        mi_rating   = mi_grade( ls_u-mi )
+      ) TO lt_rows.
+
+      ADD ls_u-cyclomatic TO lv_tot_cc.
+      ADD ls_u-loc        TO lv_tot_loc.
+      ADD ls_u-lloc       TO lv_tot_lloc.
+      ADD ls_u-cloc       TO lv_tot_cloc.
+      ADD ls_u-n1         TO lv_tot_n1.
+      ADD ls_u-n2         TO lv_tot_n2.
+      lv_tot_vol    = lv_tot_vol    + ls_u-volume.
+      lv_tot_eff    = lv_tot_eff    + ls_u-effort.
+      lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
+      lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
+    ENDLOOP.
+
+    CHECK lt_rows IS NOT INITIAL.
+
+    IF lv_tot_loc > 0.
+      lv_ratio = |{ CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%|.
+    ELSE.
+      lv_ratio = '-'.
+    ENDIF.
+
+    SORT lt_rows BY cc DESCENDING.
+
+    READ TABLE ls_result-class_totals
+      WITH KEY class_name = lv_cls
+      INTO DATA(ls_ct).
+    IF sy-subrc <> 0. CLEAR ls_ct. ENDIF.
+
+    APPEND VALUE ts_row(
+      name        = 'CLASS TOTAL'
+      cc          = lv_tot_cc
+      risk        = ''
+      n1          = lv_tot_n1        n2     = lv_tot_n2
+      eta1        = ls_ct-cls_big_n1
+      eta2        = ls_ct-cls_big_n2
+      vocab       = ls_ct-cls_vocabulary
+      length      = ls_ct-cls_prog_length
+      loc         = lv_tot_loc        lloc   = lv_tot_lloc   cloc = lv_tot_cloc
+      cloc_ratio  = lv_ratio
+      volume      = format_f2( lv_tot_vol )
+      difficulty  = format_f2( ls_ct-cls_difficulty )
+      effort      = format_f2( lv_tot_eff )
+      time_t      = format_time( lv_tot_time_t )
+      bugs        = format_f2( lv_tot_bugs )
+    ) TO lt_rows.
+
+    html_section( i_name = lv_cls it_rows = lt_rows CHANGING ct_html = rv ).
+  ENDLOOP.
+
+  " --- Section 6: All methods sorted by CC DESC ---
+  DATA lt_all TYPE tt_row.
+  LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
+    IF ls_u-loc > 0.
+      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
+    ELSE.
+      lv_ratio = '-'.
+    ENDIF.
+    APPEND VALUE ts_row(
+      name        = ls_u-unit_name
+      cc          = ls_u-cyclomatic
+      risk        = cc_rating( ls_u-cyclomatic )
+      n1          = ls_u-n1        n2   = ls_u-n2
+      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
+      vocab       = ls_u-vocabulary
+      length      = ls_u-prog_length
+      volume      = format_f2( ls_u-volume )
+      difficulty  = format_f2( ls_u-difficulty )
+      effort      = format_f2( ls_u-effort )
+      time_t      = format_time( ls_u-time_t )
+      bugs        = format_f2( ls_u-bugs )
+      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
+      cloc_ratio  = lv_ratio
+      mi          = COND #( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' )
+      mi_rating   = mi_grade( ls_u-mi )
+    ) TO lt_all.
+  ENDLOOP.
+  SORT lt_all BY cc DESCENDING.
+  IF lt_all IS NOT INITIAL.
+    html_section(
+      i_name  = 'All Methods (sorted by CC)'
+      it_rows = lt_all
+      CHANGING ct_html = rv ).
+  ENDIF.
+
+  " --- Legend ---
+  APPEND '<h3>McCabe CC Risk</h3><pre>' TO rv.
+  APPEND '  1-10   LOW      Simple, low risk' TO rv.
+  APPEND '  11-20  MEDIUM   Moderate complexity' TO rv.
+  APPEND '  21-50  HIGH     High risk, refactor recommended' TO rv.
+  APPEND '  50+    CRITICAL Untestable, very high risk' TO rv.
+  APPEND '</pre>' TO rv.
+  APPEND '<h3>Halstead</h3><pre>' TO rv.
+  APPEND '  N1/N2  - total operators/operands   Length = N1+N2' TO rv.
+  APPEND '  eta1/eta2 - distinct operators/operands   Vocab = eta1+eta2' TO rv.
+  APPEND '  Volume = Length * log2(Vocab)' TO rv.
+  APPEND '  Difficulty = (eta1/2) * (N2/eta2)   Effort = Diff * Volume' TO rv.
+  APPEND '  Time (T) = Effort / 18  (Stroud: 18 discriminations/sec)' TO rv.
+  APPEND '  Bugs (B) = Volume / 3000  (Halstead empirical formula)' TO rv.
+  APPEND '  CLOC_RATIO = CLOC/LOC %  (comment density)' TO rv.
+  APPEND '</pre>' TO rv.
+  APPEND '<h3>Maintainability Index (MI)</h3><pre>' TO rv.
+  APPEND '  MI = 171 - 5.2*ln(V) - 0.23*G - 16.2*ln(LOC)' TO rv.
+  APPEND '  &gt;= 85  HIGH    Easy to maintain' TO rv.
+  APPEND '  65-84  MEDIUM  Moderate maintainability' TO rv.
+  APPEND '  &lt; 65   LOW     Hard to maintain, refactor recommended' TO rv.
+  APPEND '</pre>' TO rv.
+  APPEND '</body></html>' TO rv.
+
+ENDMETHOD.
+
+
+METHOD html_hdr.
+  APPEND '<tr>' TO ct_html.
+  APPEND '<th>Name</th><th>CC</th><th>Risk</th>' TO ct_html.
+  APPEND '<th>N1</th><th>N2</th><th>Length</th>' TO ct_html.
+  APPEND '<th>eta1</th><th>eta2</th><th>Vocab</th>' TO ct_html.
+  APPEND '<th>Volume</th><th>Difficulty</th>' TO ct_html.
+  APPEND '<th>Effort</th><th>Time</th><th>Bugs</th>' TO ct_html.
+  APPEND '<th>LOC</th><th>LLOC</th><th>CLOC</th>' TO ct_html.
+  APPEND '<th>CLOC%</th><th>MI</th><th>MI Rating</th></tr>' TO ct_html.
+ENDMETHOD.
+
+
+METHOD html_row.
+  DATA lv_rc  TYPE string.
+  DATA lv_mic TYPE string.
+  CASE is_row-risk.
+    WHEN 'LOW'.      lv_rc = 'low'.
+    WHEN 'MEDIUM'.   lv_rc = 'med'.
+    WHEN 'HIGH'.     lv_rc = 'high'.
+    WHEN 'CRITICAL'. lv_rc = 'crit'.
+  ENDCASE.
+  CASE is_row-mi_rating.
+    WHEN 'HIGH'.   lv_mic = 'mi-h'.
+    WHEN 'MEDIUM'. lv_mic = 'mi-m'.
+    WHEN 'LOW'.    lv_mic = 'mi-l'.
+  ENDCASE.
+  " Name + CC + Risk
+  APPEND |<tr><td>{ is_row-name }</td>| &&
+         |<td>{ is_row-cc }</td>| &&
+         |<td class="{ lv_rc }">{ is_row-risk }</td>| TO ct_html.
+  " Halstead counts
+  APPEND |<td>{ is_row-n1 }</td><td>{ is_row-n2 }</td>| &&
+         |<td>{ is_row-length }</td>| TO ct_html.
+  APPEND |<td>{ is_row-eta1 }</td><td>{ is_row-eta2 }</td>| &&
+         |<td>{ is_row-vocab }</td>| TO ct_html.
+  " Halstead derived
+  APPEND |<td>{ is_row-volume }</td>| &&
+         |<td>{ is_row-difficulty }</td>| TO ct_html.
+  APPEND |<td>{ is_row-effort }</td>| &&
+         |<td>{ is_row-time_t }</td>| &&
+         |<td>{ is_row-bugs }</td>| TO ct_html.
+  " LOC group + MI
+  APPEND |<td>{ is_row-loc }</td><td>{ is_row-lloc }</td>| &&
+         |<td>{ is_row-cloc }</td>| TO ct_html.
+  APPEND |<td>{ is_row-cloc_ratio }</td>| &&
+         |<td>{ is_row-mi }</td>| &&
+         |<td class="{ lv_mic }">{ is_row-mi_rating }</td></tr>| TO ct_html.
+ENDMETHOD.
+
+
+METHOD html_section.
+  APPEND |<h3>{ i_name }</h3>| TO ct_html.
+  APPEND '<table>' TO ct_html.
+  html_hdr( CHANGING ct_html = ct_html ).
+  LOOP AT it_rows INTO DATA(ls_row).
+    " CLASS TOTAL / program TOTAL rows get a highlighted style
+    IF ls_row-name CS 'TOTAL'.
+      APPEND '<tr class="tot">' TO ct_html.
+      APPEND |<td>{ ls_row-name }</td>| &&
+             |<td>{ ls_row-cc }</td><td></td>| TO ct_html.
+      APPEND |<td>{ ls_row-n1 }</td><td>{ ls_row-n2 }</td>| &&
+             |<td>{ ls_row-length }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-eta1 }</td><td>{ ls_row-eta2 }</td>| &&
+             |<td>{ ls_row-vocab }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-volume }</td>| &&
+             |<td>{ ls_row-difficulty }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-effort }</td>| &&
+             |<td>{ ls_row-time_t }</td>| &&
+             |<td>{ ls_row-bugs }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-loc }</td><td>{ ls_row-lloc }</td>| &&
+             |<td>{ ls_row-cloc }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-cloc_ratio }</td>| &&
+             |<td>{ ls_row-mi }</td><td></td></tr>| TO ct_html.
+    ELSE.
+      html_row( is_row = ls_row CHANGING ct_html = ct_html ).
+    ENDIF.
+  ENDLOOP.
+  APPEND '</table>' TO ct_html.
+ENDMETHOD.
+
+
   METHOD format_f2.
     " Correctly format a TYPE F value to 2 decimal places.
     " The old approach (lv_str = i_val) produced scientific notation
@@ -465,6 +896,15 @@ ENDMETHOD.
     ELSE.
       rv = 'CRITICAL'.
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD mi_grade.
+    rv = COND #(
+      WHEN i_mi = 0   THEN '-'
+      WHEN i_mi >= 85 THEN 'HIGH'
+      WHEN i_mi >= 65 THEN 'MEDIUM'
+      ELSE                 'LOW' ).
   ENDMETHOD.
 
 
