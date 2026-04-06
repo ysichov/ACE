@@ -40,7 +40,7 @@ CLASS ZCL_ACE_PARSE_VARS IMPLEMENTATION.
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(stmt).
     CHECK sy-subrc = 0.
     READ TABLE io_scan->tokens INDEX stmt-from INTO DATA(kw_tok).
-    CHECK sy-subrc = 0.
+    CHECK sy-subrc = 0 and kw_tok-str <> 'TYPES'.
     lv_kw = kw_tok-str.
 
 *  IF kw_tok-row = 7585.

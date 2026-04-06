@@ -1,11 +1,11 @@
-CLASS zcl_ace DEFINITION
-  PUBLIC
-  CREATE PUBLIC.
+class ZCL_ACE definition
+  public
+  create public .
 
-  PUBLIC SECTION.
+public section.
 
-    TYPES:
-      BEGIN OF selection_display_s,
+  types:
+    BEGIN OF selection_display_s,
         ind         TYPE i,
         field_label TYPE lvc_fname,
         int_type(1),
@@ -25,8 +25,8 @@ CLASS zcl_ace DEFINITION
         color       TYPE lvc_t_scol,
         style       TYPE lvc_t_styl,
       END OF selection_display_s .
-    TYPES:
-      BEGIN OF t_sel_row,
+  types:
+    BEGIN OF t_sel_row,
         sign        TYPE tvarv_sign,
         opti        TYPE tvarv_opti,
         option_icon TYPE aqadh_type_of_icon,
@@ -35,38 +35,37 @@ CLASS zcl_ace DEFINITION
         more_icon   TYPE aqadh_type_of_icon,
         range       TYPE aqadh_t_ranges,
       END OF t_sel_row .
-    TYPES:
-      BEGIN OF sign_option_icon_s,
+  types:
+    BEGIN OF sign_option_icon_s,
         sign          TYPE tvarv_sign,
         option        TYPE tvarv_opti,
         icon_name(64) TYPE c,
         icon          TYPE aqadh_type_of_icon,
       END OF sign_option_icon_s .
-
-    TYPES:
-      BEGIN OF t_obj,
+  types:
+    BEGIN OF t_obj,
         name       TYPE string,
         alv_viewer TYPE REF TO zcl_ace_table_viewer,
       END OF t_obj .
-    TYPES:
-      BEGIN OF t_popup,
+  types:
+    BEGIN OF t_popup,
         parent TYPE REF TO cl_gui_dialogbox_container,
         child  TYPE REF TO cl_gui_dialogbox_container,
       END OF t_popup .
-    TYPES:
-      BEGIN OF t_classes_types,
+  types:
+    BEGIN OF t_classes_types,
         name TYPE string,
         full TYPE string,
         type TYPE char1,
         key  TYPE salv_de_node_key,
       END OF t_classes_types .
-    TYPES:
-      BEGIN OF t_lang,
+  types:
+    BEGIN OF t_lang,
         spras(4),
         sptxt    TYPE sptxt,
       END OF t_lang .
-    TYPES:
-      BEGIN OF t_stack,
+  types:
+    BEGIN OF t_stack,
         step       TYPE i,
         stacklevel TYPE tpda_stack_level,
         line       TYPE tpda_sc_line,
@@ -76,8 +75,8 @@ CLASS zcl_ace DEFINITION
         prg        TYPE program,
         include    TYPE tpda_include,
       END OF t_stack .
-    TYPES:
-      BEGIN OF t_step_counter,
+  types:
+    BEGIN OF t_step_counter,
         step       TYPE i,
         stacklevel TYPE tpda_stack_level,
         line       TYPE tpda_sc_line,
@@ -90,56 +89,46 @@ CLASS zcl_ace DEFINITION
         include    TYPE tpda_include,
         time       LIKE sy-uzeit,
       END OF t_step_counter .
-
+  types:
     " Aligned with zif_ace_parse_data=>ts_param_binding (dir added)
-    TYPES:
-      BEGIN OF ts_param_binding,
+    BEGIN OF ts_param_binding,
         outer TYPE string,
         inner TYPE string,
         dir   TYPE char1,
       END OF ts_param_binding .
-    TYPES:
-      tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .
-
-    TYPES:
-      ts_calls TYPE zif_ace_parse_data=>ts_calls .
-    TYPES:
-      tt_calls TYPE zif_ace_parse_data=>tt_calls .
-    TYPES:
-      ts_kword TYPE zif_ace_parse_data=>ts_kword .
-    TYPES:
-      tt_kword TYPE zif_ace_parse_data=>tt_kword .
-    TYPES:
-      ts_calls_line TYPE zif_ace_parse_data=>ts_calls_line .
-    TYPES:
-      tt_calls_line TYPE zif_ace_parse_data=>tt_calls_line .
-    TYPES:
-      ts_vars TYPE zif_ace_parse_data=>ts_vars .
-    TYPES:
-      BEGIN OF ts_var,
+  types:
+    tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .
+  types TS_CALLS type ZIF_ACE_PARSE_DATA=>TS_CALLS .
+  types TT_CALLS type ZIF_ACE_PARSE_DATA=>TT_CALLS .
+  types TS_KWORD type ZIF_ACE_PARSE_DATA=>TS_KWORD .
+  types TT_KWORD type ZIF_ACE_PARSE_DATA=>TT_KWORD .
+  types TS_CALLS_LINE type ZIF_ACE_PARSE_DATA=>TS_CALLS_LINE .
+  types TT_CALLS_LINE type ZIF_ACE_PARSE_DATA=>TT_CALLS_LINE .
+  types TS_VARS type ZIF_ACE_PARSE_DATA=>TS_VARS .
+  types:
+    BEGIN OF ts_var,
         program   TYPE string,
         include   TYPE string,
         line      TYPE i,
         name(100) TYPE c,
         type      TYPE string,
       END OF ts_var .
-    TYPES:
-      tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
-    TYPES:
-      tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
-    TYPES:
-      BEGIN OF ts_int_tabs,
+  types:
+    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+  types:
+    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+  types:
+    BEGIN OF ts_int_tabs,
         eventtype TYPE string,
         eventname TYPE string,
         name      TYPE string,
         type      TYPE string,
       END OF ts_int_tabs .
-    TYPES:
-      tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY .
-    TYPES:
-      ts_params TYPE zif_ace_parse_data=>ts_params .
-    TYPES:
-      BEGIN OF ts_parse_state,
+  types:
+    tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY .
+  types TS_PARAMS type ZIF_ACE_PARSE_DATA=>TS_PARAMS .
+  types:
+    BEGIN OF ts_parse_state,
         prev            TYPE string,
         change          TYPE string,
         kw              TYPE string,
@@ -166,8 +155,8 @@ CLASS zcl_ace DEFINITION
         calculated_vars TYPE tt_calculated,
         param           TYPE ts_params,
       END OF ts_parse_state .
-    TYPES:
-      BEGIN OF ts_tree,
+  types:
+    BEGIN OF ts_tree,
         kind(1),
         value    TYPE string,
         param    TYPE string,
@@ -178,28 +167,28 @@ CLASS zcl_ace DEFINITION
         enh_id   TYPE i,
         var_name TYPE string,
       END OF ts_tree .
-    TYPES:
-      BEGIN OF ts_call,
+  types:
+    BEGIN OF ts_call,
         include TYPE string,
         ev_name TYPE string,
         class   TYPE string,
       END OF ts_call .
-    TYPES:
-      BEGIN OF t_sel_var,
+  types:
+    BEGIN OF t_sel_var,
         name   TYPE string,
         i_sel  TYPE boolean,
         refval TYPE REF TO data,
       END OF t_sel_var .
-    TYPES:
-      BEGIN OF ts_if,
+  types:
+    BEGIN OF ts_if,
         if_ind      TYPE i,
         end_ind     TYPE i,
         before_else TYPE i,
       END OF ts_if .
-    TYPES:
-      tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY .
-    TYPES:
-      BEGIN OF ts_line,
+  types:
+    tt_if TYPE STANDARD TABLE OF ts_if WITH EMPTY KEY .
+  types:
+    BEGIN OF ts_line,
         cond        TYPE string,
         program     TYPE string,
         include     TYPE string,
@@ -217,85 +206,83 @@ CLASS zcl_ace DEFINITION
         els_after   TYPE i,
         active_root TYPE flag,
       END OF ts_line .
-    TYPES:
-      tt_line TYPE TABLE OF ts_line WITH EMPTY KEY .
+  types:
+    tt_line TYPE TABLE OF ts_line WITH EMPTY KEY .
 
-    CLASS-DATA:
-      m_option_icons   TYPE TABLE OF sign_option_icon_s .
-    CLASS-DATA:
-      mt_lang          TYPE TABLE OF t_lang .
-    CLASS-DATA:
-      mt_obj           TYPE TABLE OF t_obj .
-    CLASS-DATA:
-      mt_popups        TYPE TABLE OF t_popup .
-    CLASS-DATA i_mermaid_active TYPE boolean .
-    CLASS-DATA:
-      mt_sel TYPE TABLE OF selection_display_s .
-
-    DATA mv_prog TYPE prog .
-    DATA mv_show_prog TYPE prog .
-    DATA mv_show_parse_time TYPE abap_bool .
-    DATA:
-      mt_compo          TYPE TABLE OF scompo .
-    DATA mt_locals TYPE tpda_scr_locals_it .
-    DATA mt_globals TYPE tpda_scr_globals_it .
-    DATA mt_ret_exp TYPE tpda_scr_locals_it .
-    DATA m_counter TYPE i .
-    DATA:
-      mt_steps          TYPE  TABLE OF zcl_ace=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname .
-    DATA m_step TYPE i .
-    DATA m_i_find TYPE boolean .
+  class-data:
+    m_option_icons   TYPE TABLE OF sign_option_icon_s .
+  class-data:
+    mt_lang          TYPE TABLE OF t_lang .
+  class-data:
+    mt_obj           TYPE TABLE OF t_obj .
+  class-data:
+    mt_popups        TYPE TABLE OF t_popup .
+  class-data I_MERMAID_ACTIVE type BOOLEAN .
+  class-data:
+    mt_sel TYPE TABLE OF selection_display_s .
+  data MV_PROG type PROG .
+  data MV_SHOW_PROG type PROG .
+  data MV_SHOW_PARSE_TIME type ABAP_BOOL .
+  data:
+    mt_compo          TYPE TABLE OF scompo .
+  data MT_LOCALS type TPDA_SCR_LOCALS_IT .
+  data MT_GLOBALS type TPDA_SCR_GLOBALS_IT .
+  data MT_RET_EXP type TPDA_SCR_LOCALS_IT .
+  data M_COUNTER type I .
+  data:
+    mt_steps          TYPE  TABLE OF zcl_ace=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname .
+  data M_STEP type I .
+  data M_I_FIND type BOOLEAN .
     "DATA m_stop_stack TYPE i .
     "DATA m_debug TYPE x .
-    DATA m_refresh TYPE boolean .
-    DATA m_update TYPE boolean .
-    DATA i_step TYPE boolean .
-    DATA ms_stack_prev TYPE zcl_ace=>t_stack .
-    DATA ms_stack TYPE zcl_ace=>t_stack .
+  data M_REFRESH type BOOLEAN .
+  data M_UPDATE type BOOLEAN .
+  data I_STEP type BOOLEAN .
+  data MS_STACK_PREV type ZCL_ACE=>T_STACK .
+  data MS_STACK type ZCL_ACE=>T_STACK .
     "DATA i_history TYPE boolean .
-    DATA m_hist_step TYPE i .
-    DATA m_step_delta TYPE i .
-    DATA mv_recurse TYPE i .
-    DATA:
-      mt_classes_types  TYPE TABLE OF zcl_ace=>t_classes_types .
-    DATA mo_window TYPE REF TO zcl_ace_window .
-    DATA mv_f7_stop TYPE boolean .
-    DATA m_f6_level TYPE i .
-    DATA m_target_stack TYPE i .
-    DATA mo_tree_local TYPE REF TO zcl_ace_rtti_tree .
-    DATA:
-      mt_selected_var   TYPE TABLE OF t_sel_var .
-    DATA mv_stack_changed TYPE boolean .
-    DATA m_variable TYPE REF TO data .
-    DATA:
-      mt_new_string     TYPE TABLE OF  string .
-    DATA m_quick TYPE tpda_scr_quick_info .
-    DATA:
-      mr_statements     TYPE RANGE OF string .
-    DATA ms_if TYPE ts_if .
-    DATA mt_if TYPE tt_if .
+  data M_HIST_STEP type I .
+  data M_STEP_DELTA type I .
+  data MV_RECURSE type I .
+  data:
+    mt_classes_types  TYPE TABLE OF zcl_ace=>t_classes_types .
+  data MO_WINDOW type ref to ZCL_ACE_WINDOW .
+  data MV_F7_STOP type BOOLEAN .
+  data M_F6_LEVEL type I .
+  data M_TARGET_STACK type I .
+  data MO_TREE_LOCAL type ref to ZCL_ACE_RTTI_TREE .
+  data:
+    mt_selected_var   TYPE TABLE OF t_sel_var .
+  data MV_STACK_CHANGED type BOOLEAN .
+  data M_VARIABLE type ref to DATA .
+  data:
+    mt_new_string     TYPE TABLE OF  string .
+  data M_QUICK type TPDA_SCR_QUICK_INFO .
+  data:
+    mr_statements     TYPE RANGE OF string .
+  data MS_IF type TS_IF .
+  data MT_IF type TT_IF .
 
     " open_int_table moved to ZCL_ACE_TABLE_VIEWER
-
-    METHODS constructor
-      IMPORTING
-        !i_prog            TYPE prog
-        !i_new_parser      TYPE abap_bool DEFAULT abap_false
-        !i_show_parse_time TYPE abap_bool DEFAULT abap_false .
-    METHODS show .
-    METHODS get_code_flow
-      IMPORTING
-        !i_calc_path   TYPE boolean OPTIONAL
-      RETURNING
-        VALUE(results) TYPE tt_line .
-    METHODS get_code_mix
-      IMPORTING
-        !i_calc_path TYPE boolean OPTIONAL .
-    METHODS mark_active_root
-      IMPORTING
-        !i_calc_path TYPE boolean OPTIONAL
-      CHANGING
-        !ct_results  TYPE tt_line .
+  methods CONSTRUCTOR
+    importing
+      !I_PROG type PROG
+      !I_NEW_PARSER type ABAP_BOOL default ABAP_FALSE
+      !I_SHOW_PARSE_TIME type ABAP_BOOL default ABAP_FALSE .
+  methods SHOW .
+  methods GET_CODE_FLOW
+    importing
+      !I_CALC_PATH type BOOLEAN optional
+    returning
+      value(RESULTS) type TT_LINE .
+  methods GET_CODE_MIX
+    importing
+      !I_CALC_PATH type BOOLEAN optional .
+  methods MARK_ACTIVE_ROOT
+    importing
+      !I_CALC_PATH type BOOLEAN optional
+    changing
+      !CT_RESULTS type TT_LINE .
   PROTECTED SECTION.
 private section.
 
@@ -947,5 +934,4 @@ METHOD remove_empty_loop_pairs.
       IF lv_changed = abap_false. EXIT. ENDIF.
     ENDDO.
   ENDMETHOD.
-
 ENDCLASS.
