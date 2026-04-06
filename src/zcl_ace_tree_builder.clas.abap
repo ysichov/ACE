@@ -301,7 +301,8 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
         DATA(lv_p_icon) = COND salv_de_tree_image( WHEN lv_p-type = 'I' THEN CONV #( icon_parameter_import )
                                                    ELSE                      CONV #( icon_parameter_export ) ).
         mo_tree->add_node( i_name = lv_p-param i_icon = lv_p_icon i_rel = event_node
-          i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
+          i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param
+                            ev_type = subs-eventtype ev_name = subs-eventname ) ).
       ENDLOOP.
 
       IF subs-include IS NOT INITIAL.
@@ -541,7 +542,9 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
           WHEN 'E'. lv_icon = icon_parameter_export.
           WHEN OTHERS. lv_icon = icon_parameter_changing.
         ENDCASE.
-        mo_tree->add_node( i_name = param-param i_icon = lv_icon i_rel = lv_ev_node i_tree = VALUE #( param = param-param ) ).
+        mo_tree->add_node( i_name = param-param i_icon = lv_icon i_rel = lv_ev_node
+          i_tree = VALUE #( value = param-line include = param-include var_name = param-param
+                            ev_type = subs-eventtype ev_name = subs-eventname ) ).
       ENDLOOP.
       DATA lv_var_cnt TYPE i.
       CLEAR lv_var_cnt.
