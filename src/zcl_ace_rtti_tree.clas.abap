@@ -336,6 +336,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     ASSIGN COMPONENT 'PARAM'    OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
     ASSIGN COMPONENT 'PROGRAM'  OF STRUCTURE <row> TO FIELD-SYMBOL(<program>).
     ASSIGN COMPONENT 'INCLUDE'  OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
+    ASSIGN COMPONENT 'CLASS'    OF STRUCTURE <row> TO FIELD-SYMBOL(<class>).
     ASSIGN COMPONENT 'EV_TYPE'  OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_type>).
     ASSIGN COMPONENT 'EV_NAME'  OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
     ASSIGN COMPONENT 'ENH_ID'   OF STRUCTURE <row> TO FIELD-SYMBOL(<enh_id>).
@@ -445,7 +446,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       i_include  = <include>
       i_value    = <value>
       i_var_name = <var_name>
-      i_class    = mo_viewer->mo_window->ms_sel_call-class
+      i_class    = <class> "mo_viewer->mo_window->ms_sel_call-class
       i_ev_type  = <ev_type>
       i_ev_name  = <ev_name>
       io_node    = o_node ).
@@ -1433,7 +1434,8 @@ METHOD expand_vars_method.
       WHERE program = i_program AND class = i_class
         AND eventtype = 'METHOD' AND eventname = i_method.
       add_node( i_name = lv_v-name i_icon = lv_v-icon i_rel = i_node_key
-                i_tree = VALUE #( value = lv_v-line include = lv_v-include var_name = lv_v-name ) ).
+                i_tree = VALUE #( value = lv_v-line include = lv_v-include var_name = lv_v-name
+                                  class = i_class ev_type = 'METHOD' ev_name = i_method ) ).
     ENDLOOP.
   ENDMETHOD.
 ENDCLASS.
