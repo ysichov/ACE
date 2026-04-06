@@ -96,10 +96,13 @@ PRIVATE SECTION.
               !i_value   TYPE any
               !i_ev_type TYPE any .
   METHODS dblclk_var_leaf
-    IMPORTING !i_include  TYPE any
-              !i_value    TYPE any
-              !i_var_name TYPE any
-              !io_node    TYPE REF TO cl_salv_node .
+    IMPORTING !i_include   TYPE any
+              !i_value     TYPE any
+              !i_var_name  TYPE any
+              !i_class     TYPE string OPTIONAL
+              !i_ev_type   TYPE string OPTIONAL
+              !i_ev_name   TYPE string OPTIONAL
+              !io_node     TYPE REF TO cl_salv_node .
 
   " --- hndl_expand_empty sub-handlers: one per param prefix ---
   METHODS expand_add_lazy
@@ -442,6 +445,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       i_include  = <include>
       i_value    = <value>
       i_var_name = <var_name>
+      i_class    = mo_viewer->mo_window->ms_sel_call-class
+      i_ev_type  = <ev_type>
+      i_ev_name  = <ev_name>
       io_node    = o_node ).
 
   endmethod.
@@ -966,15 +972,21 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     mo_viewer->mo_window->set_program_line( CONV #( i_value ) ).
     DATA(lv_var_name) = CONV string( i_var_name ).
     IF lv_var_name IS NOT INITIAL.
-      READ TABLE mo_viewer->mt_selected_var WITH KEY name = lv_var_name TRANSPORTING NO FIELDS.
+      READ TABLE mo_viewer->mt_selected_var WITH KEY name = lv_var_name
+        class = i_class eventtype = i_ev_type eventname = i_ev_name
+        TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
-        DELETE mo_viewer->mt_selected_var WHERE name = lv_var_name.
+        DELETE mo_viewer->mt_selected_var WHERE name = lv_var_name
+          AND class = i_class AND eventtype = i_ev_type AND eventname = i_ev_name.
         io_node->set_row_style( if_salv_c_tree_style=>default ).
       ELSE.
         io_node->set_row_style( if_salv_c_tree_style=>emphasized_b ).
         APPEND INITIAL LINE TO mo_viewer->mt_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
-        <sel>-name  = lv_var_name.
-        <sel>-i_sel = abap_true.
+        <sel>-name      = lv_var_name.
+        <sel>-class     = i_class.
+        <sel>-eventtype = i_ev_type.
+        <sel>-eventname = i_ev_name.
+        <sel>-i_sel     = abap_true.
       ENDIF.
     ENDIF.
   endmethod.

@@ -178,9 +178,12 @@ public section.
       END OF ts_call .
   types:
     BEGIN OF t_sel_var,
-        name   TYPE string,
-        i_sel  TYPE boolean,
-        refval TYPE REF TO data,
+        name      TYPE string,
+        class     TYPE string,
+        eventtype TYPE string,
+        eventname TYPE string,
+        i_sel     TYPE boolean,
+        refval    TYPE REF TO data,
       END OF t_sel_var .
   types:
     BEGIN OF ts_if,
@@ -619,7 +622,14 @@ METHOD build_result_lines.
           READ TABLE it_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
           " composed var already in filter - no action needed here (filter is read-only in this method)
         ENDLOOP.
-        READ TABLE it_selected_var WITH KEY name = calc_var-name TRANSPORTING NO FIELDS.
+        READ TABLE it_selected_var WITH KEY name = calc_var-name
+          class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
+          TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          READ TABLE it_selected_var WITH KEY name = calc_var-name
+            class = '' eventtype = '' eventname = ''
+            TRANSPORTING NO FIELDS.
+        ENDIF.
         IF sy-subrc = 0 OR iv_no_filter = abap_true.
           APPEND INITIAL LINE TO mo_window->mt_watch ASSIGNING <watch>.
           <watch>-program = step-program. <watch>-line = line-line = step-line.
@@ -867,16 +877,28 @@ METHOD propagate_vars_backward.
           WHERE include = step-include AND class = step-class
             AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
         ADD 1 TO ind.
-        READ TABLE ct_selected_var WITH KEY name = calc_var-name TRANSPORTING NO FIELDS.
+        READ TABLE ct_selected_var WITH KEY name = calc_var-name
+          class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
+          TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          READ TABLE ct_selected_var WITH KEY name = calc_var-name
+            class = '' eventtype = '' eventname = ''
+            TRANSPORTING NO FIELDS.
+        ENDIF.
         IF sy-subrc = 0.
           " calc_var found in ct_selected_var - add all composed vars of this line
           LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var)
               WHERE include = step-include AND class = step-class
                 AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
-            READ TABLE ct_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
+            READ TABLE ct_selected_var WITH KEY name = comp_var-name
+              class = comp_var-class eventtype = comp_var-eventtype eventname = comp_var-eventname
+              TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
-              <sel>-name = comp_var-name.
+              <sel>-name      = comp_var-name.
+              <sel>-class     = comp_var-class.
+              <sel>-eventtype = comp_var-eventtype.
+              <sel>-eventname = comp_var-eventname.
             ENDIF.
           ENDLOOP.
         ENDIF.
