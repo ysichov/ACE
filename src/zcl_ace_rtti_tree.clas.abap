@@ -1328,7 +1328,8 @@ METHOD expand_intf.
           WHEN lv_p-type = 'I' THEN CONV #( icon_parameter_import )
           ELSE                      CONV #( icon_parameter_export ) ).
         add_node( i_name = lv_p-param i_icon = lv_picon i_rel = lv_mnode
-                  i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
+                  i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param
+                                    ev_type = lv_m-eventtype ev_name = lv_m-eventname ) ).
       ENDLOOP.
     ENDLOOP.
   ENDMETHOD.
