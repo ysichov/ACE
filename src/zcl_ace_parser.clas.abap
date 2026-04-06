@@ -118,6 +118,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         lo_calcs2->zif_ace_stmt_handler~handle(
           EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
             i_program = lv_prg2 i_include = lv_inc2
+            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
           CHANGING cs_source = cs_source ).
       ENDIF.
 
