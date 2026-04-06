@@ -826,7 +826,7 @@ METHOD html_section.
   html_hdr( CHANGING ct_html = ct_html ).
   LOOP AT it_rows INTO DATA(ls_row).
     " CLASS TOTAL / program TOTAL rows get a highlighted style
-    IF ls_row-name CP '* TOTAL'.
+    IF ls_row-name CS 'TOTAL'.
       APPEND '<tr class="tot">' TO ct_html.
       APPEND |<td>{ ls_row-name }</td>| &&
              |<td>{ ls_row-cc }</td><td></td>| TO ct_html.

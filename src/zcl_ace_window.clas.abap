@@ -228,9 +228,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'DEPTH'     icon = CONV #( icon_next_hierarchy_level ) quickinfo = 'History depth level' text = |Depth { m_hist_depth }| )
        ( function = 'DEPTH_P'   icon = CONV #( icon_arrow_right )         quickinfo = 'Increase depth'                   text = '' )
        ( butn_type = 3  )
-       ( function = 'METRICS'   icon = CONV #( icon_report )              quickinfo = 'Code Metrics (McCabe CC + Halstead)' text = 'Metrics' )
-       ( function = 'MDEBUG'    icon = CONV #( icon_tools )               quickinfo = 'Metrics Debug: operators/operands per block' text = 'Mdebug' )
-       ( function = 'MHTML'     icon = CONV #( icon_htm )                quickinfo = 'Metrics HTML popup'                        text = 'MetricsHTML' )
+       "( function = 'METRICS'   icon = CONV #( icon_report )              quickinfo = 'Code Metrics (McCabe CC + Halstead)' text = 'Metrics' )
+       "( function = 'MDEBUG'    icon = CONV #( icon_tools )               quickinfo = 'Metrics Debug: operators/operands per block' text = 'Mdebug' )
+       ( function = 'MHTML'     icon = CONV #( icon_htm )                quickinfo = 'Code Metrics (McCabe CC + Halstead)'  text = 'Metrics' )
        ( butn_type = 3  )
        ( function = 'STEPS'       icon = CONV #( icon_next_step )    quickinfo = 'Steps table'                   text = 'Steps' )
        ( butn_type = 3  )
@@ -462,6 +462,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             ASSIGNING FIELD-SYMBOL(<mhtml_popup>).
           <mhtml_popup>-parent = mo_viewer->mo_window->mo_box.
           <mhtml_popup>-child  = lo_html_popup->mo_box.
+           lo_html_popup->mo_box->set_focus( lo_html_popup->mo_box ).
+
         ENDIF.
 
       WHEN 'INFO'.
