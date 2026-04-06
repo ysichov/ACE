@@ -538,7 +538,7 @@ METHOD build_html.
     time_t      = format_time( lv_tot_time_t )
     bugs        = format_f2( ls_result-incl_bugs )
   ) TO lt_total.
-  html_section( i_name = 'Total' it_rows = lt_total CHANGING ct_html = rv ).
+  html_section( EXPORTING i_name = 'Total' it_rows = lt_total CHANGING ct_html = rv ).
 
   " --- Section 3: Events ---
   DATA lt_events TYPE tt_row.
@@ -569,7 +569,7 @@ METHOD build_html.
     ) TO lt_events.
   ENDLOOP.
   IF lt_events IS NOT INITIAL.
-    html_section( i_name = 'Events' it_rows = lt_events CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = 'Events' it_rows = lt_events CHANGING ct_html = rv ).
   ENDIF.
 
   " --- Section 4: Forms ---
@@ -600,7 +600,7 @@ METHOD build_html.
     ) TO lt_forms.
   ENDLOOP.
   IF lt_forms IS NOT INITIAL.
-    html_section( i_name = 'Forms' it_rows = lt_forms CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = 'Forms' it_rows = lt_forms CHANGING ct_html = rv ).
   ENDIF.
 
   " --- Section 5: Methods grouped by class ---
@@ -705,7 +705,7 @@ METHOD build_html.
       bugs        = format_f2( lv_tot_bugs )
     ) TO lt_rows.
 
-    html_section( i_name = lv_cls it_rows = lt_rows CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = lv_cls it_rows = lt_rows CHANGING ct_html = rv ).
   ENDLOOP.
 
   " --- Section 6: All methods sorted by CC DESC ---
@@ -737,7 +737,7 @@ METHOD build_html.
   ENDLOOP.
   SORT lt_all BY cc DESCENDING.
   IF lt_all IS NOT INITIAL.
-    html_section(
+    html_section( EXPORTING
       i_name  = 'All Methods (sorted by CC)'
       it_rows = lt_all
       CHANGING ct_html = rv ).
@@ -844,7 +844,7 @@ METHOD html_section.
       APPEND |<td>{ ls_row-cloc_ratio }</td>| &&
              |<td>{ ls_row-mi }</td><td></td></tr>| TO ct_html.
     ELSE.
-      html_row( is_row = ls_row CHANGING ct_html = ct_html ).
+      html_row( EXPORTING is_row = ls_row CHANGING ct_html = ct_html ).
     ENDIF.
   ENDLOOP.
   APPEND '</table>' TO ct_html.

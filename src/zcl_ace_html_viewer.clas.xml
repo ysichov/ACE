@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <abapGit version="v1.0.0" serializer="LCL_OBJECT_CLAS" serializer_version="v1.0.0">
  <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
   <asx:values>
@@ -31,6 +31,12 @@
     </SEOSUBCOTX>
     <SEOSUBCOTX>
      <CMPNAME>CONSTRUCTOR</CMPNAME>
+     <SCONAME>I_HEIGHT</SCONAME>
+     <LANGU>E</LANGU>
+     <DESCRIPT>I_HEIGHT</DESCRIPT>
+    </SEOSUBCOTX>
+    <SEOSUBCOTX>
+     <CMPNAME>CONSTRUCTOR</CMPNAME>
      <SCONAME>I_TITLE</SCONAME>
      <LANGU>E</LANGU>
      <DESCRIPT>I_TITLE</DESCRIPT>
@@ -40,12 +46,6 @@
      <SCONAME>I_WIDTH</SCONAME>
      <LANGU>E</LANGU>
      <DESCRIPT>I_WIDTH</DESCRIPT>
-    </SEOSUBCOTX>
-    <SEOSUBCOTX>
-     <CMPNAME>CONSTRUCTOR</CMPNAME>
-     <SCONAME>I_HEIGHT</SCONAME>
-     <LANGU>E</LANGU>
-     <DESCRIPT>I_HEIGHT</DESCRIPT>
     </SEOSUBCOTX>
    </DESCRIPTIONS_SUB>
   </asx:values>
