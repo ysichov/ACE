@@ -174,14 +174,17 @@ INTERFACE zif_ace_parse_data.
     BEGIN OF ts_var,
       program   TYPE string,
       include   TYPE string,
+      class     TYPE string,
+      eventtype TYPE string,
+      eventname TYPE string,
       line      TYPE i,
       name(100) TYPE c,
       type      TYPE string,
     END OF ts_var .
   TYPES:
-    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
   TYPES:
-    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
 
   " --- reference variables ---
   TYPES:
@@ -423,14 +426,17 @@ CLASS zcl_ace DEFINITION
       BEGIN OF ts_var,
         program   TYPE string,
         include   TYPE string,
+        class     TYPE string,
+        eventtype TYPE string,
+        eventname TYPE string,
         line      TYPE i,
         name(100) TYPE c,
         type      TYPE string,
       END OF ts_var .
     TYPES:
-      tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+      tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
     TYPES:
-      tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+      tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
     TYPES:
       BEGIN OF ts_int_tabs,
         eventtype TYPE string,
@@ -953,18 +959,24 @@ protected section.
       RETURNING VALUE(rv_yes) TYPE abap_bool.
 
     METHODS append_calc
-      IMPORTING i_name    TYPE string
-                i_program TYPE program
-                i_include TYPE program
-                i_line    TYPE i
-      CHANGING  cs_source TYPE zif_ace_parse_data=>ts_parse_data.
+      IMPORTING i_name      TYPE string
+                i_program   TYPE program
+                i_include   TYPE program
+                i_class     TYPE string
+                i_eventtype TYPE string
+                i_eventname TYPE string
+                i_line      TYPE i
+      CHANGING  cs_source   TYPE zif_ace_parse_data=>ts_parse_data.
 
     METHODS append_comp
-      IMPORTING i_name    TYPE string
-                i_program TYPE program
-                i_include TYPE program
-                i_line    TYPE i
-      CHANGING  cs_source TYPE zif_ace_parse_data=>ts_parse_data.
+      IMPORTING i_name      TYPE string
+                i_program   TYPE program
+                i_include   TYPE program
+                i_class     TYPE string
+                i_eventtype TYPE string
+                i_eventname TYPE string
+                i_line      TYPE i
+      CHANGING  cs_source   TYPE zif_ace_parse_data=>ts_parse_data.
 
 ENDCLASS.
 CLASS zcl_ace_parse_calls DEFINITION
@@ -7993,11 +8005,14 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
         SPLIT lv_lhs AT '-' INTO lv_lhs lv_dummy.
       ENDIF.
       IF is_varname( lv_lhs ) = abap_true.
-        append_calc( EXPORTING i_name    = lv_lhs
-                               i_program = i_program
-                               i_include = i_include
-                               i_line    = lv_line
-                     CHANGING  cs_source = cs_source ).
+        append_calc( EXPORTING i_name      = lv_lhs
+                               i_program   = i_program
+                               i_include   = i_include
+                               i_class     = i_class
+                               i_eventtype = i_evtype
+                               i_eventname = i_ev_name
+                               i_line      = lv_line
+                     CHANGING  cs_source   = cs_source ).
       ENDIF.
       lv_tok_pos += 1.
     ENDWHILE.
@@ -8029,7 +8044,9 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
           READ TABLE io_scan->tokens INDEX lv_tok_pos - 2 INTO DATA(ls_prev_obj).
           IF sy-subrc = 0.
             DELETE cs_source-t_composed WHERE program = i_program
-              AND include = i_include AND line = lv_line AND name = ls_prev_obj-str.
+              AND include = i_include AND class = i_class
+              AND eventtype = i_evtype AND eventname = i_ev_name
+              AND line = lv_line AND name = ls_prev_obj-str.
           ENDIF.
           lv_call_depth += 1.
         ENDIF.
@@ -8078,11 +8095,14 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
         SPLIT lv_comp AT '-' INTO lv_comp lv_dummy.
       ENDIF.
       IF is_varname( lv_comp ) = abap_true.
-        append_comp( EXPORTING i_name    = lv_comp
-                               i_program = i_program
-                               i_include = i_include
-                               i_line    = lv_line
-                     CHANGING  cs_source = cs_source ).
+        append_comp( EXPORTING i_name      = lv_comp
+                               i_program   = i_program
+                               i_include   = i_include
+                               i_class     = i_class
+                               i_eventtype = i_evtype
+                               i_eventname = i_ev_name
+                               i_line      = lv_line
+                     CHANGING  cs_source   = cs_source ).
       ENDIF.
       lv_tok_pos += 1.
     ENDWHILE.
@@ -8116,23 +8136,32 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
           CHECK is_varname( lv_outer ) = abap_true.
           CASE ls_bind-dir.
             WHEN 'I'.
-              append_comp( EXPORTING i_name    = lv_outer
-                                     i_program = i_program
-                                     i_include = i_include
-                                     i_line    = lv_line
-                           CHANGING  cs_source = cs_source ).
+              append_comp( EXPORTING i_name      = lv_outer
+                                     i_program   = i_program
+                                     i_include   = i_include
+                                     i_class     = i_class
+                                     i_eventtype = i_evtype
+                                     i_eventname = i_ev_name
+                                     i_line      = lv_line
+                           CHANGING  cs_source   = cs_source ).
             WHEN 'E' OR 'C'.
               lv_has_e_bind = abap_true.
-              append_comp( EXPORTING i_name    = lv_outer
-                                     i_program = i_program
-                                     i_include = i_include
-                                     i_line    = lv_line
-                           CHANGING  cs_source = cs_source ).
-              append_calc( EXPORTING i_name    = lv_outer
-                                     i_program = i_program
-                                     i_include = i_include
-                                     i_line    = lv_line
-                           CHANGING  cs_source = cs_source ).
+              append_comp( EXPORTING i_name      = lv_outer
+                                     i_program   = i_program
+                                     i_include   = i_include
+                                     i_class     = i_class
+                                     i_eventtype = i_evtype
+                                     i_eventname = i_ev_name
+                                     i_line      = lv_line
+                           CHANGING  cs_source   = cs_source ).
+              append_calc( EXPORTING i_name      = lv_outer
+                                     i_program   = i_program
+                                     i_include   = i_include
+                                     i_class     = i_class
+                                     i_eventtype = i_evtype
+                                     i_eventname = i_ev_name
+                                     i_line      = lv_line
+                           CHANGING  cs_source   = cs_source ).
           ENDCASE.
         ENDLOOP.
         " Нет binding dir='E' — вызов встроен в выражение (rv = A * meth(...)).
@@ -8147,11 +8176,14 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
               AND event = 'METHOD'
               AND name  = ls_call-name
               AND type  = 'R'.
-            append_calc( EXPORTING i_name    = ls_ret_p-param
-                                   i_program = i_program
-                                   i_include = i_include
-                                   i_line    = lv_line
-                         CHANGING  cs_source = cs_source ).
+            append_calc( EXPORTING i_name      = ls_ret_p-param
+                                   i_program   = i_program
+                                   i_include   = i_include
+                                   i_class     = i_class
+                                   i_eventtype = i_evtype
+                                   i_eventname = i_ev_name
+                                   i_line      = lv_line
+                         CHANGING  cs_source   = cs_source ).
             EXIT.
           ENDLOOP.
         ENDIF.
@@ -8191,14 +8223,18 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
   METHOD append_calc.
     " Дедупликация делается в GET_CODE_FLOW через SORT + DELETE ADJACENT DUPLICATES
     APPEND VALUE zcl_ace=>ts_var(
-      program = i_program include = i_include line = i_line name = i_name )
+      program = i_program include = i_include
+      class = i_class eventtype = i_eventtype eventname = i_eventname
+      line = i_line name = i_name )
       TO cs_source-t_calculated.
 
   ENDMETHOD.
   METHOD append_comp.
     " Дедупликация делается в GET_CODE_FLOW через SORT + DELETE ADJACENT DUPLICATES
     APPEND VALUE zcl_ace=>ts_var(
-      program = i_program include = i_include line = i_line name = i_name )
+      program = i_program include = i_include
+      class = i_class eventtype = i_eventtype eventname = i_eventname
+      line = i_line name = i_name )
       TO cs_source-t_composed.
 
   ENDMETHOD.
@@ -11217,9 +11253,13 @@ METHOD build_result_lines.
         <line>-class   = step-class.        inserted = abap_true.
       ENDIF.
       CLEAR ind.
-      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var) WHERE line = step-line.
+      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var)
+          WHERE include = step-include AND class = step-class
+            AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
         ADD 1 TO ind.
-        LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
+        LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var)
+            WHERE include = step-include AND class = step-class
+              AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
           READ TABLE it_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
           " composed var already in filter — no action needed here (filter is read-only in this method)
         ENDLOOP.
@@ -11459,12 +11499,16 @@ METHOD propagate_vars_backward.
     DATA: prog TYPE LINE OF zif_ace_parse_data=>tt_progs, keyword TYPE ts_kword, ind TYPE i.
     LOOP AT it_steps INTO DATA(step).
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
-      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var) WHERE line = step-line.
+      LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var)
+          WHERE include = step-include AND class = step-class
+            AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
         ADD 1 TO ind.
         READ TABLE ct_selected_var WITH KEY name = calc_var-name TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
           " calc_var найден в ct_selected_var → добавляем все composed этой строки
-          LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var) WHERE line = step-line.
+          LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var)
+              WHERE include = step-include AND class = step-class
+                AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
             READ TABLE ct_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).

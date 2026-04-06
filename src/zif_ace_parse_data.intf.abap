@@ -150,14 +150,17 @@ INTERFACE zif_ace_parse_data PUBLIC.
     BEGIN OF ts_var,
       program   TYPE string,
       include   TYPE string,
+      class     TYPE string,
+      eventtype TYPE string,
+      eventname TYPE string,
       line      TYPE i,
       name(100) TYPE c,
       type      TYPE string,
     END OF ts_var .
   TYPES:
-    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
   TYPES:
-    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include line name .
+    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
 
   " --- reference variables ---
   TYPES:
