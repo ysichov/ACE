@@ -474,6 +474,7 @@ public section.
         param    TYPE string,
         program  TYPE program,
         include  TYPE program,
+        class    type string,
         ev_type  TYPE string,
         ev_name  TYPE string,
         enh_id   TYPE i,
@@ -2711,65 +2712,70 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->clear_line_markers( 'S' ).
       mo_code_viewer->draw( ).
   endmethod.
-  method SHOW_COVERAGE.
-      DATA: split TYPE TABLE OF string.
-      CLEAR: mt_watch, mt_coverage.
-      LOOP AT mo_viewer->mt_steps INTO DATA(step).
-        READ TABLE mt_stack WITH KEY include = step-include TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO mt_stack ASSIGNING FIELD-SYMBOL(<stack>).
-          MOVE-CORRESPONDING step TO <stack>.
-          SPLIT <stack>-program AT '=' INTO TABLE split.
-          <stack>-prg = <stack>-program.
-          <stack>-program = split[ 1 ].
-        ENDIF.
-        IF step-include <> mo_viewer->mo_window->m_prg-include. CONTINUE. ENDIF.
-      ENDLOOP.
-      IF mt_stack IS INITIAL.
-        SORT ms_sources-tt_progs BY stack.
-        LOOP AT ms_sources-tt_progs INTO DATA(prog).
-          CHECK prog-t_keywords IS NOT INITIAL.
-          APPEND INITIAL LINE TO mt_stack ASSIGNING <stack>.
-          MOVE-CORRESPONDING prog TO <stack>.
-          SPLIT <stack>-program AT '=' INTO TABLE split.
-          <stack>-prg = <stack>-program.
-          <stack>-program = split[ 1 ].
-          <stack>-stacklevel = prog-stack.
-          DATA(pos) = strlen( <stack>-program ).
-          pos = pos - 2.
-          IF pos > 0.
-            DATA(incl) = <stack>-include+pos(2).
-            SELECT SINGLE funcname INTO @<stack>-eventname FROM tfdir
-              WHERE pname_main = @<stack>-program AND include = @incl.
-            IF sy-subrc = 0. <stack>-eventtype = 'FUNCTION'. CONTINUE. ENDIF.
-          ENDIF.
-          DATA: cl_key TYPE seoclskey, meth_includes TYPE seop_methods_w_include.
-          cl_key = <stack>-program.
-          CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
-            EXPORTING clskey = cl_key IMPORTING includes = meth_includes
-            EXCEPTIONS _internal_class_not_existing = 1 OTHERS = 2.
-          IF sy-subrc = 0.
-            READ TABLE meth_includes[] WITH KEY incname = <stack>-include INTO DATA(include).
-            IF sy-subrc = 0.
-              <stack>-eventtype = 'METHOD'. <stack>-eventname = include-cpdkey-cpdname.
-            ENDIF.
-          ENDIF.
-          SPLIT <stack>-include AT '=' INTO TABLE split.
-          CASE split[ lines( split ) ].
-            WHEN 'CP'.    <stack>-eventtype = 'Class Pool'.
-            WHEN 'CU'.    <stack>-eventtype = 'Public Section'.
-            WHEN 'CI'.    <stack>-eventtype = 'Private Section'.
-            WHEN 'CO'.    <stack>-eventtype = 'Protected Section'.
-            WHEN 'IU'.    <stack>-eventtype = 'Interface Public Section'.
-            WHEN 'CCAU'.  <stack>-eventtype = 'Unit Test Classes'.
-            WHEN 'CCIMP'. <stack>-eventtype = 'Local helper classes'.
-            WHEN 'CCDEF'. <stack>-eventtype = 'Local Definitions/Implementations'.
-            WHEN 'CCMAC'. <stack>-eventtype = 'Macros'.
-          ENDCASE.
-        ENDLOOP.
+  METHOD show_coverage.
+    DATA: split TYPE TABLE OF string.
+    CLEAR: mt_watch, mt_coverage.
+    LOOP AT mo_viewer->mt_steps INTO DATA(step).
+      READ TABLE mt_stack WITH KEY include = step-include TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        APPEND INITIAL LINE TO mt_stack ASSIGNING FIELD-SYMBOL(<stack>).
+        MOVE-CORRESPONDING step TO <stack>.
+        SPLIT <stack>-program AT '=' INTO TABLE split.
+        <stack>-prg = <stack>-program.
+        <stack>-program = split[ 1 ].
       ENDIF.
-      SORT mt_coverage. DELETE ADJACENT DUPLICATES FROM mt_coverage.
-  endmethod.
+      IF step-include <> mo_viewer->mo_window->m_prg-include. CONTINUE. ENDIF.
+    ENDLOOP.
+    IF mt_stack IS INITIAL.
+      SORT ms_sources-tt_progs BY stack.
+      LOOP AT ms_sources-tt_progs INTO DATA(prog) WHERE program IS NOT INITIAL.
+        CHECK prog-t_keywords IS NOT INITIAL.
+        APPEND INITIAL LINE TO mt_stack ASSIGNING <stack>.
+        MOVE-CORRESPONDING prog TO <stack>.
+        SPLIT <stack>-program AT '=' INTO TABLE split.
+        <stack>-prg = <stack>-program.
+        <stack>-program = split[ 1 ].
+        <stack>-stacklevel = prog-stack.
+        DATA(pos) = strlen( <stack>-program ).
+        pos = pos - 2.
+        IF pos > 0.
+          DATA(incl) = <stack>-include+pos(2).
+          SELECT SINGLE funcname INTO @<stack>-eventname FROM tfdir
+            WHERE pname_main = @<stack>-program AND include = @incl.
+          IF sy-subrc = 0. <stack>-eventtype = 'FUNCTION'. CONTINUE. ENDIF.
+        ENDIF.
+        DATA: cl_key        TYPE seoclskey, meth_includes TYPE seop_methods_w_include.
+        cl_key = <stack>-program.
+        CALL FUNCTION 'SEO_CLASS_GET_METHOD_INCLUDES'
+          EXPORTING
+            clskey                       = cl_key
+          IMPORTING
+            includes                     = meth_includes
+          EXCEPTIONS
+            _internal_class_not_existing = 1
+            OTHERS                       = 2.
+        IF sy-subrc = 0.
+          READ TABLE meth_includes[] WITH KEY incname = <stack>-include INTO DATA(include).
+          IF sy-subrc = 0.
+            <stack>-eventtype = 'METHOD'. <stack>-eventname = include-cpdkey-cpdname.
+          ENDIF.
+        ENDIF.
+        SPLIT <stack>-include AT '=' INTO TABLE split.
+        CASE split[ lines( split ) ].
+          WHEN 'CP'.    <stack>-eventtype = 'Class Pool'.
+          WHEN 'CU'.    <stack>-eventtype = 'Public Section'.
+          WHEN 'CI'.    <stack>-eventtype = 'Private Section'.
+          WHEN 'CO'.    <stack>-eventtype = 'Protected Section'.
+          WHEN 'IU'.    <stack>-eventtype = 'Interface Public Section'.
+          WHEN 'CCAU'.  <stack>-eventtype = 'Unit Test Classes'.
+          WHEN 'CCIMP'. <stack>-eventtype = 'Local helper classes'.
+          WHEN 'CCDEF'. <stack>-eventtype = 'Local Definitions/Implementations'.
+          WHEN 'CCMAC'. <stack>-eventtype = 'Macros'.
+        ENDCASE.
+      ENDLOOP.
+    ENDIF.
+    SORT mt_coverage. DELETE ADJACENT DUPLICATES FROM mt_coverage.
+  ENDMETHOD.
   METHOD apply_depth.
     CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
            mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
@@ -3111,7 +3117,8 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
         DATA(lv_p_icon) = COND salv_de_tree_image( WHEN lv_p-type = 'I' THEN CONV #( icon_parameter_import )
                                                    ELSE                      CONV #( icon_parameter_export ) ).
         mo_tree->add_node( i_name = lv_p-param i_icon = lv_p_icon i_rel = event_node
-          i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
+          i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param
+                            ev_type = subs-eventtype ev_name = subs-eventname ) ).
       ENDLOOP.
 
       IF subs-include IS NOT INITIAL.
@@ -3351,7 +3358,9 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
           WHEN 'E'. lv_icon = icon_parameter_export.
           WHEN OTHERS. lv_icon = icon_parameter_changing.
         ENDCASE.
-        mo_tree->add_node( i_name = param-param i_icon = lv_icon i_rel = lv_ev_node i_tree = VALUE #( param = param-param ) ).
+        mo_tree->add_node( i_name = param-param i_icon = lv_icon i_rel = lv_ev_node
+          i_tree = VALUE #( value = param-line include = param-include var_name = param-param
+                            ev_type = subs-eventtype ev_name = subs-eventname ) ).
       ENDLOOP.
       DATA lv_var_cnt TYPE i.
       CLEAR lv_var_cnt.
@@ -5855,6 +5864,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     ASSIGN COMPONENT 'PARAM'    OF STRUCTURE <row> TO FIELD-SYMBOL(<param>).
     ASSIGN COMPONENT 'PROGRAM'  OF STRUCTURE <row> TO FIELD-SYMBOL(<program>).
     ASSIGN COMPONENT 'INCLUDE'  OF STRUCTURE <row> TO FIELD-SYMBOL(<include>).
+    ASSIGN COMPONENT 'CLASS'    OF STRUCTURE <row> TO FIELD-SYMBOL(<class>).
     ASSIGN COMPONENT 'EV_TYPE'  OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_type>).
     ASSIGN COMPONENT 'EV_NAME'  OF STRUCTURE <row> TO FIELD-SYMBOL(<ev_name>).
     ASSIGN COMPONENT 'ENH_ID'   OF STRUCTURE <row> TO FIELD-SYMBOL(<enh_id>).
@@ -5913,7 +5923,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       WITH KEY program = <program> include = <include> eventname = <ev_name> eventtype = <ev_type>
       INTO mo_viewer->mo_window->ms_sel_call.
 
-    IF <ev_type> = 'METHOD' OR <ev_type> = 'FORM' OR <ev_type> = 'MODULE'.
+    IF <var_name> IS INITIAL AND ( <ev_type> = 'METHOD' OR <ev_type> = 'FORM' OR <ev_type> = 'MODULE' ).
       mo_viewer->mo_window->ms_code_context = VALUE #(
         evtype = <ev_type>
         evname = <ev_name>
@@ -5964,7 +5974,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       i_include  = <include>
       i_value    = <value>
       i_var_name = <var_name>
-      i_class    = mo_viewer->mo_window->ms_sel_call-class
+      i_class    = <class> "mo_viewer->mo_window->ms_sel_call-class
       i_ev_type  = <ev_type>
       i_ev_name  = <ev_name>
       io_node    = o_node ).
@@ -6825,7 +6835,8 @@ METHOD expand_intf.
           WHEN lv_p-type = 'I' THEN CONV #( icon_parameter_import )
           ELSE                      CONV #( icon_parameter_export ) ).
         add_node( i_name = lv_p-param i_icon = lv_picon i_rel = lv_mnode
-                  i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param ) ).
+                  i_tree = VALUE #( value = lv_p-line include = lv_p-include var_name = lv_p-param
+                                    ev_type = lv_m-eventtype ev_name = lv_m-eventname ) ).
       ENDLOOP.
     ENDLOOP.
   ENDMETHOD.
@@ -6903,7 +6914,8 @@ METHOD expand_vars_method.
       WHERE program = i_program AND class = i_class
         AND eventtype = 'METHOD' AND eventname = i_method.
       add_node( i_name = lv_v-name i_icon = lv_v-icon i_rel = i_node_key
-                i_tree = VALUE #( value = lv_v-line include = lv_v-include var_name = lv_v-name ) ).
+                i_tree = VALUE #( value = lv_v-line include = lv_v-include var_name = lv_v-name
+                                  class = i_class ev_type = 'METHOD' ev_name = i_method ) ).
     ENDLOOP.
   ENDMETHOD.
 ENDCLASS.
@@ -8123,7 +8135,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       rv_type = ls_var-type.
     ENDIF.
   ENDMETHOD.
-  METHOD collect_method_calls.
+METHOD collect_method_calls.
     DATA lv_tstr     TYPE string.
     DATA lv_arrow    TYPE string.
     DATA lv_left     TYPE string.
@@ -8302,6 +8314,9 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       lv_call_cls = COND #( WHEN lv_c-class IS NOT INITIAL THEN lv_c-class ELSE mv_class_name ).
 
       " ── LHS: lv_x = meth(…) → RETURNING ──────────────────────────
+      " Сначала проверяем токен непосредственно перед вызовом (простой случай).
+      " Если он не '=', ищем '=' у начала statement — случай
+      " rv_payment = iv_amount * get_factor(  где '=' далеко назад.
       CLEAR lv_lhs.
       DATA(lv_lhs_pos) = lv_ti - 1.
       IF lv_lhs_pos >= i_stmt-from.
@@ -8313,6 +8328,22 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
             REPLACE ALL OCCURRENCES OF 'DATA(' IN lv_lhs WITH ''.
             REPLACE ALL OCCURRENCES OF ')' IN lv_lhs WITH ''.
             CONDENSE lv_lhs NO-GAPS.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      " Fallback: rv_x = a * b * get_factor( — '=' стоит на позиции from+1
+      IF lv_lhs IS INITIAL.
+        DATA(lv_stmt_eq_pos) = i_stmt-from + 1.
+        IF lv_stmt_eq_pos <= i_stmt-to.
+          READ TABLE io_scan->tokens INDEX lv_stmt_eq_pos INTO DATA(ls_stmt_eq).
+          IF ls_stmt_eq-str = '='.
+            READ TABLE io_scan->tokens INDEX i_stmt-from INTO DATA(ls_stmt_lhs).
+            IF sy-subrc = 0.
+              lv_lhs = ls_stmt_lhs-str.
+              REPLACE ALL OCCURRENCES OF 'DATA(' IN lv_lhs WITH ''.
+              REPLACE ALL OCCURRENCES OF ')' IN lv_lhs WITH ''.
+              CONDENSE lv_lhs NO-GAPS.
+            ENDIF.
           ENDIF.
         ENDIF.
       ENDIF.
@@ -8637,7 +8668,6 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     ENDLOOP.
 
   ENDMETHOD.
-
 ENDCLASS.
 
 CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
@@ -11357,7 +11387,7 @@ DATA(lv_maxlen) = 200.
 
     CLEAR mo_viewer->mt_if.
     DATA(lines) = mo_viewer->get_code_flow( i_calc_path = i_calc_path ).
-    CHECK lines IS NOT INITIAL.
+    "CHECK lines IS NOT INITIAL.
 
     direction = COND string(
       WHEN i_direction IS NOT INITIAL THEN i_direction
@@ -12105,17 +12135,19 @@ METHOD build_result_lines.
       ENDIF.
       CLEAR ind.
       LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var)
-          WHERE include = step-include AND class = step-class
-            AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
+          WHERE include = step-include
+            "AND class = step-class AND eventtype = step-eventtype AND eventname = step-eventname
+            AND line = step-line.
         ADD 1 TO ind.
         LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var)
-            WHERE include = step-include AND class = step-class
-              AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
+            WHERE include = step-include
+              "AND class = step-class AND eventtype = step-eventtype AND eventname = step-eventname
+              AND line = step-line.
           READ TABLE it_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
           " composed var already in filter - no action needed here (filter is read-only in this method)
         ENDLOOP.
         READ TABLE it_selected_var WITH KEY name = calc_var-name
-          class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
+          "class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
           TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           READ TABLE it_selected_var WITH KEY name = calc_var-name
@@ -12358,11 +12390,12 @@ METHOD propagate_vars_backward.
     LOOP AT it_steps INTO DATA(step).
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var)
-          WHERE include = step-include AND class = step-class
-            AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
+          WHERE include = step-include
+            "AND class = step-class AND eventtype = step-eventtype AND eventname = step-eventname
+            AND line = step-line.
         ADD 1 TO ind.
         READ TABLE ct_selected_var WITH KEY name = calc_var-name
-          class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
+          "class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
           TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           READ TABLE ct_selected_var WITH KEY name = calc_var-name
@@ -12372,10 +12405,11 @@ METHOD propagate_vars_backward.
         IF sy-subrc = 0.
           " calc_var found in ct_selected_var - add all composed vars of this line
           LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var)
-              WHERE include = step-include AND class = step-class
-                AND eventtype = step-eventtype AND eventname = step-eventname AND line = step-line.
+              WHERE include = step-include
+                "AND class = step-class  AND eventtype = step-eventtype AND eventname = step-eventname
+                AND line = step-line.
             READ TABLE ct_selected_var WITH KEY name = comp_var-name
-              class = comp_var-class eventtype = comp_var-eventtype eventname = comp_var-eventname
+              "class = comp_var-class eventtype = comp_var-eventtype eventname = comp_var-eventname
               TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
@@ -12596,8 +12630,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-04-06T13:55:59.519Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-04-06T13:55:59.519Z`.
+* abapmerge 0.16.7 - 2026-04-07T06:22:17.330Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-04-07T06:22:17.330Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
