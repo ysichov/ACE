@@ -14,6 +14,7 @@ public section.
   data MO_DIAGRAM type ref to OBJECT .
   data MV_TYPE type STRING .
   data MV_CALC_PATH type BOOLEAN .
+  data MV_WITH_PARAMS type BOOLEAN .
   data MV_DIRECTION type UI_FUNC .
 
   methods CONSTRUCTOR
@@ -23,7 +24,8 @@ public section.
   methods STEPS_FLOW
     importing
       !I_DIRECTION   type UI_FUNC    optional
-      !I_WITH_PARAMS type BOOLEAN    optional .
+      !I_WITH_PARAMS type BOOLEAN    optional
+      !I_CALC_PATH   type BOOLEAN    optional .
   methods MAGIC_SEARCH
     importing
       !I_DIRECTION type UI_FUNC optional
@@ -529,10 +531,11 @@ DATA(lv_maxlen) = 200.
        ( function = 'TB'       icon = CONV #( icon_view_expand_vertical )   quickinfo = 'Vertical'   text = '' )
        ( function = 'LR'       icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
        ( butn_type = 3 )
-       ( function = 'CALLS'      icon = CONV #( icon_workflow_process )       quickinfo = 'Calls Flow'              text = 'Calls Flow' )
-       ( function = 'WITHPARAMS' icon = CONV #( icon_parameter )             quickinfo = 'Calls Flow with Params'  text = 'With Params' )
-       ( function = 'FLOW'       icon = CONV #( icon_wizard )                quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
-       ( function = 'CALCPATH' icon = CONV #( icon_workflow_process )       quickinfo = 'Calc Path - only assigned variables' text = 'Calc Path' )
+       ( function = 'CALLS'        icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow'              text = 'Calls Flow' )
+       ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Code Flow'               text = 'Code Flow' )
+       ( butn_type = 3 )
+       ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
+       ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
        ( butn_type = 3 )
        ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )            quickinfo = 'Decrease depth' text = '' )
        ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level )  quickinfo = 'Depth level' text = |Depth { lv_depth }| )
@@ -594,8 +597,8 @@ DATA(lv_maxlen) = 200.
       ENDIF.
 
       CASE mv_type.
-        WHEN 'CALLS'. steps_flow( ).
-        WHEN 'FLOW'.  magic_search( ).
+        WHEN 'CALLS'. steps_flow( i_with_params = mv_with_params i_calc_path = mv_calc_path ).
+        WHEN 'FLOW'.  magic_search( i_calc_path = mv_calc_path ).
       ENDCASE.
 
       mo_box->set_focus( mo_box ).
@@ -616,12 +619,20 @@ DATA(lv_maxlen) = 200.
 
       IF fcode = 'LR' OR fcode = 'TB'.
         mv_direction = fcode.
-      ELSEIF fcode = 'CALCPATH'.
-        mv_type = 'CALCPATH'.
-        mv_calc_path = abap_true.
-      ELSEIF fcode = 'WITHPARAMS'.
-        mv_type = 'WITHPARAMS'.
-        CLEAR mv_calc_path.
+      ELSEIF fcode = 'TOGGLE_CALC'.
+        mv_calc_path = COND #( WHEN mv_calc_path = abap_true THEN abap_false ELSE abap_true ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'TOGGLE_CALC'
+                    text  = COND #( WHEN mv_calc_path = abap_true
+                                    THEN 'Only Calculated'
+                                    ELSE 'Show All Steps' ) ).
+      ELSEIF fcode = 'TOGGLE_PARAMS'.
+        mv_with_params = COND #( WHEN mv_with_params = abap_true THEN abap_false ELSE abap_true ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'TOGGLE_PARAMS'
+                    text  = COND #( WHEN mv_with_params = abap_true
+                                    THEN 'Hide Params'
+                                    ELSE 'Show Params' ) ).
       ELSEIF fcode = 'DEPTH_M'.
         IF mo_viewer->mo_window->m_hist_depth > 0.
           mo_viewer->mo_window->m_hist_depth -= 1.
@@ -670,7 +681,6 @@ DATA(lv_maxlen) = 200.
         RETURN.
       ELSE.
         mv_type = fcode.
-        CLEAR mv_calc_path.
       ENDIF.
 
       refresh( ).
@@ -699,10 +709,13 @@ DATA(lv_maxlen) = 200.
   method REFRESH.
 
       CASE mv_type.
-        WHEN 'CALLS'.      steps_flow( mv_direction ).
-        WHEN 'WITHPARAMS'. steps_flow( i_direction = mv_direction i_with_params = abap_true ).
-        WHEN 'FLOW'.       magic_search( i_direction = mv_direction ).
-        WHEN 'CALCPATH'.   magic_search( i_direction = mv_direction i_calc_path = abap_true ).
+        WHEN 'CALLS'.
+          steps_flow( i_direction   = mv_direction
+                      i_with_params = mv_with_params
+                      i_calc_path   = mv_calc_path ).
+        WHEN 'FLOW'.
+          magic_search( i_direction = mv_direction
+                        i_calc_path = mv_calc_path ).
       ENDCASE.
 
   endmethod.
@@ -750,7 +763,27 @@ DATA(lv_maxlen) = 200.
 
     DATA(copy) = mo_viewer->mt_steps.
 
-    " ── Шаг 1: собираем уникальные ноды ────────────────────────────
+    " Filter steps to only calculated ones when requested
+    IF i_calc_path = abap_true.
+      DATA(lt_flow) = mo_viewer->get_code_flow( i_calc_path = abap_true ).
+      DATA lt_active_ev TYPE TABLE OF string WITH EMPTY KEY.
+      LOOP AT lt_flow INTO DATA(ls_fl) WHERE active_root = abap_true.
+        READ TABLE lt_active_ev WITH KEY table_line = ls_fl-ev_name TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND ls_fl-ev_name TO lt_active_ev.
+        ENDIF.
+      ENDLOOP.
+      DATA lt_copy_filt LIKE copy.
+      LOOP AT copy INTO DATA(ls_cp_filt).
+        READ TABLE lt_active_ev WITH KEY table_line = ls_cp_filt-eventname TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          APPEND ls_cp_filt TO lt_copy_filt.
+        ENDIF.
+      ENDLOOP.
+      copy = lt_copy_filt.
+    ENDIF.
+
+    " ── Step 1: collect unique nodes ────────────────────────────────
     LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
       entity-event     = <copy>-eventtype.
       entity-eventname = <copy>-eventname.   " save raw name before overwrite below

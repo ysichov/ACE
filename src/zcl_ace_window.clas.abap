@@ -138,6 +138,7 @@ public section.
     mt_calls               TYPE TABLE OF ZCL_ACE=>TS_CALL .
   data M_HIST_DEPTH type I .
   data M_START_STACK type I .
+  data MV_CALC_ONLY type BOOLEAN .
   data:
     mt_source              TYPE STANDARD  TABLE OF ts_source .
   data MS_SOURCES type TS_SOURCE .
@@ -220,8 +221,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
-       ( function = 'CODEMIX'   icon = CONV #( icon_wizard )              quickinfo = 'Full code flow sequence'          text = 'Code Flow' )
-       ( function = 'CALCONLY'  icon = CONV #( icon_biw_formula )         quickinfo = 'Only lines that calculate values'  text = 'Calculation only' )
+       ( function = 'CODEMIX'     icon = CONV #( icon_wizard )              quickinfo = 'Full code flow sequence'          text = 'Code Flow' )
+       ( function = 'TOGGLE_CALC' icon = CONV #( icon_biw_formula )        quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'HANDLERS'  icon = CONV #( icon_oo_event )            quickinfo = 'Event Handlers flow'              text = 'Handlers' )
        ( function = 'CODE'      icon = CONV #( icon_customer_warehouse )  quickinfo = 'Only Z'                           text = 'Only Z' )
        ( function = 'DEPTH_M'   icon = CONV #( icon_arrow_left )          quickinfo = 'Decrease depth'                   text = '' )
@@ -362,14 +363,23 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       WHEN 'CODEMIX'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
-        mo_viewer->get_code_mix( ).
+        mo_viewer->get_code_mix( i_calc_path = mv_calc_only ).
         mo_viewer->mo_window->show_stack( ).
 
-      WHEN 'CALCONLY'.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
-        apply_depth( ).
-        mo_viewer->get_code_mix( i_calc_path = abap_true ).
-        mo_viewer->mo_window->show_stack( ).
+      WHEN 'TOGGLE_CALC'.
+        mv_calc_only = COND #( WHEN mv_calc_only = abap_true THEN abap_false ELSE abap_true ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'TOGGLE_CALC'
+                    text  = COND #( WHEN mv_calc_only = abap_true
+                                    THEN 'Only Calculated'
+                                    ELSE 'Show All Steps' ) ).
+        " Re-run current view with new filter if Code Flow is active
+        IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+          apply_depth( ).
+          mo_viewer->get_code_mix( i_calc_path = mv_calc_only ).
+          mo_viewer->mo_window->show_stack( ).
+        ENDIF.
 
       WHEN 'HANDLERS'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
