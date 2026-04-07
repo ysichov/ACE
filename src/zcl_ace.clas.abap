@@ -615,18 +615,18 @@ METHOD build_result_lines.
       CLEAR ind.
       LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var)
           WHERE include = step-include
-            "AND class = step-class AND eventtype = step-eventtype AND eventname = step-eventname
+            AND class = step-class AND eventtype = step-eventtype AND eventname = step-eventname
             AND line = step-line.
         ADD 1 TO ind.
         LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var)
             WHERE include = step-include
-              "AND class = step-class AND eventtype = step-eventtype AND eventname = step-eventname
+              AND class = step-class AND eventtype = step-eventtype AND eventname = step-eventname
               AND line = step-line.
           READ TABLE it_selected_var WITH KEY name = comp_var-name TRANSPORTING NO FIELDS.
           " composed var already in filter - no action needed here (filter is read-only in this method)
         ENDLOOP.
         READ TABLE it_selected_var WITH KEY name = calc_var-name
-          "class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
+          class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
           TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           READ TABLE it_selected_var WITH KEY name = calc_var-name
@@ -878,11 +878,11 @@ METHOD propagate_vars_backward.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = step-include INTO prog.
       LOOP AT mo_window->ms_sources-t_calculated INTO DATA(calc_var)
           WHERE include = step-include
-            "AND class = step-class AND eventtype = step-eventtype AND eventname = step-eventname
+            AND class = step-class AND eventtype = step-eventtype AND eventname = step-eventname
             AND line = step-line.
         ADD 1 TO ind.
         READ TABLE ct_selected_var WITH KEY name = calc_var-name
-          "class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
+          class = calc_var-class eventtype = calc_var-eventtype eventname = calc_var-eventname
           TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           READ TABLE ct_selected_var WITH KEY name = calc_var-name
@@ -893,7 +893,7 @@ METHOD propagate_vars_backward.
           " calc_var found in ct_selected_var - add all composed vars of this line
           LOOP AT mo_window->ms_sources-t_composed INTO DATA(comp_var)
               WHERE include = step-include
-                "AND class = step-class  AND eventtype = step-eventtype AND eventname = step-eventname
+                AND class = step-class  AND eventtype = step-eventtype AND eventname = step-eventname
                 AND line = step-line.
             READ TABLE ct_selected_var WITH KEY name = comp_var-name
               "class = comp_var-class eventtype = comp_var-eventtype eventname = comp_var-eventname
