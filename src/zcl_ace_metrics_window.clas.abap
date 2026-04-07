@@ -503,23 +503,7 @@ METHOD build_html.
   APPEND '    border:1px solid #ddd;white-space:pre-wrap;margin:4px 0}' TO rv.
   APPEND '</style></head><body>' TO rv.
 
-  " --- Section 1: Summary ---
-  APPEND |<h2>Code Metrics: { i_program }</h2>| TO rv.
-  APPEND |<p>Units analysed: <b>{ lines( ls_result-units ) }</b></p>| TO rv.
-  APPEND |<p>Total Cyclomatic Complexity: <b>{ lv_tot_cc }</b>| TO rv.
-  APPEND |&nbsp;&nbsp;Avg CC / unit: | &&
-         |<b>{ format_f2( ls_result-avg_cyclomatic ) }</b></p>| TO rv.
-  APPEND |<p>Halstead Volume: <b>{ format_f2( ls_result-incl_volume ) }</b>| TO rv.
-  DATA(lv_sum_time) = ls_result-incl_effort / 18.
-  APPEND |&nbsp;&nbsp;Effort: <b>{ format_f2( ls_result-incl_effort ) }</b></p>| TO rv.
-  APPEND |<p>Time: <b>{ format_time( lv_sum_time ) }</b>| &&
-         |&nbsp;&nbsp;Expected Bugs: | &&
-         |<b>{ format_f2( ls_result-incl_bugs ) }</b></p>| TO rv.
-  APPEND |<p>LOC / LLOC / CLOC / CLOC%: | &&
-         |<b>{ lv_tot_loc }</b> / <b>{ lv_tot_lloc }</b> / | TO rv.
-  APPEND |<b>{ lv_tot_cloc }</b> / <b>{ lv_ratio }</b></p>| TO rv.
-
-  " --- Section 2: Total ---
+  " --- Section 2: Total (built first so header can reference its values) ---
   DATA lt_total TYPE tt_row.
   APPEND VALUE ts_row(
     name        = |{ i_program } TOTAL|
@@ -538,6 +522,22 @@ METHOD build_html.
     time_t      = format_time( lv_tot_time_t )
     bugs        = format_f2( lv_tot_bugs )
   ) TO lt_total.
+  DATA(ls_tot) = lt_total[ 1 ].
+
+  " --- Section 1: Summary ---
+  APPEND |<h2>Code Metrics: { i_program }</h2>| TO rv.
+  APPEND |<p>Units analysed: <b>{ lines( ls_result-units ) }</b></p>| TO rv.
+  APPEND |<p>Total Cyclomatic Complexity: <b>{ lv_tot_cc }</b>| TO rv.
+  APPEND |&nbsp;&nbsp;Avg CC / unit: | &&
+         |<b>{ format_f2( ls_result-avg_cyclomatic ) }</b></p>| TO rv.
+  APPEND |<p>Halstead Volume: <b>{ ls_tot-volume }</b>| TO rv.
+  APPEND |&nbsp;&nbsp;Effort: <b>{ ls_tot-effort }</b></p>| TO rv.
+  APPEND |<p>Time: <b>{ ls_tot-time_t }</b>| &&
+         |&nbsp;&nbsp;Expected Bugs: <b>{ ls_tot-bugs }</b></p>| TO rv.
+  APPEND |<p>LOC / LLOC / CLOC / CLOC%: | &&
+         |<b>{ lv_tot_loc }</b> / <b>{ lv_tot_lloc }</b> / | TO rv.
+  APPEND |<b>{ lv_tot_cloc }</b> / <b>{ lv_ratio }</b></p>| TO rv.
+
   html_section( EXPORTING i_name = 'Total' it_rows = lt_total CHANGING ct_html = rv ).
 
   " --- Section 3: Events ---
