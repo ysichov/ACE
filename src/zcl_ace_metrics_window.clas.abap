@@ -72,9 +72,10 @@ CLASS zcl_ace_metrics_window DEFINITION
       CHANGING  ct_html TYPE w3htmltab.
 
     CLASS-METHODS html_section
-      IMPORTING i_name  TYPE string
-                it_rows TYPE tt_row
-      CHANGING  ct_html TYPE w3htmltab.
+      IMPORTING i_name     TYPE string
+                it_rows    TYPE tt_row
+                i_numbered TYPE abap_bool OPTIONAL
+      CHANGING  ct_html    TYPE w3htmltab.
 
 ENDCLASS.
 
@@ -828,6 +829,7 @@ METHOD build_html.
 
     APPEND VALUE ts_row(
       name        = 'CLASS TOTAL'
+      units       = lines( lt_rows )
       cc          = lv_tot_cc
       risk        = ''
       n1          = lv_tot_n1        n2     = lv_tot_n2
@@ -877,8 +879,9 @@ METHOD build_html.
   SORT lt_all BY cc DESCENDING.
   IF lt_all IS NOT INITIAL.
     html_section( EXPORTING
-      i_name  = 'All Methods (sorted by CC)'
-      it_rows = lt_all
+      i_name     = 'All Methods (sorted by CC)'
+      it_rows    = lt_all
+      i_numbered = abap_true
       CHANGING ct_html = rv ).
   ENDIF.
 
@@ -963,9 +966,21 @@ ENDMETHOD.
 METHOD html_section.
   APPEND |<h3>{ i_name }</h3>| TO ct_html.
   APPEND '<table>' TO ct_html.
-  html_hdr( CHANGING ct_html = ct_html ).
+  IF i_numbered = abap_true.
+    APPEND '<tr><th>№</th>' TO ct_html.
+    APPEND '<th>Name</th><th>CC</th><th>Risk</th>' TO ct_html.
+    APPEND '<th>N1</th><th>N2</th><th>Length</th>' TO ct_html.
+    APPEND '<th>eta1</th><th>eta2</th><th>Vocab</th>' TO ct_html.
+    APPEND '<th>Volume</th><th>Difficulty</th>' TO ct_html.
+    APPEND '<th>Effort</th><th>Time</th><th>Bugs</th>' TO ct_html.
+    APPEND '<th>LOC</th><th>LLOC</th><th>CLOC</th>' TO ct_html.
+    APPEND '<th>CLOC%</th><th>MI</th><th>MI Rating</th></tr>' TO ct_html.
+  ELSE.
+    html_hdr( CHANGING ct_html = ct_html ).
+  ENDIF.
+  DATA lv_num TYPE i.
   LOOP AT it_rows INTO DATA(ls_row).
-    " Total rows get a highlighted style
+    lv_num += 1.
     IF ls_row-name CS 'TOTAL'.
       APPEND '<tr class="tot">' TO ct_html.
       APPEND |<td>{ ls_row-name }</td>| &&
@@ -984,6 +999,29 @@ METHOD html_section.
              |<td>{ ls_row-cloc }</td>| TO ct_html.
       APPEND |<td>{ ls_row-cloc_ratio }</td>| &&
              |<td>{ ls_row-mi }</td><td></td></tr>| TO ct_html.
+    ELSEIF i_numbered = abap_true.
+      DATA(lv_rc)  = COND string( WHEN ls_row-risk = 'LOW'      THEN 'low'
+                                  WHEN ls_row-risk = 'MEDIUM'   THEN 'med'
+                                  WHEN ls_row-risk = 'HIGH'     THEN 'high'
+                                  WHEN ls_row-risk = 'CRITICAL' THEN 'crit' ).
+      DATA(lv_mic) = COND string( WHEN ls_row-mi_rating = 'HIGH'   THEN 'mi-h'
+                                  WHEN ls_row-mi_rating = 'MEDIUM' THEN 'mi-m'
+                                  WHEN ls_row-mi_rating = 'LOW'    THEN 'mi-l' ).
+      APPEND |<tr><td>{ lv_num }</td><td>{ ls_row-name }</td>| &&
+             |<td>{ ls_row-cc }</td>| &&
+             |<td class="{ lv_rc }">{ ls_row-risk }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-n1 }</td><td>{ ls_row-n2 }</td>| &&
+             |<td>{ ls_row-length }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-eta1 }</td><td>{ ls_row-eta2 }</td>| &&
+             |<td>{ ls_row-vocab }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-volume }</td><td>{ ls_row-difficulty }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-effort }</td><td>{ ls_row-time_t }</td>| &&
+             |<td>{ ls_row-bugs }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-loc }</td><td>{ ls_row-lloc }</td>| &&
+             |<td>{ ls_row-cloc }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-cloc_ratio }</td>| &&
+             |<td>{ ls_row-mi }</td>| &&
+             |<td class="{ lv_mic }">{ ls_row-mi_rating }</td></tr>| TO ct_html.
     ELSE.
       html_row( EXPORTING is_row = ls_row CHANGING ct_html = ct_html ).
     ENDIF.
