@@ -154,11 +154,11 @@ METHOD show.
     length      = ls_result-incl_prog_length
     loc         = lv_tot_loc       lloc   = lv_tot_lloc   cloc = lv_tot_cloc
     cloc_ratio  = lv_ratio
-    volume      = format_f2( ls_result-incl_volume )
+    volume      = format_f2( lv_tot_vol )
     difficulty  = format_f2( ls_result-incl_difficulty )
-    effort      = format_f2( ls_result-incl_effort )
+    effort      = format_f2( lv_tot_eff )
     time_t      = format_time( lv_tot_time_t )
-    bugs        = format_f2( ls_result-incl_bugs )
+    bugs        = format_f2( lv_tot_bugs )
   ) TO lt_total.
 
   cl_demo_output=>write_data( value = lt_total name = `Total` ).
@@ -532,11 +532,11 @@ METHOD build_html.
     length      = ls_result-incl_prog_length
     loc         = lv_tot_loc       lloc   = lv_tot_lloc   cloc = lv_tot_cloc
     cloc_ratio  = lv_ratio
-    volume      = format_f2( ls_result-incl_volume )
+    volume      = format_f2( lv_tot_vol )
     difficulty  = format_f2( ls_result-incl_difficulty )
-    effort      = format_f2( ls_result-incl_effort )
+    effort      = format_f2( lv_tot_eff )
     time_t      = format_time( lv_tot_time_t )
-    bugs        = format_f2( ls_result-incl_bugs )
+    bugs        = format_f2( lv_tot_bugs )
   ) TO lt_total.
   html_section( EXPORTING i_name = 'Total' it_rows = lt_total CHANGING ct_html = rv ).
 
