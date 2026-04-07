@@ -22,7 +22,8 @@ public section.
       !I_TYPE type STRING .
   methods STEPS_FLOW
     importing
-      !I_DIRECTION type UI_FUNC optional .
+      !I_DIRECTION   type UI_FUNC    optional
+      !I_WITH_PARAMS type BOOLEAN    optional .
   methods MAGIC_SEARCH
     importing
       !I_DIRECTION type UI_FUNC optional
@@ -528,8 +529,9 @@ DATA(lv_maxlen) = 200.
        ( function = 'TB'       icon = CONV #( icon_view_expand_vertical )   quickinfo = 'Vertical'   text = '' )
        ( function = 'LR'       icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
        ( butn_type = 3 )
-       ( function = 'CALLS'    icon = CONV #( icon_workflow_process )       quickinfo = 'Calls Flow'  text = 'Calls Flow' )
-       ( function = 'FLOW'     icon = CONV #( icon_wizard )                 quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
+       ( function = 'CALLS'      icon = CONV #( icon_workflow_process )       quickinfo = 'Calls Flow'              text = 'Calls Flow' )
+       ( function = 'WITHPARAMS' icon = CONV #( icon_parameter )             quickinfo = 'Calls Flow with Params'  text = 'With Params' )
+       ( function = 'FLOW'       icon = CONV #( icon_wizard )                quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
        ( function = 'CALCPATH' icon = CONV #( icon_workflow_process )       quickinfo = 'Calc Path - only assigned variables' text = 'Calc Path' )
        ( butn_type = 3 )
        ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )            quickinfo = 'Decrease depth' text = '' )
@@ -617,6 +619,9 @@ DATA(lv_maxlen) = 200.
       ELSEIF fcode = 'CALCPATH'.
         mv_type = 'CALCPATH'.
         mv_calc_path = abap_true.
+      ELSEIF fcode = 'WITHPARAMS'.
+        mv_type = 'WITHPARAMS'.
+        CLEAR mv_calc_path.
       ELSEIF fcode = 'DEPTH_M'.
         IF mo_viewer->mo_window->m_hist_depth > 0.
           mo_viewer->mo_window->m_hist_depth -= 1.
@@ -694,9 +699,10 @@ DATA(lv_maxlen) = 200.
   method REFRESH.
 
       CASE mv_type.
-        WHEN 'CALLS'.    steps_flow( mv_direction ).
-        WHEN 'FLOW'.     magic_search( i_direction = mv_direction ).
-        WHEN 'CALCPATH'. magic_search( i_direction = mv_direction i_calc_path = abap_true ).
+        WHEN 'CALLS'.      steps_flow( mv_direction ).
+        WHEN 'WITHPARAMS'. steps_flow( i_direction = mv_direction i_with_params = abap_true ).
+        WHEN 'FLOW'.       magic_search( i_direction = mv_direction ).
+        WHEN 'CALCPATH'.   magic_search( i_direction = mv_direction i_calc_path = abap_true ).
       ENDCASE.
 
   endmethod.
@@ -705,11 +711,12 @@ DATA(lv_maxlen) = 200.
   METHOD steps_flow.
 
     TYPES: BEGIN OF lty_entity,
-             include TYPE string,
-             class   TYPE string,
-             event   TYPE string,
-             name    TYPE string,
-             style   TYPE string,
+             include   TYPE string,
+             class     TYPE string,
+             event     TYPE string,
+             name      TYPE string,
+             style     TYPE string,
+             eventname TYPE string,   " raw method/form/function name for binding lookup
            END OF lty_entity,
            BEGIN OF t_ind,
              from TYPE i,
@@ -745,7 +752,8 @@ DATA(lv_maxlen) = 200.
 
     " ── Шаг 1: собираем уникальные ноды ────────────────────────────
     LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
-      entity-event = <copy>-eventtype.
+      entity-event     = <copy>-eventtype.
+      entity-eventname = <copy>-eventname.   " save raw name before overwrite below
 
       IF <copy>-eventtype = 'METHOD'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
@@ -828,12 +836,45 @@ DATA(lv_maxlen) = 200.
           WITH KEY stacklevel = lv_level - 1
           INTO DATA(ls_caller).
         IF sy-subrc = 0 AND ls_caller-entity_idx <> lv_cur_idx.
-          " Рисуем стрелку только если ещё не было такой
+          " Draw edge only if not yet drawn
           ind-from = ls_caller-entity_idx.
           ind-to   = lv_cur_idx.
           READ TABLE indexes WITH KEY from = ind-from to = ind-to TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
-            mm_string = |{ mm_string }{ ind-from } --> { ind-to }\n|.
+            DATA(lv_edge_label) = ``.
+
+            IF i_with_params = abap_true.
+              " Look up parameter bindings: search caller's keywords for a call to callee
+              DATA(ls_caller_ent) = entities[ ind-from ].
+              DATA(ls_callee_ent) = entities[ ind-to ].
+              READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+                WITH KEY include = ls_caller_ent-include
+                INTO DATA(ls_prog_wp).
+              IF sy-subrc = 0.
+                LOOP AT ls_prog_wp-t_keywords INTO DATA(ls_kw_wp).
+                  LOOP AT ls_kw_wp-tt_calls INTO DATA(ls_call_wp)
+                    WHERE name  = ls_callee_ent-eventname
+                      AND class = ls_callee_ent-class.
+                    LOOP AT ls_call_wp-bindings INTO DATA(ls_bind_wp).
+                      IF lv_edge_label IS INITIAL.
+                        lv_edge_label = |{ ls_bind_wp-inner }={ ls_bind_wp-outer }|.
+                      ELSE.
+                        lv_edge_label = |{ lv_edge_label }<br/>{ ls_bind_wp-inner }={ ls_bind_wp-outer }|.
+                      ENDIF.
+                    ENDLOOP.
+                    IF lv_edge_label IS NOT INITIAL. EXIT. ENDIF.
+                  ENDLOOP.
+                  IF lv_edge_label IS NOT INITIAL. EXIT. ENDIF.
+                ENDLOOP.
+              ENDIF.
+            ENDIF.
+
+            IF lv_edge_label IS NOT INITIAL.
+              DATA(lv_el_fmt) = format_node_label( i_code = lv_edge_label i_maxlen = 0 ).
+              mm_string = |{ mm_string }{ ind-from } -->|"{ lv_el_fmt }"|{ ind-to }\n|.
+            ELSE.
+              mm_string = |{ mm_string }{ ind-from } --> { ind-to }\n|.
+            ENDIF.
             APPEND ind TO indexes.
           ENDIF.
         ENDIF.
