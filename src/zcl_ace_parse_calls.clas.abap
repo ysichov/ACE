@@ -374,6 +374,9 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       lv_call_cls = COND #( WHEN lv_c-class IS NOT INITIAL THEN lv_c-class ELSE mv_class_name ).
 
       " ── LHS: lv_x = meth(…) → RETURNING ──────────────────────────
+      " Сначала проверяем токен непосредственно перед вызовом (простой случай).
+      " Если он не '=', ищем '=' у начала statement — случай
+      " rv_payment = iv_amount * get_factor(  где '=' далеко назад.
       CLEAR lv_lhs.
       DATA(lv_lhs_pos) = lv_ti - 1.
       IF lv_lhs_pos >= i_stmt-from.
@@ -385,6 +388,22 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
             REPLACE ALL OCCURRENCES OF 'DATA(' IN lv_lhs WITH ''.
             REPLACE ALL OCCURRENCES OF ')' IN lv_lhs WITH ''.
             CONDENSE lv_lhs NO-GAPS.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      " Fallback: rv_x = a * b * get_factor( — '=' стоит на позиции from+1
+      IF lv_lhs IS INITIAL.
+        DATA(lv_stmt_eq_pos) = i_stmt-from + 1.
+        IF lv_stmt_eq_pos <= i_stmt-to.
+          READ TABLE io_scan->tokens INDEX lv_stmt_eq_pos INTO DATA(ls_stmt_eq).
+          IF ls_stmt_eq-str = '='.
+            READ TABLE io_scan->tokens INDEX i_stmt-from INTO DATA(ls_stmt_lhs).
+            IF sy-subrc = 0.
+              lv_lhs = ls_stmt_lhs-str.
+              REPLACE ALL OCCURRENCES OF 'DATA(' IN lv_lhs WITH ''.
+              REPLACE ALL OCCURRENCES OF ')' IN lv_lhs WITH ''.
+              CONDENSE lv_lhs NO-GAPS.
+            ENDIF.
           ENDIF.
         ENDIF.
       ENDIF.
