@@ -871,7 +871,7 @@ DATA(lv_maxlen) = 200.
 
             IF lv_edge_label IS NOT INITIAL.
               DATA(lv_el_fmt) = format_node_label( i_code = lv_edge_label i_maxlen = 0 ).
-              mm_string = |{ mm_string }{ ind-from } -->|"{ lv_el_fmt }"|{ ind-to }\n|.
+              mm_string = |{ mm_string }{ ind-from } -->\|"{ lv_el_fmt }"\|{ ind-to }\n|.
             ELSE.
               mm_string = |{ mm_string }{ ind-from } --> { ind-to }\n|.
             ENDIF.
