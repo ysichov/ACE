@@ -395,7 +395,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       WITH KEY program = <program> include = <include> eventname = <ev_name> eventtype = <ev_type>
       INTO mo_viewer->mo_window->ms_sel_call.
 
-    IF <ev_type> = 'METHOD' OR <ev_type> = 'FORM' OR <ev_type> = 'MODULE'.
+    IF <var_name> IS INITIAL AND ( <ev_type> = 'METHOD' OR <ev_type> = 'FORM' OR <ev_type> = 'MODULE' ).
       mo_viewer->mo_window->ms_code_context = VALUE #(
         evtype = <ev_type>
         evname = <ev_name>

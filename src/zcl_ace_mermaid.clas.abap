@@ -478,7 +478,7 @@ DATA(lv_maxlen) = 200.
 
     CLEAR mo_viewer->mt_if.
     DATA(lines) = mo_viewer->get_code_flow( i_calc_path = i_calc_path ).
-    CHECK lines IS NOT INITIAL.
+    "CHECK lines IS NOT INITIAL.
 
     direction = COND string(
       WHEN i_direction IS NOT INITIAL THEN i_direction

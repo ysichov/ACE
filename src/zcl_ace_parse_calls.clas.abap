@@ -195,7 +195,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD collect_method_calls.
+METHOD collect_method_calls.
     DATA lv_tstr     TYPE string.
     DATA lv_arrow    TYPE string.
     DATA lv_left     TYPE string.
@@ -730,5 +730,4 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     ENDLOOP.
 
   ENDMETHOD.
-
 ENDCLASS.
