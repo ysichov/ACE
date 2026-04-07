@@ -16,6 +16,37 @@
      <ENTRY>Copy of Z_ACE</ENTRY>
      <LENGTH>13</LENGTH>
     </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_CLASS</KEY>
+     <ENTRY>.</ENTRY>
+     <LENGTH>9</LENGTH>
+     <SPLIT>D</SPLIT>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_FUNC</KEY>
+     <ENTRY>Functional Module</ENTRY>
+     <LENGTH>25</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_ODATA</KEY>
+     <ENTRY>Odata Service</ENTRY>
+     <LENGTH>21</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_PROG</KEY>
+     <ENTRY>Program/Include</ENTRY>
+     <LENGTH>23</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
+     <KEY>P_WDC</KEY>
+     <ENTRY>WebDynpro Component</ENTRY>
+     <LENGTH>27</LENGTH>
+    </item>
    </TPOOL>
   </asx:values>
  </asx:abap>
