@@ -896,7 +896,7 @@ METHOD propagate_vars_backward.
                 AND class = step-class  AND eventtype = step-eventtype AND eventname = step-eventname
                 AND line = step-line.
             READ TABLE ct_selected_var WITH KEY name = comp_var-name
-              "class = comp_var-class eventtype = comp_var-eventtype eventname = comp_var-eventname
+              class = comp_var-class eventtype = comp_var-eventtype eventname = comp_var-eventname
               TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
