@@ -984,8 +984,8 @@ METHOD html_section.
     IF ls_row-name CS 'TOTAL'.
       APPEND '<tr class="tot">' TO ct_html.
       IF i_numbered = abap_true.
-        " numbered tables: № | Name | CC | ...
-        APPEND |<td>{ lv_num }</td><td>{ ls_row-name }</td>| &&
+        " numbered tables: (empty) | Name | CC | ...
+        APPEND |<td></td><td>{ ls_row-name }</td>| &&
                |<td>{ ls_row-cc }</td><td></td>| TO ct_html.
       ELSE.
         " Total table: Name | Units | CC | ...
