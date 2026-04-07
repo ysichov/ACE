@@ -697,7 +697,7 @@ METHOD build_html.
         time_t = format_time( ls_ev_sub-time_t )  bugs = format_f2( ls_ev_sub-bugs )
       ) TO lt_events.
     ENDIF.
-    html_section( EXPORTING i_name = 'Events' it_rows = lt_events CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = 'Events' it_rows = lt_events i_numbered = abap_true CHANGING ct_html = rv ).
   ENDIF.
 
   " --- Section 4: Forms ---
@@ -739,7 +739,7 @@ METHOD build_html.
         time_t = format_time( ls_fo_sub-time_t )  bugs = format_f2( ls_fo_sub-bugs )
       ) TO lt_forms.
     ENDIF.
-    html_section( EXPORTING i_name = 'Forms' it_rows = lt_forms CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = 'Forms' it_rows = lt_forms i_numbered = abap_true CHANGING ct_html = rv ).
   ENDIF.
 
   " --- Section 5: Methods grouped by class ---
@@ -846,7 +846,7 @@ METHOD build_html.
       bugs        = format_f2( lv_tot_bugs )
     ) TO lt_rows.
 
-    html_section( EXPORTING i_name = lv_cls it_rows = lt_rows CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = lv_cls it_rows = lt_rows i_numbered = abap_true CHANGING ct_html = rv ).
   ENDLOOP.
 
   " --- Section 6: All methods sorted by CC DESC ---
@@ -983,9 +983,16 @@ METHOD html_section.
     lv_num += 1.
     IF ls_row-name CS 'TOTAL'.
       APPEND '<tr class="tot">' TO ct_html.
-      APPEND |<td>{ ls_row-name }</td>| &&
-             |<td>{ ls_row-units }</td>| &&
-             |<td>{ ls_row-cc }</td><td></td>| TO ct_html.
+      IF i_numbered = abap_true.
+        " numbered tables: № | Name | CC | ...
+        APPEND |<td>{ lv_num }</td><td>{ ls_row-name }</td>| &&
+               |<td>{ ls_row-cc }</td><td></td>| TO ct_html.
+      ELSE.
+        " Total table: Name | Units | CC | ...
+        APPEND |<td>{ ls_row-name }</td>| &&
+               |<td>{ ls_row-units }</td>| &&
+               |<td>{ ls_row-cc }</td><td></td>| TO ct_html.
+      ENDIF.
       APPEND |<td>{ ls_row-n1 }</td><td>{ ls_row-n2 }</td>| &&
              |<td>{ ls_row-length }</td>| TO ct_html.
       APPEND |<td>{ ls_row-eta1 }</td><td>{ ls_row-eta2 }</td>| &&
