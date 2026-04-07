@@ -509,12 +509,12 @@ METHOD build_html.
   APPEND |<p>Total Cyclomatic Complexity: <b>{ lv_tot_cc }</b>| TO rv.
   APPEND |&nbsp;&nbsp;Avg CC / unit: | &&
          |<b>{ format_f2( ls_result-avg_cyclomatic ) }</b></p>| TO rv.
-  APPEND |<p>Halstead Volume: <b>{ format_f2( lv_tot_vol ) }</b>| to rv.
-  DATA(lv_sum_time) = lv_tot_eff / 18.
-  APPEND |&nbsp;&nbsp;Effort: <b>{ format_f2( lv_tot_eff ) }</b></p>| TO rv.
+  APPEND |<p>Halstead Volume: <b>{ format_f2( ls_result-incl_volume ) }</b>| TO rv.
+  DATA(lv_sum_time) = ls_result-incl_effort / 18.
+  APPEND |&nbsp;&nbsp;Effort: <b>{ format_f2( ls_result-incl_effort ) }</b></p>| TO rv.
   APPEND |<p>Time: <b>{ format_time( lv_sum_time ) }</b>| &&
          |&nbsp;&nbsp;Expected Bugs: | &&
-         |<b>{ format_f2( lv_tot_bugs ) }</b></p>| TO rv.
+         |<b>{ format_f2( ls_result-incl_bugs ) }</b></p>| TO rv.
   APPEND |<p>LOC / LLOC / CLOC / CLOC%: | &&
          |<b>{ lv_tot_loc }</b> / <b>{ lv_tot_lloc }</b> / | TO rv.
   APPEND |<b>{ lv_tot_cloc }</b> / <b>{ lv_ratio }</b></p>| TO rv.
