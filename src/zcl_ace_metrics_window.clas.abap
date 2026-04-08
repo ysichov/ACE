@@ -886,6 +886,12 @@ METHOD build_html.
   ENDIF.
 
   " --- Legend ---
+  APPEND '<h3>LOC / LLOC / CLOC</h3><pre>' TO rv.
+  APPEND '  LOC   - Lines of Code (total lines including blanks and comments)' TO rv.
+  APPEND '  LLOC  - Logical Lines of Code (executable statements only)' TO rv.
+  APPEND '  CLOC  - Comment Lines of Code (lines containing comments)' TO rv.
+  APPEND '  CLOC% - Comment density = CLOC / LOC * 100' TO rv.
+  APPEND '</pre>' TO rv.
   APPEND '<h3>McCabe CC Risk</h3><pre>' TO rv.
   APPEND '  1-10   LOW      Simple, low risk' TO rv.
   APPEND '  11-20  MEDIUM   Moderate complexity' TO rv.
