@@ -2245,9 +2245,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'INFO'.
-        DATA(l_url) = 'https://ysychov.wordpress.com/2020/07/27/abap-simple-debugger-data-explorer/'.
-        CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
-        l_url = 'https://github.com/ysichov/Smart-Debugger'.
+        DATA(l_url) = 'https://github.com/ysichov/ACE'.
         CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
 
       WHEN 'STEPS'.

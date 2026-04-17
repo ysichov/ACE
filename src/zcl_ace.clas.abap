@@ -546,6 +546,7 @@ METHOD show.
     NEW zcl_ace_tree_builder(
   io_window = mo_window
   io_tree   = mo_tree_local )->build( ).
+    "test
   ENDMETHOD.
 
 
