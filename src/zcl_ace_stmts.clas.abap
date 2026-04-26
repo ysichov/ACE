@@ -104,6 +104,133 @@ CLASS zcl_ace_stmts DEFINITION
     CLASS-METHODS stmt_export       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
     CLASS-METHODS stmt_import       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
 
+    " Selection screen / events
+    CLASS-METHODS stmt_select_options RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_parameters     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_parameter      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_ranges         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_tables         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_selection_screen RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_selection   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_user_command RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_pf          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_line_sel    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_initialization RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_start_of_sel   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_end_of_sel     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_top_of_page    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_end_of_page    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_load_of_program RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_first       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_last        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at             RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endat          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " String operations
+    CLASS-METHODS stmt_concatenate    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_split          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_replace        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_find           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_translate      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_condense       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_overlay        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_shift          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_search         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " System / control
+    CLASS-METHODS stmt_describe       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_free           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_refresh        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_wait           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_stop           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_submit         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_leave          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_generate       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_authority_check RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_break_point    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_break          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_log_point      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_set            RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_get            RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_convert        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_pack           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_unpack         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " File I/O
+    CLASS-METHODS stmt_open_dataset   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_close_dataset  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_read_dataset   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_transfer       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_delete_dataset RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " More OO
+    CLASS-METHODS stmt_aliases        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_interfaces     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_class_data     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_class_events   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_events         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_raise_event    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_create_data    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_catch_sys_excs RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_case_type      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_when_type      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " More reporting
+    CLASS-METHODS stmt_format         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_new_line       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_new_page       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_skip           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_uline          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_position       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_print_control  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_reserve        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_back           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_suppress       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_extract        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_field_groups   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Math / arithmetic
+    CLASS-METHODS stmt_add            RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_subtract       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_multiply       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_divide         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_move_corres    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Macro / definition
+    CLASS-METHODS stmt_define         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_end_of_def     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Misc more
+    CLASS-METHODS stmt_provide        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endprovide     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_on_change      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endon          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_chain          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endchain       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_resume         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_retry          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_function_pool  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_program        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_type_pool      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_type_pools     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_infotypes      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_controls       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_statics        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_screen    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_transaction RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_dialog    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_set_pf_status  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_set_titlebar   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_window         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_loop_dynpro    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_process        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_field          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_receive        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_communication  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_set_handler    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_get_reference  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_badi      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
 ENDCLASS.
 
 
@@ -837,6 +964,1024 @@ CLASS zcl_ace_stmts IMPLEMENTATION.
       ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACCEPTING PADDING` ) ) )
       ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACCEPTING TRUNCATION` ) ) )
       ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHAR-TO-HEX MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== Selection screen / events =====
+
+  METHOD stmt_select_options.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SELECT-OPTIONS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFAULT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OPTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SIGN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MEMORY ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCHCODE OBJECT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODIF ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOWER CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OBLIGATORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-DISPLAY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO INTERVALS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-EXTENSION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VISIBLE LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE-REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USER-COMMAND` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_parameters.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PARAMETERS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIKE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DECIMALS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFAULT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MEMORY ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCHCODE OBJECT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODIF ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOWER CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OBLIGATORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-DISPLAY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VISIBLE LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS CHECKBOX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RADIOBUTTON GROUP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS LISTBOX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE CHECK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE-REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USER-COMMAND` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_parameter.
+    r = zcl_ace_combi=>str( `PARAMETER` ).
+  ENDMETHOD.
+
+  METHOD stmt_ranges.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `RANGES` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_tables.
+    r = zcl_ace_combi=>str( `TABLES` ).
+  ENDMETHOD.
+
+  METHOD stmt_selection_screen.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SELECTION-SCREEN` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEGIN OF BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEGIN OF LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEGIN OF SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEGIN OF TABBED BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF TABBED BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH FRAME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TITLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO INTERVALS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS WINDOW` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS SUBSCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDE BLOCKS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDE PARAMETERS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDE SELECT-OPTIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SKIP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ULINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMMENT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `POSITION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PUSHBUTTON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FUNCTION KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DYNAMIC SELECTIONS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_at_selection.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `AT SELECTION-SCREEN` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OUTPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RADIOBUTTON GROUP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE-REQUEST FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HELP-REQUEST FOR` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_at_user_command.
+    r = zcl_ace_combi=>str( `AT USER-COMMAND` ).
+  ENDMETHOD.
+
+  METHOD stmt_at_pf.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `AT PF` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_at_line_sel.
+    r = zcl_ace_combi=>str( `AT LINE-SELECTION` ).
+  ENDMETHOD.
+
+  METHOD stmt_initialization.
+    r = zcl_ace_combi=>str( `INITIALIZATION` ).
+  ENDMETHOD.
+
+  METHOD stmt_start_of_sel.
+    r = zcl_ace_combi=>str( `START-OF-SELECTION` ).
+  ENDMETHOD.
+
+  METHOD stmt_end_of_sel.
+    r = zcl_ace_combi=>str( `END-OF-SELECTION` ).
+  ENDMETHOD.
+
+  METHOD stmt_top_of_page.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `TOP-OF-PAGE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DURING LINE-SELECTION` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_end_of_page.
+    r = zcl_ace_combi=>str( `END-OF-PAGE` ).
+  ENDMETHOD.
+
+  METHOD stmt_load_of_program.
+    r = zcl_ace_combi=>str( `LOAD-OF-PROGRAM` ).
+  ENDMETHOD.
+
+  METHOD stmt_at_first.
+    r = zcl_ace_combi=>str( `AT FIRST` ).
+  ENDMETHOD.
+
+  METHOD stmt_at_last.
+    r = zcl_ace_combi=>str( `AT LAST` ).
+  ENDMETHOD.
+
+  METHOD stmt_at.
+    " AT NEW <field> / AT END OF <field>
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `AT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NEW` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endat.
+    r = zcl_ace_combi=>str( `ENDAT` ).
+  ENDMETHOD.
+
+  " ===== String operations =====
+
+  METHOD stmt_concatenate.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CONCATENATE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SEPARATED BY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESPECTING BLANKS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_split.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SPLIT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_replace.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `REPLACE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIRST OCCURRENCE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL OCCURRENCES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OCCURRENCES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBSTRING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REGEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PCRE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECTION OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECTION LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESPECTING CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESULTS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_find.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FIND` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIRST OCCURRENCE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL OCCURRENCES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBSTRING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REGEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PCRE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECTION OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECTION LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESPECTING CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCH COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCH OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCH LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCH LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESULTS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBMATCHES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_translate.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `TRANSLATE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO UPPER CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LOWER CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM CODE PAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO CODE PAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM NUMBER FORMAT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO NUMBER FORMAT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_condense.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CONDENSE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-GAPS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_overlay.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `OVERLAY` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ONLY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_shift.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SHIFT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LEFT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RIGHT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CIRCULAR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PLACES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DELETING LEADING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DELETING TRAILING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UP TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_search.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SEARCH` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ABBREVIATED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STARTING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENDING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND MARK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== System / control =====
+
+  METHOD stmt_describe.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DESCRIBE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DISTANCE BETWEEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OCCURS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `KIND` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMPONENTS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OUTPUT-LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DECIMALS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EDIT MASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HELP-ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PAGES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LEFT MARGIN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TOP LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TITLE LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HEAD LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIRST-LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DISTANCE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_free.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FREE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MEMORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OBJECT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_refresh.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `REFRESH` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CONTROL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM SCREEN` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_wait.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `WAIT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UP TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECONDS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UNTIL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR ASYNCHRONOUS TASKS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR PUSH CHANNELS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR MESSAGING CHANNELS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_stop.
+    r = zcl_ace_combi=>str( `STOP` ).
+  ENDMETHOD.
+
+  METHOD stmt_submit.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SUBMIT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VIA SELECTION-SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VIA JOB` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NUMBER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING LIST TO MEMORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING SELECTION-SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING SELECTION-SET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING SELECTION-SETS OF PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH FREE SELECTIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH SELECTION-TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND RETURN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO SAP-SPOOL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SPOOL PARAMETERS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ARCHIVE PARAMETERS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITHOUT SPOOL DYNPRO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_leave.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `LEAVE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO TRANSACTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND SKIP FIRST SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LIST-PROCESSING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND RETURN TO SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIST-PROCESSING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO CURRENT TRANSACTION` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_generate.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `GENERATE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBROUTINE POOL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPORT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DYNPRO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NAME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MESSAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WORD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TRACE-FILE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_authority_check.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `AUTHORITY-CHECK` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OBJECT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR USER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DUMMY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_break_point.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `BREAK-POINT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_break.
+    r = zcl_ace_combi=>str( `BREAK` ).
+  ENDMETHOD.
+
+  METHOD stmt_log_point.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `LOG-POINT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBKEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELDS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_set.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SET` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOCALE LANGUAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COUNTRY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODIFIER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BIT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BLANK LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COUNTRY-SPECIFIC CONVERSIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CURSOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXTENDED CHECK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HANDLER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACTIVATION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HOLD DATA` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LANGUAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LEFT SCROLL-BOUNDARY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MARGIN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PARAMETER ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PF-STATUS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCLUDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMMEDIATELY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PROPERTY OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RUN TIME ANALYZER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RUN TIME CLOCK RESOLUTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TITLEBAR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UPDATE TASK LOCAL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USER-COMMAND` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_get.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `GET` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BIT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CURSOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PARAMETER ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PF-STATUS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCLUDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PROPERTY OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REFERENCE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RUN TIME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD VALUE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BADI` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOCALE LANGUAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COUNTRY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODIFIER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TIME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STAMP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STARTING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENDING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LATE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_convert.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CONVERT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TIME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STAMP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INVERTED-DATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TIME STAMP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TIME ZONE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DAYLIGHT SAVING TIME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TEXT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO SORTABLE CODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_pack.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PACK` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_unpack.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `UNPACK` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== File I/O =====
+
+  METHOD stmt_open_dataset.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `OPEN DATASET` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR OUTPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR APPENDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR UPDATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BINARY MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN TEXT MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN LEGACY BINARY MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN LEGACY TEXT MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BIG ENDIAN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LITTLE ENDIAN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NATIVE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENCODING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFAULT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UTF-8` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NON-UNICODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH SMART LINEFEED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH NATIVE LINEFEED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH UNIX LINEFEED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH WINDOWS LINEFEED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CODE PAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING CONVERSION ERRORS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT CHARACTER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING CONVERSION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MESSAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FILTER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AT POSITION` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_close_dataset.
+    r = zcl_ace_combi=>str( `CLOSE DATASET` ).
+  ENDMETHOD.
+
+  METHOD stmt_read_dataset.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `READ DATASET` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MAXIMUM LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACTUAL LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_transfer.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `TRANSFER` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO END OF LINE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_delete_dataset.
+    r = zcl_ace_combi=>str( `DELETE DATASET` ).
+  ENDMETHOD.
+
+  " ===== More OO =====
+
+  METHOD stmt_aliases.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `ALIASES` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_interfaces.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `INTERFACES` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ABSTRACT METHODS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FINAL METHODS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DATA VALUES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL METHODS ABSTRACT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL METHODS FINAL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PARTIALLY IMPLEMENTED` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_class_data.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CLASS-DATA` ) )
+      ( zcl_ace_combi=>expr( `DATA_DEFINITION` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_class_events.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CLASS-EVENTS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_events.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `EVENTS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_raise_event.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `RAISE EVENT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_create_data.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CREATE DATA` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIKE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HANDLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AREA HANDLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STANDARD TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SORTED TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HASHED TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ANY TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH UNIQUE KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH NON-UNIQUE KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH EMPTY KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INITIAL SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REF TO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_catch_sys_excs.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CATCH SYSTEM-EXCEPTIONS` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_case_type.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CASE TYPE OF` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_when_type.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `WHEN TYPE` ) ) ) ).
+  ENDMETHOD.
+
+  " ===== More reporting =====
+
+  METHOD stmt_format.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FORMAT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COLOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTENSIFIED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INVERSE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HOTSPOT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FRAMES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFF` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_new_line.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `NEW-LINE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-SCROLLING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SCROLLING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_new_page.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `NEW-PAGE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-TITLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH-TITLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-HEADING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH-HEADING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PRINT ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PRINT OFF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO DIALOG` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NEW-SECTION` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_skip.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SKIP` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LINE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_uline.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `ULINE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_position.
+    r = zcl_ace_combi=>str( `POSITION` ).
+  ENDMETHOD.
+
+  METHOD stmt_print_control.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PRINT-CONTROL` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `POSITION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FUNCTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANNEL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FONT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CPI` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LPI` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COLOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WIDTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HEIGHT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_reserve.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `RESERVE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINES` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_back.
+    r = zcl_ace_combi=>str( `BACK` ).
+  ENDMETHOD.
+
+  METHOD stmt_suppress.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SUPPRESS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DIALOG` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_extract.
+    r = zcl_ace_combi=>str( `EXTRACT` ).
+  ENDMETHOD.
+
+  METHOD stmt_field_groups.
+    r = zcl_ace_combi=>str( `FIELD-GROUPS` ).
+  ENDMETHOD.
+
+  " ===== Math / arithmetic =====
+
+  METHOD stmt_add.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `ADD` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `THEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UNTIL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `GIVING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACCORDING TO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_subtract.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SUBTRACT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_multiply.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `MULTIPLY` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_divide.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DIVIDE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_move_corres.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `MOVE-CORRESPONDING` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `KEEPING TARGET LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPANDING NESTED TABLES` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== Macro / definition =====
+
+  METHOD stmt_define.
+    r = zcl_ace_combi=>str( `DEFINE` ).
+  ENDMETHOD.
+
+  METHOD stmt_end_of_def.
+    r = zcl_ace_combi=>str( `END-OF-DEFINITION` ).
+  ENDMETHOD.
+
+  " ===== Misc more =====
+
+  METHOD stmt_provide.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PROVIDE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELDS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BETWEEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endprovide.
+    r = zcl_ace_combi=>str( `ENDPROVIDE` ).
+  ENDMETHOD.
+
+  METHOD stmt_on_change.
+    r = zcl_ace_combi=>str( `ON CHANGE OF` ).
+  ENDMETHOD.
+
+  METHOD stmt_endon.
+    r = zcl_ace_combi=>str( `ENDON` ).
+  ENDMETHOD.
+
+  METHOD stmt_chain.
+    r = zcl_ace_combi=>str( `CHAIN` ).
+  ENDMETHOD.
+
+  METHOD stmt_endchain.
+    r = zcl_ace_combi=>str( `ENDCHAIN` ).
+  ENDMETHOD.
+
+  METHOD stmt_resume.
+    r = zcl_ace_combi=>str( `RESUME` ).
+  ENDMETHOD.
+
+  METHOD stmt_retry.
+    r = zcl_ace_combi=>str( `RETRY` ).
+  ENDMETHOD.
+
+  METHOD stmt_function_pool.
+    r = zcl_ace_combi=>str( `FUNCTION-POOL` ).
+  ENDMETHOD.
+
+  METHOD stmt_program.
+    r = zcl_ace_combi=>str( `PROGRAM` ).
+  ENDMETHOD.
+
+  METHOD stmt_type_pool.
+    r = zcl_ace_combi=>str( `TYPE-POOL` ).
+  ENDMETHOD.
+
+  METHOD stmt_type_pools.
+    r = zcl_ace_combi=>str( `TYPE-POOLS` ).
+  ENDMETHOD.
+
+  METHOD stmt_infotypes.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `INFOTYPES` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NAME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALID` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_controls.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CONTROLS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLEVIEW` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABSTRIP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CUSTOM CONTROL` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_statics.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `STATICS` ) )
+      ( zcl_ace_combi=>expr( `DATA_DEFINITION` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_call_screen.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL SCREEN` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STARTING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENDING AT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_call_transaction.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL TRANSACTION` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND SKIP FIRST SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH AUTHORITY-CHECK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITHOUT AUTHORITY-CHECK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UPDATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MESSAGES INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OPTIONS FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH PARAMETER` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_call_dialog.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL DIALOG` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMPORTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_set_pf_status.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SET PF-STATUS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCLUDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMMEDIATELY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_set_titlebar.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SET TITLEBAR` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_window.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `WINDOW` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STARTING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENDING AT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_loop_dynpro.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `LOOP` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH CONTROL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CURSOR` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_process.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PROCESS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEFORE OUTPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AFTER INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON HELP-REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON VALUE-REQUEST` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_field.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FIELD` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODULE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON CHAIN-INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON CHAIN-REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SELECT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_receive.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `RECEIVE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESULTS FROM FUNCTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `KEEPING TASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCEPTIONS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_communication.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `COMMUNICATION` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INIT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALLOCATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACCEPT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SEND` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RECEIVE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEALLOCATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DESTINATION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_set_handler.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SET HANDLER` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACTIVATION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR ALL INSTANCES` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_get_reference.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `GET REFERENCE OF` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_call_badi.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL BADI` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RECEIVING` ) ) ) ) ).
   ENDMETHOD.
 
 ENDCLASS.
