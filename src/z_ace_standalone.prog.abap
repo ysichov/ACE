@@ -5,6 +5,7 @@ CLASS zcl_ace_window DEFINITION DEFERRED.
 CLASS zcl_ace_tree_builder DEFINITION DEFERRED.
 CLASS zcl_ace_text_viewer DEFINITION DEFERRED.
 CLASS zcl_ace_table_viewer DEFINITION DEFERRED.
+CLASS zcl_ace_stmts DEFINITION DEFERRED.
 CLASS zcl_ace_source_parser DEFINITION DEFERRED.
 CLASS zcl_ace_sel_opt DEFINITION DEFERRED.
 CLASS zcl_ace_rtti_tree DEFINITION DEFERRED.
@@ -21,7 +22,11 @@ CLASS zcl_ace_parser DEFINITION DEFERRED.
 CLASS zcl_ace_metrics_window DEFINITION DEFERRED.
 CLASS zcl_ace_metrics DEFINITION DEFERRED.
 CLASS zcl_ace_mermaid DEFINITION DEFERRED.
+CLASS zcl_ace_keywords DEFINITION DEFERRED.
 CLASS zcl_ace_html_viewer DEFINITION DEFERRED.
+CLASS zcl_ace_exprs DEFINITION DEFERRED.
+CLASS zcl_ace_combi_node DEFINITION DEFERRED.
+CLASS zcl_ace_combi DEFINITION DEFERRED.
 CLASS zcl_ace_alv_common DEFINITION DEFERRED.
 CLASS zcl_ace DEFINITION DEFERRED.
 INTERFACE zif_ace_parse_data.
@@ -676,6 +681,231 @@ public section.
 protected section.
 private section.
 ENDCLASS.
+"
+"! Grammar node — direct port of abaplint combi.ts combinators.
+"! Single class with discriminator (kind) instead of 11 separate combinator classes.
+"! list_keywords( ) walks the tree and returns all str() literals — same algorithm
+"! as Combi.listKeywords() in @abaplint/core.
+CLASS zcl_ace_combi_node DEFINITION
+  FINAL
+  CREATE PRIVATE.
+
+  PUBLIC SECTION.
+
+    TYPES tt_children TYPE STANDARD TABLE OF REF TO zcl_ace_combi_node WITH EMPTY KEY.
+
+    " Discriminator values mirror combi.ts class names
+    CONSTANTS:
+      c_kind_word  TYPE c LENGTH 1 VALUE 'W',  " Word          → contributes to listKeywords
+      c_kind_wseq  TYPE c LENGTH 1 VALUE 'Q',  " WordSequence  → contributes to listKeywords
+      c_kind_token TYPE c LENGTH 1 VALUE 'T',  " Token  (tok)  → no keywords
+      c_kind_regex TYPE c LENGTH 1 VALUE 'R',  " Regex         → no keywords
+      c_kind_seq   TYPE c LENGTH 1 VALUE 'S',  " Sequence      → recurse
+      c_kind_alt   TYPE c LENGTH 1 VALUE 'A',  " Alternative   → recurse
+      c_kind_opt   TYPE c LENGTH 1 VALUE 'O',  " Optional      → recurse
+      c_kind_star  TYPE c LENGTH 1 VALUE '*',  " Star          → recurse
+      c_kind_plus  TYPE c LENGTH 1 VALUE '+',  " Plus          → recurse
+      c_kind_per   TYPE c LENGTH 1 VALUE 'P',  " Permutation   → recurse
+      c_kind_vers  TYPE c LENGTH 1 VALUE 'V',  " Vers / VersNot → recurse (single child)
+      c_kind_expr  TYPE c LENGTH 1 VALUE 'E'.  " Expression reference → resolved at aggregation time
+
+    DATA kind     TYPE c LENGTH 1 READ-ONLY.
+    DATA value    TYPE string     READ-ONLY.   " word literal / token class name / regex / expression name
+    DATA children TYPE tt_children READ-ONLY.
+
+    " Factory methods — one per combinator type
+    CLASS-METHODS new_word    IMPORTING s TYPE string                  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_wseq    IMPORTING s TYPE string                  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_token   IMPORTING token_name TYPE string         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_regex   IMPORTING pattern TYPE string            RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_seq     IMPORTING children TYPE tt_children      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_alt     IMPORTING children TYPE tt_children      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_opt     IMPORTING child TYPE REF TO zcl_ace_combi_node RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_star    IMPORTING child TYPE REF TO zcl_ace_combi_node RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_plus    IMPORTING child TYPE REF TO zcl_ace_combi_node RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_per     IMPORTING children TYPE tt_children      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_vers    IMPORTING child TYPE REF TO zcl_ace_combi_node RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS new_expr    IMPORTING name TYPE string               RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    "! Recursively collects all keyword literals from str() / WordSequence nodes.
+    "! Mirrors Combi.listKeywords() in @abaplint/core (combi.ts).
+    "! Expression nodes return their NAME prefixed with "expression/" — the aggregator
+    "! resolves them in a separate pass to avoid infinite recursion.
+    METHODS list_keywords RETURNING VALUE(result) TYPE string_table.
+
+    METHODS constructor
+      IMPORTING
+        kind     TYPE c
+        value    TYPE string     OPTIONAL
+        children TYPE tt_children OPTIONAL.
+
+ENDCLASS.
+
+
+"! Combinator factory — direct port of exported functions in abaplint combi.ts:
+"!   str(), tok(), regex(), seq(), alt(), opt(), star(), plus(), per(), ver(), expr().
+"! Returns ZCL_ACE_COMBI_NODE trees that can be walked via list_keywords( ).
+CLASS zcl_ace_combi DEFINITION
+  FINAL
+  CREATE PRIVATE.
+
+  PUBLIC SECTION.
+
+    TYPES tt_nodes TYPE zcl_ace_combi_node=>tt_children.
+
+    "! str("WORD")  → Word        (single literal)
+    "! str("END OF") → WordSequence (multi-word phrase, 1 entry in listKeywords)
+    "! Replicates: indexOf(" ")>0 || indexOf("-")>0 → WordSequence else Word
+    CLASS-METHODS str
+      IMPORTING s             TYPE string
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! tok(TokenClassName) → Token (matches by token class name, no keyword)
+    CLASS-METHODS tok
+      IMPORTING token_name    TYPE string
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! regex(/.../) → Regex (no keyword)
+    CLASS-METHODS regex
+      IMPORTING pattern       TYPE string
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! seq( a, b, c, ... )
+    CLASS-METHODS seq
+      IMPORTING children      TYPE tt_nodes
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! alt( a, b, c, ... )  — also covers altPrio (same keywords)
+    CLASS-METHODS alt
+      IMPORTING children      TYPE tt_nodes
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! opt( a )  — also covers optPrio
+    CLASS-METHODS opt
+      IMPORTING child         TYPE REF TO zcl_ace_combi_node
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! star( a ) — also covers starPrio
+    CLASS-METHODS star
+      IMPORTING child         TYPE REF TO zcl_ace_combi_node
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! plus( a ) — also covers plusPrio
+    CLASS-METHODS plus
+      IMPORTING child         TYPE REF TO zcl_ace_combi_node
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! per( a, b, ... )
+    CLASS-METHODS per
+      IMPORTING children      TYPE tt_nodes
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! ver(version, a) / verNot — for keyword extraction we ignore the version
+    "! filter (we want all keywords across all versions)
+    CLASS-METHODS ver
+      IMPORTING child         TYPE REF TO zcl_ace_combi_node
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+    "! Reference to an Expression class — by name (e.g. 'COND', 'SOURCE', 'TARGET').
+    "! In abaplint, mapInput(s) auto-instantiates the Expression. In ABAP we use
+    "! a string name and resolve via dynamic call zcl_ace_exprs=>expr_<name>( ).
+    CLASS-METHODS expr
+      IMPORTING name          TYPE string
+      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
+
+ENDCLASS.
+
+"! ABAP expression grammars - port of @abaplint/core 2_statements/expressions/*.ts
+"! One CLASS-METHOD per expression, name = EXPR_<expression_name>.
+"! Each method returns a runnable tree (zcl_ace_combi_node).
+"! Discovered via RTTI by zcl_ace_keywords.
+"!
+"! Initial set covers the most-referenced expressions used by the seed statements
+"! in zcl_ace_stmts. Extend incrementally.
+CLASS zcl_ace_exprs DEFINITION
+  FINAL
+  CREATE PRIVATE.
+
+  PUBLIC SECTION.
+
+    " Cond — boolean condition tree. Simplified: actual abaplint grammar is large;
+    " for keyword extraction we list only its keywords.
+    CLASS-METHODS expr_cond     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_compare  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_compare_operator RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_source   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_target   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_field    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_field_chain RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_field_symbol RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_data_definition RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_inline_data RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_loop_source RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_loop_target RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS expr_for      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+ENDCLASS.
+"! Aggregates all ABAP keywords from the grammar definitions in
+"! ZCL_ACE_STMTS (statements) and ZCL_ACE_EXPRS (expressions),
+"! mirroring abaplint's Combi.listKeywords() walk over every getMatcher().
+"!
+"! Discovery: RTTI scan for class-methods named STMT_* and EXPR_*.
+"! Expression resolution: when a node's kind = E (Expression reference),
+"! the corresponding EXPR_<name>( ) method is invoked once and its tree
+"! walked too. A visited set prevents infinite recursion.
+"!
+"! Multi-word phrases ("END OF", "INNER JOIN") are split into individual
+"! words too — needed for token-by-token classification in metrics.
+"! The full phrases are also kept (under is_phrase = abap_true) for callers
+"! that need them.
+CLASS zcl_ace_keywords DEFINITION
+  FINAL
+  CREATE PRIVATE.
+
+  PUBLIC SECTION.
+
+    TYPES:
+      BEGIN OF ts_keyword,
+        word      TYPE string,        " uppercased
+        is_phrase TYPE abap_bool,     " abap_true if originally a multi-word str()
+      END OF ts_keyword,
+      tt_keywords TYPE HASHED TABLE OF ts_keyword WITH UNIQUE KEY word.
+
+    "! Returns the union of all keyword literals reachable from any
+    "! statement matcher or expression. Lazily computed and cached.
+    CLASS-METHODS get_all
+      RETURNING VALUE(result) TYPE tt_keywords.
+
+    "! True iff the (case-insensitive) word is in the keyword set.
+    "! Drop-in replacement for the static-list check in ZCL_ACE_METRICS.
+    CLASS-METHODS is_keyword
+      IMPORTING token         TYPE string
+      RETURNING VALUE(result) TYPE abap_bool.
+
+    "! Forces reset of the cache. Useful after adding new STMT_/EXPR_ methods.
+    CLASS-METHODS reset.
+
+  PRIVATE SECTION.
+
+    CLASS-DATA mt_cache         TYPE tt_keywords.
+    CLASS-DATA mv_cached        TYPE abap_bool.
+    " Names of expressions already walked during the current build,
+    " to prevent infinite recursion through Expression references.
+    CLASS-DATA mt_visited_exprs TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+
+    CLASS-METHODS build.
+
+    CLASS-METHODS collect_from_class
+      IMPORTING class_name   TYPE string
+                method_prefix TYPE string.
+
+    CLASS-METHODS walk_node
+      IMPORTING node TYPE REF TO zcl_ace_combi_node.
+
+    CLASS-METHODS add_keyword
+      IMPORTING raw TYPE string.
+
+ENDCLASS.
 CLASS zcl_ace_metrics DEFINITION
   create public .
 
@@ -692,8 +922,6 @@ public section.
       END OF ts_token_detail .
   types:
     tt_token_details TYPE STANDARD TABLE OF ts_token_detail WITH EMPTY KEY .
-  types:
-    tt_abap_statements TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line .
 
   "--- aggregate result per class (for includes containing OO code) ---
   TYPES:
@@ -807,8 +1035,6 @@ private section.
     tt_known_operands TYPE HASHED TABLE OF ts_known_operand
     WITH UNIQUE KEY name .
 
-  class-data MT_STATEMENTS type TT_ABAP_STATEMENTS .
-
   class-methods IS_BRANCH_KEYWORD
     importing
       !I_KW type STRING
@@ -835,7 +1061,6 @@ private section.
       !I_VAL type F
     returning
       value(RV) type F .
-  class-methods FILL_STATEMENTS .
 ENDCLASS.
 CLASS zcl_ace_metrics_window DEFINITION
   CREATE PUBLIC.
@@ -863,6 +1088,7 @@ CLASS zcl_ace_metrics_window DEFINITION
 
     TYPES: BEGIN OF ts_row,
              name       TYPE string,
+             units      TYPE i,
              cc         TYPE i,
              risk       TYPE string,
              n1         TYPE i,
@@ -909,9 +1135,10 @@ CLASS zcl_ace_metrics_window DEFINITION
       CHANGING  ct_html TYPE w3htmltab.
 
     CLASS-METHODS html_section
-      IMPORTING i_name  TYPE string
-                it_rows TYPE tt_row
-      CHANGING  ct_html TYPE w3htmltab.
+      IMPORTING i_name     TYPE string
+                it_rows    TYPE tt_row
+                i_numbered TYPE abap_bool OPTIONAL
+      CHANGING  ct_html    TYPE w3htmltab.
 
 ENDCLASS.
 CLASS zcl_ace_parser DEFINITION
@@ -1227,6 +1454,7 @@ public section.
   data MO_DIAGRAM type ref to OBJECT .
   data MV_TYPE type STRING .
   data MV_CALC_PATH type BOOLEAN .
+  data MV_WITH_PARAMS type BOOLEAN .
   data MV_DIRECTION type UI_FUNC .
 
   methods CONSTRUCTOR
@@ -1235,7 +1463,9 @@ public section.
       !I_TYPE type STRING .
   methods STEPS_FLOW
     importing
-      !I_DIRECTION type UI_FUNC optional .
+      !I_DIRECTION   type UI_FUNC    optional
+      !I_WITH_PARAMS type BOOLEAN    optional
+      !I_CALC_PATH   type BOOLEAN    optional .
   methods MAGIC_SEARCH
     importing
       !I_DIRECTION type UI_FUNC optional
@@ -1627,6 +1857,239 @@ public section.
 protected section.
 private section.
 ENDCLASS.
+"! ABAP statement grammars - port of @abaplint/core 2_statements/statements/*.ts
+"! One CLASS-METHOD per statement, name = STMT_<statement_name>.
+"! Each method returns its runnable tree (zcl_ace_combi_node) - the same data
+"! that abaplint's getMatcher() returns.
+"! Discovered via RTTI by zcl_ace_keywords.
+"!
+"! Initial seed = the most common statements. Extend by porting more files from
+"! abaplint/packages/core/src/abap/2_statements/statements/*.ts using the same
+"! 1:1 mapping (str->str, tok->tok, seq->seq, alt->alt, opt->opt, star->star, ...).
+CLASS zcl_ace_stmts DEFINITION
+  FINAL
+  CREATE PRIVATE.
+
+  PUBLIC SECTION.
+
+    " Control flow
+    CLASS-METHODS stmt_if           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_elseif       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_else         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endif        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_case         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_when         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_when_others  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endcase      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_do           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_enddo        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_while        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endwhile     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_loop         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endloop      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_continue     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_exit         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_check        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_try          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endtry       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_catch        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_cleanup      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_raise        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Data
+    CLASS-METHODS stmt_data         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_data_begin   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_data_end     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_constant     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_field_symbol RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_types        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_clear        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_move         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_compute      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_assign       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_unassign     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Internal tables
+    CLASS-METHODS stmt_append       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_insert_internal RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_modify_internal RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_delete_internal RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_read_table   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_sort         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_collect      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " OO
+    CLASS-METHODS stmt_class_def    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_class_impl   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endclass     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_interface    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endinterface RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_method_def   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_method_impl  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endmethod    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_create_object RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_method  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Subroutines / function modules
+    CLASS-METHODS stmt_form         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endform      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_perform      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_function     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endfunction  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_function RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_module       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endmodule    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " SQL
+    CLASS-METHODS stmt_select       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endselect    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_insert_db    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_update_db    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_delete_db    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_modify_db    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_commit       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_rollback     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Reporting
+    CLASS-METHODS stmt_report       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_write        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_message      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Misc
+    CLASS-METHODS stmt_assert       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_return       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_include      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_export       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_import       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Selection screen / events
+    CLASS-METHODS stmt_select_options RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_parameters     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_parameter      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_ranges         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_tables         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_selection_screen RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_selection   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_user_command RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_pf          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_line_sel    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_initialization RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_start_of_sel   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_end_of_sel     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_top_of_page    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_end_of_page    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_load_of_program RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_first       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at_last        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_at             RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endat          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " String operations
+    CLASS-METHODS stmt_concatenate    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_split          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_replace        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_find           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_translate      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_condense       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_overlay        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_shift          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_search         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " System / control
+    CLASS-METHODS stmt_describe       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_free           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_refresh        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_wait           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_stop           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_submit         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_leave          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_generate       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_authority_check RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_break_point    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_break          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_log_point      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_set            RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_get            RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_convert        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_pack           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_unpack         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " File I/O
+    CLASS-METHODS stmt_open_dataset   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_close_dataset  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_read_dataset   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_transfer       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_delete_dataset RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " More OO
+    CLASS-METHODS stmt_aliases        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_interfaces     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_class_data     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_class_events   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_events         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_raise_event    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_create_data    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_catch_sys_excs RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_case_type      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_when_type      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " More reporting
+    CLASS-METHODS stmt_format         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_new_line       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_new_page       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_skip           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_uline          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_position       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_print_control  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_reserve        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_back           RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_suppress       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_extract        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_field_groups   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Math / arithmetic
+    CLASS-METHODS stmt_add            RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_subtract       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_multiply       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_divide         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_move_corres    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Macro / definition
+    CLASS-METHODS stmt_define         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_end_of_def     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+    " Misc more
+    CLASS-METHODS stmt_provide        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endprovide     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_on_change      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endon          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_chain          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_endchain       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_resume         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_retry          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_function_pool  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_program        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_type_pool      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_type_pools     RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_infotypes      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_controls       RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_statics        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_screen    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_transaction RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_dialog    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_set_pf_status  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_set_titlebar   RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_window         RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_loop_dynpro    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_process        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_field          RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_receive        RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_communication  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_set_handler    RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_get_reference  RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+    CLASS-METHODS stmt_call_badi      RETURNING VALUE(r) TYPE REF TO zcl_ace_combi_node.
+
+ENDCLASS.
 CLASS zcl_ace_table_viewer DEFINITION
   inheriting from ZCL_ACE_POPUP
   create public .
@@ -1927,6 +2390,7 @@ public section.
     mt_calls               TYPE TABLE OF ZCL_ACE=>TS_CALL .
   data M_HIST_DEPTH type I .
   data M_START_STACK type I .
+  data MV_CALC_ONLY type BOOLEAN .
   data:
     mt_source              TYPE STANDARD  TABLE OF ts_source .
   data MS_SOURCES type TS_SOURCE .
@@ -2004,8 +2468,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
-       ( function = 'CODEMIX'   icon = CONV #( icon_wizard )              quickinfo = 'Full code flow sequence'          text = 'Code Flow' )
-       ( function = 'CALCONLY'  icon = CONV #( icon_biw_formula )         quickinfo = 'Only lines that calculate values'  text = 'Calculation only' )
+       ( function = 'CODEMIX'     icon = CONV #( icon_wizard )              quickinfo = 'Full code flow sequence'          text = 'Code Flow' )
+       ( function = 'TOGGLE_CALC' icon = CONV #( icon_biw_formula )        quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'HANDLERS'  icon = CONV #( icon_oo_event )            quickinfo = 'Event Handlers flow'              text = 'Handlers' )
        ( function = 'CODE'      icon = CONV #( icon_customer_warehouse )  quickinfo = 'Only Z'                           text = 'Only Z' )
        ( function = 'DEPTH_M'   icon = CONV #( icon_arrow_left )          quickinfo = 'Decrease depth'                   text = '' )
@@ -2101,11 +2565,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF lv_count = 1. SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN. ENDIF.
 
       WHEN 'DEPTH_M'.
-        IF m_hist_depth > 0. m_hist_depth -= 1. ENDIF.
+        IF m_hist_depth > 0. m_hist_depth = m_hist_depth - 1. ENDIF.
         apply_depth( ).
 
       WHEN 'DEPTH_P'.
-        IF m_hist_depth < 99. m_hist_depth += 1. ENDIF.
+        IF m_hist_depth < 99. m_hist_depth = m_hist_depth + 1. ENDIF.
         apply_depth( ).
 
       WHEN 'DEPTH'.
@@ -2140,14 +2604,23 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       WHEN 'CODEMIX'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
-        mo_viewer->get_code_mix( ).
+        mo_viewer->get_code_mix( i_calc_path = mv_calc_only ).
         mo_viewer->mo_window->show_stack( ).
 
-      WHEN 'CALCONLY'.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
-        apply_depth( ).
-        mo_viewer->get_code_mix( i_calc_path = abap_true ).
-        mo_viewer->mo_window->show_stack( ).
+      WHEN 'TOGGLE_CALC'.
+        mv_calc_only = COND #( WHEN mv_calc_only = abap_true THEN abap_false ELSE abap_true ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'TOGGLE_CALC'
+                    text  = COND #( WHEN mv_calc_only = abap_true
+                                    THEN 'Only Calculated'
+                                    ELSE 'Show All Steps' ) ).
+        " Re-run current view with new filter if Code Flow is active
+        IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+          apply_depth( ).
+          mo_viewer->get_code_mix( i_calc_path = mv_calc_only ).
+          mo_viewer->mo_window->show_stack( ).
+        ENDIF.
 
       WHEN 'HANDLERS'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
@@ -2587,7 +3060,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         mo_code_viewer->set_marker( EXPORTING marker_number = 7 marker_lines = lines ).
         mo_code_viewer->select_lines( EXPORTING from_line = i_line to_line = i_line ).
       ENDIF.
-      mo_code_viewer->clear_line_markers( 'S' ).
+      "mo_code_viewer->clear_line_markers( 'S' ).
       mo_code_viewer->draw( ).
   endmethod.
   METHOD show_parse_time.
@@ -2707,7 +3180,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         mo_code_viewer->set_marker( EXPORTING marker_number = 7 marker_lines = lines ).
         mo_code_viewer->select_lines( EXPORTING from_line = i_line to_line = i_line ).
       ENDIF.
-      mo_code_viewer->clear_line_markers( 'S' ).
+      "mo_code_viewer->clear_line_markers( 'S' ).
       mo_code_viewer->draw( ).
   endmethod.
   METHOD show_coverage.
@@ -3023,7 +3496,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
       DATA(lv_intf_var_cnt) = 0.
       LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_iv)
         WHERE class = i_class AND eventname IS INITIAL.
-        lv_intf_var_cnt += 1.
+        lv_intf_var_cnt = lv_intf_var_cnt + 1.
       ENDLOOP.
       IF lv_intf_var_cnt > 0.
         DATA(lv_members_node) = mo_tree->add_node(
@@ -3040,7 +3513,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
         ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` ) ).
       DATA(lv_si) = 0.
       LOOP AT lv_sec_keys INTO DATA(lv_sec_key).
-        lv_si += 1.
+        lv_si = lv_si + 1.
         READ TABLE mo_window->ms_sources-tt_sections WITH KEY class = i_class section = lv_sec_key INTO DATA(ls_sec).
         IF sy-subrc = 0.
           DATA(lv_sec_node) = mo_tree->add_node(
@@ -3138,7 +3611,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
       LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
         WHERE program = subs-program AND class = subs-class
           AND eventtype = subs-eventtype AND eventname = subs-eventname.
-        lv_var_cnt += 1.
+        lv_var_cnt = lv_var_cnt + 1.
       ENDLOOP.
       IF lv_var_cnt > 0.
         DATA(lv_vars_node) = mo_tree->add_node(
@@ -3163,7 +3636,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     DATA lv_cnt TYPE i.
     LOOP AT mo_window->ms_sources-tt_progs TRANSPORTING NO FIELDS
       WHERE include <> 'VIRTUAL' AND include <> lv_main_prog.
-      lv_cnt += 1.
+      lv_cnt = lv_cnt + 1.
     ENDLOOP.
     CHECK lv_cnt > 0.
     DATA(lv_node) = mo_tree->add_node(
@@ -3200,7 +3673,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     DATA lv_cnt TYPE i.
     LOOP AT mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
       WHERE program = mo_window->m_prg-program AND eventtype IS INITIAL AND class IS INITIAL.
-      lv_cnt += 1.
+      lv_cnt = lv_cnt + 1.
     ENDLOOP.
     CHECK lv_cnt > 0.
     DATA(lv_node) = mo_tree->add_node(
@@ -3275,9 +3748,9 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     LOOP AT mo_window->ms_sources-tt_class_defs INTO DATA(ls_cd)
       WHERE class <> i_excl_class AND program = i_prog.
       IF ls_cd-is_intf = abap_true.
-        lv_intf_cnt += 1.
+        lv_intf_cnt = lv_intf_cnt + 1.
       ELSE.
-        lv_cls_cnt += 1.
+        lv_cls_cnt = lv_cls_cnt + 1.
       ENDIF.
     ENDLOOP.
     CHECK lv_cls_cnt + lv_intf_cnt > 0.
@@ -3328,7 +3801,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     DATA lv_form_cnt  TYPE i.
     LOOP AT mo_window->ms_sources-tt_calls_line TRANSPORTING NO FIELDS
       WHERE eventtype = 'FORM' AND program = i_prog.
-      lv_form_cnt += 1.
+      lv_form_cnt = lv_form_cnt + 1.
     ENDLOOP.
     CHECK lv_form_cnt > 0.
     IF lv_form_cnt > c_lazy_threshold.
@@ -3364,7 +3837,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
       CLEAR lv_var_cnt.
       LOOP AT mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE program = subs-program AND eventtype = 'FORM' AND eventname = subs-eventname.
-        lv_var_cnt += 1.
+        lv_var_cnt = lv_var_cnt + 1.
       ENDLOOP.
       IF lv_var_cnt > 0.
         DATA(lv_vars_node) = mo_tree->add_node( i_name = |Local vars ({ lv_var_cnt })| i_icon = CONV #( icon_header )
@@ -3381,7 +3854,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     DATA lv_mod_cnt  TYPE i.
     LOOP AT mo_window->ms_sources-tt_calls_line TRANSPORTING NO FIELDS
       WHERE eventtype = 'MODULE' AND program = i_prog.
-      lv_mod_cnt += 1.
+      lv_mod_cnt = lv_mod_cnt + 1.
     ENDLOOP.
     CHECK lv_mod_cnt > 0.
     IF lv_mod_cnt > c_lazy_threshold.
@@ -3966,6 +4439,1758 @@ CLASS ZCL_ACE_TABLE_VIEWER IMPLEMENTATION.
         ENDIF.
       ENDIF.
   endmethod.
+ENDCLASS.
+
+CLASS zcl_ace_stmts IMPLEMENTATION.
+
+  " ===== Control flow =====
+
+  METHOD stmt_if.            " seq("IF", Cond)
+    r = zcl_ace_combi=>seq( VALUE #( ( zcl_ace_combi=>str( `IF` ) )
+                                     ( zcl_ace_combi=>expr( `COND` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_elseif.        " seq("ELSEIF", Cond)
+    r = zcl_ace_combi=>seq( VALUE #( ( zcl_ace_combi=>str( `ELSEIF` ) )
+                                     ( zcl_ace_combi=>expr( `COND` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_else.          " str("ELSE")
+    r = zcl_ace_combi=>str( `ELSE` ).
+  ENDMETHOD.
+
+  METHOD stmt_endif.
+    r = zcl_ace_combi=>str( `ENDIF` ).
+  ENDMETHOD.
+
+  METHOD stmt_case.          " seq("CASE", opt("TYPE OF"), Source)
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CASE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE OF` ) ) )
+      ( zcl_ace_combi=>expr( `SOURCE` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_when.          " seq("WHEN", Source [OR Source]*)
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `WHEN` ) )
+      ( zcl_ace_combi=>expr( `SOURCE` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_when_others.
+    r = zcl_ace_combi=>str( `WHEN OTHERS` ).
+  ENDMETHOD.
+
+  METHOD stmt_endcase.
+    r = zcl_ace_combi=>str( `ENDCASE` ).
+  ENDMETHOD.
+
+  METHOD stmt_do.            " seq("DO", opt(Source "TIMES"), opt("VARYING" ...))
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DO` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TIMES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VARYING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NEXT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RANGE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_enddo.
+    r = zcl_ace_combi=>str( `ENDDO` ).
+  ENDMETHOD.
+
+  METHOD stmt_while.         " seq("WHILE", Cond, opt("VARY" ...))
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `WHILE` ) )
+      ( zcl_ace_combi=>expr( `COND` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VARY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NEXT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endwhile.
+    r = zcl_ace_combi=>str( `ENDWHILE` ).
+  ENDMETHOD.
+
+  METHOD stmt_loop.
+    " seq("LOOP", opt("AT" LoopSource), opt(LoopTarget), opt("WHERE" Cond),
+    "      opt("USING KEY"), opt("FROM" Source), opt("TO" Source), opt("STEP" Source),
+    "      opt("GROUP BY" ...))
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `LOOP` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>seq( VALUE #(
+          ( zcl_ace_combi=>str( `AT` ) )
+          ( zcl_ace_combi=>expr( `LOOP_SOURCE` ) ) ) ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>expr( `LOOP_TARGET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>seq( VALUE #(
+          ( zcl_ace_combi=>str( `WHERE` ) )
+          ( zcl_ace_combi=>expr( `COND` ) ) ) ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STEP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `GROUP BY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `GROUP` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endloop.
+    r = zcl_ace_combi=>str( `ENDLOOP` ).
+  ENDMETHOD.
+
+  METHOD stmt_continue.
+    r = zcl_ace_combi=>str( `CONTINUE` ).
+  ENDMETHOD.
+
+  METHOD stmt_exit.
+    r = zcl_ace_combi=>str( `EXIT` ).
+  ENDMETHOD.
+
+  METHOD stmt_check.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CHECK` ) )
+      ( zcl_ace_combi=>expr( `COND` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_try.
+    r = zcl_ace_combi=>str( `TRY` ).
+  ENDMETHOD.
+
+  METHOD stmt_endtry.
+    r = zcl_ace_combi=>str( `ENDTRY` ).
+  ENDMETHOD.
+
+  METHOD stmt_catch.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CATCH` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEFORE UNWIND` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_cleanup.
+    r = zcl_ace_combi=>str( `CLEANUP` ).
+  ENDMETHOD.
+
+  METHOD stmt_raise.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `RAISE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCEPTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESUMABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NEW` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MESSAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EVENT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SHORTDUMP` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== Data =====
+
+  METHOD stmt_data.          " seq("DATA", DataDefinition, optPrio("%_PREDEFINED"))
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DATA` ) )
+      ( zcl_ace_combi=>expr( `DATA_DEFINITION` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_data_begin.    " "DATA: BEGIN OF [PUBLIC SECTION] name"
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DATA` ) )
+      ( zcl_ace_combi=>str( `BEGIN OF` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMMON PART` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_data_end.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DATA` ) )
+      ( zcl_ace_combi=>str( `END OF` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_constant.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CONSTANTS` ) )
+      ( zcl_ace_combi=>expr( `DATA_DEFINITION` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_field_symbol.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FIELD-SYMBOLS` ) )
+      ( zcl_ace_combi=>expr( `FIELD_SYMBOL` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIKE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STANDARD TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SORTED TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HASHED TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ANY TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX TABLE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_types.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `TYPES` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEGIN OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIKE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REF TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STANDARD TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SORTED TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HASHED TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH UNIQUE KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH NON-UNIQUE KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH EMPTY KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH DEFAULT KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INITIAL SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OCCURS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_clear.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CLEAR` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH NULL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_move.
+    " verNot(Cloud,"MOVE") seq("EXACT"? Source "TO" "?"? Target "%_LENGTH"?)
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `MOVE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXACT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `?` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_compute.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `COMPUTE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXACT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_assign.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `ASSIGN` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOCAL COPY OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INITIAL LINE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMPONENT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF STRUCTURE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCREMENT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RANGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CASTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIKE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HANDLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DECIMALS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_unassign.
+    r = zcl_ace_combi=>str( `UNASSIGN` ).
+  ENDMETHOD.
+
+  " ===== Internal tables =====
+
+  METHOD stmt_append.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `APPEND` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INITIAL LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STEP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WHERE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SORTED BY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ASSIGNING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REFERENCE INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CASTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_insert_internal.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `INSERT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INITIAL LINE INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEFORE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AFTER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ASSIGNING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REFERENCE INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CASTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_modify_internal.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `MODIFY` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TRANSPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WHERE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_delete_internal.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DELETE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ADJACENT DUPLICATES FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMPARING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL FIELDS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WHERE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_read_table.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `READ TABLE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH TABLE KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMPONENTS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BINARY SEARCH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TRANSPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO FIELDS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL FIELDS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ASSIGNING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REFERENCE INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CASTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ELSE UNASSIGN` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_sort.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SORT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ASCENDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DESCENDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS TEXT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BYPASSING BUFFER` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_collect.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `COLLECT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ASSIGNING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REFERENCE INTO` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== OO =====
+
+  METHOD stmt_class_def.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CLASS` ) )
+      ( zcl_ace_combi=>str( `DEFINITION` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PUBLIC` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INHERITING FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ABSTRACT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FINAL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CREATE PUBLIC` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CREATE PROTECTED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CREATE PRIVATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SHARED MEMORY ENABLED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR TESTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RISK LEVEL HARMLESS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RISK LEVEL DANGEROUS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RISK LEVEL CRITICAL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DURATION SHORT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DURATION MEDIUM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DURATION LONG` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOAD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFERRED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOCAL FRIENDS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `GLOBAL FRIENDS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_class_impl.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CLASS` ) )
+      ( zcl_ace_combi=>str( `IMPLEMENTATION` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endclass.
+    r = zcl_ace_combi=>str( `ENDCLASS` ).
+  ENDMETHOD.
+
+  METHOD stmt_interface.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `INTERFACE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PUBLIC` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOAD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFERRED` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endinterface.
+    r = zcl_ace_combi=>str( `ENDINTERFACE` ).
+  ENDMETHOD.
+
+  METHOD stmt_method_def.
+    " Methods/Class-Methods declaration — many keywords, see method_def.ts
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>alt( VALUE #( ( zcl_ace_combi=>str( `METHODS` ) )
+                                     ( zcl_ace_combi=>str( `CLASS-METHODS` ) ) ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FINAL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ABSTRACT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFAULT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FAIL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RETURNING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RAISING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCEPTIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR TESTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR EVENT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REDEFINITION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AMDP OPTIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `READ-ONLY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CDS SESSION CLIENT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_method_impl.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `METHOD` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY KERNEL MODULE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY DATABASE PROCEDURE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY DATABASE FUNCTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR HDB` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LANGUAGE SQLSCRIPT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OPTIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `READ-ONLY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endmethod.
+    r = zcl_ace_combi=>str( `ENDMETHOD` ).
+  ENDMETHOD.
+
+  METHOD stmt_create_object.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CREATE OBJECT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AREA HANDLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_call_method.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL METHOD` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RECEIVING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCEPTIONS` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== Subroutines / function modules =====
+
+  METHOD stmt_form.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FORM` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RAISING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endform.
+    r = zcl_ace_combi=>str( `ENDFORM` ).
+  ENDMETHOD.
+
+  METHOD stmt_perform.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PERFORM` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON COMMIT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON ROLLBACK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LEVEL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IF FOUND` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_function.
+    r = zcl_ace_combi=>str( `FUNCTION` ).
+  ENDMETHOD.
+
+  METHOD stmt_endfunction.
+    r = zcl_ace_combi=>str( `ENDFUNCTION` ).
+  ENDMETHOD.
+
+  METHOD stmt_call_function.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL FUNCTION` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN UPDATE TASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BACKGROUND TASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BACKGROUND UNIT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS SEPARATE UNIT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `KEEPING LOGICAL UNIT OF WORK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STARTING NEW TASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CALLING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON END OF TASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DESTINATION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCEPTIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PARAMETER-TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCEPTION-TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OTHERS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_module.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `MODULE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OUTPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AT EXIT-COMMAND` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endmodule.
+    r = zcl_ace_combi=>str( `ENDMODULE` ).
+  ENDMETHOD.
+
+  " ===== SQL =====
+
+  METHOD stmt_select.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SELECT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SINGLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR UPDATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DISTINCT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO CORRESPONDING FIELDS OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `APPENDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `APPENDING TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WHERE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `GROUP BY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HAVING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ORDER BY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UP TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ROWS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PACKAGE SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BYPASSING BUFFER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CONNECTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CLIENT SPECIFIED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `JOIN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INNER JOIN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LEFT OUTER JOIN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RIGHT OUTER JOIN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CROSS JOIN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UNION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTERSECT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCEPT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ASCENDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DESCENDING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endselect.
+    r = zcl_ace_combi=>str( `ENDSELECT` ).
+  ENDMETHOD.
+
+  METHOD stmt_insert_db.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `INSERT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACCEPTING DUPLICATE KEYS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CONNECTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CLIENT SPECIFIED` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_update_db.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `UPDATE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WHERE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDICATORS SET STRUCTURE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CONNECTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CLIENT SPECIFIED` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_delete_db.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DELETE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WHERE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CONNECTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CLIENT SPECIFIED` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_modify_db.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `MODIFY` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CONNECTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CLIENT SPECIFIED` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_commit.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `COMMIT WORK` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND WAIT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_rollback.
+    r = zcl_ace_combi=>str( `ROLLBACK WORK` ).
+  ENDMETHOD.
+
+  " ===== Reporting =====
+
+  METHOD stmt_report.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `REPORT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO STANDARD PAGE HEADING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MESSAGE-ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFINING DATABASE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_write.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `WRITE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING EDIT MASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING NO EDIT MASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-ZERO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-SIGN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LEFT-JUSTIFIED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RIGHT-JUSTIFIED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CENTERED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UNDER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-GAP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COLOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTENSIFIED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INVERSE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HOTSPOT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `QUICKINFO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS CHECKBOX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS SYMBOL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS ICON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS LINE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_message.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `MESSAGE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NUMBER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DISPLAY LIKE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RAISING` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== Misc =====
+
+  METHOD stmt_assert.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `ASSERT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBKEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELDS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CONDITION` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_return.
+    r = zcl_ace_combi=>str( `RETURN` ).
+  ENDMETHOD.
+
+  METHOD stmt_include.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `INCLUDE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IF FOUND` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STRUCTURE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_export.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `EXPORT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MEMORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DATABASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SHARED MEMORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SHARED BUFFER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DATA BUFFER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTERNAL TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMPRESSION ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMPRESSION OFF` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_import.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `IMPORT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MEMORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DATABASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SHARED MEMORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SHARED BUFFER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DATA BUFFER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTERNAL TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING CONVERSION ERRORS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING STRUCTURE BOUNDARIES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT CHARACTER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACCEPTING PADDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACCEPTING TRUNCATION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHAR-TO-HEX MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== Selection screen / events =====
+
+  METHOD stmt_select_options.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SELECT-OPTIONS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFAULT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OPTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SIGN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MEMORY ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCHCODE OBJECT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODIF ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOWER CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OBLIGATORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-DISPLAY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO INTERVALS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-EXTENSION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VISIBLE LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE-REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USER-COMMAND` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_parameters.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PARAMETERS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIKE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DECIMALS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFAULT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MEMORY ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCHCODE OBJECT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODIF ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOWER CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OBLIGATORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-DISPLAY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VISIBLE LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS CHECKBOX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RADIOBUTTON GROUP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS LISTBOX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE CHECK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE-REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USER-COMMAND` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_parameter.
+    r = zcl_ace_combi=>str( `PARAMETER` ).
+  ENDMETHOD.
+
+  METHOD stmt_ranges.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `RANGES` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_tables.
+    r = zcl_ace_combi=>str( `TABLES` ).
+  ENDMETHOD.
+
+  METHOD stmt_selection_screen.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SELECTION-SCREEN` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEGIN OF BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEGIN OF LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEGIN OF SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEGIN OF TABBED BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF TABBED BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH FRAME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TITLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO INTERVALS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS WINDOW` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AS SUBSCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDE BLOCKS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDE PARAMETERS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDE SELECT-OPTIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SKIP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ULINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMMENT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `POSITION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PUSHBUTTON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FUNCTION KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DYNAMIC SELECTIONS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_at_selection.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `AT SELECTION-SCREEN` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OUTPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BLOCK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RADIOBUTTON GROUP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE-REQUEST FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HELP-REQUEST FOR` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_at_user_command.
+    r = zcl_ace_combi=>str( `AT USER-COMMAND` ).
+  ENDMETHOD.
+
+  METHOD stmt_at_pf.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `AT PF` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_at_line_sel.
+    r = zcl_ace_combi=>str( `AT LINE-SELECTION` ).
+  ENDMETHOD.
+
+  METHOD stmt_initialization.
+    r = zcl_ace_combi=>str( `INITIALIZATION` ).
+  ENDMETHOD.
+
+  METHOD stmt_start_of_sel.
+    r = zcl_ace_combi=>str( `START-OF-SELECTION` ).
+  ENDMETHOD.
+
+  METHOD stmt_end_of_sel.
+    r = zcl_ace_combi=>str( `END-OF-SELECTION` ).
+  ENDMETHOD.
+
+  METHOD stmt_top_of_page.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `TOP-OF-PAGE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DURING LINE-SELECTION` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_end_of_page.
+    r = zcl_ace_combi=>str( `END-OF-PAGE` ).
+  ENDMETHOD.
+
+  METHOD stmt_load_of_program.
+    r = zcl_ace_combi=>str( `LOAD-OF-PROGRAM` ).
+  ENDMETHOD.
+
+  METHOD stmt_at_first.
+    r = zcl_ace_combi=>str( `AT FIRST` ).
+  ENDMETHOD.
+
+  METHOD stmt_at_last.
+    r = zcl_ace_combi=>str( `AT LAST` ).
+  ENDMETHOD.
+
+  METHOD stmt_at.
+    " AT NEW <field> / AT END OF <field>
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `AT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NEW` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END OF` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endat.
+    r = zcl_ace_combi=>str( `ENDAT` ).
+  ENDMETHOD.
+
+  " ===== String operations =====
+
+  METHOD stmt_concatenate.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CONCATENATE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SEPARATED BY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESPECTING BLANKS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_split.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SPLIT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_replace.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `REPLACE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIRST OCCURRENCE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL OCCURRENCES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OCCURRENCES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBSTRING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REGEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PCRE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECTION OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECTION LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESPECTING CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESULTS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_find.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FIND` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIRST OCCURRENCE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL OCCURRENCES OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBSTRING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REGEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PCRE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECTION OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECTION LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESPECTING CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCH COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCH OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCH LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MATCH LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESULTS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBMATCHES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_translate.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `TRANSLATE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO UPPER CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LOWER CASE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM CODE PAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO CODE PAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM NUMBER FORMAT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO NUMBER FORMAT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_condense.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CONDENSE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-GAPS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_overlay.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `OVERLAY` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ONLY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_shift.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SHIFT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LEFT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RIGHT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CIRCULAR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PLACES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DELETING LEADING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DELETING TRAILING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UP TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_search.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SEARCH` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ABBREVIATED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STARTING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENDING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND MARK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== System / control =====
+
+  METHOD stmt_describe.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DESCRIBE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DISTANCE BETWEEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OCCURS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `KIND` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BYTE MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN CHARACTER MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COMPONENTS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OUTPUT-LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DECIMALS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EDIT MASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HELP-ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PAGES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LEFT MARGIN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TOP LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TITLE LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HEAD LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `END LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIRST-LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DISTANCE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_free.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FREE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MEMORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OBJECT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_refresh.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `REFRESH` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CONTROL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM SCREEN` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_wait.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `WAIT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UP TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SECONDS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UNTIL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR ASYNCHRONOUS TASKS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR PUSH CHANNELS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR MESSAGING CHANNELS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_stop.
+    r = zcl_ace_combi=>str( `STOP` ).
+  ENDMETHOD.
+
+  METHOD stmt_submit.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SUBMIT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VIA SELECTION-SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VIA JOB` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NUMBER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING LIST TO MEMORY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING SELECTION-SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING SELECTION-SET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING SELECTION-SETS OF PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH FREE SELECTIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH SELECTION-TABLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND RETURN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO SAP-SPOOL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SPOOL PARAMETERS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ARCHIVE PARAMETERS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITHOUT SPOOL DYNPRO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_leave.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `LEAVE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO TRANSACTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND SKIP FIRST SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LIST-PROCESSING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND RETURN TO SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIST-PROCESSING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO CURRENT TRANSACTION` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_generate.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `GENERATE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBROUTINE POOL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPORT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DYNPRO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NAME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MESSAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WORD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TRACE-FILE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_authority_check.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `AUTHORITY-CHECK` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OBJECT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR USER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DUMMY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_break_point.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `BREAK-POINT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_break.
+    r = zcl_ace_combi=>str( `BREAK` ).
+  ENDMETHOD.
+
+  METHOD stmt_log_point.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `LOG-POINT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SUBKEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELDS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_set.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SET` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOCALE LANGUAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COUNTRY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODIFIER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BIT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BLANK LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COUNTRY-SPECIFIC CONVERSIONS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CURSOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXTENDED CHECK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HANDLER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACTIVATION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HOLD DATA` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LANGUAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LEFT SCROLL-BOUNDARY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MARGIN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PARAMETER ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PF-STATUS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INCLUDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCLUDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMMEDIATELY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PROPERTY OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RUN TIME ANALYZER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RUN TIME CLOCK RESOLUTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TITLEBAR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UPDATE TASK LOCAL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USER-COMMAND` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_get.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `GET` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BIT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CURSOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFFSET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PARAMETER ID` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PF-STATUS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCLUDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PROPERTY OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REFERENCE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RUN TIME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD VALUE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BADI` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LOCALE LANGUAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COUNTRY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODIFIER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TIME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STAMP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELD` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STARTING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENDING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LATE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_convert.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CONVERT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TIME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STAMP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INVERTED-DATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TIME STAMP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TIME ZONE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DAYLIGHT SAVING TIME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TEXT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO SORTABLE CODE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_pack.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PACK` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_unpack.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `UNPACK` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== File I/O =====
+
+  METHOD stmt_open_dataset.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `OPEN DATASET` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR OUTPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR APPENDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR UPDATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN BINARY MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN TEXT MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN LEGACY BINARY MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN LEGACY TEXT MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BIG ENDIAN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LITTLE ENDIAN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NATIVE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENCODING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEFAULT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UTF-8` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NON-UNICODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH SMART LINEFEED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH NATIVE LINEFEED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH UNIX LINEFEED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH WINDOWS LINEFEED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CODE PAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING CONVERSION ERRORS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REPLACEMENT CHARACTER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IGNORING CONVERSION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MESSAGE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FILTER` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AT POSITION` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_close_dataset.
+    r = zcl_ace_combi=>str( `CLOSE DATASET` ).
+  ENDMETHOD.
+
+  METHOD stmt_read_dataset.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `READ DATASET` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MAXIMUM LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACTUAL LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_transfer.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `TRANSFER` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LENGTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO END OF LINE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_delete_dataset.
+    r = zcl_ace_combi=>str( `DELETE DATASET` ).
+  ENDMETHOD.
+
+  " ===== More OO =====
+
+  METHOD stmt_aliases.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `ALIASES` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_interfaces.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `INTERFACES` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ABSTRACT METHODS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FINAL METHODS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DATA VALUES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL METHODS ABSTRACT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALL METHODS FINAL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PARTIALLY IMPLEMENTED` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_class_data.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CLASS-DATA` ) )
+      ( zcl_ace_combi=>expr( `DATA_DEFINITION` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_class_events.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CLASS-EVENTS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_events.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `EVENTS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_raise_event.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `RAISE EVENT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_create_data.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CREATE DATA` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LIKE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HANDLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AREA HANDLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STANDARD TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SORTED TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HASHED TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ANY TABLE OF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH UNIQUE KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH NON-UNIQUE KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH EMPTY KEY` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INITIAL SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `REF TO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_catch_sys_excs.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CATCH SYSTEM-EXCEPTIONS` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_case_type.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CASE TYPE OF` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_when_type.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `WHEN TYPE` ) ) ) ).
+  ENDMETHOD.
+
+  " ===== More reporting =====
+
+  METHOD stmt_format.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FORMAT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESET` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COLOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTENSIFIED` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INVERSE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HOTSPOT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FRAMES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OFF` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_new_line.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `NEW-LINE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-SCROLLING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SCROLLING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_new_page.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `NEW-PAGE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-TITLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH-TITLE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO-HEADING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH-HEADING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-COUNT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE-SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PRINT ON` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `PRINT OFF` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NO DIALOG` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NEW-SECTION` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_skip.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SKIP` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO LINE` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_uline.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `ULINE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_position.
+    r = zcl_ace_combi=>str( `POSITION` ).
+  ENDMETHOD.
+
+  METHOD stmt_print_control.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PRINT-CONTROL` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INDEX LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `POSITION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FUNCTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANNEL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FONT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CPI` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LPI` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `COLOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SIZE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WIDTH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `HEIGHT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_reserve.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `RESERVE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `LINES` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_back.
+    r = zcl_ace_combi=>str( `BACK` ).
+  ENDMETHOD.
+
+  METHOD stmt_suppress.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SUPPRESS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DIALOG` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_extract.
+    r = zcl_ace_combi=>str( `EXTRACT` ).
+  ENDMETHOD.
+
+  METHOD stmt_field_groups.
+    r = zcl_ace_combi=>str( `FIELD-GROUPS` ).
+  ENDMETHOD.
+
+  " ===== Math / arithmetic =====
+
+  METHOD stmt_add.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `ADD` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `THEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UNTIL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `GIVING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACCORDING TO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_subtract.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SUBTRACT` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_multiply.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `MULTIPLY` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_divide.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `DIVIDE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_move_corres.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `MOVE-CORRESPONDING` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `KEEPING TARGET LINES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPANDING NESTED TABLES` ) ) ) ) ).
+  ENDMETHOD.
+
+  " ===== Macro / definition =====
+
+  METHOD stmt_define.
+    r = zcl_ace_combi=>str( `DEFINE` ).
+  ENDMETHOD.
+
+  METHOD stmt_end_of_def.
+    r = zcl_ace_combi=>str( `END-OF-DEFINITION` ).
+  ENDMETHOD.
+
+  " ===== Misc more =====
+
+  METHOD stmt_provide.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PROVIDE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FIELDS` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BETWEEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_endprovide.
+    r = zcl_ace_combi=>str( `ENDPROVIDE` ).
+  ENDMETHOD.
+
+  METHOD stmt_on_change.
+    r = zcl_ace_combi=>str( `ON CHANGE OF` ).
+  ENDMETHOD.
+
+  METHOD stmt_endon.
+    r = zcl_ace_combi=>str( `ENDON` ).
+  ENDMETHOD.
+
+  METHOD stmt_chain.
+    r = zcl_ace_combi=>str( `CHAIN` ).
+  ENDMETHOD.
+
+  METHOD stmt_endchain.
+    r = zcl_ace_combi=>str( `ENDCHAIN` ).
+  ENDMETHOD.
+
+  METHOD stmt_resume.
+    r = zcl_ace_combi=>str( `RESUME` ).
+  ENDMETHOD.
+
+  METHOD stmt_retry.
+    r = zcl_ace_combi=>str( `RETRY` ).
+  ENDMETHOD.
+
+  METHOD stmt_function_pool.
+    r = zcl_ace_combi=>str( `FUNCTION-POOL` ).
+  ENDMETHOD.
+
+  METHOD stmt_program.
+    r = zcl_ace_combi=>str( `PROGRAM` ).
+  ENDMETHOD.
+
+  METHOD stmt_type_pool.
+    r = zcl_ace_combi=>str( `TYPE-POOL` ).
+  ENDMETHOD.
+
+  METHOD stmt_type_pools.
+    r = zcl_ace_combi=>str( `TYPE-POOLS` ).
+  ENDMETHOD.
+
+  METHOD stmt_infotypes.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `INFOTYPES` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `NAME` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALID` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_controls.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CONTROLS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TYPE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLEVIEW` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABSTRIP` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CUSTOM CONTROL` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_statics.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `STATICS` ) )
+      ( zcl_ace_combi=>expr( `DATA_DEFINITION` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_call_screen.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL SCREEN` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STARTING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENDING AT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_call_transaction.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL TRANSACTION` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AND SKIP FIRST SCREEN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH AUTHORITY-CHECK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITHOUT AUTHORITY-CHECK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `USING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `UPDATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MESSAGES INTO` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OPTIONS FROM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH PARAMETER` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_call_dialog.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL DIALOG` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMPORTING` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_set_pf_status.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SET PF-STATUS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCLUDING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMMEDIATELY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_set_titlebar.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SET TITLEBAR` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `OF PROGRAM` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_window.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `WINDOW` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `STARTING AT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ENDING AT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_loop_dynpro.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `LOOP` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WITH CONTROL` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CURSOR` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_process.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `PROCESS` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `BEFORE OUTPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `AFTER INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON HELP-REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON VALUE-REQUEST` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_field.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FIELD` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `MODULE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON CHAIN-INPUT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ON CHAIN-REQUEST` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SELECT` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_receive.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `RECEIVE` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RESULTS FROM FUNCTION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `KEEPING TASK` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `TABLES` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXCEPTIONS` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_communication.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `COMMUNICATION` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INIT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ALLOCATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACCEPT` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `SEND` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RECEIVE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DEALLOCATE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `DESTINATION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ID` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_set_handler.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `SET HANDLER` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `ACTIVATION` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `FOR ALL INSTANCES` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_get_reference.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `GET REFERENCE OF` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `INTO` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD stmt_call_badi.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `CALL BADI` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EXPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IMPORTING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RECEIVING` ) ) ) ) ).
+  ENDMETHOD.
+
 ENDCLASS.
 
 CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
@@ -6528,7 +8753,7 @@ METHOD hndl_expand_empty.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE program = ls_cl-program AND class = ls_cl-class
           AND eventtype = 'METHOD' AND eventname = lv_mth.
-        lv_vcnt += 1.
+        lv_vcnt = lv_vcnt + 1.
       ENDLOOP.
       CHECK lv_vcnt > 0.
       DATA(lv_vnode) = add_node(
@@ -6678,7 +8903,7 @@ METHOD expand_class.
       DATA lv_cnt TYPE i.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE class = i_class AND eventname IS INITIAL.
-        lv_cnt += 1.
+        lv_cnt = lv_cnt + 1.
       ENDLOOP.
       IF lv_cnt > 0.
         DATA(lv_memb) = add_node(
@@ -6694,7 +8919,7 @@ METHOD expand_class.
         ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` ) ).
       DATA(lv_si) = 0.
       LOOP AT lv_sec_keys INTO DATA(lv_sec_key).
-        lv_si += 1.
+        lv_si = lv_si + 1.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_sections
           WITH KEY class = i_class section = lv_sec_key INTO DATA(ls_sec).
         IF sy-subrc = 0.
@@ -6747,7 +8972,7 @@ METHOD expand_class.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE program = lv_m-program AND class = i_class
           AND eventtype = 'METHOD' AND eventname = lv_m-eventname.
-        lv_vcnt += 1.
+        lv_vcnt = lv_vcnt + 1.
       ENDLOOP.
       IF lv_vcnt > 0.
         DATA(lv_vnode) = add_node(
@@ -6780,7 +9005,7 @@ METHOD expand_forms.
       CLEAR lv_fvar_cnt.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE program = lv_fs-program AND eventtype = 'FORM' AND eventname = lv_fs-eventname.
-        lv_fvar_cnt += 1.
+        lv_fvar_cnt = lv_fvar_cnt + 1.
       ENDLOOP.
       IF lv_fvar_cnt > 0.
         DATA(lv_fvn) = add_node(
@@ -6810,7 +9035,7 @@ METHOD expand_intf.
     DATA lv_cnt TYPE i.
     LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
       WHERE class = i_intf AND eventname IS INITIAL.
-      lv_cnt += 1.
+      lv_cnt = lv_cnt + 1.
     ENDLOOP.
     IF lv_cnt > 0.
       DATA(lv_memb) = add_node(
@@ -7279,7 +9504,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
       IF sy-subrc = 0.
         lv_ev_name  = ftok-str.
         lv_last_row = ftok-row.
-        lv_tok_idx += 1.
+        lv_tok_idx = lv_tok_idx + 1.
       ENDIF.
     ENDIF.
 
@@ -7308,11 +9533,11 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
             param   = lv_pname   line = tok-row )
             INTO TABLE lt_params.
         ENDIF.
-        lv_tok_idx += 1.
+        lv_tok_idx = lv_tok_idx + 1.
         READ TABLE io_scan->tokens INDEX lv_tok_idx INTO tok.
         IF sy-subrc = 0. lv_ev_name = tok-str. ENDIF.
         CLEAR: lv_section, lv_pname, lv_ptype, lv_ref, lv_after_type.
-        lv_tok_idx += 1.
+        lv_tok_idx = lv_tok_idx + 1.
         CONTINUE.
       ENDIF.
 
@@ -7476,7 +9701,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
 
       ENDCASE.
 
-      lv_tok_idx += 1.
+      lv_tok_idx = lv_tok_idx + 1.
     ENDWHILE.
 
     " Flush last parameter
@@ -7600,7 +9825,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                 ENDIF.
               ENDIF.
             ENDIF.
-            lv_i += 1.
+            lv_i = lv_i + 1.
           ENDWHILE.
 
         " ── SET HANDLER obj->method FOR src_obj ─────────────────────
@@ -7630,7 +9855,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                   IF sy-subrc = 0 AND ls_src-str <> 'ALL'. lv_src_obj = ls_src-str. ENDIF.
                   EXIT.
                 ENDIF.
-                lv_k += 1.
+                lv_k = lv_k + 1.
               ENDWHILE.
 
               " Резолвим тип объекта хэндлера
@@ -7677,7 +9902,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                 ) TO cs_source-tt_handler_map.
               ENDIF.
             ENDIF.
-            lv_j += 1.
+            lv_j = lv_j + 1.
           ENDWHILE.
 
       ENDCASE.
@@ -8208,7 +10433,7 @@ METHOD collect_method_calls.
           lv_left  = ls_prev-str.
           lv_right = ls_next-str.
           REPLACE ALL OCCURRENCES OF '(' IN lv_right WITH ''.
-          lv_ti += 1.
+          lv_ti = lv_ti + 1.
           IF lv_tstr = '->' AND ( ls_prev-str IS INITIAL OR ls_prev-str CO ')' ).
             READ TABLE io_scan->tokens INDEX lv_ti - 2 INTO DATA(ls_nk1).
             READ TABLE io_scan->tokens INDEX lv_ti - 3 INTO DATA(ls_nk2).
@@ -8224,7 +10449,7 @@ METHOD collect_method_calls.
             ENDIF.
           ENDIF.
         ELSE.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
 
       ELSEIF lv_tstr = 'NEW'.
@@ -8235,15 +10460,15 @@ METHOD collect_method_calls.
           REPLACE ALL OCCURRENCES OF '(' IN lv_left WITH ''.
           CONDENSE lv_left NO-GAPS.
           lv_right = 'CONSTRUCTOR'.
-          lv_ti += 1.
+          lv_ti = lv_ti + 1.
         ELSE.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
 
       ELSEIF lv_tstr CA '(' AND NOT lv_tstr CS '->' AND NOT lv_tstr CS '=>'.
         READ TABLE io_scan->tokens INDEX lv_ti + 1 INTO DATA(ls_after).
         IF ls_after-str = '='.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
         IF lv_tstr CP 'DATA(*'
           OR lv_tstr CP 'FIELD-SYMBOL(*'
@@ -8254,7 +10479,7 @@ METHOD collect_method_calls.
           OR lv_tstr CP 'CAST(*'
           OR lv_tstr CP 'COND(*'
           OR lv_tstr CP 'SWITCH(*'.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
         lv_arrow = '->'.
         lv_left  = 'ME'.
@@ -8263,13 +10488,13 @@ METHOD collect_method_calls.
         CONDENSE lv_right NO-GAPS.
 
       ELSE.
-        lv_ti += 1. CONTINUE.
+        lv_ti = lv_ti + 1. CONTINUE.
       ENDIF.
 
       REPLACE ALL OCCURRENCES OF '(' IN lv_right WITH ''.
       REPLACE ALL OCCURRENCES OF ')' IN lv_right WITH ''.
       CONDENSE lv_right NO-GAPS.
-      IF lv_right IS INITIAL. lv_ti += 1. CONTINUE. ENDIF.
+      IF lv_right IS INITIAL. lv_ti = lv_ti + 1. CONTINUE. ENDIF.
 
       " ── Строим запись вызова ──────────────────────────────────────
       CLEAR lv_c.
@@ -8305,7 +10530,7 @@ METHOD collect_method_calls.
                    eventname = 'CONSTRUCTOR'
           TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
       ENDIF.
 
@@ -8357,12 +10582,12 @@ METHOD collect_method_calls.
         IF sy-subrc <> 0. EXIT. ENDIF.
         lv_sa_str = ls_sa-str.
         IF lv_sa_str = ')' OR lv_sa_str CO ')'. EXIT. ENDIF.
-        IF lv_sa_str = '(' OR lv_sa_str = ','. lv_scan += 1. CONTINUE. ENDIF.
+        IF lv_sa_str = '(' OR lv_sa_str = ','. lv_scan = lv_scan + 1. CONTINUE. ENDIF.
         IF lv_sa_str = 'EXPORTING' OR lv_sa_str = 'IMPORTING' OR
            lv_sa_str = 'CHANGING'  OR lv_sa_str = 'RECEIVING'.
           lv_cur_sec = lv_sa_str.
           lv_pos = abap_false.
-          lv_scan += 1. CONTINUE.
+          lv_scan = lv_scan + 1. CONTINUE.
         ENDIF.
         CLEAR ls_eq.
         READ TABLE io_scan->tokens INDEX lv_scan + 1 INTO ls_eq.
@@ -8383,7 +10608,7 @@ METHOD collect_method_calls.
             CLEAR ls_b. ls_b-inner = lv_sa_str. ls_b-outer = lv_val_str.
             ls_b-dir = lv_bind_dir.
             APPEND ls_b TO lt_bind.
-            lv_scan += 3. CONTINUE.
+            lv_scan = lv_scan + 3. CONTINUE.
           ENDIF.
         ENDIF.
         IF lv_pos = abap_true AND lv_single IS INITIAL AND lv_sa_str IS NOT INITIAL.
@@ -8391,7 +10616,7 @@ METHOD collect_method_calls.
           REPLACE ALL OCCURRENCES OF ')' IN lv_single WITH ''.
           CONDENSE lv_single NO-GAPS.
         ENDIF.
-        lv_scan += 1.
+        lv_scan = lv_scan + 1.
       ENDWHILE.
 
       IF lv_pos = abap_true AND lv_single IS NOT INITIAL.
@@ -8428,7 +10653,7 @@ METHOD collect_method_calls.
 
       lv_c-bindings = lt_bind.
       APPEND lv_c TO ct_calls.
-      lv_ti += 1.
+      lv_ti = lv_ti + 1.
     ENDWHILE.
   ENDMETHOD.
   METHOD parse_stmt_calls.
@@ -8488,7 +10713,7 @@ METHOD collect_method_calls.
                 APPEND lv_pf_cur_dir TO lt_pf_act_dirs.
               ENDIF.
           ENDCASE.
-          lv_pf_i += 1.
+          lv_pf_i = lv_pf_i + 1.
         ENDWHILE.
         DATA lt_pf_params TYPE TABLE OF zcl_ace=>ts_params WITH EMPTY KEY.
         lt_pf_params = VALUE #( FOR p IN cs_source-t_params
@@ -8503,7 +10728,7 @@ METHOD collect_method_calls.
           ls_pf_bind-inner = ls_pf_p-param.
           ls_pf_bind-dir   = COND #( WHEN lv_pf_dir IS NOT INITIAL THEN lv_pf_dir ELSE 'I' ).
           APPEND ls_pf_bind TO ls_pf_call-bindings.
-          lv_pf_act_i += 1.
+          lv_pf_act_i = lv_pf_act_i + 1.
         ENDLOOP.
         IF lt_pf_params IS INITIAL.
           lv_pf_act_i = 1.
@@ -8513,7 +10738,7 @@ METHOD collect_method_calls.
             ls_pf_bind-outer = lv_pf_only.
             ls_pf_bind-dir   = COND #( WHEN lv_pf_only_dir IS NOT INITIAL THEN lv_pf_only_dir ELSE 'I' ).
             APPEND ls_pf_bind TO ls_pf_call-bindings.
-            lv_pf_act_i += 1.
+            lv_pf_act_i = lv_pf_act_i + 1.
           ENDLOOP.
         ENDIF.
         APPEND ls_pf_call TO lt_new_calls.
@@ -8584,12 +10809,12 @@ METHOD collect_method_calls.
                     APPEND VALUE zif_ace_parse_data=>ts_param_binding(
                       inner = ls_t_cm-str outer = lv_cm_actual dir = lv_cm_dir )
                       TO lv_call-bindings.
-                    lv_tok_cm += 2.
+                    lv_tok_cm = lv_tok_cm + 2.
                   ENDIF.
                 ENDIF.
               ENDIF.
           ENDCASE.
-          lv_tok_cm += 1.
+          lv_tok_cm = lv_tok_cm + 1.
         ENDWHILE.
         APPEND lv_call TO lt_new_calls.
 
@@ -8629,10 +10854,10 @@ METHOD collect_method_calls.
                 APPEND VALUE zcl_ace=>ts_calls(
                   event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR' ) TO lt_new_calls.
               ENDIF.
-              lv_ci += 1.
+              lv_ci = lv_ci + 1.
             ENDIF.
           ENDIF.
-          lv_ci += 1.
+          lv_ci = lv_ci + 1.
         ENDWHILE.
         collect_method_calls(
           EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
@@ -8693,7 +10918,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
       READ TABLE io_scan->tokens INDEX lv_tok_pos INTO DATA(ls_tok).
       IF sy-subrc <> 0. EXIT. ENDIF.
       IF ls_tok-str = '='. lv_eq_idx = lv_tok_pos. EXIT. ENDIF.
-      lv_tok_pos += 1.
+      lv_tok_pos = lv_tok_pos + 1.
     ENDWHILE.
     CHECK lv_eq_idx > 0 OR lv_is_call_method = abap_true.
 
@@ -8723,7 +10948,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
                                i_line      = lv_line
                      CHANGING  cs_source   = cs_source ).
       ENDIF.
-      lv_tok_pos += 1.
+      lv_tok_pos = lv_tok_pos + 1.
     ENDWHILE.
 
     " ── RHS → t_composed (только переменные вне вызовов) ─────────
@@ -8737,14 +10962,14 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
       DATA(lv_rhs) = ls_tok-str.
 
       IF ( lv_rhs CS '->' OR lv_rhs CS '=>' ) AND lv_rhs CS '('.
-        lv_call_depth += 1.
+        lv_call_depth = lv_call_depth + 1.
         lv_prev_arrow = abap_false.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos =  lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       IF lv_rhs = '->' OR lv_rhs = '=>'.
         lv_prev_arrow = abap_true.
-        lv_tok_pos += 1. CONTINUE.
+         lv_tok_pos =  lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       IF lv_prev_arrow = abap_true.
@@ -8757,9 +10982,9 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
               AND eventtype = i_evtype AND eventname = i_ev_name
               AND line = lv_line AND name = ls_prev_obj-str.
           ENDIF.
-          lv_call_depth += 1.
+          lv_call_depth = lv_call_depth + 1.
         ENDIF.
-        lv_tok_pos += 1. CONTINUE.
+         lv_tok_pos =  lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       IF lv_rhs CS '(' AND NOT lv_rhs = '('.
@@ -8768,8 +10993,8 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
                  lv_rhs CP 'CONV(*'  OR lv_rhs CP 'CAST(*'  OR
                  lv_rhs CP 'COND(*'  OR lv_rhs CP 'SWITCH(*' OR
                  lv_rhs CP 'REF(*' ).
-          lv_call_depth += 1.
-          lv_tok_pos += 1. CONTINUE.
+          lv_call_depth = lv_call_depth + 1.
+           lv_tok_pos =  lv_tok_pos + 1. CONTINUE.
         ENDIF.
       ENDIF.
 
@@ -8777,23 +11002,23 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
         - strlen( replace( val = lv_rhs sub = ')' with = '' occ = 0 ) ).
       IF lv_close_count > 0.
         IF lv_call_depth >= lv_close_count.
-          lv_call_depth -= lv_close_count.
+          lv_call_depth = lv_call_depth - lv_close_count.
         ELSE.
           lv_call_depth = 0.
         ENDIF.
       ENDIF.
 
       IF lv_call_depth > 0.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos =  lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       IF lv_rhs = 'NEW' OR lv_rhs = 'CAST' OR lv_rhs = 'REF'.
         lv_skip_next = abap_true.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos =  lv_tok_pos + 1.. CONTINUE.
       ENDIF.
       IF lv_skip_next = abap_true.
         lv_skip_next = abap_false.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos =  lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       DATA(lv_comp) = lv_rhs.
@@ -8813,7 +11038,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
                                i_line      = lv_line
                      CHANGING  cs_source   = cs_source ).
       ENDIF.
-      lv_tok_pos += 1.
+      lv_tok_pos =  lv_tok_pos + 1.
     ENDWHILE.
 
     ENDIF. " lv_is_call_method = abap_false
@@ -9287,11 +11512,11 @@ METHOD show.
     length      = ls_result-incl_prog_length
     loc         = lv_tot_loc       lloc   = lv_tot_lloc   cloc = lv_tot_cloc
     cloc_ratio  = lv_ratio
-    volume      = format_f2( ls_result-incl_volume )
+    volume      = format_f2( lv_tot_vol )
     difficulty  = format_f2( ls_result-incl_difficulty )
-    effort      = format_f2( ls_result-incl_effort )
+    effort      = format_f2( lv_tot_eff )
     time_t      = format_time( lv_tot_time_t )
-    bugs        = format_f2( ls_result-incl_bugs )
+    bugs        = format_f2( lv_tot_bugs )
   ) TO lt_total.
 
   cl_demo_output=>write_data( value = lt_total name = `Total` ).
@@ -9634,28 +11859,138 @@ METHOD build_html.
   APPEND '    border:1px solid #ddd;white-space:pre-wrap;margin:4px 0}' TO rv.
   APPEND '</style></head><body>' TO rv.
 
-  " --- Section 1: Summary ---
-  APPEND |<h2>Code Metrics: { i_program }</h2>| TO rv.
-  APPEND |<p>Units analysed: <b>{ lines( ls_result-units ) }</b></p>| TO rv.
-  APPEND |<p>Total Cyclomatic Complexity: <b>{ lv_tot_cc }</b>| TO rv.
-  APPEND |&nbsp;&nbsp;Avg CC / unit: | &&
-         |<b>{ format_f2( ls_result-avg_cyclomatic ) }</b></p>| TO rv.
-  APPEND |<p>Halstead Volume: <b>{ format_f2( lv_tot_vol ) }</b>| to rv.
-  DATA(lv_sum_time) = lv_tot_eff / 18.
-  APPEND |&nbsp;&nbsp;Effort: <b>{ format_f2( lv_tot_eff ) }</b></p>| TO rv.
-  APPEND |<p>Time: <b>{ format_time( lv_sum_time ) }</b>| &&
-         |&nbsp;&nbsp;Expected Bugs: | &&
-         |<b>{ format_f2( lv_tot_bugs ) }</b></p>| TO rv.
-  APPEND |<p>LOC / LLOC / CLOC / CLOC%: | &&
-         |<b>{ lv_tot_loc }</b> / <b>{ lv_tot_lloc }</b> / | TO rv.
-  APPEND |<b>{ lv_tot_cloc }</b> / <b>{ lv_ratio }</b></p>| TO rv.
+  " --- Section 2: Total (built first so header can reference its values) ---
+  " Compute per-group subtotals for Events, Forms, each Class
+  TYPES: BEGIN OF lty_cls_sub,
+           name    TYPE string,
+           units   TYPE i,
+           cc      TYPE i,
+           loc     TYPE i,
+           lloc    TYPE i,
+           cloc    TYPE i,
+           n1      TYPE i,
+           n2      TYPE i,
+           vol     TYPE f,
+           eff     TYPE f,
+           time_t  TYPE f,
+           bugs    TYPE f,
+         END OF lty_cls_sub.
+  DATA lt_cls_sub  TYPE TABLE OF lty_cls_sub WITH EMPTY KEY.
+  DATA ls_ev_sub   TYPE lty_cls_sub.
+  DATA ls_fo_sub   TYPE lty_cls_sub.
+  ls_ev_sub-name = 'Events TOTAL'.
+  ls_fo_sub-name = 'Forms TOTAL'.
 
-  " --- Section 2: Total ---
+  LOOP AT ls_result-units INTO ls_u.
+    DATA(lv_grp) = ls_u-unit_name.
+    CASE ls_u-unit_type.
+      WHEN 'METHOD'.
+        FIND FIRST OCCURRENCE OF '=>' IN lv_grp MATCH OFFSET DATA(lv_goff).
+        IF sy-subrc = 0. lv_grp = lv_grp(lv_goff). ENDIF.
+        READ TABLE lt_cls_sub WITH KEY name = lv_grp ASSIGNING FIELD-SYMBOL(<cls_sub>).
+        IF sy-subrc <> 0.
+          APPEND INITIAL LINE TO lt_cls_sub ASSIGNING <cls_sub>.
+          <cls_sub>-name = lv_grp.
+        ENDIF.
+*        <cls_sub>-units  += 1.
+*        <cls_sub>-cc     += ls_u-cyclomatic.
+*        <cls_sub>-loc    += ls_u-loc.
+*        <cls_sub>-lloc   += ls_u-lloc.
+*        <cls_sub>-cloc   += ls_u-cloc.
+*        <cls_sub>-n1     += ls_u-n1.
+*        <cls_sub>-n2     += ls_u-n2.
+*        <cls_sub>-vol     = <cls_sub>-vol  + ls_u-volume.
+*        <cls_sub>-eff     = <cls_sub>-eff  + ls_u-effort.
+*        <cls_sub>-time_t  = <cls_sub>-time_t + ls_u-time_t.
+*        <cls_sub>-bugs    = <cls_sub>-bugs + ls_u-bugs.
+        <cls_sub>-units = <cls_sub>-units + 1.
+<cls_sub>-cc = <cls_sub>-cc + ls_u-cyclomatic.
+<cls_sub>-loc = <cls_sub>-loc + ls_u-loc.
+<cls_sub>-lloc = <cls_sub>-lloc + ls_u-lloc.
+<cls_sub>-cloc = <cls_sub>-cloc + ls_u-cloc.
+<cls_sub>-n1 = <cls_sub>-n1 + ls_u-n1.
+<cls_sub>-n2 = <cls_sub>-n2 + ls_u-n2.
+<cls_sub>-vol = <cls_sub>-vol + ls_u-volume.
+<cls_sub>-eff = <cls_sub>-eff + ls_u-effort.
+<cls_sub>-time_t = <cls_sub>-time_t + ls_u-time_t.
+<cls_sub>-bugs = <cls_sub>-bugs + ls_u-bugs.
+      WHEN 'FORM'.
+ls_fo_sub-units = ls_fo_sub-units + 1.
+ls_fo_sub-cc = ls_fo_sub-cc + ls_u-cyclomatic.
+ls_fo_sub-loc = ls_fo_sub-loc + ls_u-loc.
+ls_fo_sub-lloc = ls_fo_sub-lloc + ls_u-lloc.
+ls_fo_sub-cloc = ls_fo_sub-cloc + ls_u-cloc.
+ls_fo_sub-n1 = ls_fo_sub-n1 + ls_u-n1.
+ls_fo_sub-n2 = ls_fo_sub-n2 + ls_u-n2.
+ls_fo_sub-vol = ls_fo_sub-vol + ls_u-volume.
+ls_fo_sub-eff = ls_fo_sub-eff + ls_u-effort.
+ls_fo_sub-time_t = ls_fo_sub-time_t + ls_u-time_t.
+ls_fo_sub-bugs = ls_fo_sub-bugs + ls_u-bugs.
+WHEN OTHERS.
+ls_ev_sub-units = ls_ev_sub-units + 1.
+ls_ev_sub-cc = ls_ev_sub-cc + ls_u-cyclomatic.
+ls_ev_sub-loc = ls_ev_sub-loc + ls_u-loc.
+ls_ev_sub-lloc = ls_ev_sub-lloc + ls_u-lloc.
+ls_ev_sub-cloc = ls_ev_sub-cloc + ls_u-cloc.
+ls_ev_sub-n1 = ls_ev_sub-n1 + ls_u-n1.
+ls_ev_sub-n2 = ls_ev_sub-n2 + ls_u-n2.
+ls_ev_sub-vol = ls_ev_sub-vol + ls_u-volume.
+ls_ev_sub-eff = ls_ev_sub-eff + ls_u-effort.
+ls_ev_sub-time_t = ls_ev_sub-time_t + ls_u-time_t.
+ls_ev_sub-bugs = ls_ev_sub-bugs + ls_u-bugs.
+    ENDCASE.
+  ENDLOOP.
+
+  " Helper macro: append a subtotal row from lty_cls_sub
   DATA lt_total TYPE tt_row.
+  DATA ls_sub   TYPE lty_cls_sub.
+
+  IF ls_ev_sub-units > 0.
+    DATA(lv_ev_ratio) = COND string( WHEN ls_ev_sub-loc > 0
+      THEN |{ CONV decfloat16( ls_ev_sub-cloc * 100 / ls_ev_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
+    APPEND VALUE ts_row(
+      name = 'Events'  units = ls_ev_sub-units  cc = ls_ev_sub-cc
+      n1 = ls_ev_sub-n1  n2 = ls_ev_sub-n2
+      loc = ls_ev_sub-loc  lloc = ls_ev_sub-lloc  cloc = ls_ev_sub-cloc  cloc_ratio = lv_ev_ratio
+      volume = format_f2( ls_ev_sub-vol )  effort = format_f2( ls_ev_sub-eff )
+      time_t = format_time( ls_ev_sub-time_t )  bugs = format_f2( ls_ev_sub-bugs )
+    ) TO lt_total.
+  ENDIF.
+
+  IF ls_fo_sub-units > 0.
+    DATA(lv_fo_ratio) = COND string( WHEN ls_fo_sub-loc > 0
+      THEN |{ CONV decfloat16( ls_fo_sub-cloc * 100 / ls_fo_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
+    APPEND VALUE ts_row(
+      name = 'Forms'  units = ls_fo_sub-units  cc = ls_fo_sub-cc
+      n1 = ls_fo_sub-n1  n2 = ls_fo_sub-n2
+      loc = ls_fo_sub-loc  lloc = ls_fo_sub-lloc  cloc = ls_fo_sub-cloc  cloc_ratio = lv_fo_ratio
+      volume = format_f2( ls_fo_sub-vol )  effort = format_f2( ls_fo_sub-eff )
+      time_t = format_time( ls_fo_sub-time_t )  bugs = format_f2( ls_fo_sub-bugs )
+    ) TO lt_total.
+  ENDIF.
+
+  LOOP AT lt_cls_sub INTO ls_sub.
+    DATA(lv_cls_ratio) = COND string( WHEN ls_sub-loc > 0
+      THEN |{ CONV decfloat16( ls_sub-cloc * 100 / ls_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
+    READ TABLE ls_result-class_totals WITH KEY class_name = ls_sub-name INTO DATA(ls_ct2).
+    IF sy-subrc <> 0. CLEAR ls_ct2. ENDIF.
+    APPEND VALUE ts_row(
+      name = ls_sub-name  units = ls_sub-units  cc = ls_sub-cc
+      n1 = ls_sub-n1  n2 = ls_sub-n2
+      eta1 = ls_ct2-cls_big_n1  eta2 = ls_ct2-cls_big_n2
+      vocab = ls_ct2-cls_vocabulary  length = ls_ct2-cls_prog_length
+      loc = ls_sub-loc  lloc = ls_sub-lloc  cloc = ls_sub-cloc  cloc_ratio = lv_cls_ratio
+      volume = format_f2( ls_sub-vol )  difficulty = format_f2( ls_ct2-cls_difficulty )
+      effort = format_f2( ls_sub-eff )
+      time_t = format_time( ls_sub-time_t )  bugs = format_f2( ls_sub-bugs )
+    ) TO lt_total.
+  ENDLOOP.
+
+  " Grand total row
   APPEND VALUE ts_row(
     name        = |{ i_program } TOTAL|
+    units       = lines( ls_result-units )
     cc          = lv_tot_cc
-    risk        = ''
     n1          = lv_tot_n1        n2     = lv_tot_n2
     eta1        = ls_result-incl_big_n1
     eta2        = ls_result-incl_big_n2
@@ -9663,12 +11998,28 @@ METHOD build_html.
     length      = ls_result-incl_prog_length
     loc         = lv_tot_loc       lloc   = lv_tot_lloc   cloc = lv_tot_cloc
     cloc_ratio  = lv_ratio
-    volume      = format_f2( ls_result-incl_volume )
+    volume      = format_f2( lv_tot_vol )
     difficulty  = format_f2( ls_result-incl_difficulty )
-    effort      = format_f2( ls_result-incl_effort )
+    effort      = format_f2( lv_tot_eff )
     time_t      = format_time( lv_tot_time_t )
-    bugs        = format_f2( ls_result-incl_bugs )
+    bugs        = format_f2( lv_tot_bugs )
   ) TO lt_total.
+  DATA(ls_tot) = lt_total[ lines( lt_total ) ].
+
+  " --- Section 1: Summary ---
+  APPEND |<h2>Code Metrics: { i_program }</h2>| TO rv.
+  APPEND |<p>Units analysed: <b>{ lines( ls_result-units ) }</b></p>| TO rv.
+  APPEND |<p>Total Cyclomatic Complexity: <b>{ lv_tot_cc }</b>| TO rv.
+  APPEND |&nbsp;&nbsp;Avg CC / unit: | &&
+         |<b>{ format_f2( ls_result-avg_cyclomatic ) }</b></p>| TO rv.
+  APPEND |<p>Halstead Volume: <b>{ ls_tot-volume }</b>| TO rv.
+  APPEND |&nbsp;&nbsp;Effort: <b>{ ls_tot-effort }</b></p>| TO rv.
+  APPEND |<p>Time: <b>{ ls_tot-time_t }</b>| &&
+         |&nbsp;&nbsp;Expected Bugs: <b>{ ls_tot-bugs }</b></p>| TO rv.
+  APPEND |<p>LOC / LLOC / CLOC / CLOC%: | &&
+         |<b>{ lv_tot_loc }</b> / <b>{ lv_tot_lloc }</b> / | TO rv.
+  APPEND |<b>{ lv_tot_cloc }</b> / <b>{ lv_ratio }</b></p>| TO rv.
+
   html_section( EXPORTING i_name = 'Total' it_rows = lt_total CHANGING ct_html = rv ).
 
   " --- Section 3: Events ---
@@ -9681,7 +12032,7 @@ METHOD build_html.
       lv_ratio = '-'.
     ENDIF.
     APPEND VALUE ts_row(
-      name        = ls_u-unit_name
+      name        = ls_u-unit_name  units = 1
       cc          = ls_u-cyclomatic
       risk        = cc_rating( ls_u-cyclomatic )
       n1          = ls_u-n1        n2   = ls_u-n2
@@ -9700,7 +12051,18 @@ METHOD build_html.
     ) TO lt_events.
   ENDLOOP.
   IF lt_events IS NOT INITIAL.
-    html_section( EXPORTING i_name = 'Events' it_rows = lt_events CHANGING ct_html = rv ).
+    IF ls_ev_sub-units > 1.
+      DATA(lv_evr) = COND string( WHEN ls_ev_sub-loc > 0
+        THEN |{ CONV decfloat16( ls_ev_sub-cloc * 100 / ls_ev_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
+      APPEND VALUE ts_row(
+        name = 'TOTAL'  units = ls_ev_sub-units  cc = ls_ev_sub-cc
+        n1 = ls_ev_sub-n1  n2 = ls_ev_sub-n2
+        loc = ls_ev_sub-loc  lloc = ls_ev_sub-lloc  cloc = ls_ev_sub-cloc  cloc_ratio = lv_evr
+        volume = format_f2( ls_ev_sub-vol )  effort = format_f2( ls_ev_sub-eff )
+        time_t = format_time( ls_ev_sub-time_t )  bugs = format_f2( ls_ev_sub-bugs )
+      ) TO lt_events.
+    ENDIF.
+    html_section( EXPORTING i_name = 'Events' it_rows = lt_events i_numbered = abap_true CHANGING ct_html = rv ).
   ENDIF.
 
   " --- Section 4: Forms ---
@@ -9712,7 +12074,7 @@ METHOD build_html.
       lv_ratio = '-'.
     ENDIF.
     APPEND VALUE ts_row(
-      name        = ls_u-unit_name
+      name        = ls_u-unit_name  units = 1
       cc          = ls_u-cyclomatic
       risk        = cc_rating( ls_u-cyclomatic )
       n1          = ls_u-n1        n2   = ls_u-n2
@@ -9731,7 +12093,18 @@ METHOD build_html.
     ) TO lt_forms.
   ENDLOOP.
   IF lt_forms IS NOT INITIAL.
-    html_section( EXPORTING i_name = 'Forms' it_rows = lt_forms CHANGING ct_html = rv ).
+    IF ls_fo_sub-units > 1.
+      DATA(lv_for) = COND string( WHEN ls_fo_sub-loc > 0
+        THEN |{ CONV decfloat16( ls_fo_sub-cloc * 100 / ls_fo_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
+      APPEND VALUE ts_row(
+        name = 'TOTAL'  units = ls_fo_sub-units  cc = ls_fo_sub-cc
+        n1 = ls_fo_sub-n1  n2 = ls_fo_sub-n2
+        loc = ls_fo_sub-loc  lloc = ls_fo_sub-lloc  cloc = ls_fo_sub-cloc  cloc_ratio = lv_for
+        volume = format_f2( ls_fo_sub-vol )  effort = format_f2( ls_fo_sub-eff )
+        time_t = format_time( ls_fo_sub-time_t )  bugs = format_f2( ls_fo_sub-bugs )
+      ) TO lt_forms.
+    ENDIF.
+    html_section( EXPORTING i_name = 'Forms' it_rows = lt_forms i_numbered = abap_true CHANGING ct_html = rv ).
   ENDIF.
 
   " --- Section 5: Methods grouped by class ---
@@ -9789,6 +12162,7 @@ METHOD build_html.
         cloc_ratio  = lv_ratio
         mi          = COND #( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' )
         mi_rating   = mi_grade( ls_u-mi )
+        units       = 1
       ) TO lt_rows.
 
       ADD ls_u-cyclomatic TO lv_tot_cc.
@@ -9820,6 +12194,7 @@ METHOD build_html.
 
     APPEND VALUE ts_row(
       name        = 'CLASS TOTAL'
+      units       = lines( lt_rows )
       cc          = lv_tot_cc
       risk        = ''
       n1          = lv_tot_n1        n2     = lv_tot_n2
@@ -9836,7 +12211,7 @@ METHOD build_html.
       bugs        = format_f2( lv_tot_bugs )
     ) TO lt_rows.
 
-    html_section( EXPORTING i_name = lv_cls it_rows = lt_rows CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = lv_cls it_rows = lt_rows i_numbered = abap_true CHANGING ct_html = rv ).
   ENDLOOP.
 
   " --- Section 6: All methods sorted by CC DESC ---
@@ -9869,12 +12244,19 @@ METHOD build_html.
   SORT lt_all BY cc DESCENDING.
   IF lt_all IS NOT INITIAL.
     html_section( EXPORTING
-      i_name  = 'All Methods (sorted by CC)'
-      it_rows = lt_all
+      i_name     = 'All Methods (sorted by CC)'
+      it_rows    = lt_all
+      i_numbered = abap_true
       CHANGING ct_html = rv ).
   ENDIF.
 
   " --- Legend ---
+  APPEND '<h3>LOC / LLOC / CLOC</h3><pre>' TO rv.
+  APPEND '  LOC   - Lines of Code (total lines including blanks and comments)' TO rv.
+  APPEND '  LLOC  - Logical Lines of Code (executable statements only)' TO rv.
+  APPEND '  CLOC  - Comment Lines of Code (lines containing comments)' TO rv.
+  APPEND '  CLOC% - Comment density = CLOC / LOC * 100' TO rv.
+  APPEND '</pre>' TO rv.
   APPEND '<h3>McCabe CC Risk</h3><pre>' TO rv.
   APPEND '  1-10   LOW      Simple, low risk' TO rv.
   APPEND '  11-20  MEDIUM   Moderate complexity' TO rv.
@@ -9901,7 +12283,7 @@ METHOD build_html.
 ENDMETHOD.
 METHOD html_hdr.
   APPEND '<tr>' TO ct_html.
-  APPEND '<th>Name</th><th>CC</th><th>Risk</th>' TO ct_html.
+  APPEND '<th>Name</th><th>Units</th><th>CC</th><th>Risk</th>' TO ct_html.
   APPEND '<th>N1</th><th>N2</th><th>Length</th>' TO ct_html.
   APPEND '<th>eta1</th><th>eta2</th><th>Vocab</th>' TO ct_html.
   APPEND '<th>Volume</th><th>Difficulty</th>' TO ct_html.
@@ -9923,8 +12305,9 @@ METHOD html_row.
     WHEN 'MEDIUM'. lv_mic = 'mi-m'.
     WHEN 'LOW'.    lv_mic = 'mi-l'.
   ENDCASE.
-  " Name + CC + Risk
+  " Name + Units + CC + Risk
   APPEND |<tr><td>{ is_row-name }</td>| &&
+         |<td>{ is_row-units }</td>| &&
          |<td>{ is_row-cc }</td>| &&
          |<td class="{ lv_rc }">{ is_row-risk }</td>| TO ct_html.
   " Halstead counts
@@ -9948,13 +12331,33 @@ ENDMETHOD.
 METHOD html_section.
   APPEND |<h3>{ i_name }</h3>| TO ct_html.
   APPEND '<table>' TO ct_html.
-  html_hdr( CHANGING ct_html = ct_html ).
+  IF i_numbered = abap_true.
+    APPEND '<tr><th>№</th>' TO ct_html.
+    APPEND '<th>Name</th><th>CC</th><th>Risk</th>' TO ct_html.
+    APPEND '<th>N1</th><th>N2</th><th>Length</th>' TO ct_html.
+    APPEND '<th>eta1</th><th>eta2</th><th>Vocab</th>' TO ct_html.
+    APPEND '<th>Volume</th><th>Difficulty</th>' TO ct_html.
+    APPEND '<th>Effort</th><th>Time</th><th>Bugs</th>' TO ct_html.
+    APPEND '<th>LOC</th><th>LLOC</th><th>CLOC</th>' TO ct_html.
+    APPEND '<th>CLOC%</th><th>MI</th><th>MI Rating</th></tr>' TO ct_html.
+  ELSE.
+    html_hdr( CHANGING ct_html = ct_html ).
+  ENDIF.
+  DATA lv_num TYPE i.
   LOOP AT it_rows INTO DATA(ls_row).
-    " CLASS TOTAL / program TOTAL rows get a highlighted style
+    lv_num = lv_num + 1.
     IF ls_row-name CS 'TOTAL'.
       APPEND '<tr class="tot">' TO ct_html.
-      APPEND |<td>{ ls_row-name }</td>| &&
-             |<td>{ ls_row-cc }</td><td></td>| TO ct_html.
+      IF i_numbered = abap_true.
+        " numbered tables: (empty) | Name | CC | ...
+        APPEND |<td></td><td>{ ls_row-name }</td>| &&
+               |<td>{ ls_row-cc }</td><td></td>| TO ct_html.
+      ELSE.
+        " Total table: Name | Units | CC | ...
+        APPEND |<td>{ ls_row-name }</td>| &&
+               |<td>{ ls_row-units }</td>| &&
+               |<td>{ ls_row-cc }</td><td></td>| TO ct_html.
+      ENDIF.
       APPEND |<td>{ ls_row-n1 }</td><td>{ ls_row-n2 }</td>| &&
              |<td>{ ls_row-length }</td>| TO ct_html.
       APPEND |<td>{ ls_row-eta1 }</td><td>{ ls_row-eta2 }</td>| &&
@@ -9968,6 +12371,29 @@ METHOD html_section.
              |<td>{ ls_row-cloc }</td>| TO ct_html.
       APPEND |<td>{ ls_row-cloc_ratio }</td>| &&
              |<td>{ ls_row-mi }</td><td></td></tr>| TO ct_html.
+    ELSEIF i_numbered = abap_true.
+      DATA(lv_rc)  = COND string( WHEN ls_row-risk = 'LOW'      THEN 'low'
+                                  WHEN ls_row-risk = 'MEDIUM'   THEN 'med'
+                                  WHEN ls_row-risk = 'HIGH'     THEN 'high'
+                                  WHEN ls_row-risk = 'CRITICAL' THEN 'crit' ).
+      DATA(lv_mic) = COND string( WHEN ls_row-mi_rating = 'HIGH'   THEN 'mi-h'
+                                  WHEN ls_row-mi_rating = 'MEDIUM' THEN 'mi-m'
+                                  WHEN ls_row-mi_rating = 'LOW'    THEN 'mi-l' ).
+      APPEND |<tr><td>{ lv_num }</td><td>{ ls_row-name }</td>| &&
+             |<td>{ ls_row-cc }</td>| &&
+             |<td class="{ lv_rc }">{ ls_row-risk }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-n1 }</td><td>{ ls_row-n2 }</td>| &&
+             |<td>{ ls_row-length }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-eta1 }</td><td>{ ls_row-eta2 }</td>| &&
+             |<td>{ ls_row-vocab }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-volume }</td><td>{ ls_row-difficulty }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-effort }</td><td>{ ls_row-time_t }</td>| &&
+             |<td>{ ls_row-bugs }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-loc }</td><td>{ ls_row-lloc }</td>| &&
+             |<td>{ ls_row-cloc }</td>| TO ct_html.
+      APPEND |<td>{ ls_row-cloc_ratio }</td>| &&
+             |<td>{ ls_row-mi }</td>| &&
+             |<td class="{ lv_mic }">{ ls_row-mi_rating }</td></tr>| TO ct_html.
     ELSE.
       html_row( EXPORTING is_row = ls_row CHANGING ct_html = ct_html ).
     ENDIF.
@@ -10112,10 +12538,6 @@ ENDCLASS.
 
 CLASS ZCL_ACE_METRICS IMPLEMENTATION.
   METHOD calculate.
-
-    IF mt_statements IS INITIAL.
-      fill_statements( ).
-    ENDIF.
 
     rs_result-program = i_program.
 
@@ -10658,326 +13080,14 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
 
   ENDMETHOD.
   METHOD classify_token.
-    IF line_exists( mt_statements[ table_line = i_token ] ).
+    " Keyword classification now sourced from ZCL_ACE_KEYWORDS — derived 1:1
+    " from the abaplint grammar (Combi.listKeywords over ZCL_ACE_STMTS/EXPRS).
+    " The static fill_statements list has been removed.
+    IF zcl_ace_keywords=>is_keyword( i_token ) = abap_true.
       rv_kind = 'OPERATOR'.
-    else.
+    ELSE.
       rv_kind = 'OPERAND'.
     ENDIF.
-
-  ENDMETHOD.
-  METHOD fill_statements.
-    mt_statements = VALUE tt_abap_statements(
-      ( `ABS` )
-      ( `ABSTRACT` )
-      ( `ADD` )
-      ( `ADD-CORRESPONDING` )
-      ( `ALIASES` )
-      ( `ALL` )
-      ( `AND` )
-      ( `ANY` )
-      ( `APPEND` )
-      ( `APPENDING` )
-      ( `AS` )
-      ( `ASCENDING` )
-      ( `ASSERT` )
-      ( `ASSIGN` )
-      ( `ASSIGNING` )
-      ( `AT` )
-      ( `AUTHORITY-CHECK` )
-      ( `AVG` )
-      ( `BEGIN` )
-      ( `BETWEEN` )
-      ( `BINARY` )
-      ( `BREAK-POINT` )
-      ( `BUFFER` )
-      ( `BY` )
-      ( `BYPASSING` )
-      ( `CALL` )
-      ( `CASE` )
-      ( `CAST` )
-      ( `CATCH` )
-      ( `CEIL` )
-      ( `CHANGING` )
-      ( `CHECK` )
-      ( `CLASS` )
-      ( `CLASS-DATA` )
-      ( `CLASS-EVENTS` )
-      ( `CLASS-METHODS` )
-      ( `CLEANUP` )
-      ( `CLEAR` )
-      ( `CLIENT` )
-      ( `CLOSE` )
-      ( `COALESCE` )
-      ( `COLLECT` )
-      ( `COMMIT` )
-      ( `COMMUNICATION` )
-      ( `COMPARING` )
-      ( `COMPUTE` )
-      ( `CONCAT` )
-      ( `CONCATENATE` )
-      ( `CONDENSE` )
-      ( `COND` )
-      ( `CONNECTION` )
-      ( `CONSTANTS` )
-      ( `CONTINUE` )
-      ( `CONTROLS` )
-      ( `CONV` )
-      ( `CORRESPONDING` )
-      ( `COUNT` )
-      ( `CREATE` )
-      ( `CURRENT` )
-      ( `CURSOR` )
-      ( `DATA` )
-      ( `DATASET` )
-      ( `DEFAULT` )
-      ( `DEFINE` )
-      ( `DEFINITION` )
-      ( `DELETE` )
-      ( `DESCENDING` )
-      ( `DESCRIBE` )
-      ( `DIALOG` )
-      ( `DISTINCT` )
-      ( `DISTANCE` )
-      ( `DIVIDE` )
-      ( `DIVIDE-CORRESPONDING` )
-      ( `DO` )
-      ( `DYNPRO` )
-      ( `ELSE` )
-      ( `ELSEIF` )
-      ( `ENCODING` )
-      ( `END` )
-      ( `END-OF-PAGE` )
-      ( `END-OF-SELECTION` )
-      ( `ENDCASE` )
-      ( `ENDCLASS` )
-      ( `ENDDO` )
-      ( `ENDFORM` )
-      ( `ENDFUNCTION` )
-      ( `ENDIF` )
-      ( `ENDINTERFACE` )
-      ( `ENDLOOP` )
-      ( `ENDMETHOD` )
-      ( `ENDMODULE` )
-      ( `ENDON` )
-      ( `ENDPROVIDE` )
-      ( `ENDSELECT` )
-      ( `ENDTRY` )
-      ( `ENDWHILE` )
-      ( `ENTRIES` )
-      ( `ESCAPE` )
-      ( `EVENT` )
-      ( `EVENTS` )
-      ( `EXACT` )
-      ( `EXCEPT` )
-      ( `EXCEPTION` )
-      ( `EXISTS` )
-      ( `EXIT` )
-      ( `EXPORT` )
-      ( `EXPORTING` )
-      ( `EXTRACT` )
-      ( `FETCH` )
-      ( `FIELD-GROUPS` )
-      ( `FIELD-SYMBOLS` )
-      ( `FIELDS` )
-      ( `FILTER` )
-      ( `FINAL` )
-      ( `FIND` )
-      ( `FIRST` )
-      ( `FLOOR` )
-      ( `FOR` )
-      ( `FORM` )
-      ( `FORMAT` )
-      ( `FREE` )
-      ( `FROM` )
-      ( `FULL` )
-      ( `FUNCTION` )
-      ( `FUNCTION-POOL` )
-      ( `GENERATE` )
-      ( `GET` )
-      ( `GROUP` )
-      ( `HANDLER` )
-      ( `HASHED` )
-      ( `HAVING` )
-      ( `HEADER` )
-      ( `IF` )
-      ( `IMPLEMENTATION` )
-      ( `IMPORT` )
-      ( `IMPORTING` )
-      ( `IN` )
-      ( `INCLUDE` )
-      ( `INDEX` )
-      ( `INFOTYPES` )
-      ( `INHERITING` )
-      ( `INITIAL` )
-      ( `INITIALIZATION` )
-      ( `INNER` )
-      ( `INPUT` )
-      ( `INSERT` )
-      ( `INSTANCE` )
-      ( `INSTR` )
-      ( `INTERFACE` )
-      ( `INTERFACES` )
-      ( `INTERSECT` )
-      ( `INTO` )
-      ( `IS` )
-      ( `JOIN` )
-      ( `KEY` )
-      ( `LAST` )
-      ( `LEAVE` )
-      ( `LEFT` )
-      ( `LENGTH` )
-      ( `LET` )
-      ( `LIKE` )
-      ( `LINE` )
-      ( `LINE-SELECTION` )
-      ( `LINES` )
-      ( `LIST-PROCESSING` )
-      ( `LOAD-OF-PROGRAM` )
-      ( `LOCAL` )
-      ( `LOG-POINT` )
-      ( `LOOP` )
-      ( `LOWER` )
-      ( `LPAD` )
-      ( `MATCH` )
-      ( `MAX` )
-      ( `MESSAGE` )
-      ( `METHOD` )
-      ( `METHODS` )
-      ( `MIN` )
-      ( `MODE` )
-      ( `MODIFY` )
-      ( `MODULE` )
-      ( `MOVE` )
-      ( `MOVE-CORRESPONDING` )
-      ( `MULTIPLY` )
-      ( `MULTIPLY-CORRESPONDING` )
-      ( `NEW` )
-      ( `NEW-LINE` )
-      ( `NEW-PAGE` )
-      ( `NEXT` )
-      ( `NON-UNIQUE` )
-      ( `NOT` )
-      ( `NULL` )
-      ( `OBJECT` )
-      ( `OF` )
-      ( `OFFSET` )
-      ( `ON` )
-      ( `OPEN` )
-      ( `OPTIONAL` )
-      ( `OR` )
-      ( `ORDER` )
-      ( `OTHERS` )
-      ( `OUTER` )
-      ( `OUTPUT` )
-      ( `OVERLAY` )
-      ( `PACK` )
-      ( `PACKAGE` )
-      ( `PARAMETER` )
-      ( `PARAMETERS` )
-      ( `PERFORM` )
-      ( `PF-STATUS` )
-      ( `POOL` )
-      ( `PRIVATE` )
-      ( `PROCESS` )
-      ( `PROGRAM` )
-      ( `PROTECTED` )
-      ( `PROVIDE` )
-      ( `PUBLIC` )
-      ( `RAISE` )
-      ( `RAISING` )
-      ( `RANGES` )
-      ( `READ` )
-      ( `RECEIVE` )
-      ( `REDUCE` )
-      ( `REF` )
-      ( `REFERENCE` )
-      ( `REFRESH` )
-      ( `REPLACE` )
-      ( `REPORT` )
-      ( `RESERVE` )
-      ( `RESUME` )
-      ( `RETRY` )
-      ( `RETURN` )
-      ( `RETURNING` )
-      ( `RIGHT` )
-      ( `ROLLBACK` )
-      ( `ROUND` )
-      ( `ROWS` )
-      ( `RPAD` )
-      ( `RUN` )
-      ( `SCREEN` )
-      ( `SCROLL` )
-      ( `SEARCH` )
-      ( `SECONDS` )
-      ( `SECTION` )
-      ( `SELECT` )
-      ( `SELECT-OPTIONS` )
-      ( `SELECTION-SCREEN` )
-      ( `SET` )
-      ( `SHIFT` )
-      ( `SINGLE` )
-      ( `SIZE` )
-      ( `SKIP` )
-      ( `SOME` )
-      ( `SORT` )
-      ( `SORTED` )
-      ( `SPECIFIED` )
-      ( `SPLIT` )
-      ( `STABLE` )
-      ( `STANDARD` )
-      ( `START-OF-SELECTION` )
-      ( `STATICS` )
-      ( `STOP` )
-      ( `STRUCTURE` )
-      ( `SUBMIT` )
-      ( `SUBSTR` )
-      ( `SUBSTRING` )
-      ( `SUBTRACT` )
-      ( `SUBTRACT-CORRESPONDING` )
-      ( `SUBROUTINE` )
-      ( `SUM` )
-      ( `SUPPRESS` )
-      ( `SWITCH` )
-      ( `TABLE` )
-      ( `TABLES` )
-      ( `THEN` )
-      ( `TIME` )
-      ( `TITLEBAR` )
-      ( `TO` )
-      ( `TO_LOWER` )
-      ( `TO_UPPER` )
-      ( `TOP-OF-PAGE` )
-      ( `TRANSACTION` )
-      ( `TRANSFER` )
-      ( `TRANSLATE` )
-      ( `TRANSPORTING` )
-      ( `TRY` )
-      ( `TYPE` )
-      ( `TYPE-POOL` )
-      ( `TYPE-POOLS` )
-      ( `TYPES` )
-      ( `UNASSIGN` )
-      ( `UNION` )
-      ( `UNIQUE` )
-      ( `UNPACK` )
-      ( `UNTIL` )
-      ( `UP` )
-      ( `UPDATE` )
-      ( `UPPER` )
-      ( `ULINE` )
-      ( `USER-COMMAND` )
-      ( `USING` )
-      ( `VALUE` )
-      ( `WAIT` )
-      ( `WHEN` )
-      ( `WHERE` )
-      ( `WHILE` )
-      ( `WITH` )
-      ( `WINDOW` )
-      ( `WORK` )
-      ( `WRITE` )
-    ).
-
   ENDMETHOD.
 ENDCLASS.
 
@@ -11054,7 +13164,7 @@ DATA(lv_maxlen) = 200.
         ENDIF.
         DO times TIMES.
           CV_MM_STRING = |{ CV_MM_STRING } end\n|.
-          opened -= 1.
+          opened = opened - 1.
           IF opened = 0. EXIT. ENDIF.
         ENDDO.
       ENDIF.
@@ -11072,7 +13182,7 @@ DATA(lv_maxlen) = 200.
         IF sy-subrc = 0
            AND line2-cond <> 'ENDLOOP' AND line2-cond <> 'ENDDO' AND line2-cond <> 'ENDWHILE'.
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ name }"]\n  direction { I_DIRECTION }\n|.
-          opened += 1.
+          opened = opened + 1.
           APPEND abap_true TO lt_sg_opened.
         ELSE.
           APPEND abap_false TO lt_sg_opened.
@@ -11117,7 +13227,7 @@ DATA(lv_maxlen) = 200.
 
           DATA(lv_sg_title) = format_node_label( i_code = <line>-subname i_maxlen = 0 ).
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ lv_sg_title }"]\n  direction { I_DIRECTION }\n|.
-          opened += 1.
+          opened = opened + 1.
         ELSE.
           " Same-level call (no children): show the full source line including all parameters.
           " <line>-code was built with an early EXIT at USING/EXPORTING/IMPORTING/CHANGING,
@@ -11192,7 +13302,7 @@ DATA(lv_maxlen) = 200.
           READ TABLE lt_sg_opened INDEX lv_last INTO DATA(lv_sg_flag).
           DELETE lt_sg_opened INDEX lv_last.
           IF lv_sg_flag = abap_true.
-            opened -= 1.
+            opened = opened - 1.
             CV_MM_STRING = |{ CV_MM_STRING } end\n|.
           ENDIF.
         ENDIF.
@@ -11253,7 +13363,7 @@ DATA(lv_maxlen) = 200.
 
       " ----- IF / CASE: push onto stack -----
       IF line-cond = 'IF' OR line-cond = 'CASE'.
-        if_ptr += 1.
+        if_ptr = if_ptr + 1.
         READ TABLE lt_if INDEX if_ptr INTO DATA(ls_if).
         APPEND if_ptr TO if_stack.
       ENDIF.
@@ -11433,9 +13543,11 @@ DATA(lv_maxlen) = 200.
        ( function = 'TB'       icon = CONV #( icon_view_expand_vertical )   quickinfo = 'Vertical'   text = '' )
        ( function = 'LR'       icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
        ( butn_type = 3 )
-       ( function = 'CALLS'    icon = CONV #( icon_workflow_process )       quickinfo = 'Calls Flow'  text = 'Calls Flow' )
-       ( function = 'FLOW'     icon = CONV #( icon_wizard )                 quickinfo = 'Calculations flow sequence' text = 'Code Flow' )
-       ( function = 'CALCPATH' icon = CONV #( icon_workflow_process )       quickinfo = 'Calc Path - only assigned variables' text = 'Calc Path' )
+       ( function = 'CALLS'        icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow'              text = 'Calls Flow' )
+       ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Code Flow'               text = 'Code Flow' )
+       ( butn_type = 3 )
+       ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
+       ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
        ( butn_type = 3 )
        ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )            quickinfo = 'Decrease depth' text = '' )
        ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level )  quickinfo = 'Depth level' text = |Depth { lv_depth }| )
@@ -11495,8 +13607,8 @@ DATA(lv_maxlen) = 200.
       ENDIF.
 
       CASE mv_type.
-        WHEN 'CALLS'. steps_flow( ).
-        WHEN 'FLOW'.  magic_search( ).
+        WHEN 'CALLS'. steps_flow( i_with_params = mv_with_params i_calc_path = mv_calc_path ).
+        WHEN 'FLOW'.  magic_search( i_calc_path = mv_calc_path ).
       ENDCASE.
 
       mo_box->set_focus( mo_box ).
@@ -11515,12 +13627,23 @@ DATA(lv_maxlen) = 200.
 
       IF fcode = 'LR' OR fcode = 'TB'.
         mv_direction = fcode.
-      ELSEIF fcode = 'CALCPATH'.
-        mv_type = 'CALCPATH'.
-        mv_calc_path = abap_true.
+      ELSEIF fcode = 'TOGGLE_CALC'.
+        mv_calc_path = COND #( WHEN mv_calc_path = abap_true THEN abap_false ELSE abap_true ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'TOGGLE_CALC'
+                    text  = COND #( WHEN mv_calc_path = abap_true
+                                    THEN 'Only Calculated'
+                                    ELSE 'Show All Steps' ) ).
+      ELSEIF fcode = 'TOGGLE_PARAMS'.
+        mv_with_params = COND #( WHEN mv_with_params = abap_true THEN abap_false ELSE abap_true ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'TOGGLE_PARAMS'
+                    text  = COND #( WHEN mv_with_params = abap_true
+                                    THEN 'Hide Params'
+                                    ELSE 'Show Params' ) ).
       ELSEIF fcode = 'DEPTH_M'.
         IF mo_viewer->mo_window->m_hist_depth > 0.
-          mo_viewer->mo_window->m_hist_depth -= 1.
+          mo_viewer->mo_window->m_hist_depth = mo_viewer->mo_window->m_hist_depth - 1.
         ENDIF.
         mo_viewer->mo_window->apply_depth( ).
         mo_box->set_focus( mo_box ).
@@ -11530,7 +13653,7 @@ DATA(lv_maxlen) = 200.
         RETURN.
       ELSEIF fcode = 'DEPTH_P'.
         IF mo_viewer->mo_window->m_hist_depth < 99.
-          mo_viewer->mo_window->m_hist_depth += 1.
+          mo_viewer->mo_window->m_hist_depth = mo_viewer->mo_window->m_hist_depth + 1.
         ENDIF.
         mo_viewer->mo_window->apply_depth( ).
         mo_box->set_focus( mo_box ).
@@ -11566,7 +13689,6 @@ DATA(lv_maxlen) = 200.
         RETURN.
       ELSE.
         mv_type = fcode.
-        CLEAR mv_calc_path.
       ENDIF.
 
       refresh( ).
@@ -11591,20 +13713,25 @@ DATA(lv_maxlen) = 200.
   method REFRESH.
 
       CASE mv_type.
-        WHEN 'CALLS'.    steps_flow( mv_direction ).
-        WHEN 'FLOW'.     magic_search( i_direction = mv_direction ).
-        WHEN 'CALCPATH'. magic_search( i_direction = mv_direction i_calc_path = abap_true ).
+        WHEN 'CALLS'.
+          steps_flow( i_direction   = mv_direction
+                      i_with_params = mv_with_params
+                      i_calc_path   = mv_calc_path ).
+        WHEN 'FLOW'.
+          magic_search( i_direction = mv_direction
+                        i_calc_path = mv_calc_path ).
       ENDCASE.
 
   endmethod.
   METHOD steps_flow.
 
     TYPES: BEGIN OF lty_entity,
-             include TYPE string,
-             class   TYPE string,
-             event   TYPE string,
-             name    TYPE string,
-             style   TYPE string,
+             include   TYPE string,
+             class     TYPE string,
+             event     TYPE string,
+             name      TYPE string,
+             style     TYPE string,
+             eventname TYPE string,   " raw method/form/function name for binding lookup
            END OF lty_entity,
            BEGIN OF t_ind,
              from TYPE i,
@@ -11638,9 +13765,30 @@ DATA(lv_maxlen) = 200.
 
     DATA(copy) = mo_viewer->mt_steps.
 
-    " ── Шаг 1: собираем уникальные ноды ────────────────────────────
+    " Filter steps to only calculated ones when requested
+    IF i_calc_path = abap_true.
+      DATA(lt_flow) = mo_viewer->get_code_flow( i_calc_path = abap_true ).
+      DATA lt_active_ev TYPE TABLE OF string WITH EMPTY KEY.
+      LOOP AT lt_flow INTO DATA(ls_fl) WHERE active_root = abap_true.
+        READ TABLE lt_active_ev WITH KEY table_line = ls_fl-ev_name TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND ls_fl-ev_name TO lt_active_ev.
+        ENDIF.
+      ENDLOOP.
+      DATA lt_copy_filt LIKE copy.
+      LOOP AT copy INTO DATA(ls_cp_filt).
+        READ TABLE lt_active_ev WITH KEY table_line = ls_cp_filt-eventname TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          APPEND ls_cp_filt TO lt_copy_filt.
+        ENDIF.
+      ENDLOOP.
+      copy = lt_copy_filt.
+    ENDIF.
+
+    " ── Step 1: collect unique nodes ────────────────────────────────
     LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
-      entity-event = <copy>-eventtype.
+      entity-event     = <copy>-eventtype.
+      entity-eventname = <copy>-eventname.   " save raw name before overwrite below
 
       IF <copy>-eventtype = 'METHOD'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
@@ -11695,7 +13843,7 @@ DATA(lv_maxlen) = 200.
     " ── Шаг 2: явно объявляем все ноды ─────────────────────────────
     DATA(lv_idx) = 0.
     LOOP AT entities INTO entity.
-      lv_idx += 1.
+      lv_idx = lv_idx + 1.
       mm_string = |{ mm_string }{ lv_idx }({ entity-name })\n|.
     ENDLOOP.
 
@@ -11723,12 +13871,45 @@ DATA(lv_maxlen) = 200.
           WITH KEY stacklevel = lv_level - 1
           INTO DATA(ls_caller).
         IF sy-subrc = 0 AND ls_caller-entity_idx <> lv_cur_idx.
-          " Рисуем стрелку только если ещё не было такой
+          " Draw edge only if not yet drawn
           ind-from = ls_caller-entity_idx.
           ind-to   = lv_cur_idx.
           READ TABLE indexes WITH KEY from = ind-from to = ind-to TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
-            mm_string = |{ mm_string }{ ind-from } --> { ind-to }\n|.
+            DATA(lv_edge_label) = ``.
+
+            IF i_with_params = abap_true.
+              " Look up parameter bindings: search caller's keywords for a call to callee
+              DATA(ls_caller_ent) = entities[ ind-from ].
+              DATA(ls_callee_ent) = entities[ ind-to ].
+              READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+                WITH KEY include = ls_caller_ent-include
+                INTO DATA(ls_prog_wp).
+              IF sy-subrc = 0.
+                LOOP AT ls_prog_wp-t_keywords INTO DATA(ls_kw_wp).
+                  LOOP AT ls_kw_wp-tt_calls INTO DATA(ls_call_wp)
+                    WHERE name  = ls_callee_ent-eventname
+                      AND class = ls_callee_ent-class.
+                    LOOP AT ls_call_wp-bindings INTO DATA(ls_bind_wp).
+                      IF lv_edge_label IS INITIAL.
+                        lv_edge_label = |{ ls_bind_wp-inner }={ ls_bind_wp-outer }|.
+                      ELSE.
+                        lv_edge_label = |{ lv_edge_label }<br/>{ ls_bind_wp-inner }={ ls_bind_wp-outer }|.
+                      ENDIF.
+                    ENDLOOP.
+                    IF lv_edge_label IS NOT INITIAL. EXIT. ENDIF.
+                  ENDLOOP.
+                  IF lv_edge_label IS NOT INITIAL. EXIT. ENDIF.
+                ENDLOOP.
+              ENDIF.
+            ENDIF.
+
+            IF lv_edge_label IS NOT INITIAL.
+              DATA(lv_el_fmt) = format_node_label( i_code = lv_edge_label i_maxlen = 0 ).
+              mm_string = |{ mm_string }{ ind-from } -->\|"{ lv_el_fmt }"\|{ ind-to }\n|.
+            ELSE.
+              mm_string = |{ mm_string }{ ind-from } --> { ind-to }\n|.
+            ENDIF.
             APPEND ind TO indexes.
           ENDIF.
         ENDIF.
@@ -11765,6 +13946,135 @@ DATA(lv_maxlen) = 200.
     open_mermaid( mm_string ).
 
   ENDMETHOD.
+ENDCLASS.
+
+CLASS zcl_ace_keywords IMPLEMENTATION.
+
+  METHOD get_all.
+    IF mv_cached = abap_false.
+      build( ).
+    ENDIF.
+    result = mt_cache.
+  ENDMETHOD.
+
+  METHOD is_keyword.
+    IF mv_cached = abap_false.
+      build( ).
+    ENDIF.
+    DATA(up) = to_upper( token ).
+    result = boolc( line_exists( mt_cache[ word = up ] ) ).
+  ENDMETHOD.
+
+  METHOD reset.
+    CLEAR: mt_cache, mv_cached, mt_visited_exprs.
+  ENDMETHOD.
+
+  METHOD build.
+    CLEAR: mt_cache, mt_visited_exprs.
+    collect_from_class( class_name    = 'ZCL_ACE_STMTS'
+                        method_prefix = 'STMT_' ).
+    collect_from_class( class_name    = 'ZCL_ACE_EXPRS'
+                        method_prefix = 'EXPR_' ).
+    mv_cached = abap_true.
+  ENDMETHOD.
+
+  METHOD collect_from_class.
+    " RTTI: enumerate all class-methods matching the prefix and dynamically invoke each
+    DATA(class_descr) = CAST cl_abap_classdescr(
+      cl_abap_typedescr=>describe_by_name( class_name ) ).
+
+    LOOP AT class_descr->methods INTO DATA(method_descr).
+      CHECK method_descr-name CP |{ method_prefix }*|.
+      CHECK method_descr-is_class = abap_true.
+      CHECK method_descr-visibility = cl_abap_classdescr=>public.
+
+      DATA node TYPE REF TO zcl_ace_combi_node.
+      TRY.
+          CALL METHOD (class_name)=>(method_descr-name)
+            RECEIVING
+              r = node.
+        CATCH cx_root.
+          CONTINUE.
+      ENDTRY.
+
+      " For Expression methods (EXPR_*) mark as visited so that recursive
+      " references back through expr( ) don't re-walk them.
+      IF method_prefix = 'EXPR_'.
+        DATA(expr_name) = substring( val = method_descr-name
+                                     off = strlen( method_prefix ) ).
+        INSERT expr_name INTO TABLE mt_visited_exprs.
+      ENDIF.
+
+      walk_node( node ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD walk_node.
+    CHECK node IS BOUND.
+
+    " Mirrors zcl_ace_combi_node->list_keywords( ) but ALSO follows
+    " Expression references so we capture keywords contributed by
+    " sub-expressions reached only via expr( ).
+    CASE node->kind.
+      WHEN zcl_ace_combi_node=>c_kind_word
+        OR zcl_ace_combi_node=>c_kind_wseq.
+        add_keyword( node->value ).
+
+      WHEN zcl_ace_combi_node=>c_kind_token
+        OR zcl_ace_combi_node=>c_kind_regex.
+        " contributes nothing
+        RETURN.
+
+      WHEN zcl_ace_combi_node=>c_kind_expr.
+        " Expression reference — walk the referenced expression once
+        DATA(name) = node->value.
+        IF line_exists( mt_visited_exprs[ table_line = name ] ).
+          RETURN.
+        ENDIF.
+        INSERT name INTO TABLE mt_visited_exprs.
+        DATA(method_name) = |EXPR_{ name }|.
+        DATA child TYPE REF TO zcl_ace_combi_node.
+        TRY.
+            CALL METHOD ('ZCL_ACE_EXPRS')=>(method_name)
+              RECEIVING
+                r = child.
+            walk_node( child ).
+          CATCH cx_root.
+            " Expression not yet ported — skip
+            RETURN.
+        ENDTRY.
+
+      WHEN OTHERS.
+        " seq / alt / opt / star / plus / per / vers — recurse into children
+        LOOP AT node->children INTO DATA(c).
+          walk_node( c ).
+        ENDLOOP.
+    ENDCASE.
+  ENDMETHOD.
+
+  METHOD add_keyword.
+    DATA(up) = to_upper( raw ).
+    " Always store the literal (single word OR full phrase) — useful for callers
+    " that want exact phrase matching (e.g. "END OF").
+    DATA is_phrase TYPE abap_bool.
+    is_phrase = boolc( up CS ` ` OR up CS `-` ).
+    INSERT VALUE ts_keyword( word = up is_phrase = is_phrase )
+      INTO TABLE mt_cache.
+
+    " For multi-word phrases also store individual words so that token-by-token
+    " classification (1 token from the scanner) finds them.
+    IF is_phrase = abap_true.
+      DATA(parts) = up.
+      REPLACE ALL OCCURRENCES OF `-` IN parts WITH ` `.
+      SPLIT parts AT ` ` INTO TABLE DATA(words).
+      LOOP AT words INTO DATA(w).
+        CHECK w IS NOT INITIAL.
+        INSERT VALUE ts_keyword( word = w is_phrase = abap_false )
+          INTO TABLE mt_cache.
+      ENDLOOP.
+    ENDIF.
+  ENDMETHOD.
+
 ENDCLASS.
 
 CLASS ZCL_ACE_HTML_VIEWER IMPLEMENTATION.
@@ -11820,6 +14130,270 @@ CLASS ZCL_ACE_HTML_VIEWER IMPLEMENTATION.
       mo_html->show_url( url = lv_url ).
       cl_gui_cfw=>flush( ).
   endmethod.
+ENDCLASS.
+
+CLASS zcl_ace_exprs IMPLEMENTATION.
+
+  METHOD expr_cond.
+    " Cond.ts grammar boils down to comparisons joined by AND/OR/NOT/EQUIV +
+    " parentheses. Keyword-relevant tokens:
+    r = zcl_ace_combi=>alt( VALUE #(
+      ( zcl_ace_combi=>str( `AND` ) )
+      ( zcl_ace_combi=>str( `OR` ) )
+      ( zcl_ace_combi=>str( `NOT` ) )
+      ( zcl_ace_combi=>str( `EQUIV` ) )
+      ( zcl_ace_combi=>expr( `COMPARE` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD expr_compare.
+    " Compare.ts — basic shape: Source CompareOperator Source, with IS/BETWEEN/IN/LIKE variants
+    r = zcl_ace_combi=>alt( VALUE #(
+      ( zcl_ace_combi=>str( `IS` ) )
+      ( zcl_ace_combi=>str( `INITIAL` ) )
+      ( zcl_ace_combi=>str( `BOUND` ) )
+      ( zcl_ace_combi=>str( `ASSIGNED` ) )
+      ( zcl_ace_combi=>str( `SUPPLIED` ) )
+      ( zcl_ace_combi=>str( `INSTANCE OF` ) )
+      ( zcl_ace_combi=>str( `BETWEEN` ) )
+      ( zcl_ace_combi=>str( `IN` ) )
+      ( zcl_ace_combi=>str( `LIKE` ) )
+      ( zcl_ace_combi=>str( `CO` ) )
+      ( zcl_ace_combi=>str( `CN` ) )
+      ( zcl_ace_combi=>str( `CA` ) )
+      ( zcl_ace_combi=>str( `NA` ) )
+      ( zcl_ace_combi=>str( `CS` ) )
+      ( zcl_ace_combi=>str( `NS` ) )
+      ( zcl_ace_combi=>str( `CP` ) )
+      ( zcl_ace_combi=>str( `NP` ) )
+      ( zcl_ace_combi=>expr( `COMPARE_OPERATOR` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD expr_compare_operator.
+    r = zcl_ace_combi=>alt( VALUE #(
+      ( zcl_ace_combi=>str( `EQ` ) )
+      ( zcl_ace_combi=>str( `NE` ) )
+      ( zcl_ace_combi=>str( `LT` ) )
+      ( zcl_ace_combi=>str( `LE` ) )
+      ( zcl_ace_combi=>str( `GT` ) )
+      ( zcl_ace_combi=>str( `GE` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD expr_source.
+    " Source — value expression. For keyword purposes, the constructor expressions:
+    r = zcl_ace_combi=>alt( VALUE #(
+      ( zcl_ace_combi=>str( `VALUE` ) )
+      ( zcl_ace_combi=>str( `NEW` ) )
+      ( zcl_ace_combi=>str( `REF` ) )
+      ( zcl_ace_combi=>str( `CONV` ) )
+      ( zcl_ace_combi=>str( `CAST` ) )
+      ( zcl_ace_combi=>str( `EXACT` ) )
+      ( zcl_ace_combi=>str( `COND` ) )
+      ( zcl_ace_combi=>str( `SWITCH` ) )
+      ( zcl_ace_combi=>str( `REDUCE` ) )
+      ( zcl_ace_combi=>str( `FILTER` ) )
+      ( zcl_ace_combi=>str( `CORRESPONDING` ) )
+      ( zcl_ace_combi=>str( `BOOLC` ) )
+      ( zcl_ace_combi=>str( `XSDBOOL` ) )
+      ( zcl_ace_combi=>str( `LET` ) )
+      ( zcl_ace_combi=>str( `IN` ) )
+      ( zcl_ace_combi=>str( `THEN` ) )
+      ( zcl_ace_combi=>str( `ELSE` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD expr_target.
+    r = zcl_ace_combi=>alt( VALUE #(
+      ( zcl_ace_combi=>expr( `FIELD_CHAIN` ) )
+      ( zcl_ace_combi=>expr( `INLINE_DATA` ) )
+      ( zcl_ace_combi=>expr( `FIELD_SYMBOL` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD expr_field.
+    r = zcl_ace_combi=>tok( `Identifier` ).
+  ENDMETHOD.
+
+  METHOD expr_field_chain.
+    r = zcl_ace_combi=>expr( `FIELD` ).
+  ENDMETHOD.
+
+  METHOD expr_field_symbol.
+    r = zcl_ace_combi=>tok( `Identifier` ).
+  ENDMETHOD.
+
+  METHOD expr_data_definition.
+    " DataDefinition — name + TYPE/LIKE clause + value
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>expr( `FIELD` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>alt( VALUE #(
+          ( zcl_ace_combi=>str( `TYPE` ) )
+          ( zcl_ace_combi=>str( `LIKE` ) ) ) ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `VALUE` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `READ-ONLY` ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD expr_inline_data.
+    r = zcl_ace_combi=>tok( `Identifier` ).
+  ENDMETHOD.
+
+  METHOD expr_loop_source.
+    r = zcl_ace_combi=>alt( VALUE #(
+      ( zcl_ace_combi=>expr( `FIELD_CHAIN` ) )
+      ( zcl_ace_combi=>str( `SCREEN` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD expr_loop_target.
+    r = zcl_ace_combi=>alt( VALUE #(
+      ( zcl_ace_combi=>seq( VALUE #(
+          ( zcl_ace_combi=>str( `INTO` ) )
+          ( zcl_ace_combi=>expr( `TARGET` ) ) ) ) )
+      ( zcl_ace_combi=>seq( VALUE #(
+          ( zcl_ace_combi=>str( `ASSIGNING` ) )
+          ( zcl_ace_combi=>expr( `FIELD_SYMBOL` ) ) ) ) )
+      ( zcl_ace_combi=>seq( VALUE #(
+          ( zcl_ace_combi=>str( `REFERENCE INTO` ) )
+          ( zcl_ace_combi=>expr( `TARGET` ) ) ) ) ) ) ).
+  ENDMETHOD.
+
+  METHOD expr_for.
+    r = zcl_ace_combi=>seq( VALUE #(
+      ( zcl_ace_combi=>str( `FOR` ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `EACH` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `IN` ) ) )
+      ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `WHERE` ) ) ) ) ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS zcl_ace_combi_node IMPLEMENTATION.
+
+  METHOD constructor.
+    me->kind     = kind.
+    me->value    = value.
+    me->children = children.
+  ENDMETHOD.
+
+  METHOD new_word.
+    r = NEW #( kind = c_kind_word value = to_upper( s ) ).
+  ENDMETHOD.
+
+  METHOD new_wseq.
+    r = NEW #( kind = c_kind_wseq value = to_upper( s ) ).
+  ENDMETHOD.
+
+  METHOD new_token.
+    r = NEW #( kind = c_kind_token value = token_name ).
+  ENDMETHOD.
+
+  METHOD new_regex.
+    r = NEW #( kind = c_kind_regex value = pattern ).
+  ENDMETHOD.
+
+  METHOD new_seq.
+    r = NEW #( kind = c_kind_seq children = children ).
+  ENDMETHOD.
+
+  METHOD new_alt.
+    r = NEW #( kind = c_kind_alt children = children ).
+  ENDMETHOD.
+
+  METHOD new_opt.
+    r = NEW #( kind = c_kind_opt children = VALUE #( ( child ) ) ).
+  ENDMETHOD.
+
+  METHOD new_star.
+    r = NEW #( kind = c_kind_star children = VALUE #( ( child ) ) ).
+  ENDMETHOD.
+
+  METHOD new_plus.
+    r = NEW #( kind = c_kind_plus children = VALUE #( ( child ) ) ).
+  ENDMETHOD.
+
+  METHOD new_per.
+    r = NEW #( kind = c_kind_per children = children ).
+  ENDMETHOD.
+
+  METHOD new_vers.
+    r = NEW #( kind = c_kind_vers children = VALUE #( ( child ) ) ).
+  ENDMETHOD.
+
+  METHOD new_expr.
+    r = NEW #( kind = c_kind_expr value = name ).
+  ENDMETHOD.
+
+  METHOD list_keywords.
+    " 1:1 with combi.ts:
+    "   Word.listKeywords()         → [this.s]
+    "   WordSequence.listKeywords() → [this.stri]   (full phrase as one entry)
+    "   Token / Regex               → []
+    "   Sequence/Alt/Opt/Star/Plus/Per/Vers → recurse into children
+    "   Expression                  → []  (handled by aggregator separately)
+    CASE me->kind.
+      WHEN c_kind_word OR c_kind_wseq.
+        APPEND me->value TO result.
+      WHEN c_kind_token OR c_kind_regex OR c_kind_expr.
+        " no keywords contributed
+        RETURN.
+      WHEN OTHERS.
+        LOOP AT me->children INTO DATA(child).
+          IF child IS BOUND.
+            APPEND LINES OF child->list_keywords( ) TO result.
+          ENDIF.
+        ENDLOOP.
+    ENDCASE.
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS zcl_ace_combi IMPLEMENTATION.
+
+  METHOD str.
+    " Mirrors combi.ts: if (s.indexOf(" ") > 0 || s.indexOf("-") > 0) WordSequence else Word
+    IF s CS ` ` OR s CS `-`.
+      result = zcl_ace_combi_node=>new_wseq( s ).
+    ELSE.
+      result = zcl_ace_combi_node=>new_word( s ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD tok.
+    result = zcl_ace_combi_node=>new_token( token_name ).
+  ENDMETHOD.
+
+  METHOD regex.
+    result = zcl_ace_combi_node=>new_regex( pattern ).
+  ENDMETHOD.
+
+  METHOD seq.
+    result = zcl_ace_combi_node=>new_seq( children ).
+  ENDMETHOD.
+
+  METHOD alt.
+    result = zcl_ace_combi_node=>new_alt( children ).
+  ENDMETHOD.
+
+  METHOD opt.
+    result = zcl_ace_combi_node=>new_opt( child ).
+  ENDMETHOD.
+
+  METHOD star.
+    result = zcl_ace_combi_node=>new_star( child ).
+  ENDMETHOD.
+
+  METHOD plus.
+    result = zcl_ace_combi_node=>new_plus( child ).
+  ENDMETHOD.
+
+  METHOD per.
+    result = zcl_ace_combi_node=>new_per( children ).
+  ENDMETHOD.
+
+  METHOD ver.
+    result = zcl_ace_combi_node=>new_vers( child ).
+  ENDMETHOD.
+
+  METHOD expr.
+    result = zcl_ace_combi_node=>new_expr( name ).
+  ENDMETHOD.
+
 ENDCLASS.
 
 CLASS ZCL_ACE_ALV_COMMON IMPLEMENTATION.
@@ -11919,14 +14493,14 @@ CLASS ZCL_ACE IMPLEMENTATION.
         CASE <ln>-cond.
           WHEN 'IF' OR 'CASE'.
             IF lv_i = lv_if_i. ls_hdr-tabix = lv_i. ls_hdr-cond = <ln>-cond. APPEND ls_hdr TO lt_hdrs.
-            ELSE. lv_inner_depth += 1. ENDIF.
+            ELSE. lv_inner_depth = lv_inner_depth + 1. ENDIF.
           WHEN 'ENDIF' OR 'ENDCASE'.
             IF lv_i = lv_end_i. ls_hdr-tabix = lv_i. ls_hdr-cond = <ln>-cond. APPEND ls_hdr TO lt_hdrs.
-            ELSE. lv_inner_depth -= 1. ENDIF.
+            ELSE. lv_inner_depth = lv_inner_depth - 1. ENDIF.
           WHEN 'ELSEIF' OR 'ELSE' OR 'WHEN'.
             IF lv_inner_depth = 0. ls_hdr-tabix = lv_i. ls_hdr-cond = <ln>-cond. APPEND ls_hdr TO lt_hdrs. ENDIF.
         ENDCASE.
-        lv_i += 1.
+        lv_i = lv_i + 1.
       ENDWHILE.
       CLEAR lv_block_active. lv_hdr_cnt = lines( lt_hdrs ). lv_h = 1.
       WHILE lv_h < lv_hdr_cnt.
@@ -11935,19 +14509,19 @@ CLASS ZCL_ACE IMPLEMENTATION.
         WHILE lv_scan < ls_hdr_next-tabix.
           READ TABLE ct_results INDEX lv_scan ASSIGNING FIELD-SYMBOL(<scan_ln>). IF sy-subrc <> 0. EXIT. ENDIF.
           CASE <scan_ln>-cond.
-            WHEN 'IF' OR 'CASE'. lv_scan_inner += 1.
-            WHEN 'ENDIF' OR 'ENDCASE'. lv_scan_inner -= 1.
+            WHEN 'IF' OR 'CASE'. lv_scan_inner = lv_scan_inner + 1.
+            WHEN 'ENDIF' OR 'ENDCASE'. lv_scan_inner = lv_scan_inner - 1.
             WHEN OTHERS. IF lv_scan_inner = 0 AND <scan_ln>-active_root = abap_true. lv_branch_active = abap_true. ENDIF.
           ENDCASE.
           IF lv_branch_active = abap_true. EXIT. ENDIF.
-          lv_scan += 1.
+          lv_scan = lv_scan + 1.
         ENDWHILE.
         ASSIGN ct_results[ ls_hdr_cur-tabix ] TO FIELD-SYMBOL(<hdr_ln>).
         IF sy-subrc = 0.
           IF lv_branch_active = abap_true. <hdr_ln>-active_root = abap_true. lv_block_active = abap_true.
           ELSE. CLEAR <hdr_ln>-active_root. ENDIF.
         ENDIF.
-        lv_h += 1.
+        lv_h = lv_h + 1.
       ENDWHILE.
       ASSIGN ct_results[ lv_end_i ] TO FIELD-SYMBOL(<endif_ln>).
       IF sy-subrc = 0. <endif_ln>-active_root = lv_block_active. ENDIF.
@@ -12069,6 +14643,7 @@ METHOD show.
     NEW zcl_ace_tree_builder(
   io_window = mo_window
   io_tree   = mo_tree_local )->build( ).
+    "test
   ENDMETHOD.
 METHOD apply_calc_path_filter.
     DATA lt_active_ev TYPE SORTED TABLE OF string WITH UNIQUE KEY table_line.
@@ -12226,7 +14801,7 @@ METHOD enrich_result_lines.
               WHEN 'I' THEN '->'    WHEN 'E' THEN '<-'
               WHEN 'C' THEN '-> <-' ELSE '--' ).
             <line>-arrow = |{ <line>-arrow } { ls_b-outer } { lv_sep } { ls_b-inner }|.
-            lv_arrow_cnt += 1.
+            lv_arrow_cnt = lv_arrow_cnt + 1.
           ENDLOOP.
         ENDLOOP.
       ENDIF.
@@ -12407,7 +14982,7 @@ METHOD propagate_vars_backward.
                 AND class = step-class  AND eventtype = step-eventtype AND eventname = step-eventname
                 AND line = step-line.
             READ TABLE ct_selected_var WITH KEY name = comp_var-name
-              "class = comp_var-class eventtype = comp_var-eventtype eventname = comp_var-eventname
+              class = comp_var-class eventtype = comp_var-eventtype eventname = comp_var-eventname
               TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0.
               APPEND INITIAL LINE TO ct_selected_var ASSIGNING FIELD-SYMBOL(<sel>).
@@ -12485,7 +15060,6 @@ ENDCLASS.
   " &----------------------------------------------------------------------
   " & version: beta 0.5
   " & Git https://github.com/ysichov/ACE
-
   " & Written by Yurii Sychov
   " & e-mail:   ysichov@gmail.com
   " & blog:     https://ysychov.wordpress.com/blog/
@@ -12563,9 +15137,10 @@ ENDCLASS.
   AT SELECTION-SCREEN ON p_func.
 
     IF p_func IS NOT INITIAL.
-      SELECT SINGLE pname, include INTO ( @DATA(func_incl), @DATA(incl_num) )
+      SELECT SINGLE pname, include
         FROM tfdir
-       WHERE funcname = @p_func.
+       WHERE funcname = @p_func
+       INTO ( @DATA(func_incl), @DATA(incl_num) ) .
 
       IF sy-subrc = 0.
         SHIFT func_incl LEFT BY 3 PLACES.
@@ -12628,8 +15203,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-04-07T06:32:49.322Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-04-07T06:32:49.322Z`.
+* abapmerge 0.16.7 - 2026-06-08T09:05:47.485Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-06-08T09:05:47.485Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
