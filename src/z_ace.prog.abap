@@ -23,11 +23,11 @@
       PARAMETERS: p_prog  TYPE progname MATCHCODE OBJECT progname MODIF ID prg.
       SELECTION-SCREEN COMMENT (70) TEXT-001 FOR FIELD p_prog.
     SELECTION-SCREEN END OF LINE.
+    PARAMETERS: p_pack  TYPE devclass.
     PARAMETERS: p_class  TYPE seoclsname MATCHCODE OBJECT sfbeclname.
     PARAMETERS: p_func  TYPE seoclsname MATCHCODE OBJECT cacs_function.
     PARAMETERS: p_odata  TYPE seoclsname MATCHCODE OBJECT /iwbep/sh_sbdm_project.
     PARAMETERS: p_wdc  TYPE string.
-    PARAMETERS: p_pack  TYPE devclass.
   SELECTION-SCREEN END OF BLOCK s1.
 
   PARAMETERS: n_parser NO-DISPLAY. "AS CHECKBOX DEFAULT ' '.
