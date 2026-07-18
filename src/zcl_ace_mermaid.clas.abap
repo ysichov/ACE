@@ -592,13 +592,15 @@ DATA(lv_maxlen) = 200.
         IF mo_toolbar IS BOUND.
           mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { lo_win->m_hist_depth }| ).
         ENDIF.
-        lo_win->m_prg-program = lv_focus.
-        lo_win->m_prg-include = lv_focus.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls.
-        zcl_ace_source_parser=>code_execution_scanner(
-          i_program = lv_focus
-          i_include = lv_focus
-          io_debugger = mo_viewer ).
+        IF mo_viewer->mt_steps IS INITIAL.
+          lo_win->m_prg-program = lv_focus.
+          lo_win->m_prg-include = lv_focus.
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls.
+          zcl_ace_source_parser=>code_execution_scanner(
+            i_program = lv_focus
+            i_include = lv_focus
+            io_debugger = mo_viewer ).
+        ENDIF.
         steps_flow( i_direction   = i_direction
                     i_with_params = mv_with_params
                     i_calc_path   = mv_calc_path ).
@@ -1564,6 +1566,63 @@ DATA(lv_maxlen) = 200.
     ENDLOOP.
 
     " ── Шаг 4: стили ────────────────────────────────────────────────
+    IF mv_type = 'CMAP' AND mo_viewer->mv_cmap_focus IS NOT INITIAL.
+      DATA(lv_enrich_from) = 0.
+      LOOP AT entities INTO DATA(ls_enrich_src).
+        lv_enrich_from += 1.
+        CHECK ls_enrich_src-style = c_style_method.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+          WITH KEY include   = ls_enrich_src-include
+                   eventtype = 'METHOD'
+                   eventname = ls_enrich_src-eventname
+                   class     = ls_enrich_src-class
+          INTO DATA(ls_enrich_line).
+        CHECK sy-subrc = 0.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = ls_enrich_line-include
+          INTO DATA(ls_enrich_prog).
+        CHECK sy-subrc = 0.
+
+        LOOP AT ls_enrich_prog-t_keywords INTO DATA(ls_enrich_kw)
+          WHERE index >= ls_enrich_line-index AND index <= ls_enrich_line-end_idx.
+          IF ls_enrich_kw-calls_parsed = abap_false.
+            zcl_ace_parser=>parse_tokens(
+              EXPORTING
+                i_program  = CONV #( ls_enrich_kw-program )
+                i_include  = CONV #( ls_enrich_kw-include )
+                i_stmt_idx = ls_enrich_kw-index
+                i_class    = ls_enrich_src-class
+                i_evtype   = 'METHOD'
+                i_ev_name  = ls_enrich_src-eventname
+              CHANGING
+                cs_source  = mo_viewer->mo_window->ms_sources ).
+            READ TABLE ls_enrich_prog-t_keywords WITH KEY index = ls_enrich_kw-index INTO ls_enrich_kw.
+          ENDIF.
+
+          LOOP AT ls_enrich_kw-tt_calls INTO DATA(ls_enrich_call)
+            WHERE event = 'METHOD' AND name IS NOT INITIAL.
+            DATA(lv_enrich_to) = 0.
+            LOOP AT entities INTO DATA(ls_enrich_tgt).
+              CHECK ls_enrich_tgt-style = c_style_method
+                AND ls_enrich_tgt-eventname = ls_enrich_call-name.
+              IF ls_enrich_call-class IS NOT INITIAL
+                 AND to_upper( ls_enrich_tgt-class ) <> to_upper( CONV string( ls_enrich_call-class ) ).
+                CONTINUE.
+              ENDIF.
+              lv_enrich_to = sy-tabix.
+              EXIT.
+            ENDLOOP.
+            CHECK lv_enrich_to > 0 AND lv_enrich_to <> lv_enrich_from.
+            READ TABLE indexes WITH KEY from = lv_enrich_from to = lv_enrich_to TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              mm_string = |{ mm_string }{ lv_enrich_from } -.-> { lv_enrich_to }\n|.
+              APPEND VALUE #( from = lv_enrich_from to = lv_enrich_to ) TO indexes.
+            ENDIF.
+          ENDLOOP.
+        ENDLOOP.
+      ENDLOOP.
+    ENDIF.
+
     mm_string = |{ mm_string } classDef event    fill:#FFE0B2,stroke:#E65100\n|.
     mm_string = |{ mm_string } classDef method   fill:#BBDEFB,stroke:#1565C0\n|.
     mm_string = |{ mm_string } classDef form     fill:#EEEEEE,stroke:#616161\n|.

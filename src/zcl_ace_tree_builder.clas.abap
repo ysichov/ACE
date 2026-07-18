@@ -237,9 +237,28 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
         AND ( object = 'PROG' OR object = 'CLAS' OR object = 'INTF' OR object = 'FUGR' )
         AND delflag  = @space
       INTO TABLE @DATA(lt_tadir).
-    SORT lt_tadir BY object obj_name.
+    TYPES: BEGIN OF lty_pkg_sort,
+             sort_key TYPE i,
+             obj_name TYPE sobj_name,
+             obj      LIKE LINE OF lt_tadir,
+           END OF lty_pkg_sort.
+    DATA lt_sorted TYPE STANDARD TABLE OF lty_pkg_sort WITH DEFAULT KEY.
 
-    LOOP AT lt_tadir INTO DATA(ls_t).
+    LOOP AT lt_tadir INTO DATA(ls_sort_tadir).
+      APPEND VALUE #(
+        sort_key = SWITCH i( ls_sort_tadir-object
+          WHEN 'PROG' THEN 1
+          WHEN 'CLAS' THEN 2
+          WHEN 'INTF' THEN 3
+          WHEN 'FUGR' THEN 4
+          ELSE 9 )
+        obj_name = ls_sort_tadir-obj_name
+        obj = ls_sort_tadir ) TO lt_sorted.
+    ENDLOOP.
+    SORT lt_sorted BY sort_key obj_name.
+
+    LOOP AT lt_sorted INTO DATA(ls_sorted).
+      DATA(ls_t) = ls_sorted-obj.
       DATA(ls_o)   = VALUE zif_ace_parse_data=>ts_pkg_obj( obj_type = ls_t-object obj_name = ls_t-obj_name ).
       DATA(lv_len) = strlen( ls_t-obj_name ).
       CASE ls_t-object.
