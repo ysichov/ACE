@@ -166,7 +166,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           prog      TYPE zif_ace_parse_data=>ts_prog.
 
     SORT io_debugger->mo_window->ms_sources-tt_calls_line.
-    CLEAR: io_debugger->mt_steps, io_debugger->m_step.
     stack = i_stack + 1.
     MESSAGE |scanner enter: depth={ io_debugger->mo_window->m_hist_depth } i_stack={ i_stack } stack={ stack } prog={ i_program } inc={ i_include } ev={ i_evtype }/{ i_evname }| TYPE 'I'.
     CHECK stack <= io_debugger->mo_window->m_hist_depth.
