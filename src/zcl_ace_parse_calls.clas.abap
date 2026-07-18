@@ -726,9 +726,13 @@ METHOD collect_method_calls.
         DATA(lv_co_var) = ls_co_var-str.
         CONDENSE lv_co_var NO-GAPS.
         " Strip an object prefix (ME->attr / obj->attr) so the attribute name
-        " alone is resolved against the variable table.
+        " alone is resolved against the variable table. The prefix identifies
+        " the owning class: ME → the current class, otherwise the referenced
+        " object variable.
+        DATA lv_co_pref TYPE string.
+        CLEAR lv_co_pref.
         IF lv_co_var CS '->'.
-          SPLIT lv_co_var AT '->' INTO DATA(lv_co_pref) lv_co_var.
+          SPLIT lv_co_var AT '->' INTO lv_co_pref lv_co_var.
         ENDIF.
 
         " Explicit TYPE <class> overrides the declared reference type
@@ -750,6 +754,23 @@ METHOD collect_method_calls.
           lv_co_class = resolve_var_type(
             is_source = cs_source i_program = i_program i_include = i_program
             i_evtype  = 'METHOD' i_evname = mv_event_name i_varname = lv_co_var ).
+        ENDIF.
+
+        " Fallback: resolve the attribute in the context of its owning class.
+        " For ME-> the owner is the current (real) class, not literally 'ME';
+        " for obj-> it is the type of that object variable.
+        IF lv_co_class IS INITIAL AND lv_co_pref IS NOT INITIAL.
+          DATA(lv_co_owner) = COND string(
+            WHEN lv_co_pref = 'ME' OR lv_co_pref = 'SUPER' THEN mv_class_name
+            ELSE resolve_var_type(
+              is_source = cs_source i_program = i_program i_include = i_program
+              i_evtype  = 'METHOD' i_evname = mv_event_name i_varname = lv_co_pref ) ).
+          IF lv_co_owner IS NOT INITIAL.
+            LOOP AT cs_source-t_vars INTO DATA(ls_co_attr)
+              WHERE class = lv_co_owner AND name = lv_co_var AND type IS NOT INITIAL.
+              lv_co_class = ls_co_attr-type. EXIT.
+            ENDLOOP.
+          ENDIF.
         ENDIF.
 
         REPLACE ALL OCCURRENCES OF '''' IN lv_co_class WITH ''.
