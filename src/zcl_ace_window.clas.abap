@@ -221,6 +221,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
         THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
+       ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
+        THEN VALUE #( function = 'CMAP' icon = CONV #( icon_structure ) quickinfo = 'Static method call map' text = 'Class Map' ) ) )
        ( function = 'CODEMIX'     icon = CONV #( icon_wizard )              quickinfo = 'Full code flow sequence'          text = 'Code Flow' )
        ( function = 'TOGGLE_CALC' icon = CONV #( icon_biw_formula )        quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'HANDLERS'  icon = CONV #( icon_oo_event )            quickinfo = 'Event Handlers flow'              text = 'Handlers' )
@@ -357,6 +359,15 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
           mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CALLS' ).
         ELSE.
+          mo_mermaid->mo_box->set_focus( mo_mermaid->mo_box ).
+        ENDIF.
+
+      WHEN 'CMAP'.
+        IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
+          mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CMAP' ).
+        ELSE.
+          mo_mermaid->mv_type = 'CMAP'.
+          mo_mermaid->refresh( ).
           mo_mermaid->mo_box->set_focus( mo_mermaid->mo_box ).
         ENDIF.
 
