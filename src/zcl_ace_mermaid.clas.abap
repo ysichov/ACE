@@ -555,7 +555,11 @@ DATA(lv_maxlen) = 200.
              kind    TYPE string,
              name    TYPE string,
              node_id TYPE string,
-           END OF lty_nmap.
+           END OF lty_nmap,
+           BEGIN OF lty_rank,
+             node_id TYPE string,
+             rank    TYPE i,
+           END OF lty_rank.
 
     DATA: mm_string  TYPE string,
           direction  TYPE string,
@@ -905,6 +909,40 @@ DATA(lv_maxlen) = 200.
 
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ma>) WHERE agg_id IS NOT INITIAL.
         <ma>-node_id = <ma>-agg_id.
+      ENDLOOP.
+
+      DATA lt_rank TYPE HASHED TABLE OF lty_rank WITH UNIQUE KEY node_id.
+      LOOP AT lt_meth INTO DATA(ls_rank_meth)
+        WHERE node_id IS NOT INITIAL AND disp_class = 'Programs'.
+        INSERT VALUE #( node_id = ls_rank_meth-node_id rank = 0 ) INTO TABLE lt_rank.
+      ENDLOOP.
+
+      DATA(lv_changed) = abap_true.
+      WHILE lv_changed = abap_true.
+        lv_changed = abap_false.
+        LOOP AT lt_edge INTO DATA(ls_rank_edge) WHERE external = abap_false.
+          READ TABLE lt_rank INTO DATA(ls_rank_from) WITH KEY node_id = ls_rank_edge-from_id.
+          IF sy-subrc <> 0. CONTINUE. ENDIF.
+          READ TABLE lt_rank INTO DATA(ls_rank_to) WITH KEY node_id = ls_rank_edge-to_id.
+          IF sy-subrc <> 0.
+            INSERT VALUE #( node_id = ls_rank_edge-to_id rank = ls_rank_from-rank + 1 ) INTO TABLE lt_rank.
+            lv_changed = abap_true.
+          ELSEIF ls_rank_to-rank > ls_rank_from-rank + 1.
+            DELETE TABLE lt_rank WITH TABLE KEY node_id = ls_rank_edge-to_id.
+            INSERT VALUE #( node_id = ls_rank_edge-to_id rank = ls_rank_from-rank + 1 ) INTO TABLE lt_rank.
+            lv_changed = abap_true.
+          ENDIF.
+        ENDLOOP.
+      ENDWHILE.
+
+      LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<mr>)
+        WHERE node_id IS NOT INITIAL AND disp_class = 'Classes'.
+        READ TABLE lt_rank INTO DATA(ls_rank_node) WITH KEY node_id = <mr>-node_id.
+        IF sy-subrc = 0 AND ls_rank_node-rank > 0.
+          <mr>-disp_class = |Classes L{ ls_rank_node-rank }|.
+        ELSE.
+          <mr>-disp_class = 'Classes other'.
+        ENDIF.
       ENDLOOP.
     ENDIF.
 
