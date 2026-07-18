@@ -586,12 +586,14 @@ DATA(lv_maxlen) = 200.
     IF lv_focus IS NOT INITIAL.
       READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_focus_obj) WITH KEY prog = lv_focus.
       IF sy-subrc = 0 AND ls_focus_obj-obj_type = 'PROG'.
-        IF lo_win->m_hist_depth < 9.
-          lo_win->m_hist_depth = 9.
-          IF mo_toolbar IS BOUND.
-            mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { lo_win->m_hist_depth }| ).
-          ENDIF.
+        IF lo_win->m_hist_depth < 99.
+          lo_win->m_hist_depth = 99.
         ENDIF.
+        IF mo_toolbar IS BOUND.
+          mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { lo_win->m_hist_depth }| ).
+        ENDIF.
+        lo_win->m_prg-program = lv_focus.
+        lo_win->m_prg-include = lv_focus.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls.
         zcl_ace_source_parser=>code_execution_scanner(
           i_program = lv_focus
@@ -905,6 +907,10 @@ DATA(lv_maxlen) = 200.
 
       IF lt_pkg_root_prog IS NOT INITIAL.
         DATA(lv_old_depth) = lo_win->m_hist_depth.
+        DATA(lt_old_steps) = mo_viewer->mt_steps.
+        DATA(lv_old_step)  = mo_viewer->m_step.
+        DATA(lt_old_stack) = lo_win->mt_stack.
+        DATA(lt_old_calls) = lo_win->mt_calls.
         lo_win->m_hist_depth = 99.
 
         LOOP AT lt_pkg_root_prog INTO DATA(lv_root_prog).
@@ -952,6 +958,10 @@ DATA(lv_maxlen) = 200.
         ENDLOOP.
 
         lo_win->m_hist_depth = lv_old_depth.
+        mo_viewer->mt_steps = lt_old_steps.
+        mo_viewer->m_step   = lv_old_step.
+        lo_win->mt_stack    = lt_old_stack.
+        lo_win->mt_calls    = lt_old_calls.
         IF lt_flow_edge IS NOT INITIAL.
           lt_edge = lt_flow_edge.
           lv_flow_used = abap_true.
