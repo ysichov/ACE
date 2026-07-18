@@ -28,6 +28,7 @@ CLASS zcl_ace_tree_builder DEFINITION
       RETURNING
         VALUE(rt_obj) TYPE tt_pkg_obj.
 
+protected section.
   PRIVATE SECTION.
     DATA mo_window TYPE REF TO zcl_ace_window.
     DATA mo_tree   TYPE REF TO zcl_ace_rtti_tree.
@@ -89,11 +90,16 @@ CLASS zcl_ace_tree_builder DEFINITION
         i_prog     TYPE prog.
 ENDCLASS.
 
-CLASS zcl_ace_tree_builder IMPLEMENTATION.
+
+
+CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
+
+
   METHOD constructor.
     mo_window = io_window.
     mo_tree   = io_tree.
   ENDMETHOD.
+
 
   METHOD build.
     DATA lt_splits_prg TYPE TABLE OF string.
@@ -134,6 +140,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     mo_tree->display( ).
   ENDMETHOD.
 
+
   METHOD build_package.
     mo_tree->clear( ).
     cl_gui_cfw=>set_new_ok_code( 'DUMMY' ).
@@ -166,7 +173,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
           i_tree = VALUE #( ) ).
       ENDIF.
       lv_icon = SWITCH salv_de_tree_image( ls_o-obj_type
-                  WHEN 'PROG' THEN icon_program
+                  WHEN 'PROG' THEN icon_project
                   WHEN 'CLAS' THEN icon_oo_class
                   WHEN 'INTF' THEN icon_oo_interface
                   ELSE icon_folder ).
@@ -180,6 +187,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
 
     mo_tree->display( ).
   ENDMETHOD.
+
 
   METHOD build_object_subtree.
     DATA lt_splits_prg TYPE TABLE OF string.
@@ -204,6 +212,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     show_tree_subroutines( i_root_key = i_root_key i_prog = lv_prog ).
     show_tree_modules( i_root_key = i_root_key i_prog = lv_prog ).
   ENDMETHOD.
+
 
   METHOD get_package_objects.
     DATA lt_pkg      TYPE STANDARD TABLE OF devclass.
@@ -258,6 +267,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+
   METHOD get_include_prefix.
     IF strlen( i_class ) >= 30.
       rv_prefix = i_class.
@@ -265,6 +275,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
       rv_prefix = i_class && repeat( val = `=` occ = 30 - strlen( i_class ) ) && `======`.
     ENDIF.
   ENDMETHOD.
+
 
   METHOD build_local_classes_node.
     DATA: test_rel  TYPE salv_de_node_key,
@@ -301,6 +312,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
   ENDMETHOD.
+
 
   METHOD add_class.
     DATA: tree        TYPE zcl_ace=>ts_tree,
@@ -487,6 +499,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     r_node = class_rel.
   ENDMETHOD.
 
+
   METHOD show_tree_includes.
     DATA(lv_main_prog) = i_prog.
     DATA lv_cnt TYPE i.
@@ -502,6 +515,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
       i_tree = VALUE #( param = |INCLS:{ i_prog }| program = i_prog ) ).
     APPEND lv_node TO mo_tree->mt_lazy_nodes.
   ENDMETHOD.
+
 
   METHOD show_tree_enhancements.
     DATA lv_enh_rel TYPE salv_de_node_key.
@@ -525,6 +539,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+
   METHOD show_tree_global_vars.
     DATA lv_cnt TYPE i.
     LOOP AT mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
@@ -538,6 +553,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
       i_tree = VALUE #( param = 'GVARS:' program = mo_window->m_prg-program ) ).
     APPEND lv_node TO mo_tree->mt_lazy_nodes.
   ENDMETHOD.
+
 
   METHOD show_tree_events.
     DATA lv_events_rel TYPE salv_de_node_key.
@@ -562,6 +578,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
                           program = i_prog ev_type = 'EVENT' ev_name = event-name ) ).
     ENDLOOP.
   ENDMETHOD.
+
 
   METHOD show_tree_function_modules.
     DATA: fname              TYPE rs38l_fnam,
@@ -597,6 +614,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+
   METHOD show_tree_local_classes.
     CONSTANTS c_lazy_threshold TYPE i VALUE 10.
     DATA lv_cls_cnt  TYPE i.
@@ -626,6 +644,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
+
   METHOD show_tree_class_hierarchy.
     READ TABLE mo_window->ms_sources-tt_class_defs WITH KEY class = i_cl_name TRANSPORTING NO FIELDS.
     CHECK sy-subrc = 0.
@@ -649,6 +668,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
       lv_cl = ls_class-clsname.
     ENDDO.
   ENDMETHOD.
+
 
   METHOD show_tree_subroutines.
     CONSTANTS c_lazy_threshold TYPE i VALUE 10.
@@ -703,6 +723,7 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
   ENDMETHOD.
+
 
   METHOD show_tree_modules.
     CONSTANTS c_lazy_threshold TYPE i VALUE 10.
