@@ -603,7 +603,9 @@ DATA(lv_maxlen) = 200.
       mo_viewer->ensure_package_parsed( ).
     ENDIF.
 
-    DATA(lv_pkg_mode) = xsdbool( mo_viewer->mv_package IS NOT INITIAL AND lv_focus IS INITIAL ).
+    DATA(lv_pkg_mode) = xsdbool( lv_focus IS INITIAL
+                            AND ( mo_viewer->mv_package IS NOT INITIAL
+                               OR mo_viewer->mt_pkg_objects IS NOT INITIAL ) ).
 
     " --- 1. Collect all METHOD units directly from the parsed scan
     "     (METHOD..ENDMETHOD in t_keywords). This does NOT depend on
