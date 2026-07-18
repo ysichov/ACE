@@ -136,7 +136,7 @@ public section.
   data MT_COVERAGE type TT_WATCH .
   data:
     mt_calls               TYPE TABLE OF ZCL_ACE=>TS_CALL .
-  data M_HIST_DEPTH type I value 4 .
+  data M_HIST_DEPTH type I value 19 .
   data M_START_STACK type I .
   data MV_CALC_ONLY type BOOLEAN .
   data:
@@ -255,7 +255,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       super->constructor( ).
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
-      m_hist_depth = 4.
+      m_hist_depth = 19.
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
       CREATE OBJECT mo_splitter
@@ -1076,12 +1076,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             i_include = source-include io_debugger = mo_viewer ).
         ENDIF.
 
-    DATA(lv_max_stack_dbg) = 0.
-    LOOP AT mo_viewer->mt_steps INTO DATA(ls_step_dbg).
-      IF lv_max_stack_dbg < ls_step_dbg-stacklevel.
-        lv_max_stack_dbg = ls_step_dbg-stacklevel.
-      ENDIF.
-    ENDLOOP.
 *    DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
 *        IF ls_ctx-evtype IS NOT INITIAL.
 *          DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.

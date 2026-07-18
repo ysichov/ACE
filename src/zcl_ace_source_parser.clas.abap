@@ -1037,6 +1037,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             i_stmt_idx  = kw-index
             io_debugger = io_debugger ).
         " Перечитываем kw с актуальным tt_calls
+        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_inc INTO prog.
+        IF lv_use_vkw = abap_true. ASSIGN prog-v_keywords TO <kw_tab>.
+        ELSE. ASSIGN prog-t_keywords TO <kw_tab>. ENDIF.
         READ TABLE <kw_tab> WITH KEY index = kw-index INTO kw.
       ENDIF.
 
