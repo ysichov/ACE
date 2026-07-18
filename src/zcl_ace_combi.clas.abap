@@ -8,7 +8,9 @@ CLASS zcl_ace_combi DEFINITION
 
   PUBLIC SECTION.
 
-    TYPES tt_nodes TYPE zcl_ace_combi_node=>tt_children.
+    " Declared via REF TO (not zcl_ace_combi_node=>tt_children) so the merged
+    " standalone works — a DEFERRED class allows REF TO but not =>type access.
+    TYPES tt_nodes TYPE STANDARD TABLE OF REF TO zcl_ace_combi_node WITH EMPTY KEY.
 
     "! str("WORD")  → Word        (single literal)
     "! str("END OF") → WordSequence (multi-word phrase, 1 entry in listKeywords)
