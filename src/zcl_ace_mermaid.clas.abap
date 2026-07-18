@@ -880,7 +880,7 @@ DATA(lv_maxlen) = 200.
       ENDLOOP.
     ENDLOOP.
 
-    IF lv_pkg_mode = abap_true AND mv_all_methods = abap_false.
+    IF lv_pkg_mode = abap_true.
       TYPES: BEGIN OF lty_call_stack,
                stacklevel TYPE i,
                node_id    TYPE string,
@@ -894,12 +894,14 @@ DATA(lv_maxlen) = 200.
 
       lt_method_edge = lt_edge.
 
-      LOOP AT lt_meth INTO DATA(ls_root_meth)
-        WHERE node_id IS NOT INITIAL AND disp_class = 'Programs'.
-        INSERT ls_root_meth-program INTO TABLE lt_pkg_root_prog.
-      ENDLOOP.
+      IF mv_all_methods = abap_false.
+        LOOP AT lt_meth INTO DATA(ls_root_meth)
+          WHERE node_id IS NOT INITIAL AND disp_class = 'Programs'.
+          INSERT ls_root_meth-program INTO TABLE lt_pkg_root_prog.
+        ENDLOOP.
+      ENDIF.
 
-      IF lt_pkg_root_prog IS NOT INITIAL.
+      IF mv_all_methods = abap_false AND lt_pkg_root_prog IS NOT INITIAL.
         DATA(lv_old_depth) = lo_win->m_hist_depth.
         DATA(lt_old_steps) = mo_viewer->mt_steps.
         DATA(lv_old_step)  = mo_viewer->m_step.
