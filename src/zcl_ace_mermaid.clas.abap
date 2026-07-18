@@ -546,7 +546,12 @@ DATA(lv_maxlen) = 200.
              node_id TYPE string,
              label   TYPE string,
              key     TYPE string,
-           END OF lty_ext.
+           END OF lty_ext,
+           BEGIN OF lty_nmap,
+             kind    TYPE string,
+             name    TYPE string,
+             node_id TYPE string,
+           END OF lty_nmap.
 
     DATA: mm_string  TYPE string,
           direction  TYPE string,
@@ -565,6 +570,31 @@ DATA(lv_maxlen) = 200.
     direction = COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'LR' ).
     DATA(lo_win) = mo_viewer->mo_window.
     DATA(lv_focus) = mo_viewer->mv_cmap_focus.
+
+    IF lv_focus IS NOT INITIAL AND mo_viewer->mv_package IS NOT INITIAL AND mo_viewer->mt_pkg_objects IS INITIAL.
+      mo_viewer->ensure_package_parsed( ).
+    ENDIF.
+
+    IF lv_focus IS NOT INITIAL.
+      READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_focus_obj) WITH KEY prog = lv_focus.
+      IF sy-subrc = 0 AND ls_focus_obj-obj_type = 'PROG'.
+        IF lo_win->m_hist_depth < 9.
+          lo_win->m_hist_depth = 9.
+          IF mo_toolbar IS BOUND.
+            mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { lo_win->m_hist_depth }| ).
+          ENDIF.
+        ENDIF.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls.
+        zcl_ace_source_parser=>code_execution_scanner(
+          i_program = lv_focus
+          i_include = lv_focus
+          io_debugger = mo_viewer ).
+        steps_flow( i_direction   = i_direction
+                    i_with_params = mv_with_params
+                    i_calc_path   = mv_calc_path ).
+        RETURN.
+      ENDIF.
+    ENDIF.
 
     " Package mode: no focused class -> build the whole package (parse everything once).
     " After a double-click on a class, mv_cmap_focus scopes the graph to that class only.
@@ -626,40 +656,22 @@ DATA(lv_maxlen) = 200.
       <m>-node_id = |M{ sy-tabix }|.
     ENDLOOP.
 
-    " --- Package overview (no focused class): only public class methods,
-    "     each program collapsed into a single block node ---
+    " --- Package overview (no focus): aggregate to program/class nodes.
+    "     Methods remain only as analysis points for parsing their calls. ---
     DATA(lv_pkg_mode) = xsdbool( mo_viewer->mv_package IS NOT INITIAL AND lv_focus IS INITIAL ).
     IF lv_pkg_mode = abap_true.
+      DATA lt_nmap TYPE HASHED TABLE OF lty_nmap WITH UNIQUE KEY kind name.
       TYPES: BEGIN OF lty_pmap,
                program TYPE program,
                node_id TYPE string,
              END OF lty_pmap.
       DATA lt_pmap TYPE HASHED TABLE OF lty_pmap WITH UNIQUE KEY program.
       DATA lt_hidden_prog TYPE HASHED TABLE OF program WITH UNIQUE KEY table_line.
+      DATA lv_nseq TYPE i.
       DATA lv_pseq TYPE i.
       DATA ls_po   TYPE zif_ace_parse_data=>ts_pkg_obj.
-
-      " Build the set of PUBLIC methods per global class from SEOCOMPODF
-      " (authoritative; parser meth_type is unreliable)
-      DATA lt_pub    TYPE HASHED TABLE OF string     WITH UNIQUE KEY table_line.
-      DATA lt_cls_ok TYPE HASHED TABLE OF string     WITH UNIQUE KEY table_line.
-      DATA lt_clstab TYPE HASHED TABLE OF seoclsname WITH UNIQUE KEY table_line.
-      LOOP AT lt_meth INTO DATA(ls_pc) WHERE class IS NOT INITIAL.
-        INSERT CONV seoclsname( ls_pc-class ) INTO TABLE lt_clstab.
-      ENDLOOP.
-      IF lt_clstab IS NOT INITIAL.
-        SELECT clsname, cmpname, exposure FROM seocompodf
-          FOR ALL ENTRIES IN @lt_clstab
-          WHERE clsname = @lt_clstab-table_line
-            AND version = 1
-          INTO TABLE @DATA(lt_cdf).
-        LOOP AT lt_cdf INTO DATA(ls_cdf).
-          INSERT CONV string( ls_cdf-clsname ) INTO TABLE lt_cls_ok.
-          IF ls_cdf-exposure = 2.
-            INSERT |{ ls_cdf-clsname }~{ ls_cdf-cmpname }| INTO TABLE lt_pub.
-          ENDIF.
-        ENDLOOP.
-      ENDIF.
+      DATA lt_pub    TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+      DATA lt_cls_ok TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
 
       " Diagram-only exclusions: keep these programs in package parsing/tree.
       LOOP AT lt_meth INTO DATA(ls_lm).
@@ -669,7 +681,8 @@ DATA(lv_maxlen) = 200.
         CLEAR ls_po.
         READ TABLE mo_viewer->mt_pkg_objects INTO ls_po WITH KEY prog = lv_lowner.
         IF sy-subrc = 0 AND ls_po-obj_type = 'PROG'
-           AND ( to_upper( CONV string( lv_lowner ) ) = 'Z_ACE_STANDALONE' OR ls_lm-class <> lv_lowner ).
+           AND ( to_upper( CONV string( lv_lowner ) ) = 'Z_ACE_STANDALONE'
+              OR line_exists( lo_win->ms_sources-tt_class_defs[ program = lv_lowner ] ) ).
           INSERT lv_lowner INTO TABLE lt_hidden_prog.
         ENDIF.
       ENDLOOP.
@@ -714,10 +727,28 @@ DATA(lv_maxlen) = 200.
           <pm>-name    = COND string( WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name ELSE lv_owner ).
           <pm>-node_id = ls_pm-node_id.
         ENDIF.
+
+        DATA(lv_kind) = COND string( WHEN lv_is_class = abap_true THEN 'CLAS' ELSE 'PROG' ).
+        DATA(lv_name) = COND string(
+          WHEN lv_is_class = abap_true AND ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name
+          WHEN lv_is_class = abap_true THEN <pm>-class
+          WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name
+          ELSE lv_owner ).
+        READ TABLE lt_nmap INTO DATA(ls_nm) WITH KEY kind = lv_kind name = lv_name.
+        IF sy-subrc <> 0.
+          lv_nseq += 1.
+          ls_nm-kind    = lv_kind.
+          ls_nm-name    = lv_name.
+          ls_nm-node_id = |N{ lv_nseq }|.
+          INSERT ls_nm INTO TABLE lt_nmap.
+        ENDIF.
+        <pm>-class   = COND string( WHEN lv_is_class = abap_true THEN 'Classes' ELSE 'Programs' ).
+        <pm>-name    = lv_name.
+        <pm>-node_id = ls_nm-node_id.
       ENDLOOP.
       DELETE lt_meth WHERE node_id IS INITIAL.
       IF lt_meth IS INITIAL.
-        open_mermaid( |graph { direction }\n  none["No public methods found"]\n| ).
+        open_mermaid( |graph { direction }\n  none["No package objects found"]\n| ).
         RETURN.
       ENDIF.
     ENDIF.
@@ -739,7 +770,6 @@ DATA(lv_maxlen) = 200.
     lv_ext_seq = 0.
     LOOP AT lt_meth INTO DATA(ls_meth).
       IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id. CONTINUE. ENDIF.
-      " In package overview a program is just a block — draw no call edges from it
 
       LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog2>)
         WHERE include = ls_meth-include.
@@ -784,7 +814,6 @@ DATA(lv_maxlen) = 200.
             IF lv_int > 0.
               READ TABLE lt_meth INTO ls_tgt INDEX lv_int.
               CHECK ls_tgt-node_id <> ls_meth-node_id.       " no self-loops
-              " In package overview, do not link into a program block either
               APPEND VALUE #( from_id  = ls_meth-node_id
                               to_id    = ls_tgt-node_id
                               external = abap_false ) TO lt_edge.
