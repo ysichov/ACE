@@ -811,7 +811,7 @@ DATA(lv_maxlen) = 200.
     ENDLOOP.
 
     DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-    LOOP AT lt_cls INTO DATA(lv_cls).
+    LOOP AT lt_cls INTO lv_cls.
       lv_sgseq = lv_sgseq + 1.
       DATA(lv_title) = replace( val = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' )
                                 sub = `~` with = `-` ).
