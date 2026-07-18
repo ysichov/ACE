@@ -642,11 +642,11 @@ DATA(lv_maxlen) = 200.
 
       " Build the set of PUBLIC methods per global class from SEOCOMPODF
       " (authoritative; parser meth_type is unreliable)
-      DATA lt_pub    TYPE HASHED TABLE OF string    WITH UNIQUE KEY table_line.
-      DATA lt_cls_ok TYPE HASHED TABLE OF string    WITH UNIQUE KEY table_line.
-      DATA lt_clstab TYPE STANDARD TABLE OF seoclsname WITH EMPTY KEY.
+      DATA lt_pub    TYPE HASHED TABLE OF string     WITH UNIQUE KEY table_line.
+      DATA lt_cls_ok TYPE HASHED TABLE OF string     WITH UNIQUE KEY table_line.
+      DATA lt_clstab TYPE HASHED TABLE OF seoclsname WITH UNIQUE KEY table_line.
       LOOP AT lt_meth INTO DATA(ls_pc) WHERE class IS NOT INITIAL.
-        COLLECT CONV seoclsname( ls_pc-class ) INTO lt_clstab.
+        INSERT CONV seoclsname( ls_pc-class ) INTO TABLE lt_clstab.
       ENDLOOP.
       IF lt_clstab IS NOT INITIAL.
         SELECT clsname, cmpname, exposure FROM seocompodf
