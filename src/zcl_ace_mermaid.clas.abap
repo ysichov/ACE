@@ -563,6 +563,8 @@ DATA(lv_maxlen) = 200.
     direction = COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'LR' ).
     DATA(lo_win) = mo_viewer->mo_window.
 
+    MESSAGE |CMAP entered: progs={ lines( lo_win->ms_sources-tt_progs ) } calls_line={ lines( lo_win->ms_sources-tt_calls_line ) }| TYPE 'I'.
+
     " --- 1. Collect all METHOD units: statement boundaries + source row range ---
     LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
       DATA(lo_scan) = <prog>-scan.
@@ -735,6 +737,8 @@ DATA(lv_maxlen) = 200.
     IF mv_show_ext = abap_true.
       mm_string = |{ mm_string }classDef ext fill:#FDECEA,stroke:#E06666,color:#000\n|.
     ENDIF.
+
+    MESSAGE |CMAP: meth={ lines( lt_meth ) } edge={ lines( lt_edge ) } ext={ lines( lt_ext ) } sel={ lv_sel } len={ strlen( mm_string ) }| TYPE 'I'.
 
     open_mermaid( mm_string ).
 
