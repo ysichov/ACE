@@ -886,10 +886,13 @@ DATA(lv_maxlen) = 200.
                node_id    TYPE string,
              END OF lty_call_stack.
       DATA lt_flow_edge TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
+      DATA lt_method_edge TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
       DATA lt_static_edge TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
       DATA lt_call_stack TYPE STANDARD TABLE OF lty_call_stack WITH DEFAULT KEY.
       DATA lt_pkg_root_prog TYPE HASHED TABLE OF program WITH UNIQUE KEY table_line.
       DATA lv_flow_used TYPE abap_bool.
+
+      lt_method_edge = lt_edge.
 
       LOOP AT lt_meth INTO DATA(ls_root_meth)
         WHERE node_id IS NOT INITIAL AND disp_class = 'Programs'.
@@ -958,7 +961,7 @@ DATA(lv_maxlen) = 200.
         ENDIF.
       ENDIF.
 
-      LOOP AT lt_edge INTO DATA(ls_edge_raw).
+      LOOP AT lt_method_edge INTO DATA(ls_edge_raw).
         READ TABLE lt_meth INTO DATA(ls_from_meth) WITH KEY node_id = ls_edge_raw-from_id.
         IF sy-subrc <> 0 OR ls_from_meth-agg_id IS INITIAL. CONTINUE. ENDIF.
         IF ls_edge_raw-external = abap_true.
