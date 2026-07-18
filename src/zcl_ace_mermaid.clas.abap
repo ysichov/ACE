@@ -640,28 +640,27 @@ DATA(lv_maxlen) = 200.
       DATA lv_pseq TYPE i.
       DATA ls_po   TYPE zcl_ace_tree_builder=>ts_pkg_obj.
 
-      " Build the set of PUBLIC methods per global class via RTTI (authoritative,
-      " handles inheritance and interface methods; parser meth_type is unreliable)
-      DATA lt_pub      TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      DATA lt_cls_ok   TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      DATA lt_cls_bad  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+      " Build the set of PUBLIC methods per global class from SEOCOMPODF
+      " (authoritative; parser meth_type is unreliable)
+      DATA lt_pub    TYPE HASHED TABLE OF string    WITH UNIQUE KEY table_line.
+      DATA lt_cls_ok TYPE HASHED TABLE OF string    WITH UNIQUE KEY table_line.
+      DATA lt_clstab TYPE STANDARD TABLE OF seoclsname WITH EMPTY KEY.
       LOOP AT lt_meth INTO DATA(ls_pc) WHERE class IS NOT INITIAL.
-        IF line_exists( lt_cls_ok[ table_line = ls_pc-class ] )
-        OR line_exists( lt_cls_bad[ table_line = ls_pc-class ] ).
-          CONTINUE.
-        ENDIF.
-        TRY.
-            DATA(lo_od) = CAST cl_abap_objectdescr(
-              cl_abap_typedescr=>describe_by_name( ls_pc-class ) ).
-            LOOP AT lo_od->methods INTO DATA(ls_md)
-              WHERE visibility = cl_abap_objectdescr=>public.
-              INSERT |{ ls_pc-class }~{ ls_md-name }| INTO TABLE lt_pub.
-            ENDLOOP.
-            INSERT ls_pc-class INTO TABLE lt_cls_ok.
-          CATCH cx_root.
-            INSERT ls_pc-class INTO TABLE lt_cls_bad.
-        ENDTRY.
+        COLLECT CONV seoclsname( ls_pc-class ) INTO lt_clstab.
       ENDLOOP.
+      IF lt_clstab IS NOT INITIAL.
+        SELECT clsname, cmpname, exposure FROM seocompodf
+          FOR ALL ENTRIES IN @lt_clstab
+          WHERE clsname = @lt_clstab-table_line
+            AND version = 1
+          INTO TABLE @DATA(lt_cdf).
+        LOOP AT lt_cdf INTO DATA(ls_cdf).
+          INSERT CONV string( ls_cdf-clsname ) INTO TABLE lt_cls_ok.
+          IF ls_cdf-exposure = 2.
+            INSERT |{ ls_cdf-clsname }~{ ls_cdf-cmpname }| INTO TABLE lt_pub.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
 
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<pm>).
         " Resolve the real owning program via the include (tt_calls_line-program
@@ -680,7 +679,8 @@ DATA(lv_maxlen) = 200.
         IF lv_is_class = abap_true.
           " global class / interface method — keep only public ones in the overview.
           " If RTTI knew this class, honour it; otherwise fall back to keeping the method.
-          IF line_exists( lt_cls_ok[ table_line = <pm>-class ] ).
+          IF <pm>-name NS '~' AND line_exists( lt_cls_ok[ table_line = <pm>-class ] ).
+            " interface methods (name~method) are always public — keep them
             READ TABLE lt_pub WITH KEY table_line = |{ <pm>-class }~{ <pm>-name }|
               TRANSPORTING NO FIELDS.
             IF sy-subrc <> 0. <pm>-node_id = ''. ENDIF.
