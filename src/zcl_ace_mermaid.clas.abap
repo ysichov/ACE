@@ -15,6 +15,7 @@ public section.
   data MV_TYPE type STRING .
   data MV_CALC_PATH type BOOLEAN .
   data MV_WITH_PARAMS type BOOLEAN .
+  data MV_SHOW_EXT type BOOLEAN .
   data MV_DIRECTION type UI_FUNC .
 
   methods CONSTRUCTOR
@@ -30,6 +31,9 @@ public section.
     importing
       !I_DIRECTION type UI_FUNC optional
       !I_CALC_PATH type BOOLEAN optional .
+  methods CLASS_MAP
+    importing
+      !I_DIRECTION type UI_FUNC optional .
   methods ADD_TOOLBAR_BUTTONS .
   methods HND_TOOLBAR
     for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
@@ -519,6 +523,224 @@ DATA(lv_maxlen) = 200.
   ENDMETHOD.
 
 
+  METHOD class_map.
+
+    TYPES: BEGIN OF lty_meth,
+             class     TYPE string,
+             name      TYPE string,
+             include   TYPE program,
+             stmt_from TYPE i,
+             stmt_to   TYPE i,
+             row_from  TYPE i,
+             row_to    TYPE i,
+             node_id   TYPE string,
+           END OF lty_meth,
+           BEGIN OF lty_edge,
+             from_id  TYPE string,
+             to_id    TYPE string,
+             external TYPE abap_bool,
+           END OF lty_edge,
+           BEGIN OF lty_ext,
+             node_id TYPE string,
+             label   TYPE string,
+             key     TYPE string,
+           END OF lty_ext.
+
+    DATA: mm_string  TYPE string,
+          direction  TYPE string,
+          lt_meth    TYPE STANDARD TABLE OF lty_meth WITH DEFAULT KEY,
+          lt_edge    TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY,
+          lt_ext     TYPE STANDARD TABLE OF lty_ext  WITH DEFAULT KEY,
+          lt_cls     TYPE STANDARD TABLE OF string   WITH DEFAULT KEY,
+          lv_to      TYPE i,
+          lv_rf      TYPE i,
+          lv_rt      TYPE i,
+          lv_sel     TYPE i,
+          lv_sel_id  TYPE string,
+          lv_ext_seq TYPE i,
+          lv_sgseq   TYPE i.
+
+    direction = COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'LR' ).
+    DATA(lo_win) = mo_viewer->mo_window.
+
+    " --- 1. Collect all METHOD units: statement boundaries + source row range ---
+    LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
+      DATA(lo_scan) = <prog>-scan.
+      CHECK lo_scan IS BOUND.
+
+      LOOP AT lo_win->ms_sources-tt_calls_line INTO DATA(ls_cl)
+        WHERE include   = <prog>-include
+          AND index     > 0
+          AND eventtype = 'METHOD'.
+
+        CHECK ls_cl-index <> ls_cl-def_ind.
+
+        lv_to = 0.
+        LOOP AT <prog>-t_keywords INTO DATA(ls_kw)
+          WHERE index > ls_cl-index AND name = 'ENDMETHOD'.
+          lv_to = ls_kw-index.
+          EXIT.
+        ENDLOOP.
+        CHECK lv_to > 0.
+
+        CLEAR: lv_rf, lv_rt.
+        READ TABLE lo_scan->statements INDEX ls_cl-index INTO DATA(ls_sf).
+        IF sy-subrc = 0.
+          READ TABLE lo_scan->tokens INDEX ls_sf-from INTO DATA(ls_tf).
+          IF sy-subrc = 0. lv_rf = ls_tf-row. ENDIF.
+        ENDIF.
+        READ TABLE lo_scan->statements INDEX lv_to INTO DATA(ls_st).
+        IF sy-subrc = 0.
+          READ TABLE lo_scan->tokens INDEX ls_st-to INTO DATA(ls_tt).
+          IF sy-subrc = 0. lv_rt = ls_tt-row. ENDIF.
+        ENDIF.
+
+        APPEND VALUE #( class     = ls_cl-class
+                        name      = ls_cl-eventname
+                        include   = <prog>-include
+                        stmt_from = ls_cl-index
+                        stmt_to   = lv_to
+                        row_from  = lv_rf
+                        row_to    = lv_rt ) TO lt_meth.
+      ENDLOOP.
+    ENDLOOP.
+
+    IF lt_meth IS INITIAL.
+      open_mermaid( |graph { direction }\n  none["No methods found"]\n| ).
+      RETURN.
+    ENDIF.
+
+    LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<m>).
+      <m>-node_id = |M{ sy-tabix }|.
+    ENDLOOP.
+
+    " --- 2. Selected method from cursor position (m_prg-line inside a method) ---
+    lv_sel = 0.
+    LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ms>)
+      WHERE include = lo_win->m_prg-include AND row_from > 0.
+      IF lo_win->m_prg-line >= <ms>-row_from AND lo_win->m_prg-line <= <ms>-row_to.
+        lv_sel    = sy-tabix.
+        lv_sel_id = <ms>-node_id.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    " --- 3. Collect edges: parse calls on demand for each method in scope ---
+    lv_ext_seq = 0.
+    LOOP AT lt_meth INTO DATA(ls_meth).
+      IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id. CONTINUE. ENDIF.
+
+      LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog2>)
+        WHERE include = ls_meth-include.
+
+        LOOP AT <prog2>-t_keywords INTO DATA(ls_key)
+          WHERE index >= ls_meth-stmt_from AND index <= ls_meth-stmt_to.
+
+          IF ls_key-calls_parsed = abap_false.
+            zcl_ace_parser=>parse_tokens(
+              EXPORTING
+                i_program  = CONV #( ls_key-program )
+                i_include  = CONV #( ls_key-include )
+                i_stmt_idx = ls_key-index
+                i_class    = ls_meth-class
+                i_evtype   = 'METHOD'
+                i_ev_name  = ls_meth-name
+              CHANGING
+                cs_source  = lo_win->ms_sources ).
+            READ TABLE <prog2>-t_keywords WITH KEY index = ls_key-index INTO ls_key.
+          ENDIF.
+
+          LOOP AT ls_key-tt_calls INTO DATA(ls_call).
+            CHECK ls_call-name IS NOT INITIAL.
+
+            DATA lv_int TYPE i.
+            lv_int = 0.
+            IF ls_call-event = 'METHOD'.
+              LOOP AT lt_meth INTO DATA(ls_tgt) WHERE name = ls_call-name.
+                lv_int = sy-tabix.
+                EXIT.
+              ENDLOOP.
+            ENDIF.
+
+            IF lv_int > 0.
+              READ TABLE lt_meth INTO ls_tgt INDEX lv_int.
+              CHECK ls_tgt-node_id <> ls_meth-node_id.       " no self-loops
+              APPEND VALUE #( from_id  = ls_meth-node_id
+                              to_id    = ls_tgt-node_id
+                              external = abap_false ) TO lt_edge.
+            ELSE.
+              DATA(lv_key) = |{ ls_call-event }:{ ls_call-class }:{ ls_call-name }|.
+              READ TABLE lt_ext INTO DATA(ls_e) WITH KEY key = lv_key.
+              IF sy-subrc <> 0.
+                lv_ext_seq = lv_ext_seq + 1.
+                CLEAR ls_e.
+                ls_e-node_id = |E{ lv_ext_seq }|.
+                ls_e-key     = lv_key.
+                ls_e-label   = COND string(
+                  WHEN ls_call-class IS NOT INITIAL
+                  THEN |{ ls_call-class }=>{ ls_call-name }|
+                  ELSE |{ ls_call-event } { ls_call-name }| ).
+                APPEND ls_e TO lt_ext.
+              ENDIF.
+              APPEND VALUE #( from_id  = ls_meth-node_id
+                              to_id    = ls_e-node_id
+                              external = abap_true ) TO lt_edge.
+            ENDIF.
+          ENDLOOP.
+        ENDLOOP.
+      ENDLOOP.
+    ENDLOOP.
+
+    SORT lt_edge BY from_id to_id external.
+    DELETE ADJACENT DUPLICATES FROM lt_edge COMPARING from_id to_id external.
+
+    " --- 4. Render ---
+    mm_string = |graph { direction }\n|.
+
+    " which classes have visible internal nodes
+    LOOP AT lt_meth INTO ls_meth.
+      IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id
+         AND line_index( lt_edge[ to_id = ls_meth-node_id ] ) = 0.
+        CONTINUE.
+      ENDIF.
+      COLLECT ls_meth-class INTO lt_cls.
+    ENDLOOP.
+
+    LOOP AT lt_cls INTO DATA(lv_cls).
+      lv_sgseq = lv_sgseq + 1.
+      DATA(lv_title) = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' ).
+      mm_string = |{ mm_string }  subgraph SG{ lv_sgseq }["{ lv_title }"]\n|.
+      LOOP AT lt_meth INTO ls_meth WHERE class = lv_cls.
+        IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id
+           AND line_index( lt_edge[ to_id = ls_meth-node_id ] ) = 0
+           AND line_index( lt_edge[ from_id = ls_meth-node_id ] ) = 0.
+          CONTINUE.
+        ENDIF.
+        mm_string = |{ mm_string }    { ls_meth-node_id }["{ ls_meth-name }"]\n|.
+      ENDLOOP.
+      mm_string = |{ mm_string }  end\n|.
+    ENDLOOP.
+
+    IF mv_show_ext = abap_true.
+      LOOP AT lt_ext INTO ls_e.
+        mm_string = |{ mm_string }  { ls_e-node_id }["{ ls_e-label }"]:::ext\n|.
+      ENDLOOP.
+    ENDIF.
+
+    LOOP AT lt_edge INTO DATA(ls_ed).
+      IF ls_ed-external = abap_true AND mv_show_ext = abap_false. CONTINUE. ENDIF.
+      mm_string = |{ mm_string }  { ls_ed-from_id } --> { ls_ed-to_id }\n|.
+    ENDLOOP.
+
+    IF mv_show_ext = abap_true.
+      mm_string = |{ mm_string }classDef ext fill:#FDECEA,stroke:#E06666,color:#000\n|.
+    ENDIF.
+
+    open_mermaid( mm_string ).
+
+  ENDMETHOD.
+
+
   method ADD_TOOLBAR_BUTTONS.
 
       DATA: button TYPE ttb_button,
@@ -533,9 +755,11 @@ DATA(lv_maxlen) = 200.
        ( butn_type = 3 )
        ( function = 'CALLS'        icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow'              text = 'Calls Flow' )
        ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Code Flow'               text = 'Code Flow' )
+       ( function = 'CMAP'         icon = CONV #( icon_structure )        quickinfo = 'Static method call map'   text = 'Class Map' )
        ( butn_type = 3 )
        ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
+       ( function = 'TOGGLE_EXT'   icon = CONV #( icon_connect )          quickinfo = 'Toggle: show / hide external calls (Class Map)' text = 'Show External' )
        ( butn_type = 3 )
        ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )            quickinfo = 'Decrease depth' text = '' )
        ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level )  quickinfo = 'Depth level' text = |Depth { lv_depth }| )
@@ -570,6 +794,7 @@ DATA(lv_maxlen) = 200.
       CASE mv_type.
         WHEN 'CALLS'. text = 'Calls flow'.
         WHEN 'FLOW'.  text = 'Calculations sequence'.
+        WHEN 'CMAP'.  text = 'Class map'.
       ENDCASE.
 
       IF mo_box IS INITIAL.
@@ -599,6 +824,7 @@ DATA(lv_maxlen) = 200.
       CASE mv_type.
         WHEN 'CALLS'. steps_flow( i_with_params = mv_with_params i_calc_path = mv_calc_path ).
         WHEN 'FLOW'.  magic_search( i_calc_path = mv_calc_path ).
+        WHEN 'CMAP'.  class_map( ).
       ENDCASE.
 
       mo_box->set_focus( mo_box ).
@@ -633,6 +859,13 @@ DATA(lv_maxlen) = 200.
                     text  = COND #( WHEN mv_with_params = abap_true
                                     THEN 'Hide Params'
                                     ELSE 'Show Params' ) ).
+      ELSEIF fcode = 'TOGGLE_EXT'.
+        mv_show_ext = COND #( WHEN mv_show_ext = abap_true THEN abap_false ELSE abap_true ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'TOGGLE_EXT'
+                    text  = COND #( WHEN mv_show_ext = abap_true
+                                    THEN 'Hide External'
+                                    ELSE 'Show External' ) ).
       ELSEIF fcode = 'DEPTH_M'.
         IF mo_viewer->mo_window->m_hist_depth > 0.
           mo_viewer->mo_window->m_hist_depth -= 1.
@@ -716,6 +949,8 @@ DATA(lv_maxlen) = 200.
         WHEN 'FLOW'.
           magic_search( i_direction = mv_direction
                         i_calc_path = mv_calc_path ).
+        WHEN 'CMAP'.
+          class_map( i_direction = mv_direction ).
       ENDCASE.
 
   endmethod.
