@@ -934,8 +934,9 @@ DATA(lv_maxlen) = 200.
             IF lv_flow_node IS INITIAL. CONTINUE. ENDIF.
 
             IF ls_flow_step-stacklevel > 1.
+              DATA(lv_parent_stack) = ls_flow_step-stacklevel - 1.
               READ TABLE lt_call_stack INTO DATA(ls_flow_caller)
-                WITH KEY stacklevel = ls_flow_step-stacklevel - 1.
+                WITH KEY stacklevel = lv_parent_stack.
               IF sy-subrc = 0 AND ls_flow_caller-node_id <> lv_flow_node.
                 APPEND VALUE #( from_id  = ls_flow_caller-node_id
                                 to_id    = lv_flow_node
