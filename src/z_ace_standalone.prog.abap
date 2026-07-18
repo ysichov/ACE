@@ -1488,6 +1488,7 @@ public section.
   data MV_CALC_PATH type BOOLEAN .
   data MV_WITH_PARAMS type BOOLEAN .
   data MV_SHOW_EXT type BOOLEAN .
+  data MV_ALL_METHODS type BOOLEAN .
   data MV_DIRECTION type UI_FUNC .
 
   methods CONSTRUCTOR
@@ -2440,7 +2441,7 @@ public section.
   data MT_COVERAGE type TT_WATCH .
   data:
     mt_calls               TYPE TABLE OF ZCL_ACE=>TS_CALL .
-  data M_HIST_DEPTH type I .
+  data M_HIST_DEPTH type I value 19 .
   data M_START_STACK type I .
   data MV_CALC_ONLY type BOOLEAN .
   data:
@@ -2552,7 +2553,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       super->constructor( ).
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
-      m_hist_depth = 1.
+      m_hist_depth = 19.
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
       CREATE OBJECT mo_splitter
@@ -2571,6 +2572,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       SET HANDLER on_box_close FOR mo_box.
       CREATE OBJECT mo_toolbar EXPORTING parent = mo_toolbar_container.
       add_toolbar_buttons( ).
+      mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
       mo_toolbar->set_visible( 'X' ).
       create_code_viewer( ).
   endmethod.
@@ -2649,13 +2651,19 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         apply_depth( ).
 
       WHEN 'CALLS'.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        apply_depth( ).
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
           mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CALLS' ).
         ELSE.
+          mo_mermaid->mv_type = 'CALLS'.
+          mo_mermaid->refresh( ).
           mo_mermaid->mo_box->set_focus( mo_mermaid->mo_box ).
         ENDIF.
 
       WHEN 'CMAP'.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        apply_depth( ).
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
           mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CMAP' ).
         ELSE.
@@ -2745,7 +2753,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Only Z code' ).
         ENDIF.
         mo_viewer->mo_window->show_stack( ).
-        IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+        IF mo_mermaid IS NOT INITIAL AND mo_mermaid->mo_box IS NOT INITIAL.
+          mo_mermaid->refresh( ).
+        ENDIF.
         IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
           mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
@@ -3327,7 +3337,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF ls_ctx-evtype = 'EVENT'."IS NOT INITIAL.
           zcl_ace_source_parser=>code_execution_scanner(
             i_program = mo_viewer->mo_window->m_prg-program
-            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer
+            i_include = source-include io_debugger = mo_viewer
             i_evtype = ls_ctx-evtype
             i_evname = ls_ctx-evname ).
 
@@ -3341,7 +3351,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ELSE.
           zcl_ace_source_parser=>code_execution_scanner(
             i_program = mo_viewer->mo_window->m_prg-program
-            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer ).
+            i_include = source-include io_debugger = mo_viewer ).
         ENDIF.
 
 *    DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
@@ -3367,7 +3377,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 *        ENDIF.
     mo_viewer->mo_window->show_coverage( ).
     mo_viewer->mo_window->show_stack( ).
-    IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+    IF mo_mermaid IS NOT INITIAL AND mo_mermaid->mo_box IS NOT INITIAL.
+      mo_mermaid->refresh( ).
+    ENDIF.
     mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
     IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
       mo_viewer->get_code_mix( ).
@@ -3563,9 +3575,28 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
         AND ( object = 'PROG' OR object = 'CLAS' OR object = 'INTF' OR object = 'FUGR' )
         AND delflag  = @space
       INTO TABLE @DATA(lt_tadir).
-    SORT lt_tadir BY object obj_name.
+    TYPES: BEGIN OF lty_pkg_sort,
+             sort_key TYPE i,
+             obj_name TYPE sobj_name,
+             obj      LIKE LINE OF lt_tadir,
+           END OF lty_pkg_sort.
+    DATA lt_sorted TYPE STANDARD TABLE OF lty_pkg_sort WITH DEFAULT KEY.
 
-    LOOP AT lt_tadir INTO DATA(ls_t).
+    LOOP AT lt_tadir INTO DATA(ls_sort_tadir).
+      APPEND VALUE #(
+        sort_key = SWITCH i( ls_sort_tadir-object
+          WHEN 'PROG' THEN 1
+          WHEN 'CLAS' THEN 2
+          WHEN 'INTF' THEN 3
+          WHEN 'FUGR' THEN 4
+          ELSE 9 )
+        obj_name = ls_sort_tadir-obj_name
+        obj = ls_sort_tadir ) TO lt_sorted.
+    ENDLOOP.
+    SORT lt_sorted BY sort_key obj_name.
+
+    LOOP AT lt_sorted INTO DATA(ls_sorted).
+      DATA(ls_t) = ls_sorted-obj.
       DATA(ls_o)   = VALUE zif_ace_parse_data=>ts_pkg_obj( obj_type = ls_t-object obj_name = ls_t-obj_name ).
       DATA(lv_len) = strlen( ls_t-obj_name ).
       CASE ls_t-object.
@@ -6418,7 +6449,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           prog      TYPE zif_ace_parse_data=>ts_prog.
 
     SORT io_debugger->mo_window->ms_sources-tt_calls_line.
-    CLEAR: io_debugger->mt_steps, io_debugger->m_step.
     stack = i_stack + 1.
     CHECK stack <= io_debugger->mo_window->m_hist_depth.
 
@@ -6552,6 +6582,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             CHANGING
               cs_source  = io_debugger->mo_window->ms_sources ).
           " Перечитываем key — calls_parsed = true, tt_calls заполнен
+          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+            WITH KEY include = key-include INTO prog.
           READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
         ENDIF.
 
@@ -7115,6 +7147,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           CHANGING
             cs_source  = io_debugger->mo_window->ms_sources ).
         " Перечитываем key — calls_parsed = true, tt_calls заполнен
+        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          WITH KEY include = key-include INTO prog.
         READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
       ENDIF.
 
@@ -7272,6 +7306,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             i_stmt_idx  = kw-index
             io_debugger = io_debugger ).
         " Перечитываем kw с актуальным tt_calls
+        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          WITH KEY include = lv_inc INTO prog.
+        IF lv_use_vkw = abap_true. ASSIGN prog-v_keywords TO <kw_tab>.
+        ELSE. ASSIGN prog-t_keywords TO <kw_tab>. ENDIF.
         READ TABLE <kw_tab> WITH KEY index = kw-index INTO kw.
       ENDIF.
 
@@ -8291,6 +8329,11 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       DATA(lv_pkg_prog) = CONV progname( lv_param+7 ).
       load_package_object( i_node_key = node_key i_prog = lv_pkg_prog ).
       mo_viewer->mv_cmap_focus = lv_pkg_prog.
+      READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_pkg_focus_obj) WITH KEY prog = lv_pkg_prog.
+      IF sy-subrc = 0 AND ls_pkg_focus_obj-obj_type = 'PROG'.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        mo_viewer->mo_window->apply_depth( ).
+      ENDIF.
       " If a diagram window is already open, live-rebuild the Class Map for this class
       IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL
          AND mo_viewer->mo_window->mo_mermaid->mo_box IS NOT INITIAL.
@@ -8421,7 +8464,8 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       io_debugger = mo_viewer ).
     mo_viewer->mo_window->show_coverage( ).
     mo_viewer->mo_window->show_stack( ).
-    IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL.
+    IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL
+       AND mo_viewer->mo_window->mo_mermaid->mo_box IS NOT INITIAL.
       mo_viewer->mo_window->mo_mermaid->refresh( ).
     ENDIF.
     IF i_include IS NOT INITIAL.
@@ -13766,8 +13810,11 @@ DATA(lv_maxlen) = 200.
   METHOD class_map.
 
     TYPES: BEGIN OF lty_meth,
-             class     TYPE string,
+             class      TYPE string,
+             real_class TYPE string,
+             disp_class TYPE string,
              name      TYPE string,
+             disp_name TYPE string,
              program   TYPE program,
              include   TYPE program,
              meth_type TYPE i,
@@ -13776,6 +13823,7 @@ DATA(lv_maxlen) = 200.
              row_from  TYPE i,
              row_to    TYPE i,
              node_id   TYPE string,
+             agg_id    TYPE string,
            END OF lty_meth,
            BEGIN OF lty_edge,
              from_id  TYPE string,
@@ -13786,7 +13834,16 @@ DATA(lv_maxlen) = 200.
              node_id TYPE string,
              label   TYPE string,
              key     TYPE string,
-           END OF lty_ext.
+           END OF lty_ext,
+           BEGIN OF lty_nmap,
+             kind    TYPE string,
+             name    TYPE string,
+             node_id TYPE string,
+           END OF lty_nmap,
+           BEGIN OF lty_rank,
+             node_id TYPE string,
+             rank    TYPE i,
+           END OF lty_rank.
 
     DATA: mm_string  TYPE string,
           direction  TYPE string,
@@ -13805,12 +13862,29 @@ DATA(lv_maxlen) = 200.
     direction = COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'LR' ).
     DATA(lo_win) = mo_viewer->mo_window.
     DATA(lv_focus) = mo_viewer->mv_cmap_focus.
+    DATA(lv_focus_prog) = VALUE progname( ).
+
+    IF lv_focus IS NOT INITIAL AND mo_viewer->mv_package IS NOT INITIAL AND mo_viewer->mt_pkg_objects IS INITIAL.
+      mo_viewer->ensure_package_parsed( ).
+    ENDIF.
+
+    IF lv_focus IS NOT INITIAL.
+      READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_focus_obj) WITH KEY prog = lv_focus.
+      IF sy-subrc = 0 AND ls_focus_obj-obj_type = 'PROG'.
+        lv_focus_prog = lv_focus.
+        CLEAR lv_focus.
+      ENDIF.
+    ENDIF.
 
     " Package mode: no focused class -> build the whole package (parse everything once).
     " After a double-click on a class, mv_cmap_focus scopes the graph to that class only.
     IF lv_focus IS INITIAL.
       mo_viewer->ensure_package_parsed( ).
     ENDIF.
+
+    DATA(lv_pkg_mode) = xsdbool( lv_focus IS INITIAL
+                            AND ( mo_viewer->mv_package IS NOT INITIAL
+                               OR mo_viewer->mt_pkg_objects IS NOT INITIAL ) ).
 
     " --- 1. Collect all METHOD units directly from the parsed scan
     "     (METHOD..ENDMETHOD in t_keywords). This does NOT depend on
@@ -13847,6 +13921,7 @@ DATA(lv_maxlen) = 200.
         IF sy-subrc = 0. lv_rt = ls_tt-row. ENDIF.
 
         APPEND VALUE #( class     = lv_cls
+                        real_class = lv_cls
                         name      = ls_mtok-str
                         program   = <prog>-program
                         include   = <prog>-include
@@ -13855,6 +13930,31 @@ DATA(lv_maxlen) = 200.
                         row_from  = lv_rf
                         row_to    = lv_rt ) TO lt_meth.
       ENDLOOP.
+
+      IF lv_pkg_mode = abap_true AND lv_cls = CONV string( <prog>-program ).
+        READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_prog_obj) WITH KEY prog = <prog>-program.
+        IF sy-subrc = 0 AND ls_prog_obj-obj_type = 'PROG'
+           AND to_upper( CONV string( <prog>-program ) ) <> 'Z_ACE_STANDALONE'
+           AND NOT line_exists( lo_win->ms_sources-tt_class_defs[ program = <prog>-program ] ).
+          DATA(lv_first_stmt) = 0.
+          DATA(lv_last_stmt)  = 0.
+          LOOP AT <prog>-t_keywords INTO DATA(ls_pkw).
+            IF lv_first_stmt = 0. lv_first_stmt = ls_pkw-index. ENDIF.
+            lv_last_stmt = ls_pkw-index.
+          ENDLOOP.
+          IF lv_first_stmt > 0 AND lv_last_stmt > 0.
+            APPEND VALUE #( class      = ''
+                            real_class = ''
+                            name       = COND string( WHEN ls_prog_obj-obj_name IS NOT INITIAL
+                                                      THEN ls_prog_obj-obj_name
+                                                      ELSE <prog>-program )
+                            program    = <prog>-program
+                            include    = <prog>-include
+                            stmt_from  = lv_first_stmt
+                            stmt_to    = lv_last_stmt ) TO lt_meth.
+          ENDIF.
+        ENDIF.
+      ENDIF.
     ENDLOOP.
 
     IF lt_meth IS INITIAL.
@@ -13866,39 +13966,35 @@ DATA(lv_maxlen) = 200.
       <m>-node_id = |M{ sy-tabix }|.
     ENDLOOP.
 
-    " --- Package overview (no focused class): only public class methods,
-    "     each program collapsed into a single block node ---
-    DATA(lv_pkg_mode) = xsdbool( mo_viewer->mv_package IS NOT INITIAL AND lv_focus IS INITIAL ).
+    " --- Package overview (no focus): aggregate to program/class nodes.
+    "     Methods remain only as analysis points for parsing their calls. ---
     IF lv_pkg_mode = abap_true.
+      DATA lt_nmap TYPE HASHED TABLE OF lty_nmap WITH UNIQUE KEY kind name.
       TYPES: BEGIN OF lty_pmap,
                program TYPE program,
                node_id TYPE string,
              END OF lty_pmap.
       DATA lt_pmap TYPE HASHED TABLE OF lty_pmap WITH UNIQUE KEY program.
+      DATA lt_hidden_prog TYPE HASHED TABLE OF program WITH UNIQUE KEY table_line.
+      DATA lv_nseq TYPE i.
       DATA lv_pseq TYPE i.
       DATA ls_po   TYPE zif_ace_parse_data=>ts_pkg_obj.
+      DATA lt_pub    TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+      DATA lt_cls_ok TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
 
-      " Build the set of PUBLIC methods per global class from SEOCOMPODF
-      " (authoritative; parser meth_type is unreliable)
-      DATA lt_pub    TYPE HASHED TABLE OF string     WITH UNIQUE KEY table_line.
-      DATA lt_cls_ok TYPE HASHED TABLE OF string     WITH UNIQUE KEY table_line.
-      DATA lt_clstab TYPE HASHED TABLE OF seoclsname WITH UNIQUE KEY table_line.
-      LOOP AT lt_meth INTO DATA(ls_pc) WHERE class IS NOT INITIAL.
-        INSERT CONV seoclsname( ls_pc-class ) INTO TABLE lt_clstab.
+      " Diagram-only exclusions: keep these programs in package parsing/tree.
+      LOOP AT lt_meth INTO DATA(ls_lm).
+        DATA(lv_lowner) = ls_lm-program.
+        READ TABLE lo_win->ms_sources-tt_progs WITH KEY include = ls_lm-include INTO DATA(ls_lop).
+        IF sy-subrc = 0 AND ls_lop-program IS NOT INITIAL. lv_lowner = ls_lop-program. ENDIF.
+        CLEAR ls_po.
+        READ TABLE mo_viewer->mt_pkg_objects INTO ls_po WITH KEY prog = lv_lowner.
+        IF sy-subrc = 0 AND ls_po-obj_type = 'PROG'
+           AND ( to_upper( CONV string( lv_lowner ) ) = 'Z_ACE_STANDALONE'
+              OR line_exists( lo_win->ms_sources-tt_class_defs[ program = lv_lowner ] ) ).
+          INSERT lv_lowner INTO TABLE lt_hidden_prog.
+        ENDIF.
       ENDLOOP.
-      IF lt_clstab IS NOT INITIAL.
-        SELECT clsname, cmpname, exposure FROM seocompodf
-          FOR ALL ENTRIES IN @lt_clstab
-          WHERE clsname = @lt_clstab-table_line
-            AND version = 1
-          INTO TABLE @DATA(lt_cdf).
-        LOOP AT lt_cdf INTO DATA(ls_cdf).
-          INSERT CONV string( ls_cdf-clsname ) INTO TABLE lt_cls_ok.
-          IF ls_cdf-exposure = 2.
-            INSERT |{ ls_cdf-clsname }~{ ls_cdf-cmpname }| INTO TABLE lt_pub.
-          ENDIF.
-        ENDLOOP.
-      ENDIF.
 
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<pm>).
         " Resolve the real owning program via the include (tt_calls_line-program
@@ -13909,6 +14005,10 @@ DATA(lv_maxlen) = 200.
           lv_owner = ls_op-program.
         ENDIF.
         <pm>-program = lv_owner.
+        IF line_exists( lt_hidden_prog[ table_line = lv_owner ] ).
+          <pm>-node_id = ''.
+          CONTINUE.
+        ENDIF.
 
         CLEAR ls_po.
         READ TABLE mo_viewer->mt_pkg_objects INTO ls_po WITH KEY prog = lv_owner.
@@ -13933,13 +14033,31 @@ DATA(lv_maxlen) = 200.
             INSERT ls_pm INTO TABLE lt_pmap.
           ENDIF.
           <pm>-class   = 'Programs'.
-          <pm>-name    = COND string( WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name ELSE lv_owner ).
+          <pm>-disp_name = COND string( WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name ELSE lv_owner ).
           <pm>-node_id = ls_pm-node_id.
         ENDIF.
+
+        DATA(lv_kind) = COND string( WHEN lv_is_class = abap_true THEN 'CLAS' ELSE 'PROG' ).
+        DATA(lv_name) = COND string(
+          WHEN lv_is_class = abap_true AND ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name
+          WHEN lv_is_class = abap_true THEN <pm>-class
+          WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name
+          ELSE lv_owner ).
+        READ TABLE lt_nmap INTO DATA(ls_nm) WITH KEY kind = lv_kind name = lv_name.
+        IF sy-subrc <> 0.
+          lv_nseq = lv_nseq + 1.
+          ls_nm-kind    = lv_kind.
+          ls_nm-name    = lv_name.
+          ls_nm-node_id = |N{ lv_nseq }|.
+          INSERT ls_nm INTO TABLE lt_nmap.
+        ENDIF.
+        <pm>-disp_class = COND string( WHEN lv_is_class = abap_true THEN 'Classes' ELSE 'Programs' ).
+        <pm>-disp_name = lv_name.
+        <pm>-agg_id  = ls_nm-node_id.
       ENDLOOP.
       DELETE lt_meth WHERE node_id IS INITIAL.
       IF lt_meth IS INITIAL.
-        open_mermaid( |graph { direction }\n  none["No public methods found"]\n| ).
+        open_mermaid( |graph { direction }\n  none["No package objects found"]\n| ).
         RETURN.
       ENDIF.
     ENDIF.
@@ -13961,8 +14079,6 @@ DATA(lv_maxlen) = 200.
     lv_ext_seq = 0.
     LOOP AT lt_meth INTO DATA(ls_meth).
       IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id. CONTINUE. ENDIF.
-      " In package overview a program is just a block — draw no call edges from it
-      IF lv_pkg_mode = abap_true AND ls_meth-node_id(1) = 'P'. CONTINUE. ENDIF.
 
       LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog2>)
         WHERE include = ls_meth-include.
@@ -13976,7 +14092,7 @@ DATA(lv_maxlen) = 200.
                 i_program  = CONV #( ls_key-program )
                 i_include  = CONV #( ls_key-include )
                 i_stmt_idx = ls_key-index
-                i_class    = ls_meth-class
+                i_class    = COND string( WHEN ls_meth-real_class IS NOT INITIAL THEN ls_meth-real_class ELSE ls_meth-class )
                 i_evtype   = 'METHOD'
                 i_ev_name  = ls_meth-name
               CHANGING
@@ -13990,12 +14106,24 @@ DATA(lv_maxlen) = 200.
             DATA lv_int TYPE i.
             lv_int = 0.
             IF ls_call-event = 'METHOD'.
+              IF ls_call-class IS NOT INITIAL.
+                DATA(lv_call_class) = to_upper( CONV string( ls_call-class ) ).
+                REPLACE REGEX '=+(CP|IP)$' IN lv_call_class WITH ``.
+                LOOP AT lt_meth INTO DATA(ls_tgt)
+                  WHERE name = ls_call-name.
+                  CHECK to_upper( ls_tgt-real_class ) = lv_call_class.
+                  lv_int = sy-tabix.
+                  EXIT.
+                ENDLOOP.
+              ENDIF.
               " prefer a target in the same program (handles duplicate method names)
-              LOOP AT lt_meth INTO DATA(ls_tgt)
-                WHERE name = ls_call-name AND program = ls_meth-program.
-                lv_int = sy-tabix.
-                EXIT.
-              ENDLOOP.
+              IF lv_int = 0.
+                LOOP AT lt_meth INTO ls_tgt
+                  WHERE name = ls_call-name AND program = ls_meth-program.
+                  lv_int = sy-tabix.
+                  EXIT.
+                ENDLOOP.
+              ENDIF.
               IF lv_int = 0.
                 LOOP AT lt_meth INTO ls_tgt WHERE name = ls_call-name.
                   lv_int = sy-tabix.
@@ -14007,8 +14135,6 @@ DATA(lv_maxlen) = 200.
             IF lv_int > 0.
               READ TABLE lt_meth INTO ls_tgt INDEX lv_int.
               CHECK ls_tgt-node_id <> ls_meth-node_id.       " no self-loops
-              " In package overview, do not link into a program block either
-              IF lv_pkg_mode = abap_true AND ls_tgt-node_id(1) = 'P'. CONTINUE. ENDIF.
               APPEND VALUE #( from_id  = ls_meth-node_id
                               to_id    = ls_tgt-node_id
                               external = abap_false ) TO lt_edge.
@@ -14035,6 +14161,190 @@ DATA(lv_maxlen) = 200.
       ENDLOOP.
     ENDLOOP.
 
+    IF lv_pkg_mode = abap_true.
+      TYPES: BEGIN OF lty_call_stack,
+               stacklevel TYPE i,
+               node_id    TYPE string,
+             END OF lty_call_stack.
+      DATA lt_flow_edge TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
+      DATA lt_method_edge TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
+      DATA lt_static_edge TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
+      DATA lt_call_stack TYPE STANDARD TABLE OF lty_call_stack WITH DEFAULT KEY.
+      DATA lt_pkg_root_prog TYPE HASHED TABLE OF program WITH UNIQUE KEY table_line.
+      DATA lv_flow_used TYPE abap_bool.
+
+      lt_method_edge = lt_edge.
+
+      IF mv_all_methods = abap_false.
+        LOOP AT lt_meth INTO DATA(ls_root_meth)
+          WHERE node_id IS NOT INITIAL AND disp_class = 'Programs'.
+          INSERT ls_root_meth-program INTO TABLE lt_pkg_root_prog.
+        ENDLOOP.
+      ENDIF.
+
+      IF mv_all_methods = abap_false AND lt_pkg_root_prog IS NOT INITIAL.
+        DATA(lv_old_depth) = lo_win->m_hist_depth.
+        DATA(lt_old_steps) = mo_viewer->mt_steps.
+        DATA(lv_old_step)  = mo_viewer->m_step.
+        DATA(lt_old_stack) = lo_win->mt_stack.
+        DATA(lt_old_calls) = lo_win->mt_calls.
+
+        LOOP AT lt_pkg_root_prog INTO DATA(lv_root_prog).
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls, lt_call_stack.
+          zcl_ace_source_parser=>code_execution_scanner(
+            i_program = lv_root_prog
+            i_include = lv_root_prog
+            io_debugger = mo_viewer ).
+
+          LOOP AT mo_viewer->mt_steps INTO DATA(ls_flow_step).
+            DATA(lv_flow_node) = ``.
+            IF ls_flow_step-eventtype = 'METHOD' AND ls_flow_step-class IS NOT INITIAL.
+              DATA(lv_step_class) = to_upper( CONV string( ls_flow_step-class ) ).
+              REPLACE REGEX '=+(CP|IP)$' IN lv_step_class WITH ``.
+              LOOP AT lt_meth INTO DATA(ls_flow_meth)
+                WHERE agg_id IS NOT INITIAL.
+                CHECK to_upper( ls_flow_meth-real_class ) = lv_step_class.
+                lv_flow_node = ls_flow_meth-agg_id.
+                EXIT.
+              ENDLOOP.
+            ELSE.
+              READ TABLE lt_meth INTO DATA(ls_flow_prog)
+                WITH KEY program = ls_flow_step-program disp_class = 'Programs'.
+              IF sy-subrc = 0.
+                lv_flow_node = ls_flow_prog-agg_id.
+              ENDIF.
+            ENDIF.
+            IF lv_flow_node IS INITIAL. CONTINUE. ENDIF.
+
+            IF ls_flow_step-stacklevel > 1.
+              DATA(lv_parent_stack) = ls_flow_step-stacklevel - 1.
+              READ TABLE lt_call_stack INTO DATA(ls_flow_caller)
+                WITH KEY stacklevel = lv_parent_stack.
+              IF sy-subrc = 0 AND ls_flow_caller-node_id <> lv_flow_node.
+                APPEND VALUE #( from_id  = ls_flow_caller-node_id
+                                to_id    = lv_flow_node
+                                external = abap_false ) TO lt_flow_edge.
+              ENDIF.
+            ENDIF.
+
+            DELETE lt_call_stack WHERE stacklevel >= ls_flow_step-stacklevel.
+            APPEND VALUE #( stacklevel = ls_flow_step-stacklevel
+                            node_id    = lv_flow_node ) TO lt_call_stack.
+          ENDLOOP.
+        ENDLOOP.
+
+        lo_win->m_hist_depth = lv_old_depth.
+        mo_viewer->mt_steps = lt_old_steps.
+        mo_viewer->m_step   = lv_old_step.
+        lo_win->mt_stack    = lt_old_stack.
+        lo_win->mt_calls    = lt_old_calls.
+        IF lt_flow_edge IS NOT INITIAL.
+          lt_edge = lt_flow_edge.
+          lv_flow_used = abap_true.
+        ENDIF.
+      ENDIF.
+
+      LOOP AT lt_method_edge INTO DATA(ls_edge_raw).
+        READ TABLE lt_meth INTO DATA(ls_from_meth) WITH KEY node_id = ls_edge_raw-from_id.
+        IF sy-subrc <> 0 OR ls_from_meth-agg_id IS INITIAL. CONTINUE. ENDIF.
+        IF ls_edge_raw-external = abap_true.
+          APPEND VALUE #( from_id  = ls_from_meth-agg_id
+                          to_id    = ls_edge_raw-to_id
+                          external = abap_true ) TO lt_static_edge.
+        ELSE.
+          READ TABLE lt_meth INTO DATA(ls_to_meth) WITH KEY node_id = ls_edge_raw-to_id.
+          IF sy-subrc <> 0 OR ls_to_meth-agg_id IS INITIAL. CONTINUE. ENDIF.
+          CHECK ls_from_meth-agg_id <> ls_to_meth-agg_id.
+          APPEND VALUE #( from_id  = ls_from_meth-agg_id
+                          to_id    = ls_to_meth-agg_id
+                          external = abap_false ) TO lt_static_edge.
+        ENDIF.
+      ENDLOOP.
+
+      lt_edge = lt_static_edge.
+      IF lv_flow_used = abap_true.
+        APPEND LINES OF lt_flow_edge TO lt_edge.
+      ENDIF.
+
+      LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ma>) WHERE agg_id IS NOT INITIAL.
+        <ma>-node_id = <ma>-agg_id.
+      ENDLOOP.
+
+      IF lv_focus_prog IS NOT INITIAL.
+        DATA lt_reach TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+        DATA lt_edge_focus TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
+        READ TABLE lt_meth INTO DATA(ls_focus_meth)
+          WITH KEY program = lv_focus_prog disp_class = 'Programs'.
+        IF sy-subrc = 0 AND ls_focus_meth-node_id IS NOT INITIAL.
+          INSERT ls_focus_meth-node_id INTO TABLE lt_reach.
+          DATA(lv_reach_changed) = abap_true.
+          WHILE lv_reach_changed = abap_true.
+            lv_reach_changed = abap_false.
+            LOOP AT lt_edge INTO DATA(ls_reach_edge) WHERE external = abap_false.
+              READ TABLE lt_reach WITH KEY table_line = ls_reach_edge-from_id TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0. CONTINUE. ENDIF.
+              READ TABLE lt_reach WITH KEY table_line = ls_reach_edge-to_id TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0.
+                INSERT ls_reach_edge-to_id INTO TABLE lt_reach.
+                lv_reach_changed = abap_true.
+              ENDIF.
+            ENDLOOP.
+          ENDWHILE.
+
+          LOOP AT lt_edge INTO DATA(ls_focus_edge).
+            READ TABLE lt_reach WITH KEY table_line = ls_focus_edge-from_id TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0. CONTINUE. ENDIF.
+            IF ls_focus_edge-external = abap_false.
+              READ TABLE lt_reach WITH KEY table_line = ls_focus_edge-to_id TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0. CONTINUE. ENDIF.
+            ENDIF.
+            APPEND ls_focus_edge TO lt_edge_focus.
+          ENDLOOP.
+          lt_edge = lt_edge_focus.
+
+          LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<mf>) WHERE node_id IS NOT INITIAL.
+            READ TABLE lt_reach WITH KEY table_line = <mf>-node_id TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0. CLEAR <mf>-node_id. ENDIF.
+          ENDLOOP.
+          DELETE lt_meth WHERE node_id IS INITIAL.
+        ENDIF.
+      ENDIF.
+
+      DATA lt_rank TYPE HASHED TABLE OF lty_rank WITH UNIQUE KEY node_id.
+      LOOP AT lt_meth INTO DATA(ls_rank_meth)
+        WHERE node_id IS NOT INITIAL AND disp_class = 'Programs'.
+        INSERT VALUE #( node_id = ls_rank_meth-node_id rank = 0 ) INTO TABLE lt_rank.
+      ENDLOOP.
+
+      DATA(lv_changed) = abap_true.
+      WHILE lv_changed = abap_true.
+        lv_changed = abap_false.
+        LOOP AT lt_edge INTO DATA(ls_rank_edge) WHERE external = abap_false.
+          READ TABLE lt_rank INTO DATA(ls_rank_from) WITH KEY node_id = ls_rank_edge-from_id.
+          IF sy-subrc <> 0. CONTINUE. ENDIF.
+          READ TABLE lt_rank INTO DATA(ls_rank_to) WITH KEY node_id = ls_rank_edge-to_id.
+          IF sy-subrc <> 0.
+            INSERT VALUE #( node_id = ls_rank_edge-to_id rank = ls_rank_from-rank + 1 ) INTO TABLE lt_rank.
+            lv_changed = abap_true.
+          ELSEIF ls_rank_to-rank > ls_rank_from-rank + 1.
+            DELETE TABLE lt_rank WITH TABLE KEY node_id = ls_rank_edge-to_id.
+            INSERT VALUE #( node_id = ls_rank_edge-to_id rank = ls_rank_from-rank + 1 ) INTO TABLE lt_rank.
+            lv_changed = abap_true.
+          ENDIF.
+        ENDLOOP.
+      ENDWHILE.
+
+      LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<mr>)
+        WHERE node_id IS NOT INITIAL AND disp_class = 'Classes'.
+        READ TABLE lt_rank INTO DATA(ls_rank_node) WITH KEY node_id = <mr>-node_id.
+        IF sy-subrc = 0 AND ls_rank_node-rank > 0.
+          <mr>-disp_class = |Classes L{ ls_rank_node-rank }|.
+        ELSE.
+          <mr>-disp_class = 'Classes other'.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
     SORT lt_edge BY from_id to_id external.
     DELETE ADJACENT DUPLICATES FROM lt_edge COMPARING from_id to_id external.
 
@@ -14047,28 +14357,53 @@ DATA(lv_maxlen) = 200.
          AND line_index( lt_edge[ to_id = ls_meth-node_id ] ) = 0.
         CONTINUE.
       ENDIF.
-      COLLECT ls_meth-class INTO lt_cls.
+      COLLECT COND string( WHEN ls_meth-disp_class IS NOT INITIAL THEN ls_meth-disp_class ELSE ls_meth-class ) INTO lt_cls.
     ENDLOOP.
 
     DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-    LOOP AT lt_cls INTO lv_cls.
-      lv_sgseq = lv_sgseq + 1.
-      DATA(lv_title) = replace( val = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' )
-                                sub = `~` with = `-` ).
-      mm_string = |{ mm_string }  subgraph SG{ lv_sgseq }["{ lv_title }"]\n|.
-      LOOP AT lt_meth INTO ls_meth WHERE class = lv_cls.
-        IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id
-           AND line_index( lt_edge[ to_id = ls_meth-node_id ] ) = 0
-           AND line_index( lt_edge[ from_id = ls_meth-node_id ] ) = 0.
-          CONTINUE.
-        ENDIF.
+    DATA lv_node_label TYPE string.
+    IF lv_pkg_mode = abap_true.
+      LOOP AT lt_meth INTO ls_meth.
+        IF ls_meth-disp_class <> 'Programs'. CONTINUE. ENDIF.
         READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
         IF sy-subrc = 0. CONTINUE. ENDIF.
         INSERT ls_meth-node_id INTO TABLE lt_seen.
-        mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = ls_meth-name sub = `~` with = `-` ) }"]\n|.
+        lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+        mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::prog\n|.
       ENDLOOP.
-      mm_string = |{ mm_string }  end\n|.
-    ENDLOOP.
+      LOOP AT lt_cls INTO lv_cls.
+        IF lv_cls = 'Programs'. CONTINUE. ENDIF.
+        LOOP AT lt_meth INTO ls_meth.
+          CHECK COND string( WHEN ls_meth-disp_class IS NOT INITIAL THEN ls_meth-disp_class ELSE ls_meth-class ) = lv_cls.
+          READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0. CONTINUE. ENDIF.
+          INSERT ls_meth-node_id INTO TABLE lt_seen.
+          lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+          mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::cls\n|.
+        ENDLOOP.
+      ENDLOOP.
+    ELSE.
+      LOOP AT lt_cls INTO lv_cls.
+        lv_sgseq = lv_sgseq + 1.
+        DATA(lv_title) = replace( val = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' )
+                                  sub = `~` with = `-` ).
+        mm_string = |{ mm_string }  subgraph SG{ lv_sgseq }["{ lv_title }"]\n|.
+        LOOP AT lt_meth INTO ls_meth.
+          CHECK COND string( WHEN ls_meth-disp_class IS NOT INITIAL THEN ls_meth-disp_class ELSE ls_meth-class ) = lv_cls.
+          IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id
+             AND line_index( lt_edge[ to_id = ls_meth-node_id ] ) = 0
+             AND line_index( lt_edge[ from_id = ls_meth-node_id ] ) = 0.
+            CONTINUE.
+          ENDIF.
+          READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0. CONTINUE. ENDIF.
+          INSERT ls_meth-node_id INTO TABLE lt_seen.
+          DATA(lv_node_label2) = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+          mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = lv_node_label2 sub = `~` with = `-` ) }"]\n|.
+        ENDLOOP.
+        mm_string = |{ mm_string }  end\n|.
+      ENDLOOP.
+    ENDIF.
 
     IF mv_show_ext = abap_true.
       LOOP AT lt_ext INTO ls_e.
@@ -14091,6 +14426,10 @@ DATA(lv_maxlen) = 200.
 
     IF mv_show_ext = abap_true.
       mm_string = |{ mm_string }classDef ext fill:#FDECEA,stroke:#E06666,color:#000\n|.
+    ENDIF.
+    IF lv_pkg_mode = abap_true.
+      mm_string = |{ mm_string }classDef prog fill:#FFF2CC,stroke:#D6B656,color:#000\n|.
+      mm_string = |{ mm_string }classDef cls fill:#E8E6FF,stroke:#9673A6,color:#000\n|.
     ENDIF.
 
     open_mermaid( mm_string ).
@@ -14115,6 +14454,7 @@ DATA(lv_maxlen) = 200.
        ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
        ( function = 'TOGGLE_EXT'   icon = CONV #( icon_connect )          quickinfo = 'Toggle: show / hide external calls (Class Map)' text = 'Show External' )
+       ( function = 'TOGGLE_ALLM'  icon = CONV #( icon_complete )         quickinfo = 'Toggle: include calls from all methods in Class Map' text = 'All Methods' )
        ( butn_type = 3 )
        ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )            quickinfo = 'Decrease depth' text = '' )
        ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level )  quickinfo = 'Depth level' text = |Depth { lv_depth }| )
@@ -14181,7 +14521,9 @@ DATA(lv_maxlen) = 200.
         WHEN 'CMAP'.  class_map( ).
       ENDCASE.
 
-      mo_box->set_focus( mo_box ).
+      IF mo_box IS NOT INITIAL.
+        mo_box->set_focus( mo_box ).
+      ENDIF.
 
   endmethod.
   method HND_TOOLBAR.
@@ -14233,12 +14575,21 @@ DATA(lv_maxlen) = 200.
                     text  = COND #( WHEN mv_show_ext = abap_true
                                     THEN 'Hide External'
                                     ELSE 'Show External' ) ).
+      ELSEIF fcode = 'TOGGLE_ALLM'.
+        mv_all_methods = COND #( WHEN mv_all_methods = abap_true THEN abap_false ELSE abap_true ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'TOGGLE_ALLM'
+                    text  = COND #( WHEN mv_all_methods = abap_true
+                                    THEN 'Path Only'
+                                    ELSE 'All Methods' ) ).
       ELSEIF fcode = 'DEPTH_M'.
         IF mo_viewer->mo_window->m_hist_depth > 0.
           mo_viewer->mo_window->m_hist_depth = mo_viewer->mo_window->m_hist_depth - 1.
         ENDIF.
         mo_viewer->mo_window->apply_depth( ).
-        mo_box->set_focus( mo_box ).
+        IF mo_box IS NOT INITIAL.
+          mo_box->set_focus( mo_box ).
+        ENDIF.
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
@@ -14248,7 +14599,9 @@ DATA(lv_maxlen) = 200.
           mo_viewer->mo_window->m_hist_depth = mo_viewer->mo_window->m_hist_depth + 1.
         ENDIF.
         mo_viewer->mo_window->apply_depth( ).
-        mo_box->set_focus( mo_box ).
+        IF mo_box IS NOT INITIAL.
+          mo_box->set_focus( mo_box ).
+        ENDIF.
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
@@ -14274,7 +14627,9 @@ DATA(lv_maxlen) = 200.
         ENDIF.
         mo_viewer->mo_window->m_hist_depth = lv_new_depth.
         mo_viewer->mo_window->apply_depth( ).
-        mo_box->set_focus( mo_box ).
+        IF mo_box IS NOT INITIAL.
+          mo_box->set_focus( mo_box ).
+        ENDIF.
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
@@ -14305,8 +14660,13 @@ DATA(lv_maxlen) = 200.
           ENDIF.
           CALL METHOD mo_diagram->('SET_SOURCE_CODE_STRING') EXPORTING source_code = i_mm_string.
           CALL METHOD mo_diagram->('DISPLAY').
-        CATCH cx_root INTO DATA(error).
-          MESSAGE error TYPE 'E'.
+        CATCH cx_root.
+          CLEAR: mo_diagram,
+                 mo_toolbar,
+                 mo_splitter,
+                 mo_mm_container,
+                 mo_mm_toolbar,
+                 mo_box.
       ENDTRY.
 
   endmethod.
@@ -14529,6 +14889,63 @@ DATA(lv_maxlen) = 200.
     ENDLOOP.
 
     " ── Шаг 4: стили ────────────────────────────────────────────────
+    IF mv_type = 'CMAP' AND mo_viewer->mv_cmap_focus IS NOT INITIAL.
+      DATA(lv_enrich_from) = 0.
+      LOOP AT entities INTO DATA(ls_enrich_src).
+        lv_enrich_from = lv_enrich_from + 1.
+        CHECK ls_enrich_src-style = c_style_method.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+          WITH KEY include   = ls_enrich_src-include
+                   eventtype = 'METHOD'
+                   eventname = ls_enrich_src-eventname
+                   class     = ls_enrich_src-class
+          INTO DATA(ls_enrich_line).
+        CHECK sy-subrc = 0.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+          WITH KEY include = ls_enrich_line-include
+          INTO DATA(ls_enrich_prog).
+        CHECK sy-subrc = 0.
+
+        LOOP AT ls_enrich_prog-t_keywords INTO DATA(ls_enrich_kw)
+          WHERE index >= ls_enrich_line-index AND index <= ls_enrich_line-end_idx.
+          IF ls_enrich_kw-calls_parsed = abap_false.
+            zcl_ace_parser=>parse_tokens(
+              EXPORTING
+                i_program  = CONV #( ls_enrich_kw-program )
+                i_include  = CONV #( ls_enrich_kw-include )
+                i_stmt_idx = ls_enrich_kw-index
+                i_class    = ls_enrich_src-class
+                i_evtype   = 'METHOD'
+                i_ev_name  = ls_enrich_src-eventname
+              CHANGING
+                cs_source  = mo_viewer->mo_window->ms_sources ).
+            READ TABLE ls_enrich_prog-t_keywords WITH KEY index = ls_enrich_kw-index INTO ls_enrich_kw.
+          ENDIF.
+
+          LOOP AT ls_enrich_kw-tt_calls INTO DATA(ls_enrich_call)
+            WHERE event = 'METHOD' AND name IS NOT INITIAL.
+            DATA(lv_enrich_to) = 0.
+            LOOP AT entities INTO DATA(ls_enrich_tgt).
+              CHECK ls_enrich_tgt-style = c_style_method
+                AND ls_enrich_tgt-eventname = ls_enrich_call-name.
+              IF ls_enrich_call-class IS NOT INITIAL
+                 AND to_upper( ls_enrich_tgt-class ) <> to_upper( CONV string( ls_enrich_call-class ) ).
+                CONTINUE.
+              ENDIF.
+              lv_enrich_to = sy-tabix.
+              EXIT.
+            ENDLOOP.
+            CHECK lv_enrich_to > 0 AND lv_enrich_to <> lv_enrich_from.
+            READ TABLE indexes WITH KEY from = lv_enrich_from to = lv_enrich_to TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0.
+              mm_string = |{ mm_string }{ lv_enrich_from } -.-> { lv_enrich_to }\n|.
+              APPEND VALUE #( from = lv_enrich_from to = lv_enrich_to ) TO indexes.
+            ENDIF.
+          ENDLOOP.
+        ENDLOOP.
+      ENDLOOP.
+    ENDIF.
+
     mm_string = |{ mm_string } classDef event    fill:#FFE0B2,stroke:#E65100\n|.
     mm_string = |{ mm_string } classDef method   fill:#BBDEFB,stroke:#1565C0\n|.
     mm_string = |{ mm_string } classDef form     fill:#EEEEEE,stroke:#616161\n|.
@@ -15839,8 +16256,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-18T12:27:32.526Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T12:27:32.526Z`.
+* abapmerge 0.16.7 - 2026-07-18T16:09:42.544Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T16:09:42.544Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
