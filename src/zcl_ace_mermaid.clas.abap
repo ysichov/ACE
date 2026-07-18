@@ -587,13 +587,8 @@ DATA(lv_maxlen) = 200.
     IF lv_focus IS NOT INITIAL.
       READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_focus_obj) WITH KEY prog = lv_focus.
       IF sy-subrc = 0 AND ls_focus_obj-obj_type = 'PROG'.
-        IF mo_toolbar IS BOUND.
-          mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { lo_win->m_hist_depth }| ).
-        ENDIF.
-        steps_flow( i_direction   = i_direction
-                    i_with_params = mv_with_params
-                    i_calc_path   = mv_calc_path ).
-        RETURN.
+        CLEAR: lv_focus,
+               mo_viewer->mv_cmap_focus.
       ENDIF.
     ENDIF.
 
