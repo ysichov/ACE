@@ -579,6 +579,7 @@ DATA(lv_maxlen) = 200.
     direction = COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'LR' ).
     DATA(lo_win) = mo_viewer->mo_window.
     DATA(lv_focus) = mo_viewer->mv_cmap_focus.
+    DATA(lv_focus_prog) = VALUE progname( ).
 
     IF lv_focus IS NOT INITIAL AND mo_viewer->mv_package IS NOT INITIAL AND mo_viewer->mt_pkg_objects IS INITIAL.
       mo_viewer->ensure_package_parsed( ).
@@ -587,8 +588,8 @@ DATA(lv_maxlen) = 200.
     IF lv_focus IS NOT INITIAL.
       READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_focus_obj) WITH KEY prog = lv_focus.
       IF sy-subrc = 0 AND ls_focus_obj-obj_type = 'PROG'.
-        CLEAR: lv_focus,
-               mo_viewer->mv_cmap_focus.
+        lv_focus_prog = lv_focus.
+        CLEAR lv_focus.
       ENDIF.
     ENDIF.
 
@@ -985,6 +986,46 @@ DATA(lv_maxlen) = 200.
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ma>) WHERE agg_id IS NOT INITIAL.
         <ma>-node_id = <ma>-agg_id.
       ENDLOOP.
+
+      IF lv_focus_prog IS NOT INITIAL.
+        DATA lt_reach TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+        DATA lt_edge_focus TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
+        READ TABLE lt_meth INTO DATA(ls_focus_meth)
+          WITH KEY program = lv_focus_prog disp_class = 'Programs'.
+        IF sy-subrc = 0 AND ls_focus_meth-node_id IS NOT INITIAL.
+          INSERT ls_focus_meth-node_id INTO TABLE lt_reach.
+          DATA(lv_reach_changed) = abap_true.
+          WHILE lv_reach_changed = abap_true.
+            lv_reach_changed = abap_false.
+            LOOP AT lt_edge INTO DATA(ls_reach_edge) WHERE external = abap_false.
+              READ TABLE lt_reach WITH KEY table_line = ls_reach_edge-from_id TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0. CONTINUE. ENDIF.
+              READ TABLE lt_reach WITH KEY table_line = ls_reach_edge-to_id TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0.
+                INSERT ls_reach_edge-to_id INTO TABLE lt_reach.
+                lv_reach_changed = abap_true.
+              ENDIF.
+            ENDLOOP.
+          ENDWHILE.
+
+          LOOP AT lt_edge INTO DATA(ls_focus_edge).
+            READ TABLE lt_reach WITH KEY table_line = ls_focus_edge-from_id TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0. CONTINUE. ENDIF.
+            IF ls_focus_edge-external = abap_false.
+              READ TABLE lt_reach WITH KEY table_line = ls_focus_edge-to_id TRANSPORTING NO FIELDS.
+              IF sy-subrc <> 0. CONTINUE. ENDIF.
+            ENDIF.
+            APPEND ls_focus_edge TO lt_edge_focus.
+          ENDLOOP.
+          lt_edge = lt_edge_focus.
+
+          LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<mf>) WHERE node_id IS NOT INITIAL.
+            READ TABLE lt_reach WITH KEY table_line = <mf>-node_id TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0. CLEAR <mf>-node_id. ENDIF.
+          ENDLOOP.
+          DELETE lt_meth WHERE node_id IS INITIAL.
+        ENDIF.
+      ENDIF.
 
       DATA lt_rank TYPE HASHED TABLE OF lty_rank WITH UNIQUE KEY node_id.
       LOOP AT lt_meth INTO DATA(ls_rank_meth)
