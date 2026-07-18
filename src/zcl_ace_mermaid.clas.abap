@@ -586,16 +586,35 @@ DATA(lv_maxlen) = 200.
     IF lv_focus IS NOT INITIAL.
       READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_focus_obj) WITH KEY prog = lv_focus.
       IF sy-subrc = 0 AND ls_focus_obj-obj_type = 'PROG'.
-        IF lo_win->m_hist_depth < 99.
-          lo_win->m_hist_depth = 99.
+        IF lo_win->m_hist_depth < 9.
+          lo_win->m_hist_depth = 9.
         ENDIF.
         IF mo_toolbar IS BOUND.
           mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { lo_win->m_hist_depth }| ).
         ENDIF.
-        IF mo_viewer->mt_steps IS INITIAL.
-          lo_win->m_prg-program = lv_focus.
-          lo_win->m_prg-include = lv_focus.
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls.
+        lo_win->m_prg-program = lv_focus.
+        lo_win->m_prg-include = lv_focus.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls.
+        DATA(ls_focus_ctx) = lo_win->ms_code_context.
+        IF ls_focus_ctx-evtype = 'EVENT'.
+          zcl_ace_source_parser=>code_execution_scanner(
+            i_program = lv_focus
+            i_include = lv_focus
+            i_evtype  = ls_focus_ctx-evtype
+            i_evname  = ls_focus_ctx-evname
+            io_debugger = mo_viewer ).
+        ELSEIF ls_focus_ctx-evtype IS NOT INITIAL.
+          DATA(ls_focus_call) = lo_win->ms_sel_call.
+          zcl_ace_source_parser=>parse_call(
+            i_index   = ls_focus_call-index
+            i_e_name  = ls_focus_ctx-evname
+            i_e_type  = ls_focus_ctx-evtype
+            i_class   = ls_focus_ctx-class
+            i_program = CONV #( ls_focus_call-program )
+            i_include = CONV #( ls_focus_call-include )
+            i_stack   = 0
+            io_debugger = mo_viewer ).
+        ELSE.
           zcl_ace_source_parser=>code_execution_scanner(
             i_program = lv_focus
             i_include = lv_focus
@@ -913,7 +932,7 @@ DATA(lv_maxlen) = 200.
         DATA(lv_old_step)  = mo_viewer->m_step.
         DATA(lt_old_stack) = lo_win->mt_stack.
         DATA(lt_old_calls) = lo_win->mt_calls.
-        lo_win->m_hist_depth = 99.
+        lo_win->m_hist_depth = 9.
 
         LOOP AT lt_pkg_root_prog INTO DATA(lv_root_prog).
           CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls, lt_call_stack.
