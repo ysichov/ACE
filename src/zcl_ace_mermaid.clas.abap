@@ -696,6 +696,8 @@ DATA(lv_maxlen) = 200.
     lv_ext_seq = 0.
     LOOP AT lt_meth INTO DATA(ls_meth).
       IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id. CONTINUE. ENDIF.
+      " In package overview a program is just a block — draw no call edges from it
+      IF lv_pkg_mode = abap_true AND ls_meth-node_id(1) = 'P'. CONTINUE. ENDIF.
 
       LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog2>)
         WHERE include = ls_meth-include.
@@ -740,6 +742,8 @@ DATA(lv_maxlen) = 200.
             IF lv_int > 0.
               READ TABLE lt_meth INTO ls_tgt INDEX lv_int.
               CHECK ls_tgt-node_id <> ls_meth-node_id.       " no self-loops
+              " In package overview, do not link into a program block either
+              IF lv_pkg_mode = abap_true AND ls_tgt-node_id(1) = 'P'. CONTINUE. ENDIF.
               APPEND VALUE #( from_id  = ls_meth-node_id
                               to_id    = ls_tgt-node_id
                               external = abap_false ) TO lt_edge.
