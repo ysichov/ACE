@@ -105,6 +105,9 @@ PRIVATE SECTION.
               !io_node     TYPE REF TO cl_salv_node .
 
   " --- hndl_expand_empty sub-handlers: one per param prefix ---
+  METHODS load_package_object
+    IMPORTING !i_node_key TYPE salv_de_node_key
+              !i_prog     TYPE progname .
   METHODS expand_add_lazy
     IMPORTING !i_node_key TYPE salv_de_node_key .
   METHODS expand_vars_method
@@ -346,6 +349,12 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     CHECK <kind> <> 'C'.
 
     DATA(lv_param) = CONV string( <param> ).
+
+    " --- Package object node (PKGOBJ:) — parse it and build its subtree ---
+    IF lv_param IS NOT INITIAL AND strlen( lv_param ) > 7 AND lv_param+0(7) = 'PKGOBJ:'.
+      load_package_object( i_node_key = node_key i_prog = CONV #( lv_param+7 ) ).
+      RETURN.
+    ENDIF.
 
     " --- EVENT node (kind='E', ev_type='EVENT') ---
     IF <kind> = 'E' AND <ev_type> = 'EVENT' AND <ev_name> IS NOT INITIAL.
@@ -1039,25 +1048,8 @@ METHOD hndl_expand_empty.
 
     " Lazy-load a package object: parse it and build its subtree under this node
     IF lv_len > 7 AND substring( val = lv_param len = 7 ) = 'PKGOBJ:'.
-      DATA(lv_obj_prog) = CONV progname( substring( val = lv_param off = 7 ) ).
-      mo_viewer->mo_window->m_prg-program = lv_obj_prog.
-      mo_viewer->mo_window->m_prg-include = lv_obj_prog.
-      mo_viewer->mo_window->set_program( CONV #( lv_obj_prog ) ).
-      NEW zcl_ace_tree_builder(
-        io_window = mo_viewer->mo_window
-        io_tree   = me )->build_object_subtree(
-          i_root_key = node_key
-          i_program  = lv_obj_prog ).
-      LOOP AT mt_lazy_nodes INTO DATA(lv_lz).
-        TRY.
-            mo_tree->get_nodes( )->get_node( lv_lz )->set_expander( abap_true ).
-          CATCH cx_root.
-        ENDTRY.
-      ENDLOOP.
-      TRY.
-          mo_tree->get_nodes( )->get_node( node_key )->expand( ).
-        CATCH cx_root.
-      ENDTRY.
+      load_package_object( i_node_key = node_key
+                           i_prog     = CONV #( substring( val = lv_param off = 7 ) ) ).
       RETURN.
     ENDIF.
 
@@ -1177,6 +1169,41 @@ METHOD expand_add_lazy.
     APPEND i_node_key TO mt_lazy_nodes.
     TRY.
         mo_tree->get_nodes( )->get_node( i_node_key )->set_expander( abap_true ).
+      CATCH cx_root.
+    ENDTRY.
+  ENDMETHOD.
+
+
+METHOD load_package_object.
+    " Parse a package object and build its subtree under the given node (once).
+    mo_viewer->mo_window->m_prg-program = i_prog.
+    mo_viewer->mo_window->m_prg-include = i_prog.
+    mo_viewer->mo_window->set_program( CONV #( i_prog ) ).
+
+    DATA(o_node) = mo_tree->get_nodes( )->get_node( i_node_key ).
+
+    " Already loaded? just show the source, do not rebuild the subtree
+    DATA lv_has_child TYPE abap_bool.
+    TRY.
+        IF o_node->get_first_child( ) IS BOUND. lv_has_child = abap_true. ENDIF.
+      CATCH cx_root.
+    ENDTRY.
+    IF lv_has_child = abap_true. RETURN. ENDIF.
+
+    NEW zcl_ace_tree_builder(
+      io_window = mo_viewer->mo_window
+      io_tree   = me )->build_object_subtree(
+        i_root_key = i_node_key
+        i_program  = i_prog ).
+
+    LOOP AT mt_lazy_nodes INTO DATA(lv_lz).
+      TRY.
+          mo_tree->get_nodes( )->get_node( lv_lz )->set_expander( abap_true ).
+        CATCH cx_root.
+      ENDTRY.
+    ENDLOOP.
+    TRY.
+        o_node->expand( ).
       CATCH cx_root.
     ENDTRY.
   ENDMETHOD.

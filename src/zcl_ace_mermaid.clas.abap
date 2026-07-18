@@ -563,6 +563,9 @@ DATA(lv_maxlen) = 200.
     direction = COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'LR' ).
     DATA(lo_win) = mo_viewer->mo_window.
 
+    " Package mode: make sure every package object is parsed before building the graph
+    mo_viewer->ensure_package_parsed( ).
+
     " --- 1. Collect all METHOD units: statement boundaries + source row range ---
     LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
       DATA(lo_scan) = <prog>-scan.

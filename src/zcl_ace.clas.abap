@@ -229,6 +229,7 @@ public section.
     mt_sel TYPE TABLE OF selection_display_s .
   data MV_PROG type PROG .
   data MV_PACKAGE type DEVCLASS .
+  data MV_PKG_PARSED type ABAP_BOOL .
   data MV_SHOW_PROG type PROG .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
   data:
@@ -280,6 +281,7 @@ public section.
       !I_SHOW_PARSE_TIME type ABAP_BOOL default ABAP_FALSE .
   methods SHOW .
   methods SHOW_PACKAGE .
+  methods ENSURE_PACKAGE_PARSED .
   methods GET_CODE_FLOW
     importing
       !I_CALC_PATH type BOOLEAN optional
@@ -368,6 +370,21 @@ CLASS ZCL_ACE IMPLEMENTATION.
     NEW zcl_ace_tree_builder(
       io_window = mo_window
       io_tree   = mo_tree_local )->build_package( i_package = mv_package ).
+  ENDMETHOD.
+
+  METHOD ensure_package_parsed.
+    " Parse every object of the package once (used by package-level Class Map)
+    CHECK mv_package IS NOT INITIAL AND mv_pkg_parsed = abap_false.
+    DATA(lt_obj) = NEW zcl_ace_tree_builder(
+      io_window = mo_window
+      io_tree   = mo_tree_local )->get_package_objects( mv_package ).
+    LOOP AT lt_obj INTO DATA(ls_o).
+      TRY.
+          mo_window->set_program( CONV #( ls_o-prog ) ).
+        CATCH cx_root.
+      ENDTRY.
+    ENDLOOP.
+    mv_pkg_parsed = abap_true.
   ENDMETHOD.
 
 

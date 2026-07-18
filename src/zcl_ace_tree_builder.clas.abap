@@ -22,16 +22,15 @@ CLASS zcl_ace_tree_builder DEFINITION
       IMPORTING
         i_root_key TYPE salv_de_node_key
         i_program  TYPE progname.
-
-  PRIVATE SECTION.
-    DATA mo_window TYPE REF TO zcl_ace_window.
-    DATA mo_tree   TYPE REF TO zcl_ace_rtti_tree.
-
     METHODS get_package_objects
       IMPORTING
         i_package     TYPE devclass
       RETURNING
         VALUE(rt_obj) TYPE tt_pkg_obj.
+
+  PRIVATE SECTION.
+    DATA mo_window TYPE REF TO zcl_ace_window.
+    DATA mo_tree   TYPE REF TO zcl_ace_rtti_tree.
 
     METHODS get_include_prefix
       IMPORTING
