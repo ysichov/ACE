@@ -256,6 +256,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
       m_hist_depth = 4.
+      MESSAGE |ZCL_ACE_WINDOW constructor: depth={ m_hist_depth } prog={ text }| TYPE 'S' DISPLAY LIKE 'I'.
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
       CREATE OBJECT mo_splitter
@@ -274,6 +275,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       SET HANDLER on_box_close FOR mo_box.
       CREATE OBJECT mo_toolbar EXPORTING parent = mo_toolbar_container.
       add_toolbar_buttons( ).
+      mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
       mo_toolbar->set_visible( 'X' ).
       create_code_viewer( ).
   endmethod.
