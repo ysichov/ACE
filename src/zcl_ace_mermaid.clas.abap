@@ -592,34 +592,6 @@ DATA(lv_maxlen) = 200.
         IF mo_toolbar IS BOUND.
           mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { lo_win->m_hist_depth }| ).
         ENDIF.
-        lo_win->m_prg-program = lv_focus.
-        lo_win->m_prg-include = lv_focus.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls.
-        DATA(ls_focus_ctx) = lo_win->ms_code_context.
-        IF ls_focus_ctx-evtype = 'EVENT'.
-          zcl_ace_source_parser=>code_execution_scanner(
-            i_program = lv_focus
-            i_include = lv_focus
-            i_evtype  = ls_focus_ctx-evtype
-            i_evname  = ls_focus_ctx-evname
-            io_debugger = mo_viewer ).
-        ELSEIF ls_focus_ctx-evtype IS NOT INITIAL.
-          DATA(ls_focus_call) = lo_win->ms_sel_call.
-          zcl_ace_source_parser=>parse_call(
-            i_index   = ls_focus_call-index
-            i_e_name  = ls_focus_ctx-evname
-            i_e_type  = ls_focus_ctx-evtype
-            i_class   = ls_focus_ctx-class
-            i_program = CONV #( ls_focus_call-program )
-            i_include = CONV #( ls_focus_call-include )
-            i_stack   = 0
-            io_debugger = mo_viewer ).
-        ELSE.
-          zcl_ace_source_parser=>code_execution_scanner(
-            i_program = lv_focus
-            i_include = lv_focus
-            io_debugger = mo_viewer ).
-        ENDIF.
         steps_flow( i_direction   = i_direction
                     i_with_params = mv_with_params
                     i_calc_path   = mv_calc_path ).

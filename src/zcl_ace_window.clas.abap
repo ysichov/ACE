@@ -255,7 +255,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       super->constructor( ).
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
-      m_hist_depth = 1.
+      m_hist_depth = 9.
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
       CREATE OBJECT mo_splitter
