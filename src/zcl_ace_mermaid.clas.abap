@@ -888,24 +888,94 @@ DATA(lv_maxlen) = 200.
     ENDLOOP.
 
     IF lv_pkg_mode = abap_true.
-      DATA lt_edge_agg TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
-      LOOP AT lt_edge INTO DATA(ls_edge_raw).
-        READ TABLE lt_meth INTO DATA(ls_from_meth) WITH KEY node_id = ls_edge_raw-from_id.
-        IF sy-subrc <> 0 OR ls_from_meth-agg_id IS INITIAL. CONTINUE. ENDIF.
-        IF ls_edge_raw-external = abap_true.
-          APPEND VALUE #( from_id  = ls_from_meth-agg_id
-                          to_id    = ls_edge_raw-to_id
-                          external = abap_true ) TO lt_edge_agg.
-        ELSE.
-          READ TABLE lt_meth INTO DATA(ls_to_meth) WITH KEY node_id = ls_edge_raw-to_id.
-          IF sy-subrc <> 0 OR ls_to_meth-agg_id IS INITIAL. CONTINUE. ENDIF.
-          CHECK ls_from_meth-agg_id <> ls_to_meth-agg_id.
-          APPEND VALUE #( from_id  = ls_from_meth-agg_id
-                          to_id    = ls_to_meth-agg_id
-                          external = abap_false ) TO lt_edge_agg.
-        ENDIF.
+      TYPES: BEGIN OF lty_call_stack,
+               stacklevel TYPE i,
+               node_id    TYPE string,
+             END OF lty_call_stack.
+      DATA lt_flow_edge TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
+      DATA lt_call_stack TYPE STANDARD TABLE OF lty_call_stack WITH DEFAULT KEY.
+      DATA lt_pkg_root_prog TYPE HASHED TABLE OF program WITH UNIQUE KEY table_line.
+      DATA lv_flow_used TYPE abap_bool.
+
+      LOOP AT lt_meth INTO DATA(ls_root_meth)
+        WHERE node_id IS NOT INITIAL AND disp_class = 'Programs'.
+        INSERT ls_root_meth-program INTO TABLE lt_pkg_root_prog.
       ENDLOOP.
-      lt_edge = lt_edge_agg.
+
+      IF lt_pkg_root_prog IS NOT INITIAL.
+        DATA(lv_old_depth) = lo_win->m_hist_depth.
+        lo_win->m_hist_depth = 99.
+
+        LOOP AT lt_pkg_root_prog INTO DATA(lv_root_prog).
+          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, lo_win->mt_stack, lo_win->mt_calls, lt_call_stack.
+          zcl_ace_source_parser=>code_execution_scanner(
+            i_program = lv_root_prog
+            i_include = lv_root_prog
+            io_debugger = mo_viewer ).
+
+          LOOP AT mo_viewer->mt_steps INTO DATA(ls_flow_step).
+            DATA(lv_flow_node) = ``.
+            IF ls_flow_step-eventtype = 'METHOD' AND ls_flow_step-class IS NOT INITIAL.
+              DATA(lv_step_class) = to_upper( CONV string( ls_flow_step-class ) ).
+              REPLACE REGEX '=+(CP|IP)$' IN lv_step_class WITH ``.
+              LOOP AT lt_meth INTO DATA(ls_flow_meth)
+                WHERE agg_id IS NOT INITIAL.
+                CHECK to_upper( ls_flow_meth-real_class ) = lv_step_class.
+                lv_flow_node = ls_flow_meth-agg_id.
+                EXIT.
+              ENDLOOP.
+            ELSE.
+              READ TABLE lt_meth INTO DATA(ls_flow_prog)
+                WITH KEY program = ls_flow_step-program disp_class = 'Programs'.
+              IF sy-subrc = 0.
+                lv_flow_node = ls_flow_prog-agg_id.
+              ENDIF.
+            ENDIF.
+            IF lv_flow_node IS INITIAL. CONTINUE. ENDIF.
+
+            IF ls_flow_step-stacklevel > 1.
+              READ TABLE lt_call_stack INTO DATA(ls_flow_caller)
+                WITH KEY stacklevel = ls_flow_step-stacklevel - 1.
+              IF sy-subrc = 0 AND ls_flow_caller-node_id <> lv_flow_node.
+                APPEND VALUE #( from_id  = ls_flow_caller-node_id
+                                to_id    = lv_flow_node
+                                external = abap_false ) TO lt_flow_edge.
+              ENDIF.
+            ENDIF.
+
+            DELETE lt_call_stack WHERE stacklevel >= ls_flow_step-stacklevel.
+            APPEND VALUE #( stacklevel = ls_flow_step-stacklevel
+                            node_id    = lv_flow_node ) TO lt_call_stack.
+          ENDLOOP.
+        ENDLOOP.
+
+        lo_win->m_hist_depth = lv_old_depth.
+        IF lt_flow_edge IS NOT INITIAL.
+          lt_edge = lt_flow_edge.
+          lv_flow_used = abap_true.
+        ENDIF.
+      ENDIF.
+
+      DATA lt_edge_agg TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
+      IF lv_flow_used = abap_false.
+        LOOP AT lt_edge INTO DATA(ls_edge_raw).
+          READ TABLE lt_meth INTO DATA(ls_from_meth) WITH KEY node_id = ls_edge_raw-from_id.
+          IF sy-subrc <> 0 OR ls_from_meth-agg_id IS INITIAL. CONTINUE. ENDIF.
+          IF ls_edge_raw-external = abap_true.
+            APPEND VALUE #( from_id  = ls_from_meth-agg_id
+                            to_id    = ls_edge_raw-to_id
+                            external = abap_true ) TO lt_edge_agg.
+          ELSE.
+            READ TABLE lt_meth INTO DATA(ls_to_meth) WITH KEY node_id = ls_edge_raw-to_id.
+            IF sy-subrc <> 0 OR ls_to_meth-agg_id IS INITIAL. CONTINUE. ENDIF.
+            CHECK ls_from_meth-agg_id <> ls_to_meth-agg_id.
+            APPEND VALUE #( from_id  = ls_from_meth-agg_id
+                            to_id    = ls_to_meth-agg_id
+                            external = abap_false ) TO lt_edge_agg.
+          ENDIF.
+        ENDLOOP.
+        lt_edge = lt_edge_agg.
+      ENDIF.
 
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ma>) WHERE agg_id IS NOT INITIAL.
         <ma>-node_id = <ma>-agg_id.
