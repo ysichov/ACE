@@ -1,0 +1,12 @@
+{
+  "global": {
+    "files": "/src/**/*.abap",
+    "exclude": [],
+    "useApackDependencies": false
+  },
+  "syntax": {
+    "version": "v702",
+    "errorNamespace": "^(Z|Y)"
+  },
+  "rules": {}
+}

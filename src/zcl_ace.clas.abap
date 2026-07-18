@@ -228,6 +228,7 @@ public section.
   class-data:
     mt_sel TYPE TABLE OF selection_display_s .
   data MV_PROG type PROG .
+  data MV_PACKAGE type DEVCLASS .
   data MV_SHOW_PROG type PROG .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
   data:
@@ -273,10 +274,12 @@ public section.
     " open_int_table moved to ZCL_ACE_TABLE_VIEWER
   methods CONSTRUCTOR
     importing
-      !I_PROG type PROG
+      !I_PROG type PROG optional
+      !I_PACKAGE type DEVCLASS optional
       !I_NEW_PARSER type ABAP_BOOL default ABAP_FALSE
       !I_SHOW_PARSE_TIME type ABAP_BOOL default ABAP_FALSE .
   methods SHOW .
+  methods SHOW_PACKAGE .
   methods GET_CODE_FLOW
     importing
       !I_CALC_PATH type BOOLEAN optional
@@ -349,12 +352,22 @@ CLASS ZCL_ACE IMPLEMENTATION.
 
   METHOD constructor.
     CONSTANTS: c_mask TYPE x VALUE '01'.
-    mv_prog = i_prog. mv_show_parse_time = i_show_parse_time. i_step = abap_on.
+    mv_prog = i_prog. mv_package = i_package. mv_show_parse_time = i_show_parse_time. i_step = abap_on.
     zcl_ace_mermaid=>check_mermaid( ). zcl_ace_sel_opt=>init_icons_table( ).
     mo_window = NEW zcl_ace_window( me ). mo_window->mv_new_parser = i_new_parser.
     mo_tree_local = NEW zcl_ace_rtti_tree( i_header = 'Objects & Code Flow' i_type = 'L'
                                            i_cont = mo_window->mo_locals_container i_debugger = me ).
-    show( ).
+    IF mv_package IS NOT INITIAL.
+      show_package( ).
+    ELSE.
+      show( ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD show_package.
+    NEW zcl_ace_tree_builder(
+      io_window = mo_window
+      io_tree   = mo_tree_local )->build_package( i_package = mv_package ).
   ENDMETHOD.
 
 

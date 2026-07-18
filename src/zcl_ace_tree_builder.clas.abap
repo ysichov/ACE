@@ -3,15 +3,35 @@ CLASS zcl_ace_tree_builder DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
+    TYPES: BEGIN OF ts_pkg_obj,
+             obj_type TYPE trobjtype,
+             obj_name TYPE sobj_name,
+             prog     TYPE progname,
+           END OF ts_pkg_obj,
+           tt_pkg_obj TYPE STANDARD TABLE OF ts_pkg_obj WITH DEFAULT KEY.
+
     METHODS constructor
       IMPORTING
         io_window TYPE REF TO zcl_ace_window
         io_tree   TYPE REF TO zcl_ace_rtti_tree.
     METHODS build.
+    METHODS build_package
+      IMPORTING
+        i_package TYPE devclass.
+    METHODS build_object_subtree
+      IMPORTING
+        i_root_key TYPE salv_de_node_key
+        i_program  TYPE progname.
 
   PRIVATE SECTION.
     DATA mo_window TYPE REF TO zcl_ace_window.
     DATA mo_tree   TYPE REF TO zcl_ace_rtti_tree.
+
+    METHODS get_package_objects
+      IMPORTING
+        i_package     TYPE devclass
+      RETURNING
+        VALUE(rt_obj) TYPE tt_pkg_obj.
 
     METHODS get_include_prefix
       IMPORTING
@@ -113,6 +133,130 @@ CLASS zcl_ace_tree_builder IMPLEMENTATION.
     show_tree_modules( i_root_key = lv_root i_prog = lv_prog ).
 
     mo_tree->display( ).
+  ENDMETHOD.
+
+  METHOD build_package.
+    mo_tree->clear( ).
+    cl_gui_cfw=>set_new_ok_code( 'DUMMY' ).
+    cl_gui_cfw=>dispatch( ).
+
+    DATA(lv_root) = mo_tree->add_node(
+      i_name = CONV #( i_package )
+      i_icon = CONV #( icon_folder )
+      i_tree = VALUE #( ) ).
+    mo_tree->main_node_key = lv_root.
+
+    DATA(lt_obj) = get_package_objects( i_package ).
+
+    DATA lv_type_rel  TYPE salv_de_node_key.
+    DATA lv_prev_type TYPE trobjtype.
+    DATA lv_icon      TYPE salv_de_tree_image.
+
+    LOOP AT lt_obj INTO DATA(ls_o).
+      IF ls_o-obj_type <> lv_prev_type OR lv_type_rel IS INITIAL.
+        lv_prev_type = ls_o-obj_type.
+        lv_type_rel = mo_tree->add_node(
+          i_name = SWITCH string( ls_o-obj_type
+                     WHEN 'PROG' THEN 'Programs'
+                     WHEN 'CLAS' THEN 'Classes'
+                     WHEN 'INTF' THEN 'Interfaces'
+                     WHEN 'FUGR' THEN 'Function Groups'
+                     ELSE CONV string( ls_o-obj_type ) )
+          i_icon = CONV #( icon_folder )
+          i_rel  = lv_root
+          i_tree = VALUE #( ) ).
+      ENDIF.
+      lv_icon = SWITCH salv_de_tree_image( ls_o-obj_type
+                  WHEN 'PROG' THEN icon_program
+                  WHEN 'CLAS' THEN icon_oo_class
+                  WHEN 'INTF' THEN icon_oo_interface
+                  ELSE icon_folder ).
+      DATA(lv_node) = mo_tree->add_node(
+        i_name = CONV #( ls_o-obj_name )
+        i_icon = CONV #( lv_icon )
+        i_rel  = lv_type_rel
+        i_tree = VALUE #( kind = 'PKG' program = ls_o-prog param = |PKGOBJ:{ ls_o-prog }| ) ).
+      APPEND lv_node TO mo_tree->mt_lazy_nodes.
+    ENDLOOP.
+
+    mo_tree->display( ).
+  ENDMETHOD.
+
+  METHOD build_object_subtree.
+    DATA lt_splits_prg TYPE TABLE OF string.
+    SPLIT i_program AT '=' INTO TABLE lt_splits_prg.
+    CHECK lt_splits_prg IS NOT INITIAL.
+    DATA(lv_prog)     = CONV prog( lt_splits_prg[ 1 ] ).
+    DATA(lv_prog_str) = CONV string( lv_prog ).
+
+    show_tree_includes( i_root_key = i_root_key i_prog = lv_prog ).
+    show_tree_enhancements( i_root_key = i_root_key ).
+    show_tree_global_vars( i_root_key = i_root_key ).
+    show_tree_events( i_root_key = i_root_key i_prog = lv_prog ).
+    show_tree_function_modules( i_root_key = i_root_key ).
+    IF lines( lt_splits_prg ) = 1.
+      show_tree_local_classes(
+        i_root_key   = i_root_key
+        i_prog       = lv_prog
+        i_excl_class = lv_prog_str ).
+    ENDIF.
+    SORT mo_window->ms_sources-tt_calls_line BY program class eventtype meth_type eventname.
+    show_tree_class_hierarchy( i_root_key = i_root_key i_cl_name = lv_prog_str ).
+    show_tree_subroutines( i_root_key = i_root_key i_prog = lv_prog ).
+    show_tree_modules( i_root_key = i_root_key i_prog = lv_prog ).
+  ENDMETHOD.
+
+  METHOD get_package_objects.
+    DATA lt_pkg      TYPE STANDARD TABLE OF devclass.
+    DATA lt_frontier TYPE STANDARD TABLE OF devclass.
+
+    APPEND i_package TO lt_pkg.
+    lt_frontier = lt_pkg.
+
+    " Collect the package plus all sub-packages (recursive on tdevc-parentcl)
+    WHILE lt_frontier IS NOT INITIAL.
+      SELECT devclass FROM tdevc
+        FOR ALL ENTRIES IN @lt_frontier
+        WHERE parentcl = @lt_frontier-table_line
+        INTO TABLE @DATA(lt_children).
+      CLEAR lt_frontier.
+      LOOP AT lt_children INTO DATA(ls_child).
+        READ TABLE lt_pkg WITH KEY table_line = ls_child-devclass TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND ls_child-devclass TO lt_pkg.
+          APPEND ls_child-devclass TO lt_frontier.
+        ENDIF.
+      ENDLOOP.
+    ENDWHILE.
+
+    SELECT object, obj_name FROM tadir
+      FOR ALL ENTRIES IN @lt_pkg
+      WHERE pgmid    = 'R3TR'
+        AND devclass = @lt_pkg-table_line
+        AND ( object = 'PROG' OR object = 'CLAS' OR object = 'INTF' OR object = 'FUGR' )
+        AND delflag  = @space
+      INTO TABLE @DATA(lt_tadir).
+    SORT lt_tadir BY object obj_name.
+
+    LOOP AT lt_tadir INTO DATA(ls_t).
+      DATA(ls_o)   = VALUE ts_pkg_obj( obj_type = ls_t-object obj_name = ls_t-obj_name ).
+      DATA(lv_len) = strlen( ls_t-obj_name ).
+      CASE ls_t-object.
+        WHEN 'PROG'.
+          ls_o-prog = ls_t-obj_name.
+        WHEN 'CLAS'.
+          ls_o-prog = ls_t-obj_name.
+          IF lv_len < 30. ls_o-prog = ls_o-prog && repeat( val = `=` occ = 30 - lv_len ). ENDIF.
+          ls_o-prog = ls_o-prog && 'CP'.
+        WHEN 'INTF'.
+          ls_o-prog = ls_t-obj_name.
+          IF lv_len < 30. ls_o-prog = ls_o-prog && repeat( val = `=` occ = 30 - lv_len ). ENDIF.
+          ls_o-prog = ls_o-prog && 'IP'.
+        WHEN 'FUGR'.
+          ls_o-prog = |SAPL{ ls_t-obj_name }|.
+      ENDCASE.
+      APPEND ls_o TO rt_obj.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD get_include_prefix.

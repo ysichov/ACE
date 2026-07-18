@@ -27,6 +27,7 @@
     PARAMETERS: p_func  TYPE seoclsname MATCHCODE OBJECT cacs_function.
     PARAMETERS: p_odata  TYPE seoclsname MATCHCODE OBJECT /iwbep/sh_sbdm_project.
     PARAMETERS: p_wdc  TYPE string.
+    PARAMETERS: p_pack  TYPE devclass.
   SELECTION-SCREEN END OF BLOCK s1.
 
   PARAMETERS: n_parser NO-DISPLAY. "AS CHECKBOX DEFAULT ' '.
@@ -137,6 +138,13 @@
   FORM run_ace.
 
     CHECK sy-ucomm IS INITIAL.
+
+    " Package mode: parse all objects found in the package
+    IF p_pack IS NOT INITIAL.
+      DATA(gv_ace_pkg) = NEW zcl_ace( i_package = p_pack i_new_parser = n_parser i_show_parse_time = n_time ).
+      RETURN.
+    ENDIF.
+
     SELECT COUNT( * ) FROM reposrc WHERE progname = p_prog.
 
     IF sy-dbcnt <> 0.

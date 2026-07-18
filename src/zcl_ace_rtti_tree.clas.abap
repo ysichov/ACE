@@ -1037,6 +1037,30 @@ METHOD hndl_expand_empty.
     DATA(lv_prog)  = CONV string( <program> ).
     DATA(lv_len)   = strlen( lv_param ).
 
+    " Lazy-load a package object: parse it and build its subtree under this node
+    IF lv_len > 7 AND substring( val = lv_param len = 7 ) = 'PKGOBJ:'.
+      DATA(lv_obj_prog) = CONV progname( substring( val = lv_param off = 7 ) ).
+      mo_viewer->mo_window->m_prg-program = lv_obj_prog.
+      mo_viewer->mo_window->m_prg-include = lv_obj_prog.
+      mo_viewer->mo_window->set_program( CONV #( lv_obj_prog ) ).
+      NEW zcl_ace_tree_builder(
+        io_window = mo_viewer->mo_window
+        io_tree   = me )->build_object_subtree(
+          i_root_key = node_key
+          i_program  = lv_obj_prog ).
+      LOOP AT mt_lazy_nodes INTO DATA(lv_lz).
+        TRY.
+            mo_tree->get_nodes( )->get_node( lv_lz )->set_expander( abap_true ).
+          CATCH cx_root.
+        ENDTRY.
+      ENDLOOP.
+      TRY.
+          mo_tree->get_nodes( )->get_node( node_key )->expand( ).
+        CATCH cx_root.
+      ENDTRY.
+      RETURN.
+    ENDIF.
+
     IF lv_len >= 5 AND substring( val = lv_param len = 5 ) = 'VARS:'.
       SPLIT lv_param AT ':' INTO DATA(lv_pfx) DATA(lv_class) DATA(lv_meth).
       expand_vars_method( i_node_key = node_key i_class = lv_class i_method = lv_meth i_program = lv_prog ).
