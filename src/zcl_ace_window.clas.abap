@@ -1058,13 +1058,19 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         WHERE include <> 'Code_Flow_Mix' AND include <> 'VIRTUAL'. EXIT.
       ENDLOOP.
     ENDIF.
+    IF source-program IS NOT INITIAL.
+      mo_viewer->mo_window->m_prg-program = source-program.
+    ENDIF.
+    IF source-include IS NOT INITIAL.
+      mo_viewer->mo_window->m_prg-include = source-include.
+    ENDIF.
     CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
            mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
             DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
         IF ls_ctx-evtype = 'EVENT'."IS NOT INITIAL.
           zcl_ace_source_parser=>code_execution_scanner(
-            i_program = mo_viewer->mo_window->m_prg-program
-            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer
+            i_program = source-program
+            i_include = source-include io_debugger = mo_viewer
             i_evtype = ls_ctx-evtype
             i_evname = ls_ctx-evname ).
 
@@ -1077,8 +1083,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
         ELSE.
           zcl_ace_source_parser=>code_execution_scanner(
-            i_program = mo_viewer->mo_window->m_prg-program
-            i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer ).
+            i_program = source-program
+            i_include = source-include io_debugger = mo_viewer ).
         ENDIF.
 
 *    DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
