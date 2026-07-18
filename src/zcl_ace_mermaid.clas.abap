@@ -572,7 +572,10 @@ DATA(lv_maxlen) = 200.
       mo_viewer->ensure_package_parsed( ).
     ENDIF.
 
-    " --- 1. Collect all METHOD units: statement boundaries + source row range ---
+    " --- 1. Collect all METHOD units directly from the parsed scan
+    "     (METHOD..ENDMETHOD in t_keywords). This does NOT depend on
+    "     tt_calls_line-index, which is only filled where code_execution_scanner
+    "     has actually traced, so plain-parsed package classes are covered too. ---
     LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
       IF lv_focus IS NOT INITIAL AND <prog>-program <> lv_focus.
         CONTINUE.
@@ -580,39 +583,34 @@ DATA(lv_maxlen) = 200.
       DATA(lo_scan) = <prog>-scan.
       CHECK lo_scan IS BOUND.
 
-      LOOP AT lo_win->ms_sources-tt_calls_line INTO DATA(ls_cl)
-        WHERE include   = <prog>-include
-          AND index     > 0
-          AND eventtype = 'METHOD'.
+      " class name = program stripped of the =...CP / =...IP class-pool suffix
+      DATA(lv_cls) = CONV string( <prog>-program ).
+      REPLACE REGEX '=+(CP|IP)$' IN lv_cls WITH ``.
 
-        CHECK ls_cl-index <> ls_cl-def_ind.
+      LOOP AT <prog>-t_keywords INTO DATA(ls_mkw) WHERE name = 'METHOD'.
+        READ TABLE lo_scan->tokens INDEX ls_mkw-from + 1 INTO DATA(ls_mtok).
+        CHECK sy-subrc = 0 AND ls_mtok-str IS NOT INITIAL.
 
         lv_to = 0.
-        LOOP AT <prog>-t_keywords INTO DATA(ls_kw)
-          WHERE index > ls_cl-index AND name = 'ENDMETHOD'.
-          lv_to = ls_kw-index.
+        LOOP AT <prog>-t_keywords INTO DATA(ls_ekw)
+          WHERE index > ls_mkw-index AND name = 'ENDMETHOD'.
+          lv_to = ls_ekw-index.
           EXIT.
         ENDLOOP.
         CHECK lv_to > 0.
 
         CLEAR: lv_rf, lv_rt.
-        READ TABLE lo_scan->statements INDEX ls_cl-index INTO DATA(ls_sf).
-        IF sy-subrc = 0.
-          READ TABLE lo_scan->tokens INDEX ls_sf-from INTO DATA(ls_tf).
-          IF sy-subrc = 0. lv_rf = ls_tf-row. ENDIF.
-        ENDIF.
-        READ TABLE lo_scan->statements INDEX lv_to INTO DATA(ls_st).
-        IF sy-subrc = 0.
-          READ TABLE lo_scan->tokens INDEX ls_st-to INTO DATA(ls_tt).
-          IF sy-subrc = 0. lv_rt = ls_tt-row. ENDIF.
-        ENDIF.
+        READ TABLE lo_scan->tokens INDEX ls_mkw-from INTO DATA(ls_tf).
+        IF sy-subrc = 0. lv_rf = ls_tf-row. ENDIF.
+        READ TABLE <prog>-t_keywords WITH KEY index = lv_to INTO ls_ekw.
+        READ TABLE lo_scan->tokens INDEX ls_ekw-to INTO DATA(ls_tt).
+        IF sy-subrc = 0. lv_rt = ls_tt-row. ENDIF.
 
-        APPEND VALUE #( class     = ls_cl-class
-                        name      = ls_cl-eventname
+        APPEND VALUE #( class     = lv_cls
+                        name      = ls_mtok-str
                         program   = <prog>-program
                         include   = <prog>-include
-                        meth_type = ls_cl-meth_type
-                        stmt_from = ls_cl-index
+                        stmt_from = ls_mkw-index
                         stmt_to   = lv_to
                         row_from  = lv_rf
                         row_to    = lv_rt ) TO lt_meth.
