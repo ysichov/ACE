@@ -33,4 +33,18 @@ header=$(awk 'NR==1{next} /^[[:space:]]*($|")/{print; next} {exit}' "$ACE_SRC/z_
   > /tmp/z_ace_standalone_fixed.abap
 cp /tmp/z_ace_standalone_fixed.abap "$ACE_SRC/z_ace_standalone.prog.abap"
 
+echo "Rewriting += / -= to 7.50-compatible form (standalone only)..."
+# x += y.  -> x = x + y.   |   x -= y. -> x = x - y.
+# lhs may contain field/deref/field-symbol chars: A-Za-z0-9_ < > ~ -
+sed -E -i \
+  -e 's/([A-Za-z0-9_<>~-]+)[[:space:]]*\+=[[:space:]]*([^.]*)\./\1 = \1 + \2./g' \
+  -e 's/([A-Za-z0-9_<>~-]+)[[:space:]]*-=[[:space:]]*([^.]*)\./\1 = \1 - \2./g' \
+  "$ACE_SRC/z_ace_standalone.prog.abap"
+
+# Fail loudly if any compound assignment slipped through (would break on 7.50)
+if grep -nE "[[:alnum:]_>)]+[[:space:]]*[+-]=[[:space:]]" "$ACE_SRC/z_ace_standalone.prog.abap"; then
+  echo "ERROR: += / -= still present in standalone (7.50 will not compile)."
+  exit 1
+fi
+
 echo "Done."

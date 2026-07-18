@@ -2619,11 +2619,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF lv_count = 1. SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN. ENDIF.
 
       WHEN 'DEPTH_M'.
-        IF m_hist_depth > 0. m_hist_depth -= 1. ENDIF.
+        IF m_hist_depth > 0. m_hist_depth = m_hist_depth - 1. ENDIF.
         apply_depth( ).
 
       WHEN 'DEPTH_P'.
-        IF m_hist_depth < 99. m_hist_depth += 1. ENDIF.
+        IF m_hist_depth < 99. m_hist_depth = m_hist_depth + 1. ENDIF.
         apply_depth( ).
 
       WHEN 'DEPTH'.
@@ -3676,7 +3676,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
       DATA(lv_intf_var_cnt) = 0.
       LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_iv)
         WHERE class = i_class AND eventname IS INITIAL.
-        lv_intf_var_cnt += 1.
+        lv_intf_var_cnt = lv_intf_var_cnt + 1.
       ENDLOOP.
       IF lv_intf_var_cnt > 0.
         DATA(lv_members_node) = mo_tree->add_node(
@@ -3693,7 +3693,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
         ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` ) ).
       DATA(lv_si) = 0.
       LOOP AT lv_sec_keys INTO DATA(lv_sec_key).
-        lv_si += 1.
+        lv_si = lv_si + 1.
         READ TABLE mo_window->ms_sources-tt_sections WITH KEY class = i_class section = lv_sec_key INTO DATA(ls_sec).
         IF sy-subrc = 0.
           DATA(lv_sec_node) = mo_tree->add_node(
@@ -3791,7 +3791,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
       LOOP AT mo_window->ms_sources-t_vars INTO DATA(lv_v)
         WHERE program = subs-program AND class = subs-class
           AND eventtype = subs-eventtype AND eventname = subs-eventname.
-        lv_var_cnt += 1.
+        lv_var_cnt = lv_var_cnt + 1.
       ENDLOOP.
       IF lv_var_cnt > 0.
         DATA(lv_vars_node) = mo_tree->add_node(
@@ -3815,7 +3815,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
     DATA lv_cnt TYPE i.
     LOOP AT mo_window->ms_sources-tt_progs TRANSPORTING NO FIELDS
       WHERE include <> 'VIRTUAL' AND include <> lv_main_prog.
-      lv_cnt += 1.
+      lv_cnt = lv_cnt + 1.
     ENDLOOP.
     CHECK lv_cnt > 0.
     DATA(lv_node) = mo_tree->add_node(
@@ -3850,7 +3850,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
     DATA lv_cnt TYPE i.
     LOOP AT mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
       WHERE program = mo_window->m_prg-program AND eventtype IS INITIAL AND class IS INITIAL.
-      lv_cnt += 1.
+      lv_cnt = lv_cnt + 1.
     ENDLOOP.
     CHECK lv_cnt > 0.
     DATA(lv_node) = mo_tree->add_node(
@@ -3922,9 +3922,9 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
     LOOP AT mo_window->ms_sources-tt_class_defs INTO DATA(ls_cd)
       WHERE class <> i_excl_class AND program = i_prog.
       IF ls_cd-is_intf = abap_true.
-        lv_intf_cnt += 1.
+        lv_intf_cnt = lv_intf_cnt + 1.
       ELSE.
-        lv_cls_cnt += 1.
+        lv_cls_cnt = lv_cls_cnt + 1.
       ENDIF.
     ENDLOOP.
     CHECK lv_cls_cnt + lv_intf_cnt > 0.
@@ -3973,7 +3973,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
     DATA lv_form_cnt  TYPE i.
     LOOP AT mo_window->ms_sources-tt_calls_line TRANSPORTING NO FIELDS
       WHERE eventtype = 'FORM' AND program = i_prog.
-      lv_form_cnt += 1.
+      lv_form_cnt = lv_form_cnt + 1.
     ENDLOOP.
     CHECK lv_form_cnt > 0.
     IF lv_form_cnt > c_lazy_threshold.
@@ -4009,7 +4009,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
       CLEAR lv_var_cnt.
       LOOP AT mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE program = subs-program AND eventtype = 'FORM' AND eventname = subs-eventname.
-        lv_var_cnt += 1.
+        lv_var_cnt = lv_var_cnt + 1.
       ENDLOOP.
       IF lv_var_cnt > 0.
         DATA(lv_vars_node) = mo_tree->add_node( i_name = |Local vars ({ lv_var_cnt })| i_icon = CONV #( icon_header )
@@ -4025,7 +4025,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
     DATA lv_mod_cnt  TYPE i.
     LOOP AT mo_window->ms_sources-tt_calls_line TRANSPORTING NO FIELDS
       WHERE eventtype = 'MODULE' AND program = i_prog.
-      lv_mod_cnt += 1.
+      lv_mod_cnt = lv_mod_cnt + 1.
     ENDLOOP.
     CHECK lv_mod_cnt > 0.
     IF lv_mod_cnt > c_lazy_threshold.
@@ -8938,7 +8938,7 @@ METHOD hndl_expand_empty.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE program = ls_cl-program AND class = ls_cl-class
           AND eventtype = 'METHOD' AND eventname = lv_mth.
-        lv_vcnt += 1.
+        lv_vcnt = lv_vcnt + 1.
       ENDLOOP.
       CHECK lv_vcnt > 0.
       DATA(lv_vnode) = add_node(
@@ -9128,7 +9128,7 @@ METHOD expand_class.
       DATA lv_cnt TYPE i.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE class = i_class AND eventname IS INITIAL.
-        lv_cnt += 1.
+        lv_cnt = lv_cnt + 1.
       ENDLOOP.
       IF lv_cnt > 0.
         DATA(lv_memb) = add_node(
@@ -9144,7 +9144,7 @@ METHOD expand_class.
         ( `PUBLIC` ) ( `PROTECTED` ) ( `PRIVATE` ) ).
       DATA(lv_si) = 0.
       LOOP AT lv_sec_keys INTO DATA(lv_sec_key).
-        lv_si += 1.
+        lv_si = lv_si + 1.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_sections
           WITH KEY class = i_class section = lv_sec_key INTO DATA(ls_sec).
         IF sy-subrc = 0.
@@ -9197,7 +9197,7 @@ METHOD expand_class.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE program = lv_m-program AND class = i_class
           AND eventtype = 'METHOD' AND eventname = lv_m-eventname.
-        lv_vcnt += 1.
+        lv_vcnt = lv_vcnt + 1.
       ENDLOOP.
       IF lv_vcnt > 0.
         DATA(lv_vnode) = add_node(
@@ -9230,7 +9230,7 @@ METHOD expand_forms.
       CLEAR lv_fvar_cnt.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE program = lv_fs-program AND eventtype = 'FORM' AND eventname = lv_fs-eventname.
-        lv_fvar_cnt += 1.
+        lv_fvar_cnt = lv_fvar_cnt + 1.
       ENDLOOP.
       IF lv_fvar_cnt > 0.
         DATA(lv_fvn) = add_node(
@@ -9260,7 +9260,7 @@ METHOD expand_intf.
     DATA lv_cnt TYPE i.
     LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
       WHERE class = i_intf AND eventname IS INITIAL.
-      lv_cnt += 1.
+      lv_cnt = lv_cnt + 1.
     ENDLOOP.
     IF lv_cnt > 0.
       DATA(lv_memb) = add_node(
@@ -9729,7 +9729,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
       IF sy-subrc = 0.
         lv_ev_name  = ftok-str.
         lv_last_row = ftok-row.
-        lv_tok_idx += 1.
+        lv_tok_idx = lv_tok_idx + 1.
       ENDIF.
     ENDIF.
 
@@ -9758,11 +9758,11 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
             param   = lv_pname   line = tok-row )
             INTO TABLE lt_params.
         ENDIF.
-        lv_tok_idx += 1.
+        lv_tok_idx = lv_tok_idx + 1.
         READ TABLE io_scan->tokens INDEX lv_tok_idx INTO tok.
         IF sy-subrc = 0. lv_ev_name = tok-str. ENDIF.
         CLEAR: lv_section, lv_pname, lv_ptype, lv_ref, lv_after_type.
-        lv_tok_idx += 1.
+        lv_tok_idx = lv_tok_idx + 1.
         CONTINUE.
       ENDIF.
 
@@ -9926,7 +9926,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
 
       ENDCASE.
 
-      lv_tok_idx += 1.
+      lv_tok_idx = lv_tok_idx + 1.
     ENDWHILE.
 
     " Flush last parameter
@@ -10050,7 +10050,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                 ENDIF.
               ENDIF.
             ENDIF.
-            lv_i += 1.
+            lv_i = lv_i + 1.
           ENDWHILE.
 
         " ── SET HANDLER obj->method FOR src_obj ─────────────────────
@@ -10080,7 +10080,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                   IF sy-subrc = 0 AND ls_src-str <> 'ALL'. lv_src_obj = ls_src-str. ENDIF.
                   EXIT.
                 ENDIF.
-                lv_k += 1.
+                lv_k = lv_k + 1.
               ENDWHILE.
 
               " Резолвим тип объекта хэндлера
@@ -10127,7 +10127,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                 ) TO cs_source-tt_handler_map.
               ENDIF.
             ENDIF.
-            lv_j += 1.
+            lv_j = lv_j + 1.
           ENDWHILE.
 
       ENDCASE.
@@ -10658,7 +10658,7 @@ METHOD collect_method_calls.
           lv_left  = ls_prev-str.
           lv_right = ls_next-str.
           REPLACE ALL OCCURRENCES OF '(' IN lv_right WITH ''.
-          lv_ti += 1.
+          lv_ti = lv_ti + 1.
           IF lv_tstr = '->' AND ( ls_prev-str IS INITIAL OR ls_prev-str CO ')' ).
             READ TABLE io_scan->tokens INDEX lv_ti - 2 INTO DATA(ls_nk1).
             READ TABLE io_scan->tokens INDEX lv_ti - 3 INTO DATA(ls_nk2).
@@ -10674,7 +10674,7 @@ METHOD collect_method_calls.
             ENDIF.
           ENDIF.
         ELSE.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
 
       ELSEIF lv_tstr = 'NEW'.
@@ -10685,15 +10685,15 @@ METHOD collect_method_calls.
           REPLACE ALL OCCURRENCES OF '(' IN lv_left WITH ''.
           CONDENSE lv_left NO-GAPS.
           lv_right = 'CONSTRUCTOR'.
-          lv_ti += 1.
+          lv_ti = lv_ti + 1.
         ELSE.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
 
       ELSEIF lv_tstr CA '(' AND NOT lv_tstr CS '->' AND NOT lv_tstr CS '=>'.
         READ TABLE io_scan->tokens INDEX lv_ti + 1 INTO DATA(ls_after).
         IF ls_after-str = '='.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
         IF lv_tstr CP 'DATA(*'
           OR lv_tstr CP 'FIELD-SYMBOL(*'
@@ -10704,7 +10704,7 @@ METHOD collect_method_calls.
           OR lv_tstr CP 'CAST(*'
           OR lv_tstr CP 'COND(*'
           OR lv_tstr CP 'SWITCH(*'.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
         lv_arrow = '->'.
         lv_left  = 'ME'.
@@ -10713,13 +10713,13 @@ METHOD collect_method_calls.
         CONDENSE lv_right NO-GAPS.
 
       ELSE.
-        lv_ti += 1. CONTINUE.
+        lv_ti = lv_ti + 1. CONTINUE.
       ENDIF.
 
       REPLACE ALL OCCURRENCES OF '(' IN lv_right WITH ''.
       REPLACE ALL OCCURRENCES OF ')' IN lv_right WITH ''.
       CONDENSE lv_right NO-GAPS.
-      IF lv_right IS INITIAL. lv_ti += 1. CONTINUE. ENDIF.
+      IF lv_right IS INITIAL. lv_ti = lv_ti + 1. CONTINUE. ENDIF.
 
       " ── Строим запись вызова ──────────────────────────────────────
       CLEAR lv_c.
@@ -10755,7 +10755,7 @@ METHOD collect_method_calls.
                    eventname = 'CONSTRUCTOR'
           TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          lv_ti += 1. CONTINUE.
+          lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
       ENDIF.
 
@@ -10807,12 +10807,12 @@ METHOD collect_method_calls.
         IF sy-subrc <> 0. EXIT. ENDIF.
         lv_sa_str = ls_sa-str.
         IF lv_sa_str = ')' OR lv_sa_str CO ')'. EXIT. ENDIF.
-        IF lv_sa_str = '(' OR lv_sa_str = ','. lv_scan += 1. CONTINUE. ENDIF.
+        IF lv_sa_str = '(' OR lv_sa_str = ','. lv_scan = lv_scan + 1. CONTINUE. ENDIF.
         IF lv_sa_str = 'EXPORTING' OR lv_sa_str = 'IMPORTING' OR
            lv_sa_str = 'CHANGING'  OR lv_sa_str = 'RECEIVING'.
           lv_cur_sec = lv_sa_str.
           lv_pos = abap_false.
-          lv_scan += 1. CONTINUE.
+          lv_scan = lv_scan + 1. CONTINUE.
         ENDIF.
         CLEAR ls_eq.
         READ TABLE io_scan->tokens INDEX lv_scan + 1 INTO ls_eq.
@@ -10833,7 +10833,7 @@ METHOD collect_method_calls.
             CLEAR ls_b. ls_b-inner = lv_sa_str. ls_b-outer = lv_val_str.
             ls_b-dir = lv_bind_dir.
             APPEND ls_b TO lt_bind.
-            lv_scan += 3. CONTINUE.
+            lv_scan = lv_scan + 3. CONTINUE.
           ENDIF.
         ENDIF.
         IF lv_pos = abap_true AND lv_single IS INITIAL AND lv_sa_str IS NOT INITIAL.
@@ -10841,7 +10841,7 @@ METHOD collect_method_calls.
           REPLACE ALL OCCURRENCES OF ')' IN lv_single WITH ''.
           CONDENSE lv_single NO-GAPS.
         ENDIF.
-        lv_scan += 1.
+        lv_scan = lv_scan + 1.
       ENDWHILE.
 
       IF lv_pos = abap_true AND lv_single IS NOT INITIAL.
@@ -10878,7 +10878,7 @@ METHOD collect_method_calls.
 
       lv_c-bindings = lt_bind.
       APPEND lv_c TO ct_calls.
-      lv_ti += 1.
+      lv_ti = lv_ti + 1.
     ENDWHILE.
   ENDMETHOD.
   METHOD parse_stmt_calls.
@@ -10938,7 +10938,7 @@ METHOD collect_method_calls.
                 APPEND lv_pf_cur_dir TO lt_pf_act_dirs.
               ENDIF.
           ENDCASE.
-          lv_pf_i += 1.
+          lv_pf_i = lv_pf_i + 1.
         ENDWHILE.
         DATA lt_pf_params TYPE TABLE OF zcl_ace=>ts_params WITH EMPTY KEY.
         lt_pf_params = VALUE #( FOR p IN cs_source-t_params
@@ -10953,7 +10953,7 @@ METHOD collect_method_calls.
           ls_pf_bind-inner = ls_pf_p-param.
           ls_pf_bind-dir   = COND #( WHEN lv_pf_dir IS NOT INITIAL THEN lv_pf_dir ELSE 'I' ).
           APPEND ls_pf_bind TO ls_pf_call-bindings.
-          lv_pf_act_i += 1.
+          lv_pf_act_i = lv_pf_act_i + 1.
         ENDLOOP.
         IF lt_pf_params IS INITIAL.
           lv_pf_act_i = 1.
@@ -10963,7 +10963,7 @@ METHOD collect_method_calls.
             ls_pf_bind-outer = lv_pf_only.
             ls_pf_bind-dir   = COND #( WHEN lv_pf_only_dir IS NOT INITIAL THEN lv_pf_only_dir ELSE 'I' ).
             APPEND ls_pf_bind TO ls_pf_call-bindings.
-            lv_pf_act_i += 1.
+            lv_pf_act_i = lv_pf_act_i + 1.
           ENDLOOP.
         ENDIF.
         APPEND ls_pf_call TO lt_new_calls.
@@ -11034,12 +11034,12 @@ METHOD collect_method_calls.
                     APPEND VALUE zif_ace_parse_data=>ts_param_binding(
                       inner = ls_t_cm-str outer = lv_cm_actual dir = lv_cm_dir )
                       TO lv_call-bindings.
-                    lv_tok_cm += 2.
+                    lv_tok_cm = lv_tok_cm + 2.
                   ENDIF.
                 ENDIF.
               ENDIF.
           ENDCASE.
-          lv_tok_cm += 1.
+          lv_tok_cm = lv_tok_cm + 1.
         ENDWHILE.
         APPEND lv_call TO lt_new_calls.
 
@@ -11079,10 +11079,10 @@ METHOD collect_method_calls.
                 APPEND VALUE zcl_ace=>ts_calls(
                   event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR' ) TO lt_new_calls.
               ENDIF.
-              lv_ci += 1.
+              lv_ci = lv_ci + 1.
             ENDIF.
           ENDIF.
-          lv_ci += 1.
+          lv_ci = lv_ci + 1.
         ENDWHILE.
         collect_method_calls(
           EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
@@ -11143,7 +11143,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
       READ TABLE io_scan->tokens INDEX lv_tok_pos INTO DATA(ls_tok).
       IF sy-subrc <> 0. EXIT. ENDIF.
       IF ls_tok-str = '='. lv_eq_idx = lv_tok_pos. EXIT. ENDIF.
-      lv_tok_pos += 1.
+      lv_tok_pos = lv_tok_pos + 1.
     ENDWHILE.
     CHECK lv_eq_idx > 0 OR lv_is_call_method = abap_true.
 
@@ -11173,7 +11173,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
                                i_line      = lv_line
                      CHANGING  cs_source   = cs_source ).
       ENDIF.
-      lv_tok_pos += 1.
+      lv_tok_pos = lv_tok_pos + 1.
     ENDWHILE.
 
     " ── RHS → t_composed (только переменные вне вызовов) ─────────
@@ -11187,14 +11187,14 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
       DATA(lv_rhs) = ls_tok-str.
 
       IF ( lv_rhs CS '->' OR lv_rhs CS '=>' ) AND lv_rhs CS '('.
-        lv_call_depth += 1.
+        lv_call_depth = lv_call_depth + 1.
         lv_prev_arrow = abap_false.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos = lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       IF lv_rhs = '->' OR lv_rhs = '=>'.
         lv_prev_arrow = abap_true.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos = lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       IF lv_prev_arrow = abap_true.
@@ -11207,9 +11207,9 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
               AND eventtype = i_evtype AND eventname = i_ev_name
               AND line = lv_line AND name = ls_prev_obj-str.
           ENDIF.
-          lv_call_depth += 1.
+          lv_call_depth = lv_call_depth + 1.
         ENDIF.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos = lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       IF lv_rhs CS '(' AND NOT lv_rhs = '('.
@@ -11218,8 +11218,8 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
                  lv_rhs CP 'CONV(*'  OR lv_rhs CP 'CAST(*'  OR
                  lv_rhs CP 'COND(*'  OR lv_rhs CP 'SWITCH(*' OR
                  lv_rhs CP 'REF(*' ).
-          lv_call_depth += 1.
-          lv_tok_pos += 1. CONTINUE.
+          lv_call_depth = lv_call_depth + 1.
+          lv_tok_pos = lv_tok_pos + 1. CONTINUE.
         ENDIF.
       ENDIF.
 
@@ -11227,23 +11227,23 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
         - strlen( replace( val = lv_rhs sub = ')' with = '' occ = 0 ) ).
       IF lv_close_count > 0.
         IF lv_call_depth >= lv_close_count.
-          lv_call_depth -= lv_close_count.
+          lv_call_depth = lv_call_depth - lv_close_count.
         ELSE.
           lv_call_depth = 0.
         ENDIF.
       ENDIF.
 
       IF lv_call_depth > 0.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos = lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       IF lv_rhs = 'NEW' OR lv_rhs = 'CAST' OR lv_rhs = 'REF'.
         lv_skip_next = abap_true.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos = lv_tok_pos + 1. CONTINUE.
       ENDIF.
       IF lv_skip_next = abap_true.
         lv_skip_next = abap_false.
-        lv_tok_pos += 1. CONTINUE.
+        lv_tok_pos = lv_tok_pos + 1. CONTINUE.
       ENDIF.
 
       DATA(lv_comp) = lv_rhs.
@@ -11263,7 +11263,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
                                i_line      = lv_line
                      CHANGING  cs_source   = cs_source ).
       ENDIF.
-      lv_tok_pos += 1.
+      lv_tok_pos = lv_tok_pos + 1.
     ENDWHILE.
 
     ENDIF. " lv_is_call_method = abap_false
@@ -12117,37 +12117,37 @@ METHOD build_html.
           APPEND INITIAL LINE TO lt_cls_sub ASSIGNING <cls_sub>.
           <cls_sub>-name = lv_grp.
         ENDIF.
-        <cls_sub>-units  += 1.
-        <cls_sub>-cc     += ls_u-cyclomatic.
-        <cls_sub>-loc    += ls_u-loc.
-        <cls_sub>-lloc   += ls_u-lloc.
-        <cls_sub>-cloc   += ls_u-cloc.
-        <cls_sub>-n1     += ls_u-n1.
-        <cls_sub>-n2     += ls_u-n2.
+        <cls_sub>-units = <cls_sub>-units + 1.
+        <cls_sub>-cc = <cls_sub>-cc + ls_u-cyclomatic.
+        <cls_sub>-loc = <cls_sub>-loc + ls_u-loc.
+        <cls_sub>-lloc = <cls_sub>-lloc + ls_u-lloc.
+        <cls_sub>-cloc = <cls_sub>-cloc + ls_u-cloc.
+        <cls_sub>-n1 = <cls_sub>-n1 + ls_u-n1.
+        <cls_sub>-n2 = <cls_sub>-n2 + ls_u-n2.
         <cls_sub>-vol     = <cls_sub>-vol  + ls_u-volume.
         <cls_sub>-eff     = <cls_sub>-eff  + ls_u-effort.
         <cls_sub>-time_t  = <cls_sub>-time_t + ls_u-time_t.
         <cls_sub>-bugs    = <cls_sub>-bugs + ls_u-bugs.
       WHEN 'FORM'.
-        ls_fo_sub-units  += 1.
-        ls_fo_sub-cc     += ls_u-cyclomatic.
-        ls_fo_sub-loc    += ls_u-loc.
-        ls_fo_sub-lloc   += ls_u-lloc.
-        ls_fo_sub-cloc   += ls_u-cloc.
-        ls_fo_sub-n1     += ls_u-n1.
-        ls_fo_sub-n2     += ls_u-n2.
+        ls_fo_sub-units = ls_fo_sub-units + 1.
+        ls_fo_sub-cc = ls_fo_sub-cc + ls_u-cyclomatic.
+        ls_fo_sub-loc = ls_fo_sub-loc + ls_u-loc.
+        ls_fo_sub-lloc = ls_fo_sub-lloc + ls_u-lloc.
+        ls_fo_sub-cloc = ls_fo_sub-cloc + ls_u-cloc.
+        ls_fo_sub-n1 = ls_fo_sub-n1 + ls_u-n1.
+        ls_fo_sub-n2 = ls_fo_sub-n2 + ls_u-n2.
         ls_fo_sub-vol     = ls_fo_sub-vol  + ls_u-volume.
         ls_fo_sub-eff     = ls_fo_sub-eff  + ls_u-effort.
         ls_fo_sub-time_t  = ls_fo_sub-time_t + ls_u-time_t.
         ls_fo_sub-bugs    = ls_fo_sub-bugs + ls_u-bugs.
       WHEN OTHERS.
-        ls_ev_sub-units  += 1.
-        ls_ev_sub-cc     += ls_u-cyclomatic.
-        ls_ev_sub-loc    += ls_u-loc.
-        ls_ev_sub-lloc   += ls_u-lloc.
-        ls_ev_sub-cloc   += ls_u-cloc.
-        ls_ev_sub-n1     += ls_u-n1.
-        ls_ev_sub-n2     += ls_u-n2.
+        ls_ev_sub-units = ls_ev_sub-units + 1.
+        ls_ev_sub-cc = ls_ev_sub-cc + ls_u-cyclomatic.
+        ls_ev_sub-loc = ls_ev_sub-loc + ls_u-loc.
+        ls_ev_sub-lloc = ls_ev_sub-lloc + ls_u-lloc.
+        ls_ev_sub-cloc = ls_ev_sub-cloc + ls_u-cloc.
+        ls_ev_sub-n1 = ls_ev_sub-n1 + ls_u-n1.
+        ls_ev_sub-n2 = ls_ev_sub-n2 + ls_u-n2.
         ls_ev_sub-vol     = ls_ev_sub-vol  + ls_u-volume.
         ls_ev_sub-eff     = ls_ev_sub-eff  + ls_u-effort.
         ls_ev_sub-time_t  = ls_ev_sub-time_t + ls_u-time_t.
@@ -12559,7 +12559,7 @@ METHOD html_section.
   ENDIF.
   DATA lv_num TYPE i.
   LOOP AT it_rows INTO DATA(ls_row).
-    lv_num += 1.
+    lv_num = lv_num + 1.
     IF ls_row-name CS 'TOTAL'.
       APPEND '<tr class="tot">' TO ct_html.
       IF i_numbered = abap_true.
@@ -13378,7 +13378,7 @@ DATA(lv_maxlen) = 200.
         ENDIF.
         DO times TIMES.
           CV_MM_STRING = |{ CV_MM_STRING } end\n|.
-          opened -= 1.
+          opened = opened - 1.
           IF opened = 0. EXIT. ENDIF.
         ENDDO.
       ENDIF.
@@ -13396,7 +13396,7 @@ DATA(lv_maxlen) = 200.
         IF sy-subrc = 0
            AND line2-cond <> 'ENDLOOP' AND line2-cond <> 'ENDDO' AND line2-cond <> 'ENDWHILE'.
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ name }"]\n  direction { I_DIRECTION }\n|.
-          opened += 1.
+          opened = opened + 1.
           APPEND abap_true TO lt_sg_opened.
         ELSE.
           APPEND abap_false TO lt_sg_opened.
@@ -13441,7 +13441,7 @@ DATA(lv_maxlen) = 200.
 
           DATA(lv_sg_title) = format_node_label( i_code = <line>-subname i_maxlen = 0 ).
           CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ lv_sg_title }"]\n  direction { I_DIRECTION }\n|.
-          opened += 1.
+          opened = opened + 1.
         ELSE.
           " Same-level call (no children): show the full source line including all parameters.
           " <line>-code was built with an early EXIT at USING/EXPORTING/IMPORTING/CHANGING,
@@ -13516,7 +13516,7 @@ DATA(lv_maxlen) = 200.
           READ TABLE lt_sg_opened INDEX lv_last INTO DATA(lv_sg_flag).
           DELETE lt_sg_opened INDEX lv_last.
           IF lv_sg_flag = abap_true.
-            opened -= 1.
+            opened = opened - 1.
             CV_MM_STRING = |{ CV_MM_STRING } end\n|.
           ENDIF.
         ENDIF.
@@ -13577,7 +13577,7 @@ DATA(lv_maxlen) = 200.
 
       " ----- IF / CASE: push onto stack -----
       IF line-cond = 'IF' OR line-cond = 'CASE'.
-        if_ptr += 1.
+        if_ptr = if_ptr + 1.
         READ TABLE lt_if INDEX if_ptr INTO DATA(ls_if).
         APPEND if_ptr TO if_stack.
       ENDIF.
@@ -13909,7 +13909,7 @@ DATA(lv_maxlen) = 200.
           " program / function group / local class inside a report — collapse to one block
           READ TABLE lt_pmap WITH KEY program = lv_owner INTO DATA(ls_pm).
           IF sy-subrc <> 0.
-            lv_pseq += 1.
+            lv_pseq = lv_pseq + 1.
             ls_pm-program = lv_owner.
             ls_pm-node_id = |P{ lv_pseq }|.
             INSERT ls_pm INTO TABLE lt_pmap.
@@ -14217,7 +14217,7 @@ DATA(lv_maxlen) = 200.
                                     ELSE 'Show External' ) ).
       ELSEIF fcode = 'DEPTH_M'.
         IF mo_viewer->mo_window->m_hist_depth > 0.
-          mo_viewer->mo_window->m_hist_depth -= 1.
+          mo_viewer->mo_window->m_hist_depth = mo_viewer->mo_window->m_hist_depth - 1.
         ENDIF.
         mo_viewer->mo_window->apply_depth( ).
         mo_box->set_focus( mo_box ).
@@ -14227,7 +14227,7 @@ DATA(lv_maxlen) = 200.
         RETURN.
       ELSEIF fcode = 'DEPTH_P'.
         IF mo_viewer->mo_window->m_hist_depth < 99.
-          mo_viewer->mo_window->m_hist_depth += 1.
+          mo_viewer->mo_window->m_hist_depth = mo_viewer->mo_window->m_hist_depth + 1.
         ENDIF.
         mo_viewer->mo_window->apply_depth( ).
         mo_box->set_focus( mo_box ).
@@ -14427,7 +14427,7 @@ DATA(lv_maxlen) = 200.
     " ── Шаг 2: явно объявляем все ноды ─────────────────────────────
     DATA(lv_idx) = 0.
     LOOP AT entities INTO entity.
-      lv_idx += 1.
+      lv_idx = lv_idx + 1.
       mm_string = |{ mm_string }{ lv_idx }({ entity-name })\n|.
     ENDLOOP.
 
@@ -15102,14 +15102,14 @@ CLASS ZCL_ACE IMPLEMENTATION.
         CASE <ln>-cond.
           WHEN 'IF' OR 'CASE'.
             IF lv_i = lv_if_i. ls_hdr-tabix = lv_i. ls_hdr-cond = <ln>-cond. APPEND ls_hdr TO lt_hdrs.
-            ELSE. lv_inner_depth += 1. ENDIF.
+            ELSE. lv_inner_depth = lv_inner_depth + 1. ENDIF.
           WHEN 'ENDIF' OR 'ENDCASE'.
             IF lv_i = lv_end_i. ls_hdr-tabix = lv_i. ls_hdr-cond = <ln>-cond. APPEND ls_hdr TO lt_hdrs.
-            ELSE. lv_inner_depth -= 1. ENDIF.
+            ELSE. lv_inner_depth = lv_inner_depth - 1. ENDIF.
           WHEN 'ELSEIF' OR 'ELSE' OR 'WHEN'.
             IF lv_inner_depth = 0. ls_hdr-tabix = lv_i. ls_hdr-cond = <ln>-cond. APPEND ls_hdr TO lt_hdrs. ENDIF.
         ENDCASE.
-        lv_i += 1.
+        lv_i = lv_i + 1.
       ENDWHILE.
       CLEAR lv_block_active. lv_hdr_cnt = lines( lt_hdrs ). lv_h = 1.
       WHILE lv_h < lv_hdr_cnt.
@@ -15118,19 +15118,19 @@ CLASS ZCL_ACE IMPLEMENTATION.
         WHILE lv_scan < ls_hdr_next-tabix.
           READ TABLE ct_results INDEX lv_scan ASSIGNING FIELD-SYMBOL(<scan_ln>). IF sy-subrc <> 0. EXIT. ENDIF.
           CASE <scan_ln>-cond.
-            WHEN 'IF' OR 'CASE'. lv_scan_inner += 1.
-            WHEN 'ENDIF' OR 'ENDCASE'. lv_scan_inner -= 1.
+            WHEN 'IF' OR 'CASE'. lv_scan_inner = lv_scan_inner + 1.
+            WHEN 'ENDIF' OR 'ENDCASE'. lv_scan_inner = lv_scan_inner - 1.
             WHEN OTHERS. IF lv_scan_inner = 0 AND <scan_ln>-active_root = abap_true. lv_branch_active = abap_true. ENDIF.
           ENDCASE.
           IF lv_branch_active = abap_true. EXIT. ENDIF.
-          lv_scan += 1.
+          lv_scan = lv_scan + 1.
         ENDWHILE.
         ASSIGN ct_results[ ls_hdr_cur-tabix ] TO FIELD-SYMBOL(<hdr_ln>).
         IF sy-subrc = 0.
           IF lv_branch_active = abap_true. <hdr_ln>-active_root = abap_true. lv_block_active = abap_true.
           ELSE. CLEAR <hdr_ln>-active_root. ENDIF.
         ENDIF.
-        lv_h += 1.
+        lv_h = lv_h + 1.
       ENDWHILE.
       ASSIGN ct_results[ lv_end_i ] TO FIELD-SYMBOL(<endif_ln>).
       IF sy-subrc = 0. <endif_ln>-active_root = lv_block_active. ENDIF.
@@ -15410,7 +15410,7 @@ METHOD enrich_result_lines.
               WHEN 'I' THEN '->'    WHEN 'E' THEN '<-'
               WHEN 'C' THEN '-> <-' ELSE '--' ).
             <line>-arrow = |{ <line>-arrow } { ls_b-outer } { lv_sep } { ls_b-inner }|.
-            lv_arrow_cnt += 1.
+            lv_arrow_cnt = lv_arrow_cnt + 1.
           ENDLOOP.
         ENDLOOP.
       ENDIF.
@@ -15819,8 +15819,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-18T12:03:49.826Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T12:03:49.826Z`.
+* abapmerge 0.16.7 - 2026-07-18T12:09:47.174Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T12:09:47.174Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
