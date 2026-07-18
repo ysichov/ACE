@@ -299,6 +299,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             CHANGING
               cs_source  = io_debugger->mo_window->ms_sources ).
           " Перечитываем key — calls_parsed = true, tt_calls заполнен
+          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+            WITH KEY include = key-include INTO prog.
           READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
         ENDIF.
 
@@ -874,6 +876,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           CHANGING
             cs_source  = io_debugger->mo_window->ms_sources ).
         " Перечитываем key — calls_parsed = true, tt_calls заполнен
+        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          WITH KEY include = key-include INTO prog.
         READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
       ENDIF.
 
