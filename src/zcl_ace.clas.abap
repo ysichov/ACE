@@ -230,6 +230,7 @@ public section.
   data MV_PROG type PROG .
   data MV_PACKAGE type DEVCLASS .
   data MV_PKG_PARSED type ABAP_BOOL .
+  data MV_CMAP_FOCUS type PROGNAME .
   data MV_SHOW_PROG type PROG .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
   data:

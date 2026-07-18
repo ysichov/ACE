@@ -350,9 +350,17 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
 
     DATA(lv_param) = CONV string( <param> ).
 
-    " --- Package object node (PKGOBJ:) — parse it and build its subtree ---
+    " --- Package root: reset Class Map focus back to the whole package ---
+    IF mo_viewer->mv_package IS NOT INITIAL AND node_key = main_node_key.
+      CLEAR mo_viewer->mv_cmap_focus.
+      RETURN.
+    ENDIF.
+
+    " --- Package object node (PKGOBJ:) — parse it, build subtree, focus Class Map on it ---
     IF lv_param IS NOT INITIAL AND strlen( lv_param ) > 7 AND lv_param+0(7) = 'PKGOBJ:'.
-      load_package_object( i_node_key = node_key i_prog = CONV #( lv_param+7 ) ).
+      DATA(lv_pkg_prog) = CONV progname( lv_param+7 ).
+      load_package_object( i_node_key = node_key i_prog = lv_pkg_prog ).
+      mo_viewer->mv_cmap_focus = lv_pkg_prog.
       RETURN.
     ENDIF.
 

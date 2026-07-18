@@ -562,12 +562,19 @@ DATA(lv_maxlen) = 200.
 
     direction = COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'LR' ).
     DATA(lo_win) = mo_viewer->mo_window.
+    DATA(lv_focus) = mo_viewer->mv_cmap_focus.
 
-    " Package mode: make sure every package object is parsed before building the graph
-    mo_viewer->ensure_package_parsed( ).
+    " Package mode: no focused class -> build the whole package (parse everything once).
+    " After a double-click on a class, mv_cmap_focus scopes the graph to that class only.
+    IF lv_focus IS INITIAL.
+      mo_viewer->ensure_package_parsed( ).
+    ENDIF.
 
     " --- 1. Collect all METHOD units: statement boundaries + source row range ---
     LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog>).
+      IF lv_focus IS NOT INITIAL AND <prog>-program <> lv_focus.
+        CONTINUE.
+      ENDIF.
       DATA(lo_scan) = <prog>-scan.
       CHECK lo_scan IS BOUND.
 
@@ -681,7 +688,7 @@ DATA(lv_maxlen) = 200.
                 ls_e-key     = lv_key.
                 ls_e-label   = COND string(
                   WHEN ls_call-class IS NOT INITIAL
-                  THEN |{ ls_call-class }=>{ ls_call-name }|
+                  THEN |{ ls_call-class }: { ls_call-name }|
                   ELSE |{ ls_call-event } { ls_call-name }| ).
                 APPEND ls_e TO lt_ext.
               ENDIF.
