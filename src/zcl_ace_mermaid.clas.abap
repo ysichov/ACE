@@ -16,6 +16,7 @@ public section.
   data MV_CALC_PATH type BOOLEAN .
   data MV_WITH_PARAMS type BOOLEAN .
   data MV_SHOW_EXT type BOOLEAN .
+  data MV_ALL_METHODS type BOOLEAN .
   data MV_DIRECTION type UI_FUNC .
 
   methods CONSTRUCTOR
@@ -879,7 +880,7 @@ DATA(lv_maxlen) = 200.
       ENDLOOP.
     ENDLOOP.
 
-    IF lv_pkg_mode = abap_true.
+    IF lv_pkg_mode = abap_true AND mv_all_methods = abap_false.
       TYPES: BEGIN OF lty_call_stack,
                stacklevel TYPE i,
                node_id    TYPE string,
@@ -1129,6 +1130,7 @@ DATA(lv_maxlen) = 200.
        ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
        ( function = 'TOGGLE_EXT'   icon = CONV #( icon_connect )          quickinfo = 'Toggle: show / hide external calls (Class Map)' text = 'Show External' )
+       ( function = 'TOGGLE_ALLM'  icon = CONV #( icon_complete )         quickinfo = 'Toggle: include calls from all methods in Class Map' text = 'All Methods' )
        ( butn_type = 3 )
        ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )            quickinfo = 'Decrease depth' text = '' )
        ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level )  quickinfo = 'Depth level' text = |Depth { lv_depth }| )
@@ -1251,6 +1253,13 @@ DATA(lv_maxlen) = 200.
                     text  = COND #( WHEN mv_show_ext = abap_true
                                     THEN 'Hide External'
                                     ELSE 'Show External' ) ).
+      ELSEIF fcode = 'TOGGLE_ALLM'.
+        mv_all_methods = COND #( WHEN mv_all_methods = abap_true THEN abap_false ELSE abap_true ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'TOGGLE_ALLM'
+                    text  = COND #( WHEN mv_all_methods = abap_true
+                                    THEN 'Path Only'
+                                    ELSE 'All Methods' ) ).
       ELSEIF fcode = 'DEPTH_M'.
         IF mo_viewer->mo_window->m_hist_depth > 0.
           mo_viewer->mo_window->m_hist_depth -= 1.
