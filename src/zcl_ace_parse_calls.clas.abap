@@ -521,6 +521,13 @@ METHOD collect_method_calls.
 
     IF lv_kw = 'NEW'. lv_kw = 'COMPUTE'. ENDIF.
 
+    " CREATE OBJECT may be classified as a generic call statement — force the
+    " dedicated branch so the CONSTRUCTOR of the referenced class is recorded.
+    IF ls_kw_tok-str = 'CREATE'.
+      READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok2.
+      IF sy-subrc = 0 AND ls_tok2-str = 'OBJECT'. lv_kw = 'CREATE OBJECT'. ENDIF.
+    ENDIF.
+
     DATA(lv_super) = get_super( is_source = cs_source ).
     DATA lt_new_calls TYPE zcl_ace=>tt_calls.
 
@@ -702,6 +709,83 @@ METHOD collect_method_calls.
         collect_method_calls(
           EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
           CHANGING  cs_source = cs_source ct_calls = lt_new_calls ).
+
+      " ── CREATE OBJECT ────────────────────────────────────────────
+      " CREATE OBJECT obj [TYPE cls] [EXPORTING p = a ...] → CONSTRUCTOR call.
+      " The class is taken from an explicit TYPE clause, otherwise from the
+      " declared type (TYPE REF TO cls) of the object variable. This lets the
+      " flow descend into the constructor of a global class that is not part
+      " of the current program.
+      WHEN 'CREATE OBJECT'.
+        DATA lv_co_i     TYPE i.
+        DATA ls_co_tok   LIKE LINE OF io_scan->tokens.
+        DATA lv_co_class TYPE string.
+        DATA lv_co_sec   TYPE string.
+        READ TABLE io_scan->tokens INDEX ls_stmt-from + 2 INTO DATA(ls_co_var).
+        CHECK sy-subrc = 0 AND ls_co_var-str IS NOT INITIAL.
+        DATA(lv_co_var) = ls_co_var-str.
+        CONDENSE lv_co_var NO-GAPS.
+
+        " Explicit TYPE <class> overrides the declared reference type
+        CLEAR lv_co_class.
+        lv_co_i = ls_stmt-from + 3.
+        WHILE lv_co_i <= ls_stmt-to.
+          READ TABLE io_scan->tokens INDEX lv_co_i INTO ls_co_tok.
+          IF sy-subrc <> 0. EXIT. ENDIF.
+          IF ls_co_tok-str = 'EXPORTING'. EXIT. ENDIF.
+          IF ls_co_tok-str = 'TYPE'.
+            READ TABLE io_scan->tokens INDEX lv_co_i + 1 INTO DATA(ls_co_type).
+            IF sy-subrc = 0. lv_co_class = ls_co_type-str. ENDIF.
+            EXIT.
+          ENDIF.
+          lv_co_i += 1.
+        ENDWHILE.
+
+        IF lv_co_class IS INITIAL.
+          lv_co_class = resolve_var_type(
+            is_source = cs_source i_program = i_program i_include = i_program
+            i_evtype  = 'METHOD' i_evname = mv_event_name i_varname = lv_co_var ).
+        ENDIF.
+
+        REPLACE ALL OCCURRENCES OF '''' IN lv_co_class WITH ''.
+        REPLACE ALL OCCURRENCES OF '(' IN lv_co_class WITH ''.
+        REPLACE ALL OCCURRENCES OF ')' IN lv_co_class WITH ''.
+        CONDENSE lv_co_class NO-GAPS.
+        CHECK lv_co_class IS NOT INITIAL.
+
+        DATA(ls_co_call) = VALUE zcl_ace=>ts_calls(
+          event = 'METHOD' class = lv_co_class name = 'CONSTRUCTOR' ).
+
+        " Collect EXPORTING bindings (actual → formal, direction 'I')
+        CLEAR lv_co_sec.
+        lv_co_i = ls_stmt-from + 3.
+        WHILE lv_co_i <= ls_stmt-to.
+          READ TABLE io_scan->tokens INDEX lv_co_i INTO ls_co_tok.
+          IF sy-subrc <> 0. EXIT. ENDIF.
+          CASE ls_co_tok-str.
+            WHEN 'EXPORTING'. lv_co_sec = ls_co_tok-str.
+            WHEN '='. " skip
+            WHEN OTHERS.
+              IF lv_co_sec IS NOT INITIAL AND ls_co_tok-str IS NOT INITIAL.
+                READ TABLE io_scan->tokens INDEX lv_co_i + 1 INTO DATA(ls_co_eq).
+                IF ls_co_eq-str = '='.
+                  READ TABLE io_scan->tokens INDEX lv_co_i + 2 INTO DATA(ls_co_val).
+                  IF sy-subrc = 0 AND ls_co_val-str IS NOT INITIAL.
+                    DATA(lv_co_act) = ls_co_val-str.
+                    REPLACE ALL OCCURRENCES OF ')' IN lv_co_act WITH ''.
+                    CONDENSE lv_co_act NO-GAPS.
+                    APPEND VALUE zif_ace_parse_data=>ts_param_binding(
+                      inner = ls_co_tok-str outer = lv_co_act dir = 'I' )
+                      TO ls_co_call-bindings.
+                    lv_co_i += 2.
+                  ENDIF.
+                ENDIF.
+              ENDIF.
+          ENDCASE.
+          lv_co_i += 1.
+        ENDWHILE.
+
+        APPEND ls_co_call TO lt_new_calls.
 
       " ── +CALL_METHOD ─────────────────────────────────────────────
       WHEN '+CALL_METHOD'.

@@ -1896,6 +1896,15 @@ public section.
       !IO_DEBUGGER  type ref to ZCL_ACE .
 protected section.
 private section.
+
+  " Decides whether an object (function module / class) is customer code
+  " for the "Only Z" filter: Z*/Y* prefixes plus objects in a customer
+  " namespace (name starting with '/', e.g. /CLIN/CL_...).
+  class-methods IS_CUSTOM_CODE
+    importing
+      !I_NAME type CLIKE
+    returning
+      value(RV_CUSTOM) type ABAP_BOOL .
 ENDCLASS.
 "! ABAP statement grammars - port of @abaplint/core 2_statements/statements/*.ts
 "! One CLASS-METHOD per statement, name = STMT_<statement_name>.
@@ -6401,6 +6410,16 @@ CLASS zcl_ace_stmts IMPLEMENTATION.
 ENDCLASS.
 
 CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
+  METHOD is_custom_code.
+    DATA(lv_name) = CONV string( i_name ).
+    IF lv_name IS INITIAL.
+      RETURN.
+    ENDIF.
+    " Z*/Y* customer objects, or any object in a customer namespace (/NS/...)
+    IF lv_name(1) = 'Z' OR lv_name(1) = 'Y' OR lv_name(1) = '/'.
+      rv_custom = abap_true.
+    ENDIF.
+  ENDMETHOD.
   METHOD resolve_context.
     e_evtype = i_evtype.
     e_evname = i_evname.
@@ -6598,8 +6617,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             ELSEIF call-event = 'FUNCTION'.
               DATA func TYPE rs38l_fnam.
               func = call-name.
-              IF io_debugger->mo_window->m_zcode IS INITIAL OR
-               ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( func+0(1) = 'Z' OR func+0(1) = 'Y' ) ).
+              IF io_debugger->mo_window->m_zcode IS INITIAL OR is_custom_code( func ).
                 CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
                   CHANGING funcname = func include = include
                   EXCEPTIONS function_not_exists = 1 include_not_exists = 2
@@ -7182,8 +7200,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             DATA func TYPE rs38l_fnam.
             func = call-name.
             REPLACE ALL OCCURRENCES OF '''' IN func WITH ''.
-            IF io_debugger->mo_window->m_zcode IS INITIAL OR
-              ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( func+0(1) = 'Z' OR func+0(1) = 'Y' ) ).
+            IF io_debugger->mo_window->m_zcode IS INITIAL OR is_custom_code( func ).
               CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
                 CHANGING funcname = func include = include
                 EXCEPTIONS function_not_exists = 1 include_not_exists = 2
@@ -7339,7 +7356,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             DATA func TYPE rs38l_fnam.
             func = call-name.
             REPLACE ALL OCCURRENCES OF '''' IN func WITH ''.
-            IF io_debugger->mo_window->m_zcode IS INITIAL OR func+0(1) = 'Z' OR func+0(1) = 'Y'.
+            IF io_debugger->mo_window->m_zcode IS INITIAL OR is_custom_code( func ).
               DATA lv_finc TYPE progname.
               CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
                 CHANGING funcname = func include = lv_finc EXCEPTIONS OTHERS = 6.
@@ -7381,8 +7398,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         EXCEPTIONS _internal_class_not_existing = 1 OTHERS = 2.
     ENDIF.
 
-    IF io_debugger->mo_window->m_zcode IS INITIAL OR
-     ( io_debugger->mo_window->m_zcode IS NOT INITIAL AND ( i_call-class+0(1) = 'Z' OR i_call-class+0(1) = 'Y' ) )
+    IF io_debugger->mo_window->m_zcode IS INITIAL
+       OR is_custom_code( i_call-class )
        OR meth_includes IS INITIAL.
 
       IF lines( meth_includes ) > 0 AND lv_local_exists = abap_false.
@@ -16256,8 +16273,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-18T16:09:42.544Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T16:09:42.544Z`.
+* abapmerge 0.16.7 - 2026-07-18T16:30:22.735Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T16:30:22.735Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
