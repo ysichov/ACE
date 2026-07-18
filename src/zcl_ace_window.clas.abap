@@ -359,7 +359,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF m_hist_depth < 9.
           m_hist_depth = 9.
         ENDIF.
-        MESSAGE |CALLS before apply_depth: depth={ m_hist_depth } prog={ m_prg-program } inc={ m_prg-include } steps={ lines( mo_viewer->mt_steps ) }| TYPE 'I'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
@@ -374,7 +373,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF m_hist_depth < 9.
           m_hist_depth = 9.
         ENDIF.
-        MESSAGE |CMAP before apply_depth: depth={ m_hist_depth } prog={ m_prg-program } inc={ m_prg-include } steps={ lines( mo_viewer->mt_steps ) }| TYPE 'I'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
@@ -890,7 +888,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       IF m_hist_depth < 9.
         m_hist_depth = 9.
       ENDIF.
-      MESSAGE |set_program scanner: depth={ m_hist_depth } include={ i_include } ctx={ ms_code_context-evtype }/{ ms_code_context-evname }| TYPE 'I'.
       DATA(ls_ctx) = ms_code_context.
       zcl_ace_source_parser=>code_execution_scanner(
         i_program = i_include i_include = i_include io_debugger = mo_viewer
@@ -1067,7 +1064,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
            mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
             DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
-        MESSAGE |apply_depth scanner: depth={ m_hist_depth } prog={ mo_viewer->mo_window->m_prg-program } inc={ mo_viewer->mo_window->m_prg-include } ctx={ ls_ctx-evtype }/{ ls_ctx-evname } sel={ source-program }/{ source-include }| TYPE 'I'.
         IF ls_ctx-evtype = 'EVENT'."IS NOT INITIAL.
           zcl_ace_source_parser=>code_execution_scanner(
             i_program = mo_viewer->mo_window->m_prg-program

@@ -167,7 +167,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
     SORT io_debugger->mo_window->ms_sources-tt_calls_line.
     stack = i_stack + 1.
-    MESSAGE |scanner enter: depth={ io_debugger->mo_window->m_hist_depth } i_stack={ i_stack } stack={ stack } prog={ i_program } inc={ i_include } ev={ i_evtype }/{ i_evname }| TYPE 'I'.
     CHECK stack <= io_debugger->mo_window->m_hist_depth.
 
     zcl_ace_parser=>parse(
@@ -796,7 +795,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           program   TYPE program.
 
     stack = i_stack + 1.
-    MESSAGE |parse_call enter: depth={ io_debugger->mo_window->m_hist_depth } i_stack={ i_stack } stack={ stack } class={ i_class } ev={ i_e_type }/{ i_e_name } inc={ i_include }| TYPE 'I'.
     CHECK stack <= io_debugger->mo_window->m_hist_depth.
 
     READ TABLE io_debugger->mt_steps
