@@ -231,6 +231,7 @@ public section.
   data MV_PACKAGE type DEVCLASS .
   data MV_PKG_PARSED type ABAP_BOOL .
   data MV_CMAP_FOCUS type PROGNAME .
+  data MT_PKG_OBJECTS type ZCL_ACE_TREE_BUILDER=>TT_PKG_OBJ .
   data MV_SHOW_PROG type PROG .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
   data:
@@ -376,10 +377,10 @@ CLASS ZCL_ACE IMPLEMENTATION.
   METHOD ensure_package_parsed.
     " Parse every object of the package once (used by package-level Class Map)
     CHECK mv_package IS NOT INITIAL AND mv_pkg_parsed = abap_false.
-    DATA(lt_obj) = NEW zcl_ace_tree_builder(
+    mt_pkg_objects = NEW zcl_ace_tree_builder(
       io_window = mo_window
       io_tree   = mo_tree_local )->get_package_objects( mv_package ).
-    LOOP AT lt_obj INTO DATA(ls_o).
+    LOOP AT mt_pkg_objects INTO DATA(ls_o).
       TRY.
           mo_window->set_program( CONV #( ls_o-prog ) ).
         CATCH cx_root.

@@ -528,7 +528,9 @@ DATA(lv_maxlen) = 200.
     TYPES: BEGIN OF lty_meth,
              class     TYPE string,
              name      TYPE string,
+             program   TYPE program,
              include   TYPE program,
+             meth_type TYPE i,
              stmt_from TYPE i,
              stmt_to   TYPE i,
              row_from  TYPE i,
@@ -607,7 +609,9 @@ DATA(lv_maxlen) = 200.
 
         APPEND VALUE #( class     = ls_cl-class
                         name      = ls_cl-eventname
+                        program   = ls_cl-program
                         include   = <prog>-include
+                        meth_type = ls_cl-meth_type
                         stmt_from = ls_cl-index
                         stmt_to   = lv_to
                         row_from  = lv_rf
@@ -624,16 +628,53 @@ DATA(lv_maxlen) = 200.
       <m>-node_id = |M{ sy-tabix }|.
     ENDLOOP.
 
+    " --- Package overview (no focused class): only public class methods,
+    "     each program collapsed into a single block node ---
+    DATA(lv_pkg_mode) = xsdbool( mo_viewer->mv_package IS NOT INITIAL AND lv_focus IS INITIAL ).
+    IF lv_pkg_mode = abap_true.
+      TYPES: BEGIN OF lty_pmap,
+               program TYPE program,
+               node_id TYPE string,
+             END OF lty_pmap.
+      DATA lt_pmap TYPE HASHED TABLE OF lty_pmap WITH UNIQUE KEY program.
+      DATA lv_pseq TYPE i.
+      LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<pm>).
+        READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_po) WITH KEY prog = <pm>-program.
+        DATA(lv_otype) = COND string( WHEN sy-subrc = 0 THEN ls_po-obj_type ELSE 'CLAS' ).
+        IF lv_otype = 'PROG' OR lv_otype = 'FUGR'.
+          READ TABLE lt_pmap WITH KEY program = <pm>-program INTO DATA(ls_pm).
+          IF sy-subrc <> 0.
+            lv_pseq += 1.
+            ls_pm-program = <pm>-program.
+            ls_pm-node_id = |P{ lv_pseq }|.
+            INSERT ls_pm INTO TABLE lt_pmap.
+          ENDIF.
+          <pm>-class   = 'Programs'.
+          <pm>-name    = COND string( WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name ELSE <pm>-program ).
+          <pm>-node_id = ls_pm-node_id.
+        ELSEIF <pm>-meth_type = 2 OR <pm>-meth_type = 3.
+          <pm>-node_id = ''.   " hide protected / private in overview
+        ENDIF.
+      ENDLOOP.
+      DELETE lt_meth WHERE node_id IS INITIAL.
+      IF lt_meth IS INITIAL.
+        open_mermaid( |graph { direction }\n  none["No public methods found"]\n| ).
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     " --- 2. Selected method from cursor position (m_prg-line inside a method) ---
     lv_sel = 0.
-    LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ms>)
-      WHERE include = lo_win->m_prg-include AND row_from > 0.
-      IF lo_win->m_prg-line >= <ms>-row_from AND lo_win->m_prg-line <= <ms>-row_to.
-        lv_sel    = sy-tabix.
-        lv_sel_id = <ms>-node_id.
-        EXIT.
-      ENDIF.
-    ENDLOOP.
+    IF lv_pkg_mode = abap_false.
+      LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ms>)
+        WHERE include = lo_win->m_prg-include AND row_from > 0.
+        IF lo_win->m_prg-line >= <ms>-row_from AND lo_win->m_prg-line <= <ms>-row_to.
+          lv_sel    = sy-tabix.
+          lv_sel_id = <ms>-node_id.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
 
     " --- 3. Collect edges: parse calls on demand for each method in scope ---
     lv_ext_seq = 0.
@@ -716,6 +757,7 @@ DATA(lv_maxlen) = 200.
       COLLECT ls_meth-class INTO lt_cls.
     ENDLOOP.
 
+    DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
     LOOP AT lt_cls INTO DATA(lv_cls).
       lv_sgseq = lv_sgseq + 1.
       DATA(lv_title) = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' ).
@@ -726,6 +768,9 @@ DATA(lv_maxlen) = 200.
            AND line_index( lt_edge[ from_id = ls_meth-node_id ] ) = 0.
           CONTINUE.
         ENDIF.
+        READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0. CONTINUE. ENDIF.
+        INSERT ls_meth-node_id INTO TABLE lt_seen.
         mm_string = |{ mm_string }    { ls_meth-node_id }["{ ls_meth-name }"]\n|.
       ENDLOOP.
       mm_string = |{ mm_string }  end\n|.
