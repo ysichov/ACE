@@ -503,7 +503,8 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       io_debugger = mo_viewer ).
     mo_viewer->mo_window->show_coverage( ).
     mo_viewer->mo_window->show_stack( ).
-    IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL.
+    IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL
+       AND mo_viewer->mo_window->mo_mermaid->mo_box IS NOT INITIAL.
       mo_viewer->mo_window->mo_mermaid->refresh( ).
     ENDIF.
     IF i_include IS NOT INITIAL.

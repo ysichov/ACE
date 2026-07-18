@@ -459,7 +459,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Only Z code' ).
         ENDIF.
         mo_viewer->mo_window->show_stack( ).
-        IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+        IF mo_mermaid IS NOT INITIAL AND mo_mermaid->mo_box IS NOT INITIAL.
+          mo_mermaid->refresh( ).
+        ENDIF.
         IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
           mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
@@ -1099,7 +1101,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 *        ENDIF.
     mo_viewer->mo_window->show_coverage( ).
     mo_viewer->mo_window->show_stack( ).
-    IF mo_mermaid IS NOT INITIAL. mo_mermaid->refresh( ). ENDIF.
+    IF mo_mermaid IS NOT INITIAL AND mo_mermaid->mo_box IS NOT INITIAL.
+      mo_mermaid->refresh( ).
+    ENDIF.
     mo_toolbar->set_button_info( EXPORTING fcode = 'DEPTH' text = |Depth { m_hist_depth }| ).
     IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
       mo_viewer->get_code_mix( ).

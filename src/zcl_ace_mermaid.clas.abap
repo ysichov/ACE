@@ -1206,7 +1206,9 @@ DATA(lv_maxlen) = 200.
         WHEN 'CMAP'.  class_map( ).
       ENDCASE.
 
-      mo_box->set_focus( mo_box ).
+      IF mo_box IS NOT INITIAL.
+        mo_box->set_focus( mo_box ).
+      ENDIF.
 
   endmethod.
 
@@ -1272,7 +1274,9 @@ DATA(lv_maxlen) = 200.
           mo_viewer->mo_window->m_hist_depth -= 1.
         ENDIF.
         mo_viewer->mo_window->apply_depth( ).
-        mo_box->set_focus( mo_box ).
+        IF mo_box IS NOT INITIAL.
+          mo_box->set_focus( mo_box ).
+        ENDIF.
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
@@ -1282,7 +1286,9 @@ DATA(lv_maxlen) = 200.
           mo_viewer->mo_window->m_hist_depth += 1.
         ENDIF.
         mo_viewer->mo_window->apply_depth( ).
-        mo_box->set_focus( mo_box ).
+        IF mo_box IS NOT INITIAL.
+          mo_box->set_focus( mo_box ).
+        ENDIF.
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
@@ -1308,7 +1314,9 @@ DATA(lv_maxlen) = 200.
         ENDIF.
         mo_viewer->mo_window->m_hist_depth = lv_new_depth.
         mo_viewer->mo_window->apply_depth( ).
-        mo_box->set_focus( mo_box ).
+        IF mo_box IS NOT INITIAL.
+          mo_box->set_focus( mo_box ).
+        ENDIF.
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
@@ -1341,8 +1349,13 @@ DATA(lv_maxlen) = 200.
           ENDIF.
           CALL METHOD mo_diagram->('SET_SOURCE_CODE_STRING') EXPORTING source_code = i_mm_string.
           CALL METHOD mo_diagram->('DISPLAY').
-        CATCH cx_root INTO DATA(error).
-          MESSAGE error TYPE 'E'.
+        CATCH cx_root.
+          CLEAR: mo_diagram,
+                 mo_toolbar,
+                 mo_splitter,
+                 mo_mm_container,
+                 mo_mm_toolbar,
+                 mo_box.
       ENDTRY.
 
   endmethod.
