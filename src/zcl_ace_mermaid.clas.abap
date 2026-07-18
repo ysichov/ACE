@@ -635,6 +635,7 @@ DATA(lv_maxlen) = 200.
                node_id TYPE string,
              END OF lty_pmap.
       DATA lt_pmap TYPE HASHED TABLE OF lty_pmap WITH UNIQUE KEY program.
+      DATA lt_hidden_prog TYPE HASHED TABLE OF program WITH UNIQUE KEY table_line.
       DATA lv_pseq TYPE i.
       DATA ls_po   TYPE zif_ace_parse_data=>ts_pkg_obj.
 
@@ -660,6 +661,19 @@ DATA(lv_maxlen) = 200.
         ENDLOOP.
       ENDIF.
 
+      " Diagram-only exclusions: keep these programs in package parsing/tree.
+      LOOP AT lt_meth INTO DATA(ls_lm).
+        DATA(lv_lowner) = ls_lm-program.
+        READ TABLE lo_win->ms_sources-tt_progs WITH KEY include = ls_lm-include INTO DATA(ls_lop).
+        IF sy-subrc = 0 AND ls_lop-program IS NOT INITIAL. lv_lowner = ls_lop-program. ENDIF.
+        CLEAR ls_po.
+        READ TABLE mo_viewer->mt_pkg_objects INTO ls_po WITH KEY prog = lv_lowner.
+        IF sy-subrc = 0 AND ls_po-obj_type = 'PROG'
+           AND ( to_upper( CONV string( lv_lowner ) ) = 'Z_ACE_STANDALONE' OR ls_lm-class <> lv_lowner ).
+          INSERT lv_lowner INTO TABLE lt_hidden_prog.
+        ENDIF.
+      ENDLOOP.
+
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<pm>).
         " Resolve the real owning program via the include (tt_calls_line-program
         " may be empty for local classes, so include -> tt_progs is authoritative)
@@ -669,6 +683,10 @@ DATA(lv_maxlen) = 200.
           lv_owner = ls_op-program.
         ENDIF.
         <pm>-program = lv_owner.
+        IF line_exists( lt_hidden_prog[ table_line = lv_owner ] ).
+          <pm>-node_id = ''.
+          CONTINUE.
+        ENDIF.
 
         CLEAR ls_po.
         READ TABLE mo_viewer->mt_pkg_objects INTO ls_po WITH KEY prog = lv_owner.
@@ -722,7 +740,6 @@ DATA(lv_maxlen) = 200.
     LOOP AT lt_meth INTO DATA(ls_meth).
       IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id. CONTINUE. ENDIF.
       " In package overview a program is just a block — draw no call edges from it
-      IF lv_pkg_mode = abap_true AND ls_meth-node_id(1) = 'P'. CONTINUE. ENDIF.
 
       LOOP AT lo_win->ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<prog2>)
         WHERE include = ls_meth-include.
@@ -768,7 +785,6 @@ DATA(lv_maxlen) = 200.
               READ TABLE lt_meth INTO ls_tgt INDEX lv_int.
               CHECK ls_tgt-node_id <> ls_meth-node_id.       " no self-loops
               " In package overview, do not link into a program block either
-              IF lv_pkg_mode = abap_true AND ls_tgt-node_id(1) = 'P'. CONTINUE. ENDIF.
               APPEND VALUE #( from_id  = ls_meth-node_id
                               to_id    = ls_tgt-node_id
                               external = abap_false ) TO lt_edge.
