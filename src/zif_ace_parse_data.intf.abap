@@ -243,6 +243,16 @@ INTERFACE zif_ace_parse_data PUBLIC.
     tt_params TYPE SORTED TABLE OF ts_params
                 WITH UNIQUE KEY program include class event name param .
 
+  " --- package object list (for package-level Class Map) ---
+  TYPES:
+    BEGIN OF ts_pkg_obj,
+      obj_type TYPE trobjtype,
+      obj_name TYPE sobj_name,
+      prog     TYPE progname,
+    END OF ts_pkg_obj .
+  TYPES:
+    tt_pkg_obj TYPE STANDARD TABLE OF ts_pkg_obj WITH DEFAULT KEY .
+
   " --- main aggregate ---
   TYPES:
     BEGIN OF ts_parse_data,

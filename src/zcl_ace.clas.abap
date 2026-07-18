@@ -231,7 +231,7 @@ public section.
   data MV_PACKAGE type DEVCLASS .
   data MV_PKG_PARSED type ABAP_BOOL .
   data MV_CMAP_FOCUS type PROGNAME .
-  data MT_PKG_OBJECTS type ZCL_ACE_TREE_BUILDER=>TT_PKG_OBJ .
+  data MT_PKG_OBJECTS type ZIF_ACE_PARSE_DATA=>TT_PKG_OBJ .
   data MV_SHOW_PROG type PROG .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
   data:

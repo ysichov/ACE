@@ -3,13 +3,6 @@ CLASS zcl_ace_tree_builder DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
-    TYPES: BEGIN OF ts_pkg_obj,
-             obj_type TYPE trobjtype,
-             obj_name TYPE sobj_name,
-             prog     TYPE progname,
-           END OF ts_pkg_obj,
-           tt_pkg_obj TYPE STANDARD TABLE OF ts_pkg_obj WITH DEFAULT KEY.
-
     METHODS constructor
       IMPORTING
         io_window TYPE REF TO zcl_ace_window
@@ -26,7 +19,7 @@ CLASS zcl_ace_tree_builder DEFINITION
       IMPORTING
         i_package     TYPE devclass
       RETURNING
-        VALUE(rt_obj) TYPE tt_pkg_obj.
+        VALUE(rt_obj) TYPE zif_ace_parse_data=>tt_pkg_obj.
 
 protected section.
   PRIVATE SECTION.
@@ -247,7 +240,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
     SORT lt_tadir BY object obj_name.
 
     LOOP AT lt_tadir INTO DATA(ls_t).
-      DATA(ls_o)   = VALUE ts_pkg_obj( obj_type = ls_t-object obj_name = ls_t-obj_name ).
+      DATA(ls_o)   = VALUE zif_ace_parse_data=>ts_pkg_obj( obj_type = ls_t-object obj_name = ls_t-obj_name ).
       DATA(lv_len) = strlen( ls_t-obj_name ).
       CASE ls_t-object.
         WHEN 'PROG'.

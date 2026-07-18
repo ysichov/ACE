@@ -291,6 +291,16 @@ INTERFACE zif_ace_parse_data.
     tt_params TYPE SORTED TABLE OF ts_params
                 WITH UNIQUE KEY program include class event name param .
 
+  " --- package object list (for package-level Class Map) ---
+  TYPES:
+    BEGIN OF ts_pkg_obj,
+      obj_type TYPE trobjtype,
+      obj_name TYPE sobj_name,
+      prog     TYPE progname,
+    END OF ts_pkg_obj .
+  TYPES:
+    tt_pkg_obj TYPE STANDARD TABLE OF ts_pkg_obj WITH DEFAULT KEY .
+
   " --- main aggregate ---
   TYPES:
     BEGIN OF ts_parse_data,
@@ -562,7 +572,7 @@ public section.
   data MV_PACKAGE type DEVCLASS .
   data MV_PKG_PARSED type ABAP_BOOL .
   data MV_CMAP_FOCUS type PROGNAME .
-  data MT_PKG_OBJECTS type ZCL_ACE_TREE_BUILDER=>TT_PKG_OBJ .
+  data MT_PKG_OBJECTS type ZIF_ACE_PARSE_DATA=>TT_PKG_OBJ .
   data MV_SHOW_PROG type PROG .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
   data:
@@ -2212,13 +2222,6 @@ CLASS zcl_ace_tree_builder DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
-    TYPES: BEGIN OF ts_pkg_obj,
-             obj_type TYPE trobjtype,
-             obj_name TYPE sobj_name,
-             prog     TYPE progname,
-           END OF ts_pkg_obj,
-           tt_pkg_obj TYPE STANDARD TABLE OF ts_pkg_obj WITH DEFAULT KEY.
-
     METHODS constructor
       IMPORTING
         io_window TYPE REF TO zcl_ace_window
@@ -2235,7 +2238,7 @@ CLASS zcl_ace_tree_builder DEFINITION
       IMPORTING
         i_package     TYPE devclass
       RETURNING
-        VALUE(rt_obj) TYPE tt_pkg_obj.
+        VALUE(rt_obj) TYPE zif_ace_parse_data=>tt_pkg_obj.
 
 protected section.
   PRIVATE SECTION.
@@ -3560,7 +3563,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
     SORT lt_tadir BY object obj_name.
 
     LOOP AT lt_tadir INTO DATA(ls_t).
-      DATA(ls_o)   = VALUE ts_pkg_obj( obj_type = ls_t-object obj_name = ls_t-obj_name ).
+      DATA(ls_o)   = VALUE zif_ace_parse_data=>ts_pkg_obj( obj_type = ls_t-object obj_name = ls_t-obj_name ).
       DATA(lv_len) = strlen( ls_t-obj_name ).
       CASE ls_t-object.
         WHEN 'PROG'.
@@ -13853,7 +13856,7 @@ DATA(lv_maxlen) = 200.
              END OF lty_pmap.
       DATA lt_pmap TYPE HASHED TABLE OF lty_pmap WITH UNIQUE KEY program.
       DATA lv_pseq TYPE i.
-      DATA ls_po   TYPE zcl_ace_tree_builder=>ts_pkg_obj.
+      DATA ls_po   TYPE zif_ace_parse_data=>ts_pkg_obj.
 
       " Build the set of PUBLIC methods per global class from SEOCOMPODF
       " (authoritative; parser meth_type is unreliable)
@@ -14028,7 +14031,7 @@ DATA(lv_maxlen) = 200.
     ENDLOOP.
 
     DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-    LOOP AT lt_cls INTO DATA(lv_cls).
+    LOOP AT lt_cls INTO lv_cls.
       lv_sgseq = lv_sgseq + 1.
       DATA(lv_title) = replace( val = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' )
                                 sub = `~` with = `-` ).
@@ -15814,8 +15817,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-18T11:54:38.584Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T11:54:38.584Z`.
+* abapmerge 0.16.7 - 2026-07-18T11:59:08.277Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T11:59:08.277Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************

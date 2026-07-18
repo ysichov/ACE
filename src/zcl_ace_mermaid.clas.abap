@@ -636,7 +636,7 @@ DATA(lv_maxlen) = 200.
              END OF lty_pmap.
       DATA lt_pmap TYPE HASHED TABLE OF lty_pmap WITH UNIQUE KEY program.
       DATA lv_pseq TYPE i.
-      DATA ls_po   TYPE zcl_ace_tree_builder=>ts_pkg_obj.
+      DATA ls_po   TYPE zif_ace_parse_data=>ts_pkg_obj.
 
       " Build the set of PUBLIC methods per global class from SEOCOMPODF
       " (authoritative; parser meth_type is unreliable)
