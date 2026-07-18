@@ -526,7 +526,9 @@ DATA(lv_maxlen) = 200.
   METHOD class_map.
 
     TYPES: BEGIN OF lty_meth,
-             class     TYPE string,
+             class      TYPE string,
+             real_class TYPE string,
+             disp_class TYPE string,
              name      TYPE string,
              program   TYPE program,
              include   TYPE program,
@@ -602,6 +604,8 @@ DATA(lv_maxlen) = 200.
       mo_viewer->ensure_package_parsed( ).
     ENDIF.
 
+    DATA(lv_pkg_mode) = xsdbool( mo_viewer->mv_package IS NOT INITIAL AND lv_focus IS INITIAL ).
+
     " --- 1. Collect all METHOD units directly from the parsed scan
     "     (METHOD..ENDMETHOD in t_keywords). This does NOT depend on
     "     tt_calls_line-index, which is only filled where code_execution_scanner
@@ -637,6 +641,7 @@ DATA(lv_maxlen) = 200.
         IF sy-subrc = 0. lv_rt = ls_tt-row. ENDIF.
 
         APPEND VALUE #( class     = lv_cls
+                        real_class = lv_cls
                         name      = ls_mtok-str
                         program   = <prog>-program
                         include   = <prog>-include
@@ -645,6 +650,31 @@ DATA(lv_maxlen) = 200.
                         row_from  = lv_rf
                         row_to    = lv_rt ) TO lt_meth.
       ENDLOOP.
+
+      IF lv_pkg_mode = abap_true AND lv_cls = CONV string( <prog>-program ).
+        READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_prog_obj) WITH KEY prog = <prog>-program.
+        IF sy-subrc = 0 AND ls_prog_obj-obj_type = 'PROG'
+           AND to_upper( CONV string( <prog>-program ) ) <> 'Z_ACE_STANDALONE'
+           AND NOT line_exists( lo_win->ms_sources-tt_class_defs[ program = <prog>-program ] ).
+          DATA(lv_first_stmt) = 0.
+          DATA(lv_last_stmt)  = 0.
+          LOOP AT <prog>-t_keywords INTO DATA(ls_pkw).
+            IF lv_first_stmt = 0. lv_first_stmt = ls_pkw-index. ENDIF.
+            lv_last_stmt = ls_pkw-index.
+          ENDLOOP.
+          IF lv_first_stmt > 0 AND lv_last_stmt > 0.
+            APPEND VALUE #( class      = ''
+                            real_class = ''
+                            name       = COND string( WHEN ls_prog_obj-obj_name IS NOT INITIAL
+                                                      THEN ls_prog_obj-obj_name
+                                                      ELSE <prog>-program )
+                            program    = <prog>-program
+                            include    = <prog>-include
+                            stmt_from  = lv_first_stmt
+                            stmt_to    = lv_last_stmt ) TO lt_meth.
+          ENDIF.
+        ENDIF.
+      ENDIF.
     ENDLOOP.
 
     IF lt_meth IS INITIAL.
@@ -658,7 +688,6 @@ DATA(lv_maxlen) = 200.
 
     " --- Package overview (no focus): aggregate to program/class nodes.
     "     Methods remain only as analysis points for parsing their calls. ---
-    DATA(lv_pkg_mode) = xsdbool( mo_viewer->mv_package IS NOT INITIAL AND lv_focus IS INITIAL ).
     IF lv_pkg_mode = abap_true.
       DATA lt_nmap TYPE HASHED TABLE OF lty_nmap WITH UNIQUE KEY kind name.
       TYPES: BEGIN OF lty_pmap,
@@ -742,7 +771,7 @@ DATA(lv_maxlen) = 200.
           ls_nm-node_id = |N{ lv_nseq }|.
           INSERT ls_nm INTO TABLE lt_nmap.
         ENDIF.
-        <pm>-class   = COND string( WHEN lv_is_class = abap_true THEN 'Classes' ELSE 'Programs' ).
+        <pm>-disp_class = COND string( WHEN lv_is_class = abap_true THEN 'Classes' ELSE 'Programs' ).
         <pm>-name    = lv_name.
         <pm>-node_id = ls_nm-node_id.
       ENDLOOP.
@@ -783,7 +812,7 @@ DATA(lv_maxlen) = 200.
                 i_program  = CONV #( ls_key-program )
                 i_include  = CONV #( ls_key-include )
                 i_stmt_idx = ls_key-index
-                i_class    = ls_meth-class
+                i_class    = COND string( WHEN ls_meth-real_class IS NOT INITIAL THEN ls_meth-real_class ELSE ls_meth-class )
                 i_evtype   = 'METHOD'
                 i_ev_name  = ls_meth-name
               CHANGING
@@ -797,12 +826,24 @@ DATA(lv_maxlen) = 200.
             DATA lv_int TYPE i.
             lv_int = 0.
             IF ls_call-event = 'METHOD'.
+              IF ls_call-class IS NOT INITIAL.
+                DATA(lv_call_class) = to_upper( CONV string( ls_call-class ) ).
+                REPLACE REGEX '=+(CP|IP)$' IN lv_call_class WITH ``.
+                LOOP AT lt_meth INTO DATA(ls_tgt)
+                  WHERE name = ls_call-name.
+                  CHECK to_upper( ls_tgt-real_class ) = lv_call_class.
+                  lv_int = sy-tabix.
+                  EXIT.
+                ENDLOOP.
+              ENDIF.
               " prefer a target in the same program (handles duplicate method names)
-              LOOP AT lt_meth INTO DATA(ls_tgt)
-                WHERE name = ls_call-name AND program = ls_meth-program.
-                lv_int = sy-tabix.
-                EXIT.
-              ENDLOOP.
+              IF lv_int = 0.
+                LOOP AT lt_meth INTO ls_tgt
+                  WHERE name = ls_call-name AND program = ls_meth-program.
+                  lv_int = sy-tabix.
+                  EXIT.
+                ENDLOOP.
+              ENDIF.
               IF lv_int = 0.
                 LOOP AT lt_meth INTO ls_tgt WHERE name = ls_call-name.
                   lv_int = sy-tabix.
@@ -852,7 +893,7 @@ DATA(lv_maxlen) = 200.
          AND line_index( lt_edge[ to_id = ls_meth-node_id ] ) = 0.
         CONTINUE.
       ENDIF.
-      COLLECT ls_meth-class INTO lt_cls.
+      COLLECT COND string( WHEN ls_meth-disp_class IS NOT INITIAL THEN ls_meth-disp_class ELSE ls_meth-class ) INTO lt_cls.
     ENDLOOP.
 
     DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
@@ -861,7 +902,8 @@ DATA(lv_maxlen) = 200.
       DATA(lv_title) = replace( val = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' )
                                 sub = `~` with = `-` ).
       mm_string = |{ mm_string }  subgraph SG{ lv_sgseq }["{ lv_title }"]\n|.
-      LOOP AT lt_meth INTO ls_meth WHERE class = lv_cls.
+      LOOP AT lt_meth INTO ls_meth.
+        CHECK COND string( WHEN ls_meth-disp_class IS NOT INITIAL THEN ls_meth-disp_class ELSE ls_meth-class ) = lv_cls.
         IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id
            AND line_index( lt_edge[ to_id = ls_meth-node_id ] ) = 0
            AND line_index( lt_edge[ from_id = ls_meth-node_id ] ) = 0.
