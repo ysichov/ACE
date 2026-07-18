@@ -530,6 +530,7 @@ DATA(lv_maxlen) = 200.
              real_class TYPE string,
              disp_class TYPE string,
              name      TYPE string,
+             disp_name TYPE string,
              program   TYPE program,
              include   TYPE program,
              meth_type TYPE i,
@@ -754,7 +755,7 @@ DATA(lv_maxlen) = 200.
             INSERT ls_pm INTO TABLE lt_pmap.
           ENDIF.
           <pm>-class   = 'Programs'.
-          <pm>-name    = COND string( WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name ELSE lv_owner ).
+          <pm>-disp_name = COND string( WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name ELSE lv_owner ).
           <pm>-node_id = ls_pm-node_id.
         ENDIF.
 
@@ -773,7 +774,7 @@ DATA(lv_maxlen) = 200.
           INSERT ls_nm INTO TABLE lt_nmap.
         ENDIF.
         <pm>-disp_class = COND string( WHEN lv_is_class = abap_true THEN 'Classes' ELSE 'Programs' ).
-        <pm>-name    = lv_name.
+        <pm>-disp_name = lv_name.
         <pm>-agg_id  = ls_nm-node_id.
       ENDLOOP.
       DELETE lt_meth WHERE node_id IS INITIAL.
@@ -938,7 +939,8 @@ DATA(lv_maxlen) = 200.
         READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
         IF sy-subrc = 0. CONTINUE. ENDIF.
         INSERT ls_meth-node_id INTO TABLE lt_seen.
-        mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = ls_meth-name sub = `~` with = `-` ) }"]\n|.
+        DATA(lv_node_label) = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+        mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]\n|.
       ENDLOOP.
       mm_string = |{ mm_string }  end\n|.
     ENDLOOP.
