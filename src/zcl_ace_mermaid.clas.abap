@@ -962,26 +962,49 @@ DATA(lv_maxlen) = 200.
     ENDLOOP.
 
     DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-    LOOP AT lt_cls INTO lv_cls.
-      lv_sgseq = lv_sgseq + 1.
-      DATA(lv_title) = replace( val = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' )
-                                sub = `~` with = `-` ).
-      mm_string = |{ mm_string }  subgraph SG{ lv_sgseq }["{ lv_title }"]\n|.
+    DATA lv_node_label TYPE string.
+    IF lv_pkg_mode = abap_true.
       LOOP AT lt_meth INTO ls_meth.
-        CHECK COND string( WHEN ls_meth-disp_class IS NOT INITIAL THEN ls_meth-disp_class ELSE ls_meth-class ) = lv_cls.
-        IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id
-           AND line_index( lt_edge[ to_id = ls_meth-node_id ] ) = 0
-           AND line_index( lt_edge[ from_id = ls_meth-node_id ] ) = 0.
-          CONTINUE.
-        ENDIF.
+        IF ls_meth-disp_class <> 'Programs'. CONTINUE. ENDIF.
         READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
         IF sy-subrc = 0. CONTINUE. ENDIF.
         INSERT ls_meth-node_id INTO TABLE lt_seen.
-        DATA(lv_node_label) = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
-        mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]\n|.
+        lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+        mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::prog\n|.
       ENDLOOP.
-      mm_string = |{ mm_string }  end\n|.
-    ENDLOOP.
+      LOOP AT lt_cls INTO lv_cls.
+        IF lv_cls = 'Programs'. CONTINUE. ENDIF.
+        LOOP AT lt_meth INTO ls_meth.
+          CHECK COND string( WHEN ls_meth-disp_class IS NOT INITIAL THEN ls_meth-disp_class ELSE ls_meth-class ) = lv_cls.
+          READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0. CONTINUE. ENDIF.
+          INSERT ls_meth-node_id INTO TABLE lt_seen.
+          lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+          mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::cls\n|.
+        ENDLOOP.
+      ENDLOOP.
+    ELSE.
+      LOOP AT lt_cls INTO lv_cls.
+        lv_sgseq = lv_sgseq + 1.
+        DATA(lv_title) = replace( val = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' )
+                                  sub = `~` with = `-` ).
+        mm_string = |{ mm_string }  subgraph SG{ lv_sgseq }["{ lv_title }"]\n|.
+        LOOP AT lt_meth INTO ls_meth.
+          CHECK COND string( WHEN ls_meth-disp_class IS NOT INITIAL THEN ls_meth-disp_class ELSE ls_meth-class ) = lv_cls.
+          IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id
+             AND line_index( lt_edge[ to_id = ls_meth-node_id ] ) = 0
+             AND line_index( lt_edge[ from_id = ls_meth-node_id ] ) = 0.
+            CONTINUE.
+          ENDIF.
+          READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0. CONTINUE. ENDIF.
+          INSERT ls_meth-node_id INTO TABLE lt_seen.
+          DATA(lv_node_label2) = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+          mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = lv_node_label2 sub = `~` with = `-` ) }"]\n|.
+        ENDLOOP.
+        mm_string = |{ mm_string }  end\n|.
+      ENDLOOP.
+    ENDIF.
 
     IF mv_show_ext = abap_true.
       LOOP AT lt_ext INTO ls_e.
@@ -1004,6 +1027,10 @@ DATA(lv_maxlen) = 200.
 
     IF mv_show_ext = abap_true.
       mm_string = |{ mm_string }classDef ext fill:#FDECEA,stroke:#E06666,color:#000\n|.
+    ENDIF.
+    IF lv_pkg_mode = abap_true.
+      mm_string = |{ mm_string }classDef prog fill:#FFF2CC,stroke:#D6B656,color:#000\n|.
+      mm_string = |{ mm_string }classDef cls fill:#E8E6FF,stroke:#9673A6,color:#000\n|.
     ENDIF.
 
     open_mermaid( mm_string ).
