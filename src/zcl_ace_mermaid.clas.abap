@@ -538,6 +538,7 @@ DATA(lv_maxlen) = 200.
              row_from  TYPE i,
              row_to    TYPE i,
              node_id   TYPE string,
+             agg_id    TYPE string,
            END OF lty_meth,
            BEGIN OF lty_edge,
              from_id  TYPE string,
@@ -773,7 +774,7 @@ DATA(lv_maxlen) = 200.
         ENDIF.
         <pm>-disp_class = COND string( WHEN lv_is_class = abap_true THEN 'Classes' ELSE 'Programs' ).
         <pm>-name    = lv_name.
-        <pm>-node_id = ls_nm-node_id.
+        <pm>-agg_id  = ls_nm-node_id.
       ENDLOOP.
       DELETE lt_meth WHERE node_id IS INITIAL.
       IF lt_meth IS INITIAL.
@@ -880,6 +881,31 @@ DATA(lv_maxlen) = 200.
         ENDLOOP.
       ENDLOOP.
     ENDLOOP.
+
+    IF lv_pkg_mode = abap_true.
+      DATA lt_edge_agg TYPE STANDARD TABLE OF lty_edge WITH DEFAULT KEY.
+      LOOP AT lt_edge INTO DATA(ls_edge_raw).
+        READ TABLE lt_meth INTO DATA(ls_from_meth) WITH KEY node_id = ls_edge_raw-from_id.
+        IF sy-subrc <> 0 OR ls_from_meth-agg_id IS INITIAL. CONTINUE. ENDIF.
+        IF ls_edge_raw-external = abap_true.
+          APPEND VALUE #( from_id  = ls_from_meth-agg_id
+                          to_id    = ls_edge_raw-to_id
+                          external = abap_true ) TO lt_edge_agg.
+        ELSE.
+          READ TABLE lt_meth INTO DATA(ls_to_meth) WITH KEY node_id = ls_edge_raw-to_id.
+          IF sy-subrc <> 0 OR ls_to_meth-agg_id IS INITIAL. CONTINUE. ENDIF.
+          CHECK ls_from_meth-agg_id <> ls_to_meth-agg_id.
+          APPEND VALUE #( from_id  = ls_from_meth-agg_id
+                          to_id    = ls_to_meth-agg_id
+                          external = abap_false ) TO lt_edge_agg.
+        ENDIF.
+      ENDLOOP.
+      lt_edge = lt_edge_agg.
+
+      LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ma>) WHERE agg_id IS NOT INITIAL.
+        <ma>-node_id = <ma>-agg_id.
+      ENDLOOP.
+    ENDIF.
 
     SORT lt_edge BY from_id to_id external.
     DELETE ADJACENT DUPLICATES FROM lt_edge COMPARING from_id to_id external.
