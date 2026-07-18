@@ -725,6 +725,11 @@ METHOD collect_method_calls.
         CHECK sy-subrc = 0 AND ls_co_var-str IS NOT INITIAL.
         DATA(lv_co_var) = ls_co_var-str.
         CONDENSE lv_co_var NO-GAPS.
+        " Strip an object prefix (ME->attr / obj->attr) so the attribute name
+        " alone is resolved against the variable table.
+        IF lv_co_var CS '->'.
+          SPLIT lv_co_var AT '->' INTO DATA(lv_co_pref) lv_co_var.
+        ENDIF.
 
         " Explicit TYPE <class> overrides the declared reference type
         CLEAR lv_co_class.
