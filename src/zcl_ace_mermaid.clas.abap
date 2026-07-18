@@ -836,8 +836,16 @@ DATA(lv_maxlen) = 200.
       ENDLOOP.
     ENDIF.
 
+    " At most one line between any two nodes (ignore direction / duplicates)
+    DATA lt_pair TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
     LOOP AT lt_edge INTO DATA(ls_ed).
       IF ls_ed-external = abap_true AND mv_show_ext = abap_false. CONTINUE. ENDIF.
+      DATA(lv_pair) = COND string(
+        WHEN ls_ed-from_id < ls_ed-to_id
+        THEN |{ ls_ed-from_id }->{ ls_ed-to_id }|
+        ELSE |{ ls_ed-to_id }->{ ls_ed-from_id }| ).
+      IF line_exists( lt_pair[ table_line = lv_pair ] ). CONTINUE. ENDIF.
+      INSERT lv_pair INTO TABLE lt_pair.
       mm_string = |{ mm_string }  { ls_ed-from_id } --> { ls_ed-to_id }\n|.
     ENDLOOP.
 
