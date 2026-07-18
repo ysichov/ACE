@@ -638,10 +638,19 @@ DATA(lv_maxlen) = 200.
              END OF lty_pmap.
       DATA lt_pmap TYPE HASHED TABLE OF lty_pmap WITH UNIQUE KEY program.
       DATA lv_pseq TYPE i.
+      DATA ls_po   TYPE zcl_ace_tree_builder=>ts_pkg_obj.
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<pm>).
-        READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_po) WITH KEY prog = <pm>-program.
-        DATA(lv_otype) = COND string( WHEN sy-subrc = 0 THEN ls_po-obj_type ELSE 'CLAS' ).
-        IF lv_otype = 'PROG' OR lv_otype = 'FUGR'.
+        CLEAR ls_po.
+        READ TABLE mo_viewer->mt_pkg_objects INTO ls_po WITH KEY prog = <pm>-program.
+        DATA(lv_is_class) = xsdbool( sy-subrc = 0
+                             AND ( ls_po-obj_type = 'CLAS' OR ls_po-obj_type = 'INTF' ) ).
+        IF lv_is_class = abap_true.
+          " global class / interface method — keep only public in the overview
+          IF <pm>-meth_type = 2 OR <pm>-meth_type = 3.
+            <pm>-node_id = ''.
+          ENDIF.
+        ELSE.
+          " program / function group / local class inside a report — collapse to one block
           READ TABLE lt_pmap WITH KEY program = <pm>-program INTO DATA(ls_pm).
           IF sy-subrc <> 0.
             lv_pseq += 1.
@@ -652,8 +661,6 @@ DATA(lv_maxlen) = 200.
           <pm>-class   = 'Programs'.
           <pm>-name    = COND string( WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name ELSE <pm>-program ).
           <pm>-node_id = ls_pm-node_id.
-        ELSEIF <pm>-meth_type = 2 OR <pm>-meth_type = 3.
-          <pm>-node_id = ''.   " hide protected / private in overview
         ENDIF.
       ENDLOOP.
       DELETE lt_meth WHERE node_id IS INITIAL.
@@ -707,10 +714,18 @@ DATA(lv_maxlen) = 200.
             DATA lv_int TYPE i.
             lv_int = 0.
             IF ls_call-event = 'METHOD'.
-              LOOP AT lt_meth INTO DATA(ls_tgt) WHERE name = ls_call-name.
+              " prefer a target in the same program (handles duplicate method names)
+              LOOP AT lt_meth INTO DATA(ls_tgt)
+                WHERE name = ls_call-name AND program = ls_meth-program.
                 lv_int = sy-tabix.
                 EXIT.
               ENDLOOP.
+              IF lv_int = 0.
+                LOOP AT lt_meth INTO ls_tgt WHERE name = ls_call-name.
+                  lv_int = sy-tabix.
+                  EXIT.
+                ENDLOOP.
+              ENDIF.
             ENDIF.
 
             IF lv_int > 0.
@@ -760,7 +775,8 @@ DATA(lv_maxlen) = 200.
     DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
     LOOP AT lt_cls INTO DATA(lv_cls).
       lv_sgseq = lv_sgseq + 1.
-      DATA(lv_title) = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' ).
+      DATA(lv_title) = replace( val = COND string( WHEN lv_cls IS NOT INITIAL THEN lv_cls ELSE 'GLOBAL' )
+                                sub = `~` with = `-` ).
       mm_string = |{ mm_string }  subgraph SG{ lv_sgseq }["{ lv_title }"]\n|.
       LOOP AT lt_meth INTO ls_meth WHERE class = lv_cls.
         IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id
@@ -771,14 +787,14 @@ DATA(lv_maxlen) = 200.
         READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
         IF sy-subrc = 0. CONTINUE. ENDIF.
         INSERT ls_meth-node_id INTO TABLE lt_seen.
-        mm_string = |{ mm_string }    { ls_meth-node_id }["{ ls_meth-name }"]\n|.
+        mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = ls_meth-name sub = `~` with = `-` ) }"]\n|.
       ENDLOOP.
       mm_string = |{ mm_string }  end\n|.
     ENDLOOP.
 
     IF mv_show_ext = abap_true.
       LOOP AT lt_ext INTO ls_e.
-        mm_string = |{ mm_string }  { ls_e-node_id }["{ ls_e-label }"]:::ext\n|.
+        mm_string = |{ mm_string }  { ls_e-node_id }["{ replace( val = ls_e-label sub = `~` with = `-` ) }"]:::ext\n|.
       ENDLOOP.
     ENDIF.
 
@@ -984,6 +1000,14 @@ DATA(lv_maxlen) = 200.
           IF mo_diagram IS INITIAL.
             CREATE OBJECT mo_diagram TYPE ('ZCL_WD_GUI_MERMAID_JS_DIAGRAM')
               EXPORTING parent = mo_mm_container hide_scrollbars = abap_false.
+            " Raise mermaid limits so large package graphs still render
+            DATA lv_cfg TYPE string.
+            CALL METHOD mo_diagram->('GET_CONFIGURATION_JSON') RECEIVING result = lv_cfg.
+            IF lv_cfg NP '*maxEdges*'.
+              REPLACE FIRST OCCURRENCE OF '{' IN lv_cfg
+                WITH '{"maxEdges":100000,"maxTextSize":90000000,'.
+              CALL METHOD mo_diagram->('SET_CONFIGURATION_JSON') EXPORTING config_json = lv_cfg.
+            ENDIF.
           ENDIF.
           CALL METHOD mo_diagram->('SET_SOURCE_CODE_STRING') EXPORTING source_code = i_mm_string.
           CALL METHOD mo_diagram->('DISPLAY').
