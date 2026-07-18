@@ -136,7 +136,7 @@ public section.
   data MT_COVERAGE type TT_WATCH .
   data:
     mt_calls               TYPE TABLE OF ZCL_ACE=>TS_CALL .
-  data M_HIST_DEPTH type I .
+  data M_HIST_DEPTH type I value 4 .
   data M_START_STACK type I .
   data MV_CALC_ONLY type BOOLEAN .
   data:
@@ -256,7 +256,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
       m_hist_depth = 4.
-      MESSAGE |ZCL_ACE_WINDOW constructor: depth={ m_hist_depth } prog={ text }| TYPE 'S' DISPLAY LIKE 'I'.
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
       CREATE OBJECT mo_splitter
@@ -358,7 +357,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         apply_depth( ).
 
       WHEN 'CALLS'.
-        MESSAGE |CALLS: before apply depth={ m_hist_depth } prog={ m_prg-program } inc={ m_prg-include } old_steps={ lines( mo_viewer->mt_steps ) }| TYPE 'S' DISPLAY LIKE 'I'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
@@ -370,7 +368,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'CMAP'.
-        MESSAGE |CMAP: before apply depth={ m_hist_depth } prog={ m_prg-program } inc={ m_prg-include } old_steps={ lines( mo_viewer->mt_steps ) }| TYPE 'S' DISPLAY LIKE 'I'.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
@@ -883,7 +880,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
     IF mo_viewer->mv_show_parse_time = abap_true. show_parse_time( lv_ts1 ). ENDIF.
     IF mo_viewer->m_step IS INITIAL.
-      MESSAGE |set_program: first scanner depth={ m_hist_depth } include={ i_include } ctx={ ms_code_context-evtype }/{ ms_code_context-evname }| TYPE 'S' DISPLAY LIKE 'I'.
       DATA(ls_ctx) = ms_code_context.
       zcl_ace_source_parser=>code_execution_scanner(
         i_program = i_include i_include = i_include io_debugger = mo_viewer
@@ -1060,7 +1056,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
            mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
             DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
-        MESSAGE |apply_depth: start depth={ m_hist_depth } prog={ mo_viewer->mo_window->m_prg-program } inc={ mo_viewer->mo_window->m_prg-include } ctx={ ls_ctx-evtype }/{ ls_ctx-evname } sel={ source-program }/{ source-include }| TYPE 'S' DISPLAY LIKE 'I'.
         IF ls_ctx-evtype = 'EVENT'."IS NOT INITIAL.
           zcl_ace_source_parser=>code_execution_scanner(
             i_program = mo_viewer->mo_window->m_prg-program
@@ -1087,8 +1082,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         lv_max_stack_dbg = ls_step_dbg-stacklevel.
       ENDIF.
     ENDLOOP.
-    MESSAGE |apply_depth: done depth={ m_hist_depth } steps={ lines( mo_viewer->mt_steps ) } max_stack={ lv_max_stack_dbg }| TYPE 'S' DISPLAY LIKE 'I'.
-
 *    DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
 *        IF ls_ctx-evtype IS NOT INITIAL.
 *          DATA(ls_sc) = mo_viewer->mo_window->ms_sel_call.

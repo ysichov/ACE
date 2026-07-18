@@ -167,10 +167,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
     SORT io_debugger->mo_window->ms_sources-tt_calls_line.
     stack = i_stack + 1.
-    MESSAGE |scanner: depth={ io_debugger->mo_window->m_hist_depth } i_stack={ i_stack } stack={ stack } prog={ i_program } inc={ i_include } ev={ i_evtype }/{ i_evname } steps_before={ lines( io_debugger->mt_steps ) }| TYPE 'S' DISPLAY LIKE 'I'.
-    IF stack > io_debugger->mo_window->m_hist_depth.
-      MESSAGE |scanner SKIP depth: depth={ io_debugger->mo_window->m_hist_depth } stack={ stack } prog={ i_program } inc={ i_include } ev={ i_evtype }/{ i_evname }| TYPE 'S' DISPLAY LIKE 'I'.
-    ENDIF.
     CHECK stack <= io_debugger->mo_window->m_hist_depth.
 
     zcl_ace_parser=>parse(
@@ -179,10 +175,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
     READ TABLE io_debugger->mo_window->ms_sources-tt_progs
       WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog>).
-    IF sy-subrc <> 0.
-      MESSAGE |scanner SKIP no prog: prog={ i_program } inc={ i_include }| TYPE 'S' DISPLAY LIKE 'I'.
-      RETURN.
-    ENDIF.
+    IF sy-subrc <> 0. RETURN. ENDIF.
 
     DATA: structures LIKE <prog>-scan->structures.
 
@@ -802,25 +795,17 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           program   TYPE program.
 
     stack = i_stack + 1.
-    MESSAGE |parse_call: depth={ io_debugger->mo_window->m_hist_depth } i_stack={ i_stack } stack={ stack } class={ i_class } ev={ i_e_type }/{ i_e_name } inc={ i_include } idx={ i_index } steps_before={ lines( io_debugger->mt_steps ) }| TYPE 'S' DISPLAY LIKE 'I'.
-    IF stack > io_debugger->mo_window->m_hist_depth.
-      MESSAGE |parse_call SKIP depth: depth={ io_debugger->mo_window->m_hist_depth } stack={ stack } class={ i_class } ev={ i_e_type }/{ i_e_name } inc={ i_include }| TYPE 'S' DISPLAY LIKE 'I'.
-    ENDIF.
     CHECK stack <= io_debugger->mo_window->m_hist_depth.
 
     READ TABLE io_debugger->mt_steps
       WITH KEY program = i_include eventname = i_e_name eventtype = i_e_type class = i_class
       TRANSPORTING NO FIELDS.
-    IF sy-subrc = 0.
-      MESSAGE |parse_call SKIP existing step: class={ i_class } ev={ i_e_type }/{ i_e_name } inc={ i_include } stack={ stack }| TYPE 'S' DISPLAY LIKE 'I'.
-      RETURN.
-    ENDIF.
+    IF sy-subrc = 0. RETURN. ENDIF.
 
     READ TABLE io_debugger->mo_window->mt_calls
       WITH KEY include = i_include ev_name = i_e_name class = i_class
       TRANSPORTING NO FIELDS.
     IF sy-subrc = 0.
-      MESSAGE |parse_call SKIP mt_calls: class={ i_class } ev={ i_e_type }/{ i_e_name } inc={ i_include } stack={ stack }| TYPE 'S' DISPLAY LIKE 'I'.
       EXIT.
     ELSE.
       APPEND INITIAL LINE TO io_debugger->mo_window->mt_calls ASSIGNING FIELD-SYMBOL(<method_call>).
@@ -1156,10 +1141,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       IF call_line IS INITIAL.
         READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
           WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO call_line.
-      ENDIF.
-
-      IF sy-subrc <> 0 OR call_line IS INITIAL.
-        MESSAGE |parse_class NO call_line: class={ i_call-class } method={ i_call-name } super={ i_call-super } include={ i_include } meth_includes={ lines( meth_includes ) } local={ lv_local_exists }| TYPE 'S' DISPLAY LIKE 'I'.
       ENDIF.
 
       IF sy-subrc = 0.
