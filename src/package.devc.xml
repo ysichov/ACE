@@ -4,6 +4,8 @@
   <asx:values>
    <DEVC>
     <CTEXT>ABAP Code Explorer</CTEXT>
+    <LANGUAGE>E</LANGUAGE>
+    <MASTERLANG>8</MASTERLANG>
    </DEVC>
   </asx:values>
  </asx:abap>
