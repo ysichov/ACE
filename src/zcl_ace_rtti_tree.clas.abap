@@ -366,6 +366,14 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       DATA(lv_pkg_prog) = CONV progname( lv_param+7 ).
       load_package_object( i_node_key = node_key i_prog = lv_pkg_prog ).
       mo_viewer->mv_cmap_focus = lv_pkg_prog.
+      READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_pkg_focus_obj) WITH KEY prog = lv_pkg_prog.
+      IF sy-subrc = 0 AND ls_pkg_focus_obj-obj_type = 'PROG'.
+        IF mo_viewer->mo_window->m_hist_depth < 9.
+          mo_viewer->mo_window->m_hist_depth = 9.
+        ENDIF.
+        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        mo_viewer->mo_window->apply_depth( ).
+      ENDIF.
       " If a diagram window is already open, live-rebuild the Class Map for this class
       IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL
          AND mo_viewer->mo_window->mo_mermaid->mo_box IS NOT INITIAL.
