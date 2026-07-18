@@ -609,7 +609,7 @@ DATA(lv_maxlen) = 200.
 
         APPEND VALUE #( class     = ls_cl-class
                         name      = ls_cl-eventname
-                        program   = ls_cl-program
+                        program   = <prog>-program
                         include   = <prog>-include
                         meth_type = ls_cl-meth_type
                         stmt_from = ls_cl-index
@@ -640,8 +640,17 @@ DATA(lv_maxlen) = 200.
       DATA lv_pseq TYPE i.
       DATA ls_po   TYPE zcl_ace_tree_builder=>ts_pkg_obj.
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<pm>).
+        " Resolve the real owning program via the include (tt_calls_line-program
+        " may be empty for local classes, so include -> tt_progs is authoritative)
+        DATA(lv_owner) = <pm>-program.
+        READ TABLE lo_win->ms_sources-tt_progs WITH KEY include = <pm>-include INTO DATA(ls_op).
+        IF sy-subrc = 0 AND ls_op-program IS NOT INITIAL.
+          lv_owner = ls_op-program.
+        ENDIF.
+        <pm>-program = lv_owner.
+
         CLEAR ls_po.
-        READ TABLE mo_viewer->mt_pkg_objects INTO ls_po WITH KEY prog = <pm>-program.
+        READ TABLE mo_viewer->mt_pkg_objects INTO ls_po WITH KEY prog = lv_owner.
         DATA(lv_is_class) = xsdbool( sy-subrc = 0
                              AND ( ls_po-obj_type = 'CLAS' OR ls_po-obj_type = 'INTF' ) ).
         IF lv_is_class = abap_true.
@@ -651,15 +660,15 @@ DATA(lv_maxlen) = 200.
           ENDIF.
         ELSE.
           " program / function group / local class inside a report — collapse to one block
-          READ TABLE lt_pmap WITH KEY program = <pm>-program INTO DATA(ls_pm).
+          READ TABLE lt_pmap WITH KEY program = lv_owner INTO DATA(ls_pm).
           IF sy-subrc <> 0.
             lv_pseq += 1.
-            ls_pm-program = <pm>-program.
+            ls_pm-program = lv_owner.
             ls_pm-node_id = |P{ lv_pseq }|.
             INSERT ls_pm INTO TABLE lt_pmap.
           ENDIF.
           <pm>-class   = 'Programs'.
-          <pm>-name    = COND string( WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name ELSE <pm>-program ).
+          <pm>-name    = COND string( WHEN ls_po-obj_name IS NOT INITIAL THEN ls_po-obj_name ELSE lv_owner ).
           <pm>-node_id = ls_pm-node_id.
         ENDIF.
       ENDLOOP.
@@ -837,6 +846,7 @@ DATA(lv_maxlen) = 200.
        ( function = 'DEPTH_P'  icon = CONV #( icon_arrow_right )           quickinfo = 'Increase depth' text = '' )
        ( butn_type = 3 )
        ( function = 'TEXT'     icon = CONV #( icon_wd_caption )            quickinfo = 'Mermaid Diagram text' text = '' )
+       ( function = 'PERR'     icon = CONV #( icon_message_error_small )   quickinfo = 'Show last mermaid parse error' text = '' )
                       ).
 
       mo_toolbar->add_button_group( button ).
@@ -911,6 +921,21 @@ DATA(lv_maxlen) = 200.
         CALL METHOD mo_diagram->('GET_SOURCE_CODE_STRING') RECEIVING result = mm_string.
         GET REFERENCE OF mm_string INTO ref.
         NEW ZCL_ACE_TEXT_VIEWER( ref ).
+        RETURN.
+      ENDIF.
+
+      IF fcode = 'PERR'.
+        DATA: lv_perr TYPE string,
+              ref_err TYPE REF TO data.
+        TRY.
+            CALL METHOD mo_diagram->('GET_LAST_PARSE_ERROR') RECEIVING result = lv_perr.
+          CATCH cx_root.
+        ENDTRY.
+        IF lv_perr IS INITIAL.
+          lv_perr = 'No mermaid parse error recorded (diagram rendered OK or not yet displayed).'.
+        ENDIF.
+        GET REFERENCE OF lv_perr INTO ref_err.
+        NEW zcl_ace_text_viewer( ref_err ).
         RETURN.
       ENDIF.
 
