@@ -322,7 +322,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
         lv_prog = mo_viewer->mv_prog.
         DATA(lv_count) = 0.
-        SELECT COUNT(*) INTO @lv_count FROM reposrc WHERE progname = @lv_prog AND subc = '1'.
+        SELECT COUNT(*) FROM reposrc WHERE progname = @lv_prog AND subc = '1' INTO @lv_count.
         IF lv_count = 1. SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN. ENDIF.
 
       WHEN 'DEPTH_M'.
@@ -997,8 +997,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         pos = pos - 2.
         IF pos > 0.
           DATA(incl) = <stack>-include+pos(2).
-          SELECT SINGLE funcname INTO @<stack>-eventname FROM tfdir
-            WHERE pname_main = @<stack>-program AND include = @incl.
+          SELECT SINGLE funcname FROM tfdir
+            WHERE pname_main = @<stack>-program AND include = @incl
+            INTO @<stack>-eventname.
           IF sy-subrc = 0. <stack>-eventtype = 'FUNCTION'. CONTINUE. ENDIF.
         ENDIF.
         DATA: cl_key        TYPE seoclskey, meth_includes TYPE seop_methods_w_include.

@@ -144,8 +144,9 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     IF sy-subrc = 0 AND ls_cd-super IS NOT INITIAL.
       rv_super = ls_cd-super.
     ELSE.
-      SELECT SINGLE refclsname FROM seometarel INTO @rv_super
-        WHERE clsname = @mv_class_name AND reltype = '1'.
+      SELECT SINGLE refclsname FROM seometarel
+        WHERE clsname = @mv_class_name AND reltype = '1'
+        INTO @rv_super.
     ENDIF.
     mv_super_cls = mv_class_name.
     mv_super     = rv_super.

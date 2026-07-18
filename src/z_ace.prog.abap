@@ -52,9 +52,10 @@
   AT SELECTION-SCREEN ON p_class.
 
     IF p_class IS NOT INITIAL.
-      SELECT SINGLE clstype INTO @DATA(clstype)
+      SELECT SINGLE clstype
         FROM seoclass
-       WHERE clsname = @p_class.
+       WHERE clsname = @p_class
+        INTO @DATA(clstype).
       IF sy-subrc = 0.
 
         p_prog = p_class && repeat( val = `=` occ = 30 - strlen( p_class ) ).
@@ -85,9 +86,10 @@
   AT SELECTION-SCREEN ON p_func.
 
     IF p_func IS NOT INITIAL.
-      SELECT SINGLE pname, include INTO ( @DATA(func_incl), @DATA(incl_num) )
+      SELECT SINGLE pname, include
         FROM tfdir
-       WHERE funcname = @p_func.
+       WHERE funcname = @p_func
+        INTO ( @DATA(func_incl), @DATA(incl_num) ).
 
       IF sy-subrc = 0.
         SHIFT func_incl LEFT BY 3 PLACES.

@@ -638,8 +638,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       DATA(lv_class_prog) = CONV program(
         i_class && repeat( val = '=' occ = 30 - strlen( i_class ) ) && 'CP' ).
       DATA(lv_cm_pattern) = lv_class_prog(28) && 'CM%'.
-      SELECT include FROM d010inc INTO TABLE @DATA(lt_cm_includes)
-        WHERE master = @lv_class_prog AND include LIKE @lv_cm_pattern.
+      SELECT include FROM d010inc
+        WHERE master = @lv_class_prog AND include LIKE @lv_cm_pattern
+        INTO TABLE @DATA(lt_cm_includes).
       LOOP AT lt_cm_includes INTO DATA(ls_cm).
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           WITH KEY include = ls_cm-include TRANSPORTING NO FIELDS.

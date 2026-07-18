@@ -2615,7 +2615,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
         lv_prog = mo_viewer->mv_prog.
         DATA(lv_count) = 0.
-        SELECT COUNT(*) INTO @lv_count FROM reposrc WHERE progname = @lv_prog AND subc = '1'.
+        SELECT COUNT(*) FROM reposrc WHERE progname = @lv_prog AND subc = '1' INTO @lv_count.
         IF lv_count = 1. SUBMIT (lv_prog) VIA SELECTION-SCREEN AND RETURN. ENDIF.
 
       WHEN 'DEPTH_M'.
@@ -3274,8 +3274,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         pos = pos - 2.
         IF pos > 0.
           DATA(incl) = <stack>-include+pos(2).
-          SELECT SINGLE funcname INTO @<stack>-eventname FROM tfdir
-            WHERE pname_main = @<stack>-program AND include = @incl.
+          SELECT SINGLE funcname FROM tfdir
+            WHERE pname_main = @<stack>-program AND include = @incl
+            INTO @<stack>-eventname.
           IF sy-subrc = 0. <stack>-eventtype = 'FUNCTION'. CONTINUE. ENDIF.
         ENDIF.
         DATA: cl_key        TYPE seoclskey, meth_includes TYPE seop_methods_w_include.
@@ -3811,10 +3812,12 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
     r_node = class_rel.
   ENDMETHOD.
   METHOD show_tree_includes.
-    DATA(lv_main_prog) = i_prog.
+    " Scope includes to the current object's program (in package mode ms_sources
+    " holds every parsed class, so an unfiltered list would show them all).
+    DATA(lv_main_prog) = mo_window->m_prg-program.
     DATA lv_cnt TYPE i.
     LOOP AT mo_window->ms_sources-tt_progs TRANSPORTING NO FIELDS
-      WHERE include <> 'VIRTUAL' AND include <> lv_main_prog.
+      WHERE program = lv_main_prog AND include <> 'VIRTUAL' AND include <> lv_main_prog.
       lv_cnt = lv_cnt + 1.
     ENDLOOP.
     CHECK lv_cnt > 0.
@@ -3822,12 +3825,13 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
       i_name = |Includes ({ lv_cnt })|
       i_icon = CONV #( icon_list )
       i_rel  = i_root_key
-      i_tree = VALUE #( param = |INCLS:{ i_prog }| program = i_prog ) ).
+      i_tree = VALUE #( param = |INCLS:{ lv_main_prog }| program = lv_main_prog ) ).
     APPEND lv_node TO mo_tree->mt_lazy_nodes.
   ENDMETHOD.
   METHOD show_tree_enhancements.
     DATA lv_enh_rel TYPE salv_de_node_key.
-    LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh).
+    LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh)
+      WHERE program = mo_window->m_prg-program.
       IF prog_enh-enh_collected = abap_false.
         zcl_ace_source_parser=>collect_enhancements( i_program = prog_enh-include io_debugger = mo_window->mo_viewer ).
       ENDIF.
@@ -3891,10 +3895,11 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
           tables_parameter   TYPE TABLE OF rstbl,
           incl_nr            TYPE includenr.
     DATA lv_fm_rel TYPE salv_de_node_key.
-    LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog) WHERE program+0(4) = 'SAPL'.
+    LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog)
+      WHERE program+0(4) = 'SAPL' AND program = mo_window->m_prg-program.
       DATA(len) = strlen( prog-include ) - 2.
       incl_nr = prog-include+len(2).
-      SELECT SINGLE funcname INTO @DATA(funcname) FROM tfdir WHERE pname = @prog-program AND include = @incl_nr.
+      SELECT SINGLE funcname FROM tfdir WHERE pname = @prog-program AND include = @incl_nr INTO @DATA(funcname).
       CHECK sy-subrc = 0.
       IF lv_fm_rel IS INITIAL.
         lv_fm_rel = mo_tree->add_node( i_name = 'Function Modules' i_icon = CONV #( icon_folder )
@@ -6879,8 +6884,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       DATA(lv_class_prog) = CONV program(
         i_class && repeat( val = '=' occ = 30 - strlen( i_class ) ) && 'CP' ).
       DATA(lv_cm_pattern) = lv_class_prog(28) && 'CM%'.
-      SELECT include FROM d010inc INTO TABLE @DATA(lt_cm_includes)
-        WHERE master = @lv_class_prog AND include LIKE @lv_cm_pattern.
+      SELECT include FROM d010inc
+        WHERE master = @lv_class_prog AND include LIKE @lv_cm_pattern
+        INTO TABLE @DATA(lt_cm_includes).
       LOOP AT lt_cm_includes INTO DATA(ls_cm).
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           WITH KEY include = ls_cm-include TRANSPORTING NO FIELDS.
@@ -8272,6 +8278,11 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     " --- Package root: reset Class Map focus back to the whole package ---
     IF mo_viewer->mv_package IS NOT INITIAL AND node_key = main_node_key.
       CLEAR mo_viewer->mv_cmap_focus.
+      IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL
+         AND mo_viewer->mo_window->mo_mermaid->mo_box IS NOT INITIAL.
+        mo_viewer->mo_window->mo_mermaid->mv_type = 'CMAP'.
+        mo_viewer->mo_window->mo_mermaid->refresh( ).
+      ENDIF.
       RETURN.
     ENDIF.
 
@@ -8280,6 +8291,12 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       DATA(lv_pkg_prog) = CONV progname( lv_param+7 ).
       load_package_object( i_node_key = node_key i_prog = lv_pkg_prog ).
       mo_viewer->mv_cmap_focus = lv_pkg_prog.
+      " If a diagram window is already open, live-rebuild the Class Map for this class
+      IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL
+         AND mo_viewer->mo_window->mo_mermaid->mo_box IS NOT INITIAL.
+        mo_viewer->mo_window->mo_mermaid->mv_type = 'CMAP'.
+        mo_viewer->mo_window->mo_mermaid->refresh( ).
+      ENDIF.
       RETURN.
     ENDIF.
 
@@ -9249,7 +9266,7 @@ METHOD expand_gvars.
   ENDMETHOD.
 METHOD expand_incls.
     LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_p)
-      WHERE include <> 'VIRTUAL' AND include <> i_main_prog.
+      WHERE program = i_main_prog AND include <> 'VIRTUAL' AND include <> i_main_prog.
       add_node( i_name = CONV #( ls_p-include ) i_icon = CONV #( icon_document )
                 i_rel  = i_node_key
                 i_tree = VALUE #( kind = 'M' include = ls_p-include program = ls_p-program value = 1 ) ).
@@ -10536,8 +10553,9 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     IF sy-subrc = 0 AND ls_cd-super IS NOT INITIAL.
       rv_super = ls_cd-super.
     ELSE.
-      SELECT SINGLE refclsname FROM seometarel INTO @rv_super
-        WHERE clsname = @mv_class_name AND reltype = '1'.
+      SELECT SINGLE refclsname FROM seometarel
+        WHERE clsname = @mv_class_name AND reltype = '1'
+        INTO @rv_super.
     ENDIF.
     mv_super_cls = mv_class_name.
     mv_super     = rv_super.
@@ -15714,9 +15732,10 @@ ENDCLASS.
   AT SELECTION-SCREEN ON p_class.
 
     IF p_class IS NOT INITIAL.
-      SELECT SINGLE clstype INTO @DATA(clstype)
+      SELECT SINGLE clstype
         FROM seoclass
-       WHERE clsname = @p_class.
+       WHERE clsname = @p_class
+        INTO @DATA(clstype).
       IF sy-subrc = 0.
 
         p_prog = p_class && repeat( val = `=` occ = 30 - strlen( p_class ) ).
@@ -15747,9 +15766,10 @@ ENDCLASS.
   AT SELECTION-SCREEN ON p_func.
 
     IF p_func IS NOT INITIAL.
-      SELECT SINGLE pname, include INTO ( @DATA(func_incl), @DATA(incl_num) )
+      SELECT SINGLE pname, include
         FROM tfdir
-       WHERE funcname = @p_func.
+       WHERE funcname = @p_func
+        INTO ( @DATA(func_incl), @DATA(incl_num) ).
 
       IF sy-subrc = 0.
         SHIFT func_incl LEFT BY 3 PLACES.
@@ -15819,8 +15839,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-18T12:09:47.174Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T12:09:47.174Z`.
+* abapmerge 0.16.7 - 2026-07-18T12:27:32.526Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-18T12:27:32.526Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************

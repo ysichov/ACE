@@ -353,6 +353,11 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     " --- Package root: reset Class Map focus back to the whole package ---
     IF mo_viewer->mv_package IS NOT INITIAL AND node_key = main_node_key.
       CLEAR mo_viewer->mv_cmap_focus.
+      IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL
+         AND mo_viewer->mo_window->mo_mermaid->mo_box IS NOT INITIAL.
+        mo_viewer->mo_window->mo_mermaid->mv_type = 'CMAP'.
+        mo_viewer->mo_window->mo_mermaid->refresh( ).
+      ENDIF.
       RETURN.
     ENDIF.
 
@@ -361,6 +366,12 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       DATA(lv_pkg_prog) = CONV progname( lv_param+7 ).
       load_package_object( i_node_key = node_key i_prog = lv_pkg_prog ).
       mo_viewer->mv_cmap_focus = lv_pkg_prog.
+      " If a diagram window is already open, live-rebuild the Class Map for this class
+      IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL
+         AND mo_viewer->mo_window->mo_mermaid->mo_box IS NOT INITIAL.
+        mo_viewer->mo_window->mo_mermaid->mv_type = 'CMAP'.
+        mo_viewer->mo_window->mo_mermaid->refresh( ).
+      ENDIF.
       RETURN.
     ENDIF.
 
@@ -1364,7 +1375,7 @@ METHOD expand_gvars.
 
 METHOD expand_incls.
     LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_p)
-      WHERE include <> 'VIRTUAL' AND include <> i_main_prog.
+      WHERE program = i_main_prog AND include <> 'VIRTUAL' AND include <> i_main_prog.
       add_node( i_name = CONV #( ls_p-include ) i_icon = CONV #( icon_document )
                 i_rel  = i_node_key
                 i_tree = VALUE #( kind = 'M' include = ls_p-include program = ls_p-program value = 1 ) ).

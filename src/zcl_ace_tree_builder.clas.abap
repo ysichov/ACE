@@ -494,10 +494,12 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
 
 
   METHOD show_tree_includes.
-    DATA(lv_main_prog) = i_prog.
+    " Scope includes to the current object's program (in package mode ms_sources
+    " holds every parsed class, so an unfiltered list would show them all).
+    DATA(lv_main_prog) = mo_window->m_prg-program.
     DATA lv_cnt TYPE i.
     LOOP AT mo_window->ms_sources-tt_progs TRANSPORTING NO FIELDS
-      WHERE include <> 'VIRTUAL' AND include <> lv_main_prog.
+      WHERE program = lv_main_prog AND include <> 'VIRTUAL' AND include <> lv_main_prog.
       lv_cnt += 1.
     ENDLOOP.
     CHECK lv_cnt > 0.
@@ -505,14 +507,15 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
       i_name = |Includes ({ lv_cnt })|
       i_icon = CONV #( icon_list )
       i_rel  = i_root_key
-      i_tree = VALUE #( param = |INCLS:{ i_prog }| program = i_prog ) ).
+      i_tree = VALUE #( param = |INCLS:{ lv_main_prog }| program = lv_main_prog ) ).
     APPEND lv_node TO mo_tree->mt_lazy_nodes.
   ENDMETHOD.
 
 
   METHOD show_tree_enhancements.
     DATA lv_enh_rel TYPE salv_de_node_key.
-    LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh).
+    LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh)
+      WHERE program = mo_window->m_prg-program.
       IF prog_enh-enh_collected = abap_false.
         zcl_ace_source_parser=>collect_enhancements( i_program = prog_enh-include io_debugger = mo_window->mo_viewer ).
       ENDIF.
@@ -582,10 +585,11 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
           tables_parameter   TYPE TABLE OF rstbl,
           incl_nr            TYPE includenr.
     DATA lv_fm_rel TYPE salv_de_node_key.
-    LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog) WHERE program+0(4) = 'SAPL'.
+    LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog)
+      WHERE program+0(4) = 'SAPL' AND program = mo_window->m_prg-program.
       DATA(len) = strlen( prog-include ) - 2.
       incl_nr = prog-include+len(2).
-      SELECT SINGLE funcname INTO @DATA(funcname) FROM tfdir WHERE pname = @prog-program AND include = @incl_nr.
+      SELECT SINGLE funcname FROM tfdir WHERE pname = @prog-program AND include = @incl_nr INTO @DATA(funcname).
       CHECK sy-subrc = 0.
       IF lv_fm_rel IS INITIAL.
         lv_fm_rel = mo_tree->add_node( i_name = 'Function Modules' i_icon = CONV #( icon_folder )
