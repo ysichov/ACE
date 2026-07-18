@@ -255,7 +255,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       super->constructor( ).
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
-      m_hist_depth = 9.
+      m_hist_depth = 14.
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
       CREATE OBJECT mo_splitter
@@ -356,8 +356,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         apply_depth( ).
 
       WHEN 'CALLS'.
-        IF m_hist_depth < 9.
-          m_hist_depth = 9.
+        IF m_hist_depth < 14.
+          m_hist_depth = 14.
         ENDIF.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
@@ -370,8 +370,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'CMAP'.
-        IF m_hist_depth < 9.
-          m_hist_depth = 9.
+        IF m_hist_depth < 14.
+          m_hist_depth = 14.
         ENDIF.
         CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
@@ -885,8 +885,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
     IF mo_viewer->mv_show_parse_time = abap_true. show_parse_time( lv_ts1 ). ENDIF.
     IF mo_viewer->m_step IS INITIAL.
-      IF m_hist_depth < 9.
-        m_hist_depth = 9.
+      IF m_hist_depth < 14.
+        m_hist_depth = 14.
       ENDIF.
       DATA(ls_ctx) = ms_code_context.
       zcl_ace_source_parser=>code_execution_scanner(
