@@ -86,6 +86,13 @@ private section.
       !I_MAXLEN type i default 50
     returning
       value(RV_LABEL) type STRING .
+  " Strips CR/LF/TAB from a node label — such characters leak in from
+  " CRLF source tokens and break mermaid parsing inside a label string.
+  methods CLEAN_LABEL
+    importing
+      !I_TEXT type STRING
+    returning
+      value(RV_TEXT) type STRING .
 
   methods BUILD_NODES
     importing
@@ -1181,7 +1188,8 @@ DATA(lv_maxlen) = 200.
         lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name
                                       WHEN ls_meth-name IS NOT INITIAL THEN ls_meth-name
                                       ELSE ls_meth-node_id ).
-        mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::prog\n|.
+        lv_node_label = clean_label( replace( val = lv_node_label sub = `~` with = `-` ) ).
+        mm_string = |{ mm_string }  { ls_meth-node_id }["{ lv_node_label }"]:::prog\n|.
       ENDLOOP.
       LOOP AT lt_cls INTO lv_cls.
         IF lv_cls = 'Programs'. CONTINUE. ENDIF.
@@ -1193,7 +1201,8 @@ DATA(lv_maxlen) = 200.
           lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name
                                         WHEN ls_meth-name IS NOT INITIAL THEN ls_meth-name
                                         ELSE ls_meth-node_id ).
-          mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::cls\n|.
+          lv_node_label = clean_label( replace( val = lv_node_label sub = `~` with = `-` ) ).
+          mm_string = |{ mm_string }  { ls_meth-node_id }["{ lv_node_label }"]:::cls\n|.
         ENDLOOP.
       ENDLOOP.
     ELSE.
@@ -1215,7 +1224,8 @@ DATA(lv_maxlen) = 200.
           DATA(lv_node_label2) = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name
                                               WHEN ls_meth-name IS NOT INITIAL THEN ls_meth-name
                                               ELSE ls_meth-node_id ).
-          mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = lv_node_label2 sub = `~` with = `-` ) }"]\n|.
+          lv_node_label2 = clean_label( replace( val = lv_node_label2 sub = `~` with = `-` ) ).
+          mm_string = |{ mm_string }    { ls_meth-node_id }["{ lv_node_label2 }"]\n|.
         ENDLOOP.
         mm_string = |{ mm_string }  end\n|.
       ENDLOOP.
@@ -1524,6 +1534,18 @@ DATA(lv_maxlen) = 200.
   endmethod.
 
 
+  method CLEAN_LABEL.
+    rv_text = i_text.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline        IN rv_text WITH ` `.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf          IN rv_text WITH ` `.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN rv_text WITH ` `.
+    " bare CR (first byte of CR_LF) if it survived on its own
+    DATA(lv_cr) = substring( val = cl_abap_char_utilities=>cr_lf off = 0 len = 1 ).
+    REPLACE ALL OCCURRENCES OF lv_cr IN rv_text WITH ` `.
+    CONDENSE rv_text.
+  endmethod.
+
+
   method ADD_CLICK_DIRECTIVES.
     rv_mm_string = i_mm_string.
     CHECK mv_no_click = abap_false.
@@ -1816,9 +1838,12 @@ DATA(lv_maxlen) = 200.
     DATA(lv_idx) = 0.
     LOOP AT entities INTO entity.
       lv_idx += 1.
-      " Guard against an empty label `id("")`, which fails mermaid parsing.
-      DATA(lv_lbl) = COND string( WHEN entity-name IS INITIAL OR entity-name = `""`
-                                  THEN `"?"` ELSE entity-name ).
+      " Strip control chars, then guard against an empty label `id("")`
+      " — both break mermaid parsing.
+      DATA(lv_lbl) = clean_label( entity-name ).
+      IF lv_lbl IS INITIAL OR lv_lbl = `""` OR lv_lbl = `" "`.
+        lv_lbl = `"?"`.
+      ENDIF.
       mm_string = |{ mm_string }{ lv_idx }({ lv_lbl })\n|.
     ENDLOOP.
 
