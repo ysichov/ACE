@@ -1570,6 +1570,8 @@ public section.
       !ACTION
       !GETDATA
       !QUERY_TABLE .
+  " Shows/hides flow-only toolbar buttons depending on mv_type (Map vs Flow).
+  methods APPLY_TOOLBAR_MODE .
   methods SHOW_SOURCE_POPUP
     importing
       !IS_NODE type TS_NODE_MAP .
@@ -1583,6 +1585,13 @@ private section.
       !I_MAXLEN type i default 50
     returning
       value(RV_LABEL) type STRING .
+  " Strips CR/LF/TAB from a node label — such characters leak in from
+  " CRLF source tokens and break mermaid parsing inside a label string.
+  methods CLEAN_LABEL
+    importing
+      !I_TEXT type STRING
+    returning
+      value(RV_TEXT) type STRING .
 
   methods BUILD_NODES
     importing
@@ -1974,6 +1983,8 @@ CLASS zcl_ace_src_popup DEFINITION
     data MV_PROGRAM type PROGRAM .
     data MV_INCLUDE type PROGRAM .
     data MV_FROM type I .
+    data MO_SCAN type ref to CL_CI_SCAN .
+    data MT_SRC type STRING_TABLE .
 
     methods CONSTRUCTOR
       importing
@@ -1981,7 +1992,8 @@ CLASS zcl_ace_src_popup DEFINITION
         !IT_SRC    type STRING_TABLE
         !I_PROGRAM type PROGRAM
         !I_INCLUDE type PROGRAM
-        !I_FROM    type I .
+        !I_FROM    type I
+        !IO_SCAN   type ref to CL_CI_SCAN optional .
     methods ON_BORDER_CLICK
       for event BORDER_CLICK of CL_GUI_ABAPEDIT
       importing
@@ -2960,18 +2972,35 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   ENDMETHOD.
   method ON_EDITOR_BORDER_CLICK.
       DATA: type TYPE char1, program TYPE program, include TYPE program, code_line TYPE i.
+      DATA keyword TYPE zif_ace_parse_data=>ts_kword.
+      DATA candidate TYPE zif_ace_parse_data=>ts_kword.
       IF cntrl_pressed_set IS INITIAL. type = 'S'. ELSE. type = 'E'. ENDIF.
       IF m_prg-include = 'Code_Flow_Mix'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = 'Code_Flow_Mix' INTO DATA(prog_mix).
-        READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO DATA(keyword).
+        LOOP AT prog_mix-t_keywords INTO candidate
+          WHERE v_line <= line.
+          IF keyword-v_line IS INITIAL OR candidate-v_line > keyword-v_line.
+            keyword = candidate.
+          ENDIF.
+        ENDLOOP.
       ELSE.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = m_prg-include INTO prog_mix.
         IF prog_mix-v_keywords IS NOT INITIAL.
-          LOOP AT prog_mix-v_keywords INTO keyword WHERE v_line = line. EXIT. ENDLOOP.
+          LOOP AT prog_mix-v_keywords INTO candidate
+            WHERE v_line <= line.
+            IF keyword-v_line IS INITIAL OR candidate-v_line > keyword-v_line.
+              keyword = candidate.
+            ENDIF.
+          ENDLOOP.
         ELSE.
-          LOOP AT prog_mix-t_keywords INTO keyword WHERE v_line = line. EXIT. ENDLOOP.
+          LOOP AT prog_mix-t_keywords INTO candidate
+            WHERE v_line <= line.
+            IF keyword-v_line IS INITIAL OR candidate-v_line > keyword-v_line.
+              keyword = candidate.
+            ENDIF.
+          ENDLOOP.
         ENDIF.
       ENDIF.
       CHECK keyword-include IS NOT INITIAL.
@@ -3497,7 +3526,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         MOVE-CORRESPONDING step TO <stack>.
         SPLIT <stack>-program AT '=' INTO TABLE split.
         <stack>-prg = <stack>-program.
-        <stack>-program = split[ 1 ].
+        <stack>-program = VALUE #( split[ 1 ] OPTIONAL ).
       ENDIF.
       IF step-include <> mo_viewer->mo_window->m_prg-include. CONTINUE. ENDIF.
     ENDLOOP.
@@ -3509,7 +3538,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         MOVE-CORRESPONDING prog TO <stack>.
         SPLIT <stack>-program AT '=' INTO TABLE split.
         <stack>-prg = <stack>-program.
-        <stack>-program = split[ 1 ].
+        <stack>-program = VALUE #( split[ 1 ] OPTIONAL ).
         <stack>-stacklevel = prog-stack.
         DATA(pos) = strlen( <stack>-program ).
         pos = pos - 2.
@@ -3537,7 +3566,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           ENDIF.
         ENDIF.
         SPLIT <stack>-include AT '=' INTO TABLE split.
-        CASE split[ lines( split ) ].
+        CASE VALUE string( split[ lines( split ) ] OPTIONAL ).
           WHEN 'CP'.    <stack>-eventtype = 'Class Pool'.
           WHEN 'CU'.    <stack>-eventtype = 'Public Section'.
           WHEN 'CI'.    <stack>-eventtype = 'Private Section'.
@@ -6720,8 +6749,27 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     mv_program = i_program.
     mv_include = i_include.
     mv_from    = COND #( WHEN i_from > 0 THEN i_from ELSE 1 ).
+    mt_src     = it_src.
+    " Prefer the already parsed scan of this include — re-scanning from the
+    " database can fail or differ for generated / class-pool includes.
+    IF io_scan IS BOUND.
+      mo_scan = io_scan.
+    ELSE.
+      TRY.
+          DATA(lo_src) = cl_ci_source_include=>create( p_name = i_include ).
+          mo_scan = NEW cl_ci_scan( p_include = lo_src ).
+        CATCH cx_root.
+          CLEAR mo_scan.
+      ENDTRY.
+    ENDIF.
 
-    mo_box = create( i_width = 700 i_hight = 500 i_name = i_title ).
+    " Size the dialog to the code: ~40 lines fill the 400 maximum, shorter
+    " snippets shrink proportionally so small methods get a small window.
+    DATA(lv_height) = lines( it_src ) * 9 + 60.
+    IF lv_height > 400. lv_height = 400. ENDIF.
+    IF lv_height < 120. lv_height = 120. ENDIF.
+
+    mo_box = create( i_width = 700 i_hight = lv_height i_name = i_title ).
     IF mo_box IS INITIAL. RETURN. ENDIF.
     SET HANDLER on_box_close FOR mo_box.
 
@@ -6729,6 +6777,17 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       EXPORTING parent = mo_box max_number_chars = 100
       EXCEPTIONS OTHERS = 1.
     IF sy-subrc <> 0. RETURN. ENDIF.
+    " Same init sequence as the main code viewer — without upload_properties
+    " and set_registered_events the control never raises BORDER_CLICK, so the
+    " editor handles the border click itself and places the breakpoint wrong.
+    mo_editor->init_completer( ).
+    mo_editor->upload_properties(
+      EXCEPTIONS dp_error_create = 1 dp_error_general = 2 dp_error_send = 3 OTHERS = 4 ).
+    DATA: lt_events TYPE cntl_simple_events,
+          ls_event  TYPE cntl_simple_event.
+    ls_event-eventid = cl_gui_textedit=>event_double_click.
+    APPEND ls_event TO lt_events.
+    mo_editor->set_registered_events( lt_events ).
     mo_editor->register_event_border_click( ).
     mo_editor->register_event_break_changed( ).
     SET HANDLER on_border_click FOR mo_editor.
@@ -6740,12 +6799,59 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     lt_src = it_src.
     mo_editor->set_text( table = lt_src ).
     refresh_breakpoints( ).
+
+    " Note: the z-order of SAPGUI dialog windows is owned by the frontend.
+    " set_focus only moves the input focus inside the control set, so already
+    " open popups cannot be raised from ABAP — the user has to click them.
+    mo_box->set_focus( mo_box ).
   endmethod.
   method ON_BORDER_CLICK.
     DATA lv_type TYPE char1.
     DATA lv_abs  TYPE i.
     lv_abs = mv_from + line - 1.
     CHECK lv_abs > 0.
+
+    " A breakpoint belongs to the FIRST line of the ABAP statement. A click on
+    " a continuation line (e.g. `TO cs_source-t_composed.` of a multi-line
+    " APPEND VALUE ... ) must be mapped back to the statement's first token row,
+    " otherwise the breakpoint is set on a line the debugger never stops at.
+    DATA(lv_mapped) = abap_false.
+    IF mo_scan IS BOUND.
+      LOOP AT mo_scan->statements INTO DATA(ls_stmt).
+        READ TABLE mo_scan->tokens INDEX ls_stmt-from INTO DATA(ls_first_token).
+        IF sy-subrc <> 0. CONTINUE. ENDIF.
+        READ TABLE mo_scan->tokens INDEX ls_stmt-to INTO DATA(ls_last_token).
+        IF sy-subrc <> 0. CONTINUE. ENDIF.
+        IF lv_abs BETWEEN ls_first_token-row AND ls_last_token-row.
+          lv_abs    = ls_first_token-row.
+          lv_mapped = abap_true.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+    " Fallback ONLY when the scan could not resolve the statement (e.g. the
+    " include is generated and not covered by the scan): use the displayed
+    " indentation — a continuation line belongs to the nearest preceding
+    " line with a smaller indent.
+    IF lv_mapped = abap_false AND line > 0 AND line <= lines( mt_src ).
+      DATA(lv_clicked) = mt_src[ line ].
+      IF lv_clicked IS NOT INITIAL.
+        DATA(lv_indent) = strlen( lv_clicked ) - strlen( condense( lv_clicked ) ).
+        DATA(lv_row) = line - 1.
+        WHILE lv_row > 0.
+          DATA(lv_prev) = mt_src[ lv_row ].
+          IF lv_prev IS NOT INITIAL.
+            DATA(lv_prev_indent) = strlen( lv_prev ) - strlen( condense( lv_prev ) ).
+            IF lv_prev_indent < lv_indent.
+              lv_abs = mv_from + lv_row - 1.
+              EXIT.
+            ENDIF.
+          ENDIF.
+          lv_row = lv_row - 1.
+        ENDWHILE.
+      ENDIF.
+    ENDIF.
 
     " Already a session breakpoint here? → remove it.
     CALL METHOD cl_abap_debugger=>read_breakpoints
@@ -14759,17 +14865,25 @@ DATA(lv_maxlen) = 200.
           INTO TABLE lt_flow_meth.
       ENDLOOP.
       IF lt_flow_meth IS NOT INITIAL.
+        " Build the kept set instead of deleting by index: a READ inside the
+        " loop overwrites sy-tabix, so DELETE ... INDEX sy-tabix would hit the
+        " wrong row (and shift the table underneath the loop).
+        DATA lt_keep LIKE lt_meth.
+        CLEAR lt_keep.
         LOOP AT lt_meth INTO DATA(ls_chk).
-          " keep non-method units (program blocks) and methods present in flow
-          IF ls_chk-name IS NOT INITIAL.
-            READ TABLE lt_flow_meth WITH KEY
-              table_line = |{ to_upper( ls_chk-real_class ) }\t{ to_upper( ls_chk-name ) }|
-              TRANSPORTING NO FIELDS.
-            IF sy-subrc <> 0 AND ls_chk-class IS NOT INITIAL.
-              DELETE lt_meth INDEX sy-tabix.
-            ENDIF.
+          " keep non-method units (program blocks) as they are
+          IF ls_chk-name IS INITIAL OR ls_chk-class IS INITIAL.
+            APPEND ls_chk TO lt_keep.
+            CONTINUE.
+          ENDIF.
+          READ TABLE lt_flow_meth WITH KEY
+            table_line = |{ to_upper( ls_chk-real_class ) }\t{ to_upper( ls_chk-name ) }|
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            APPEND ls_chk TO lt_keep.
           ENDIF.
         ENDLOOP.
+        lt_meth = lt_keep.
       ENDIF.
       IF lt_meth IS INITIAL.
         open_mermaid( |graph { direction }\n  none["No methods in flow"]\n| ).
@@ -15207,8 +15321,11 @@ DATA(lv_maxlen) = 200.
         READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
         IF sy-subrc = 0. CONTINUE. ENDIF.
         INSERT ls_meth-node_id INTO TABLE lt_seen.
-        lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
-        mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::prog\n|.
+        lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name
+                                      WHEN ls_meth-name IS NOT INITIAL THEN ls_meth-name
+                                      ELSE ls_meth-node_id ).
+        lv_node_label = clean_label( replace( val = lv_node_label sub = `~` with = `-` ) ).
+        mm_string = |{ mm_string }  { ls_meth-node_id }["{ lv_node_label }"]:::prog\n|.
       ENDLOOP.
       LOOP AT lt_cls INTO lv_cls.
         IF lv_cls = 'Programs'. CONTINUE. ENDIF.
@@ -15217,8 +15334,11 @@ DATA(lv_maxlen) = 200.
           READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
           IF sy-subrc = 0. CONTINUE. ENDIF.
           INSERT ls_meth-node_id INTO TABLE lt_seen.
-          lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
-          mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::cls\n|.
+          lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name
+                                        WHEN ls_meth-name IS NOT INITIAL THEN ls_meth-name
+                                        ELSE ls_meth-node_id ).
+          lv_node_label = clean_label( replace( val = lv_node_label sub = `~` with = `-` ) ).
+          mm_string = |{ mm_string }  { ls_meth-node_id }["{ lv_node_label }"]:::cls\n|.
         ENDLOOP.
       ENDLOOP.
     ELSE.
@@ -15237,8 +15357,11 @@ DATA(lv_maxlen) = 200.
           READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
           IF sy-subrc = 0. CONTINUE. ENDIF.
           INSERT ls_meth-node_id INTO TABLE lt_seen.
-          DATA(lv_node_label2) = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
-          mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = lv_node_label2 sub = `~` with = `-` ) }"]\n|.
+          DATA(lv_node_label2) = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name
+                                              WHEN ls_meth-name IS NOT INITIAL THEN ls_meth-name
+                                              ELSE ls_meth-node_id ).
+          lv_node_label2 = clean_label( replace( val = lv_node_label2 sub = `~` with = `-` ) ).
+          mm_string = |{ mm_string }    { ls_meth-node_id }["{ lv_node_label2 }"]\n|.
         ENDLOOP.
         mm_string = |{ mm_string }  end\n|.
       ENDLOOP.
@@ -15288,7 +15411,6 @@ DATA(lv_maxlen) = 200.
        ( butn_type = 3 )
        ( function = 'CALLS'        icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow'              text = 'Calls Flow' )
        ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Code Flow'               text = 'Code Flow' )
-       ( function = 'CMAP'         icon = CONV #( icon_structure )        quickinfo = 'Static method call map'   text = 'Class Map' )
        ( butn_type = 3 )
        ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
@@ -15353,6 +15475,8 @@ DATA(lv_maxlen) = 200.
         add_toolbar_buttons( ).
         mo_toolbar->set_visible( 'X' ).
       ENDIF.
+
+      apply_toolbar_mode( ).
 
       CASE mv_type.
         WHEN 'CALLS'. steps_flow( i_with_params = mv_with_params i_calc_path = mv_calc_path ).
@@ -15527,6 +15651,16 @@ DATA(lv_maxlen) = 200.
       ENDTRY.
 
   endmethod.
+  method CLEAN_LABEL.
+    rv_text = i_text.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline        IN rv_text WITH ` `.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf          IN rv_text WITH ` `.
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>horizontal_tab IN rv_text WITH ` `.
+    " bare CR (first byte of CR_LF) if it survived on its own
+    DATA(lv_cr) = substring( val = cl_abap_char_utilities=>cr_lf off = 0 len = 1 ).
+    REPLACE ALL OCCURRENCES OF lv_cr IN rv_text WITH ` `.
+    CONDENSE rv_text.
+  endmethod.
   method ADD_CLICK_DIRECTIVES.
     rv_mm_string = i_mm_string.
     CHECK mt_node_map IS NOT INITIAL.
@@ -15636,9 +15770,22 @@ DATA(lv_maxlen) = 200.
       it_src    = lt_src
       i_program = lv_prog
       i_include = lv_inc
-      i_from    = COND #( WHEN lv_from > 0 THEN lv_from ELSE 1 ) ).
+      i_from    = COND #( WHEN lv_from > 0 THEN lv_from ELSE 1 )
+      io_scan   = ls_prog-scan ).
+  endmethod.
+  method APPLY_TOOLBAR_MODE.
+    " Flow-only buttons make no sense on the static Map — hide them there.
+    CHECK mo_toolbar IS BOUND.
+    DATA lv_flow_vis TYPE c LENGTH 1.
+    lv_flow_vis = COND #( WHEN mv_type = 'CMAP' THEN space ELSE 'X' ).
+    mo_toolbar->set_button_visible( fcode = 'CALLS'         visible = lv_flow_vis ).
+    mo_toolbar->set_button_visible( fcode = 'FLOW'          visible = lv_flow_vis ).
+    mo_toolbar->set_button_visible( fcode = 'TOGGLE_CALC'   visible = lv_flow_vis ).
+    mo_toolbar->set_button_visible( fcode = 'TOGGLE_PARAMS' visible = lv_flow_vis ).
   endmethod.
   method REFRESH.
+
+      apply_toolbar_mode( ).
 
       CASE mv_type.
         WHEN 'CALLS'.
@@ -15726,16 +15873,23 @@ DATA(lv_maxlen) = 200.
       entity-eventname = <copy>-eventname.   " save raw name before overwrite below
 
       IF lv_agg = abap_true.
-        " Collapse to the owning class (methods) or program (everything else)
+        " Collapse to the owning class (methods) or program (everything else).
+        " Never emit an empty label — mermaid rejects `id("")` and the whole
+        " diagram fails to parse; fall back to include / eventname / '?'.
         IF <copy>-eventtype = 'METHOD' AND <copy>-class IS NOT INITIAL.
-          entity-name  = |"{ <copy>-class }"|.
+          DATA(lv_agg_lbl) = CONV string( <copy>-class ).
           entity-style = c_style_method.
-          entity-class = <copy>-class.
         ELSE.
-          entity-name  = |"{ <copy>-program }"|.
+          lv_agg_lbl = COND string(
+            WHEN <copy>-program   IS NOT INITIAL THEN CONV string( <copy>-program )
+            WHEN <copy>-class     IS NOT INITIAL THEN <copy>-class
+            WHEN <copy>-include   IS NOT INITIAL THEN CONV string( <copy>-include )
+            WHEN <copy>-eventname IS NOT INITIAL THEN <copy>-eventname
+            ELSE '?' ).
           entity-style = c_style_event.
-          entity-class = CONV string( <copy>-program ).
         ENDIF.
+        entity-name  = |"{ lv_agg_lbl }"|.
+        entity-class = lv_agg_lbl.
         <copy>-eventname = entity-name.
         entity-include   = ''.   " collapse across includes of the same unit
 
@@ -15803,7 +15957,13 @@ DATA(lv_maxlen) = 200.
     DATA(lv_idx) = 0.
     LOOP AT entities INTO entity.
       lv_idx = lv_idx + 1.
-      mm_string = |{ mm_string }{ lv_idx }({ entity-name })\n|.
+      " Strip control chars, then guard against an empty label `id("")`
+      " — both break mermaid parsing.
+      DATA(lv_lbl) = clean_label( entity-name ).
+      IF lv_lbl IS INITIAL OR lv_lbl = `""` OR lv_lbl = `" "`.
+        lv_lbl = `"?"`.
+      ENDIF.
+      mm_string = |{ mm_string }{ lv_idx }({ lv_lbl })\n|.
     ENDLOOP.
 
     " ── Шаг 3: строим стрелки через явный стек вызовов ─────────────
@@ -17253,8 +17413,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-19T14:05:11.971Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T14:05:11.971Z`.
+* abapmerge 0.16.7 - 2026-07-19T16:33:20.420Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T16:33:20.420Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
