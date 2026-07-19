@@ -573,18 +573,35 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
   method ON_EDITOR_BORDER_CLICK.
       DATA: type TYPE char1, program TYPE program, include TYPE program, code_line TYPE i.
+      DATA keyword TYPE zif_ace_parse_data=>ts_kword.
+      DATA candidate TYPE zif_ace_parse_data=>ts_kword.
       IF cntrl_pressed_set IS INITIAL. type = 'S'. ELSE. type = 'E'. ENDIF.
       IF m_prg-include = 'Code_Flow_Mix'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = 'Code_Flow_Mix' INTO DATA(prog_mix).
-        READ TABLE prog_mix-t_keywords WITH KEY v_line = line INTO DATA(keyword).
+        LOOP AT prog_mix-t_keywords INTO candidate
+          WHERE v_line <= line.
+          IF keyword-v_line IS INITIAL OR candidate-v_line > keyword-v_line.
+            keyword = candidate.
+          ENDIF.
+        ENDLOOP.
       ELSE.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = m_prg-include INTO prog_mix.
         IF prog_mix-v_keywords IS NOT INITIAL.
-          LOOP AT prog_mix-v_keywords INTO keyword WHERE v_line = line. EXIT. ENDLOOP.
+          LOOP AT prog_mix-v_keywords INTO candidate
+            WHERE v_line <= line.
+            IF keyword-v_line IS INITIAL OR candidate-v_line > keyword-v_line.
+              keyword = candidate.
+            ENDIF.
+          ENDLOOP.
         ELSE.
-          LOOP AT prog_mix-t_keywords INTO keyword WHERE v_line = line. EXIT. ENDLOOP.
+          LOOP AT prog_mix-t_keywords INTO candidate
+            WHERE v_line <= line.
+            IF keyword-v_line IS INITIAL OR candidate-v_line > keyword-v_line.
+              keyword = candidate.
+            ENDIF.
+          ENDLOOP.
         ENDIF.
       ENDIF.
       CHECK keyword-include IS NOT INITIAL.
