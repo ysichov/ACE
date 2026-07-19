@@ -1178,7 +1178,9 @@ DATA(lv_maxlen) = 200.
         READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
         IF sy-subrc = 0. CONTINUE. ENDIF.
         INSERT ls_meth-node_id INTO TABLE lt_seen.
-        lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+        lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name
+                                      WHEN ls_meth-name IS NOT INITIAL THEN ls_meth-name
+                                      ELSE ls_meth-node_id ).
         mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::prog\n|.
       ENDLOOP.
       LOOP AT lt_cls INTO lv_cls.
@@ -1188,7 +1190,9 @@ DATA(lv_maxlen) = 200.
           READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
           IF sy-subrc = 0. CONTINUE. ENDIF.
           INSERT ls_meth-node_id INTO TABLE lt_seen.
-          lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+          lv_node_label = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name
+                                        WHEN ls_meth-name IS NOT INITIAL THEN ls_meth-name
+                                        ELSE ls_meth-node_id ).
           mm_string = |{ mm_string }  { ls_meth-node_id }["{ replace( val = lv_node_label sub = `~` with = `-` ) }"]:::cls\n|.
         ENDLOOP.
       ENDLOOP.
@@ -1208,7 +1212,9 @@ DATA(lv_maxlen) = 200.
           READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
           IF sy-subrc = 0. CONTINUE. ENDIF.
           INSERT ls_meth-node_id INTO TABLE lt_seen.
-          DATA(lv_node_label2) = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name ELSE ls_meth-name ).
+          DATA(lv_node_label2) = COND string( WHEN ls_meth-disp_name IS NOT INITIAL THEN ls_meth-disp_name
+                                              WHEN ls_meth-name IS NOT INITIAL THEN ls_meth-name
+                                              ELSE ls_meth-node_id ).
           mm_string = |{ mm_string }    { ls_meth-node_id }["{ replace( val = lv_node_label2 sub = `~` with = `-` ) }"]\n|.
         ENDLOOP.
         mm_string = |{ mm_string }  end\n|.
@@ -1726,16 +1732,23 @@ DATA(lv_maxlen) = 200.
       entity-eventname = <copy>-eventname.   " save raw name before overwrite below
 
       IF lv_agg = abap_true.
-        " Collapse to the owning class (methods) or program (everything else)
+        " Collapse to the owning class (methods) or program (everything else).
+        " Never emit an empty label — mermaid rejects `id("")` and the whole
+        " diagram fails to parse; fall back to include / eventname / '?'.
         IF <copy>-eventtype = 'METHOD' AND <copy>-class IS NOT INITIAL.
-          entity-name  = |"{ <copy>-class }"|.
+          DATA(lv_agg_lbl) = CONV string( <copy>-class ).
           entity-style = c_style_method.
-          entity-class = <copy>-class.
         ELSE.
-          entity-name  = |"{ <copy>-program }"|.
+          lv_agg_lbl = COND string(
+            WHEN <copy>-program   IS NOT INITIAL THEN CONV string( <copy>-program )
+            WHEN <copy>-class     IS NOT INITIAL THEN <copy>-class
+            WHEN <copy>-include   IS NOT INITIAL THEN CONV string( <copy>-include )
+            WHEN <copy>-eventname IS NOT INITIAL THEN <copy>-eventname
+            ELSE '?' ).
           entity-style = c_style_event.
-          entity-class = CONV string( <copy>-program ).
         ENDIF.
+        entity-name  = |"{ lv_agg_lbl }"|.
+        entity-class = lv_agg_lbl.
         <copy>-eventname = entity-name.
         entity-include   = ''.   " collapse across includes of the same unit
 
@@ -1803,7 +1816,10 @@ DATA(lv_maxlen) = 200.
     DATA(lv_idx) = 0.
     LOOP AT entities INTO entity.
       lv_idx += 1.
-      mm_string = |{ mm_string }{ lv_idx }({ entity-name })\n|.
+      " Guard against an empty label `id("")`, which fails mermaid parsing.
+      DATA(lv_lbl) = COND string( WHEN entity-name IS INITIAL OR entity-name = `""`
+                                  THEN `"?"` ELSE entity-name ).
+      mm_string = |{ mm_string }{ lv_idx }({ lv_lbl })\n|.
     ENDLOOP.
 
     " ── Шаг 3: строим стрелки через явный стек вызовов ─────────────
