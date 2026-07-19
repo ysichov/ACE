@@ -10,6 +10,7 @@ class ZCL_ACE_SRC_POPUP definition
     data MV_PROGRAM type PROGRAM .
     data MV_INCLUDE type PROGRAM .
     data MV_FROM type I .
+    data MO_SCAN type ref to CL_CI_SCAN .
 
     methods CONSTRUCTOR
       importing
@@ -39,6 +40,8 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     mv_program = i_program.
     mv_include = i_include.
     mv_from    = COND #( WHEN i_from > 0 THEN i_from ELSE 1 ).
+    DATA(lo_src) = cl_ci_source_include=>create( p_name = i_include ).
+    mo_scan = NEW cl_ci_scan( p_include = lo_src ).
 
     mo_box = create( i_width = 700 i_hight = 500 i_name = i_title ).
     IF mo_box IS INITIAL. RETURN. ENDIF.
@@ -67,6 +70,20 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     DATA lv_abs  TYPE i.
     lv_abs = mv_from + line - 1.
     CHECK lv_abs > 0.
+
+    " A breakpoint belongs to the first line of the ABAP statement.
+    " Continuation lines (for example TO ... after APPEND VALUE) must
+    " therefore be mapped back to the statement's first token row.
+    IF mo_scan IS BOUND.
+      LOOP AT mo_scan->statements INTO DATA(ls_stmt).
+        READ TABLE mo_scan->tokens INDEX ls_stmt-from INTO DATA(ls_first_token).
+        READ TABLE mo_scan->tokens INDEX ls_stmt-to   INTO DATA(ls_last_token).
+        IF sy-subrc = 0 AND lv_abs BETWEEN ls_first_token-row AND ls_last_token-row.
+          lv_abs = ls_first_token-row.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
 
     " Already a session breakpoint here? → remove it.
     CALL METHOD cl_abap_debugger=>read_breakpoints
