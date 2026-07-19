@@ -11,6 +11,7 @@ class ZCL_ACE_SRC_POPUP definition
     data MV_INCLUDE type PROGRAM .
     data MV_FROM type I .
     data MO_SCAN type ref to CL_CI_SCAN .
+    data MT_SRC type STRING_TABLE .
 
     methods CONSTRUCTOR
       importing
@@ -40,10 +41,15 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     mv_program = i_program.
     mv_include = i_include.
     mv_from    = COND #( WHEN i_from > 0 THEN i_from ELSE 1 ).
+    mt_src     = it_src.
     DATA(lo_src) = cl_ci_source_include=>create( p_name = i_include ).
     mo_scan = NEW cl_ci_scan( p_include = lo_src ).
 
-    mo_box = create( i_width = 700 i_hight = 500 i_name = i_title ).
+    DATA(lv_height) = lines( it_src ) * 18 + 100.
+    IF lv_height < 260. lv_height = 260. ENDIF.
+    IF lv_height > 400. lv_height = 400. ENDIF.
+
+    mo_box = create( i_width = 700 i_hight = lv_height i_name = i_title ).
     IF mo_box IS INITIAL. RETURN. ENDIF.
     SET HANDLER on_box_close FOR mo_box.
 
@@ -83,6 +89,26 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
           EXIT.
         ENDIF.
       ENDLOOP.
+    ENDIF.
+
+    " The popup displays a source slice.  If the scan belongs to a
+    " different/generated include, fall back to the displayed indentation:
+    " a continuation line belongs to the nearest preceding less-indented line.
+    IF line <= lines( mt_src ).
+      DATA(lv_clicked) = mt_src[ line ].
+      DATA(lv_indent) = strlen( lv_clicked ) - strlen( condense( lv_clicked ) ).
+      DATA(lv_row) = line - 1.
+      WHILE lv_row > 0.
+        DATA(lv_prev) = mt_src[ lv_row ].
+        IF lv_prev IS NOT INITIAL.
+          DATA(lv_prev_indent) = strlen( lv_prev ) - strlen( condense( lv_prev ) ).
+          IF lv_prev_indent < lv_indent.
+            lv_abs = mv_from + lv_row - 1.
+            EXIT.
+          ENDIF.
+        ENDIF.
+        lv_row = lv_row - 1.
+      ENDWHILE.
     ENDIF.
 
     " Already a session breakpoint here? → remove it.
