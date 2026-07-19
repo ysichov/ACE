@@ -15,6 +15,28 @@ private section.
   data MV_SUPER_CLS type STRING .
   data MV_SUPER type STRING .
 
+  " Built-in functions and constructor expressions that look like
+  " functional method calls (NAME( ... )) but must never be recorded.
+  constants C_BUILTIN_FUNCS type STRING value
+    ` ABS CEIL FLOOR FRAC SIGN TRUNC IPOW NMAX NMIN SQRT EXP LOG LOG10 SIN COS TAN`
+    & ` ASIN ACOS ATAN SINH COSH TANH ROUND RESCALE CHARLEN DBMAXLEN NUMOFCHAR STRLEN`
+    & ` XSTRLEN LINES BOOLC BOOLX XSDBOOL CONCAT_LINES_OF CONDENSE ESCAPE MATCH REPEAT`
+    & ` REPLACE REVERSE SEGMENT SHIFT_LEFT SHIFT_RIGHT SUBSTRING SUBSTRING_AFTER`
+    & ` SUBSTRING_BEFORE SUBSTRING_FROM SUBSTRING_TO TO_LOWER TO_MIXED TO_UPPER FROM_MIXED`
+    & ` TRANSLATE CMAX CMIN COUNT COUNT_ANY_OF COUNT_ANY_NOT_OF DISTANCE FIND FIND_END`
+    & ` FIND_ANY_OF FIND_ANY_NOT_OF CONTAINS CONTAINS_ANY_OF CONTAINS_ANY_NOT_OF`
+    & ` LINE_EXISTS LINE_INDEX UTCLONG_CURRENT UTCLONG_ADD UTCLONG_DIFF`
+    & ` CORRESPONDING FILTER REDUCE EXACT VALUE CONV REF CAST COND SWITCH DATA FINAL FIELD-SYMBOL ` ##NO_TEXT.
+  " Statement keywords that never contain method calls (declarations, SQL, …) —
+  " the generic fallback scan skips them to avoid false positives.
+  constants C_SKIP_KEYWORDS type STRING value
+    `;CLASS;ENDCLASS;INTERFACE;ENDINTERFACE;INTERFACES;ALIASES;METHODS;CLASS-METHODS;`
+    & `METHOD;ENDMETHOD;EVENTS;CLASS-EVENTS;DATA;CLASS-DATA;TYPES;CONSTANTS;STATICS;`
+    & `FIELD-SYMBOLS;PARAMETERS;SELECT-OPTIONS;SELECTION-SCREEN;TABLES;RANGES;NODES;`
+    & `FORM;ENDFORM;FUNCTION;ENDFUNCTION;MODULE;ENDMODULE;REPORT;PROGRAM;INCLUDE;`
+    & `TYPE-POOLS;SELECT;ENDSELECT;WITH;UPDATE;DELETE;MODIFY;INSERT;OPEN;FETCH;CLOSE;`
+    & `EXEC;ENDEXEC;DEFINE;END-OF-DEFINITION;` ##NO_TEXT.
+
   methods RESOLVE_VAR_TYPE
     importing
       !IS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
@@ -23,8 +45,25 @@ private section.
       !I_EVTYPE type STRING
       !I_EVNAME type STRING
       !I_VARNAME type STRING
+      !I_CLASS type STRING optional
     returning
       value(RV_TYPE) type STRING .
+    " Resolves a reference chain like OBJ->MO_ATTR or CLS=>ATTR->SUB
+    " to the class of the last segment.
+  methods RESOLVE_CHAIN
+    importing
+      !IS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
+      !I_PROGRAM type PROGRAM
+      !I_EVTYPE type STRING
+      !I_EVNAME type STRING
+      !I_CHAIN type STRING
+    returning
+      value(RV_TYPE) type STRING .
+  methods IS_BUILTIN
+    importing
+      !I_NAME type STRING
+    returning
+      value(RV_BUILTIN) type ABAP_BOOL .
   methods GET_SUPER
     importing
       !IS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
@@ -157,9 +196,11 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     " t_vars is pre-sorted by (program, eventtype, eventname, name)
     " before this pass runs — so READ with BINARY SEARCH is O(log n).
 
-    " 1. Local scope
+    " 1. Local scope (restricted to the current class when known,
+    "    otherwise a same-named local of another class could match)
     READ TABLE is_source-t_vars
       WITH KEY program   = i_program
+               class     = i_class
                eventtype = i_evtype
                eventname = i_evname
                name      = i_varname
@@ -170,9 +211,10 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " 2. Class attributes (eventtype = '', eventname = '')
+    " 2. Attributes of the current class (eventtype = '', eventname = '')
     READ TABLE is_source-t_vars
       WITH KEY program   = i_program
+               class     = i_class
                eventtype = ''
                eventname = ''
                name      = i_varname
@@ -193,6 +235,50 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL.
       rv_type = ls_var-type.
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD resolve_chain.
+    " OBJ->ATTR[->ATTR2…] or CLS=>ATTR[->…]: resolve the head, then walk
+    " each attribute through the type of the previous segment.
+    DATA lt_seg TYPE string_table.
+    DATA lv_cur TYPE string.
+
+    SPLIT i_chain AT '->' INTO TABLE lt_seg.
+    READ TABLE lt_seg INDEX 1 INTO DATA(lv_head).
+    IF sy-subrc <> 0 OR lv_head IS INITIAL. RETURN. ENDIF.
+
+    IF lv_head CS '=>'.
+      SPLIT lv_head AT '=>' INTO DATA(lv_hcls) DATA(lv_hattr).
+      LOOP AT is_source-t_vars INTO DATA(ls_hv)
+        WHERE class = lv_hcls AND name = lv_hattr AND type IS NOT INITIAL.
+        lv_cur = ls_hv-type. EXIT.
+      ENDLOOP.
+    ELSEIF lv_head = 'ME'.
+      lv_cur = mv_class_name.
+    ELSE.
+      lv_cur = resolve_var_type(
+        is_source = is_source i_program = i_program i_include = i_program
+        i_evtype  = i_evtype  i_evname  = i_evname
+        i_varname = lv_head   i_class   = mv_class_name ).
+    ENDIF.
+    IF lv_cur IS INITIAL. RETURN. ENDIF.
+
+    LOOP AT lt_seg FROM 2 INTO DATA(lv_attr).
+      DATA(lv_next) = ``.
+      LOOP AT is_source-t_vars INTO DATA(ls_av)
+        WHERE class = lv_cur AND name = lv_attr AND type IS NOT INITIAL.
+        lv_next = ls_av-type. EXIT.
+      ENDLOOP.
+      IF lv_next IS INITIAL. RETURN. ENDIF.
+      lv_cur = lv_next.
+    ENDLOOP.
+    rv_type = lv_cur.
+  ENDMETHOD.
+
+
+  METHOD is_builtin.
+    rv_builtin = xsdbool( c_builtin_funcs CS | { i_name } | ).
   ENDMETHOD.
 
 
@@ -235,14 +321,24 @@ METHOD collect_method_calls.
       CLEAR: lv_arrow, lv_left, lv_right, lv_rpart, lv_dummy.
 
       " ── Распознаём токен вызова ───────────────────────────────────
-      IF lv_tstr CS '=>' AND lv_tstr CS '('.
+      " Split at the LAST arrow so that multi-level access
+      " (obj->attr->meth( / cls=>attr->meth() yields the real method name
+      " and the full reference chain on the left.
+      DATA lv_p_inst TYPE i.
+      DATA lv_p_stat TYPE i.
+      lv_p_inst = find( val = lv_tstr sub = '->' occ = -1 ).
+      lv_p_stat = find( val = lv_tstr sub = '=>' occ = -1 ).
+
+      IF lv_p_stat >= 0 AND lv_p_stat > lv_p_inst AND lv_tstr CS '('.
         lv_arrow = '=>'.
-        SPLIT lv_tstr AT '=>' INTO lv_left lv_rpart.
+        lv_left  = substring( val = lv_tstr len = lv_p_stat ).
+        lv_rpart = substring( val = lv_tstr off = lv_p_stat + 2 ).
         SPLIT lv_rpart AT '(' INTO lv_right lv_dummy.
 
-      ELSEIF lv_tstr CS '->' AND lv_tstr CS '('.
+      ELSEIF lv_p_inst >= 0 AND lv_tstr CS '('.
         lv_arrow = '->'.
-        SPLIT lv_tstr AT '->' INTO lv_left lv_rpart.
+        lv_left  = substring( val = lv_tstr len = lv_p_inst ).
+        lv_rpart = substring( val = lv_tstr off = lv_p_inst + 2 ).
         SPLIT lv_rpart AT '(' INTO lv_right lv_dummy.
         IF lv_left IS INITIAL OR lv_left CO ')'.
           READ TABLE io_scan->tokens INDEX lv_ti - 1 INTO DATA(ls_m1).
@@ -297,6 +393,10 @@ METHOD collect_method_calls.
           lv_left  = ls_next-str.
           REPLACE ALL OCCURRENCES OF '(' IN lv_left WITH ''.
           CONDENSE lv_left NO-GAPS.
+          " NEW #( ) — the class is inferred by the compiler, nothing to record
+          IF lv_left = '#'.
+            lv_ti += 1. CONTINUE.
+          ENDIF.
           lv_right = 'CONSTRUCTOR'.
           lv_ti += 1.
         ELSE.
@@ -308,22 +408,31 @@ METHOD collect_method_calls.
         IF ls_after-str = '='.
           lv_ti += 1. CONTINUE.
         ENDIF.
-        IF lv_tstr CP 'DATA(*'
-          OR lv_tstr CP 'FIELD-SYMBOL(*'
-          OR lv_tstr CP 'FINAL(*'
-          OR lv_tstr CP 'VALUE(*'
-          OR lv_tstr CP 'CONV(*'
-          OR lv_tstr CP 'REF(*'
-          OR lv_tstr CP 'CAST(*'
-          OR lv_tstr CP 'COND(*'
-          OR lv_tstr CP 'SWITCH(*'.
+        " The method name is everything before the first '(' — a token like
+        " FOO(BAR) must not collapse into FOOBAR, and DATA(LV_X) / VALUE(…)
+        " style tokens are filtered out via the builtin list.
+        DATA(lv_par_off) = find( val = lv_tstr sub = '(' ).
+        IF lv_par_off <= 0.
+          lv_ti += 1. CONTINUE.
+        ENDIF.
+        lv_right = substring( val = lv_tstr len = lv_par_off ).
+        CONDENSE lv_right NO-GAPS.
+        " Built-in functions and constructor expressions are not method calls
+        IF lv_right IS INITIAL OR is_builtin( lv_right ) = abap_true.
+          CLEAR lv_right.
+          lv_ti += 1. CONTINUE.
+        ENDIF.
+        " Length/offset specifications lv_x(10) / lv_x+2(3) are not calls
+        DATA(lv_par_rem) = substring( val = lv_tstr off = lv_par_off + 1 ).
+        REPLACE ALL OCCURRENCES OF ')' IN lv_par_rem WITH ''.
+        CONDENSE lv_par_rem NO-GAPS.
+        IF lv_right CA '+'
+          OR ( lv_par_rem IS NOT INITIAL AND lv_par_rem CO '0123456789*' ).
+          CLEAR lv_right.
           lv_ti += 1. CONTINUE.
         ENDIF.
         lv_arrow = '->'.
         lv_left  = 'ME'.
-        lv_right = lv_tstr.
-        REPLACE ALL OCCURRENCES OF '(' IN lv_right WITH ''.
-        CONDENSE lv_right NO-GAPS.
 
       ELSE.
         lv_ti += 1. CONTINUE.
@@ -338,16 +447,31 @@ METHOD collect_method_calls.
       CLEAR lv_c.
       lv_c-event = 'METHOD'.
       lv_c-name  = lv_right.
+      " Leftover ')' from a chained call ( a->b( )->c( ) ) is not a variable —
+      " record the call by name only instead of a garbage outer reference.
+      IF lv_left CO ')' AND lv_left IS NOT INITIAL.
+        CLEAR lv_left.
+      ENDIF.
+
       IF lv_left = 'ME'.
         lv_c-class = mv_class_name.
       ELSEIF lv_left = 'SUPER'.
         lv_c-super = abap_true.
         lv_c-class = COND #( WHEN mv_super IS NOT INITIAL THEN mv_super ELSE mv_class_name ).
+      ELSEIF lv_left CS '->' OR lv_left CS '=>'.
+        " Multi-level access: obj->attr->meth( / cls=>attr->meth(
+        lv_rtype = resolve_chain(
+          is_source = cs_source i_program = i_program
+          i_evtype  = lv_c-event i_evname = mv_event_name
+          i_chain   = lv_left ).
+        lv_c-class = lv_rtype.
+        lv_c-outer = lv_left.
+        lv_c-inner = lv_right.
       ELSE.
         lv_rtype = resolve_var_type(
           is_source = cs_source i_program = i_program i_include = i_program
           i_evtype  = lv_c-event i_evname = mv_event_name
-          i_varname = lv_left ).
+          i_varname = lv_left   i_class   = mv_class_name ).
         IF lv_rtype IS NOT INITIAL.
           lv_c-class = lv_rtype.
           lv_c-outer = lv_left.
@@ -421,6 +545,8 @@ METHOD collect_method_calls.
         lv_sa_str = ls_sa-str.
         IF lv_sa_str = ')' OR lv_sa_str CO ')'. EXIT. ENDIF.
         IF lv_sa_str = '(' OR lv_sa_str = ','. lv_scan += 1. CONTINUE. ENDIF.
+        " EXCEPTIONS entries are not data bindings — stop collecting
+        IF lv_sa_str = 'EXCEPTIONS'. EXIT. ENDIF.
         IF lv_sa_str = 'EXPORTING' OR lv_sa_str = 'IMPORTING' OR
            lv_sa_str = 'CHANGING'  OR lv_sa_str = 'RECEIVING'.
           lv_cur_sec = lv_sa_str.
@@ -516,7 +642,13 @@ METHOD collect_method_calls.
 
     IF lv_kw = 'RAISE'.
       READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok2.
-      IF sy-subrc = 0 AND ls_tok2-str = 'EVENT'. lv_kw = 'RAISE EVENT'. ENDIF.
+      IF sy-subrc = 0.
+        CASE ls_tok2-str.
+          WHEN 'EVENT'.     lv_kw = 'RAISE EVENT'.
+          WHEN 'EXCEPTION'. lv_kw = 'RAISE EXCEPTION'.
+          WHEN 'SHORTDUMP'. lv_kw = 'RAISE EXCEPTION'.
+        ENDCASE.
+      ENDIF.
     ENDIF.
 
     IF lv_kw = 'NEW'. lv_kw = 'COMPUTE'. ENDIF.
@@ -596,19 +728,67 @@ METHOD collect_method_calls.
         CHECK sy-subrc = 0.
         DATA(lv_fname) = ls_tok-str.
         REPLACE ALL OCCURRENCES OF '''' IN lv_fname WITH ''.
-        APPEND VALUE zcl_ace=>ts_calls( event = 'FUNCTION' name = lv_fname )
-          TO lt_new_calls.
+        DATA(ls_cf_call) = VALUE zcl_ace=>ts_calls( event = 'FUNCTION' name = lv_fname ).
+        " Collect parameter bindings (formal = actual) per section
+        DATA lv_cf_sec TYPE string.
+        DATA lv_cf_i   TYPE i.
+        CLEAR lv_cf_sec.
+        lv_cf_i = ls_stmt-from + 3.
+        WHILE lv_cf_i <= ls_stmt-to.
+          READ TABLE io_scan->tokens INDEX lv_cf_i INTO DATA(ls_cf_t).
+          IF sy-subrc <> 0. EXIT. ENDIF.
+          CASE ls_cf_t-str.
+            WHEN 'EXCEPTIONS'. EXIT.
+            WHEN 'EXPORTING' OR 'IMPORTING' OR 'CHANGING' OR 'TABLES'.
+              lv_cf_sec = ls_cf_t-str.
+            WHEN 'DESTINATION' OR 'STARTING' OR 'IN' OR 'PERFORMING' OR 'CALLING'.
+              " control clauses, no bindings here
+            WHEN '='. " skip
+            WHEN OTHERS.
+              IF lv_cf_sec IS NOT INITIAL AND ls_cf_t-str IS NOT INITIAL.
+                DATA ls_cf_eq LIKE LINE OF io_scan->tokens.
+                CLEAR ls_cf_eq.
+                READ TABLE io_scan->tokens INDEX lv_cf_i + 1 INTO ls_cf_eq.
+                IF sy-subrc = 0 AND ls_cf_eq-str = '='.
+                  READ TABLE io_scan->tokens INDEX lv_cf_i + 2 INTO DATA(ls_cf_val).
+                  IF sy-subrc = 0 AND ls_cf_val-str IS NOT INITIAL.
+                    DATA(lv_cf_act) = ls_cf_val-str.
+                    REPLACE ALL OCCURRENCES OF ')' IN lv_cf_act WITH ''.
+                    CONDENSE lv_cf_act NO-GAPS.
+                    APPEND VALUE zif_ace_parse_data=>ts_param_binding(
+                      inner = ls_cf_t-str
+                      outer = lv_cf_act
+                      dir   = SWITCH char1( lv_cf_sec
+                                WHEN 'EXPORTING' THEN 'I'
+                                WHEN 'IMPORTING' THEN 'E'
+                                WHEN 'TABLES'    THEN 'C'
+                                WHEN 'CHANGING'  THEN 'C'
+                                ELSE                  'I' ) )
+                      TO ls_cf_call-bindings.
+                    lv_cf_i += 2.
+                  ENDIF.
+                ENDIF.
+              ENDIF.
+          ENDCASE.
+          lv_cf_i += 1.
+        ENDWHILE.
+        APPEND ls_cf_call TO lt_new_calls.
 
-      " ── CALL METHOD ──────────────────────────────────────────────
-      WHEN 'CALL METHOD'.
+      " ── CALL METHOD / CALL BADI ──────────────────────────────────
+      WHEN 'CALL METHOD' OR 'CALL BADI'.
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
         CHECK sy-subrc = 0 AND ls_tok-str IS NOT INITIAL.
         DATA(lv_call) = VALUE zcl_ace=>ts_calls( event = 'METHOD' ).
         DATA(lv_str)  = ls_tok-str.
-        IF lv_str CS '->'.
-          SPLIT lv_str AT '->' INTO lv_call-class lv_call-name.
-        ELSEIF lv_str CS '=>'.
-          SPLIT lv_str AT '=>' INTO lv_call-class lv_call-name.
+        " Split at the LAST arrow so obj->attr->meth keeps its full chain
+        DATA(lv_cm_pi) = find( val = lv_str sub = '->' occ = -1 ).
+        DATA(lv_cm_ps) = find( val = lv_str sub = '=>' occ = -1 ).
+        IF lv_cm_pi >= 0 AND lv_cm_pi > lv_cm_ps.
+          lv_call-class = substring( val = lv_str len = lv_cm_pi ).
+          lv_call-name  = substring( val = lv_str off = lv_cm_pi + 2 ).
+        ELSEIF lv_cm_ps >= 0.
+          lv_call-class = substring( val = lv_str len = lv_cm_ps ).
+          lv_call-name  = substring( val = lv_str off = lv_cm_ps + 2 ).
         ELSE.
           lv_call-name = lv_str.
         ENDIF.
@@ -619,10 +799,23 @@ METHOD collect_method_calls.
         ELSEIF lv_call-class = 'SUPER'.
           lv_call-super = abap_true.
           lv_call-class = COND #( WHEN lv_super IS NOT INITIAL THEN lv_super ELSE mv_class_name ).
+        ELSEIF lv_call-class CS '->' OR lv_call-class CS '=>'.
+          DATA(lv_resolved) = resolve_chain(
+            is_source = cs_source i_program = i_program
+            i_evtype  = mv_event_type i_evname = mv_event_name
+            i_chain   = lv_call-class ).
+          IF lv_resolved IS NOT INITIAL.
+            lv_call-outer = lv_call-class.
+            lv_call-inner = lv_call-name.
+            lv_call-class = lv_resolved.
+          ENDIF.
         ELSEIF lv_call-class IS NOT INITIAL.
-          DATA(lv_resolved) = resolve_var_type(
+          " The variable is looked up in the scope of the CONTAINING method,
+          " not the called one
+          lv_resolved = resolve_var_type(
             is_source = cs_source i_program = i_program i_include = i_program
-            i_evtype = 'METHOD' i_evname = lv_call-name i_varname = lv_call-class ).
+            i_evtype  = mv_event_type i_evname = mv_event_name
+            i_varname = lv_call-class i_class = mv_class_name ).
           IF lv_resolved IS NOT INITIAL.
             lv_call-outer = lv_call-class.
             lv_call-inner = lv_call-name.
@@ -640,8 +833,10 @@ METHOD collect_method_calls.
             WHEN '='. " skip
             WHEN OTHERS.
               IF lv_section_cm IS NOT INITIAL AND ls_t_cm-str IS NOT INITIAL.
-                READ TABLE io_scan->tokens INDEX lv_tok_cm + 1 INTO DATA(ls_eq_cm).
-                IF ls_eq_cm-str = '='.
+                DATA ls_eq_cm LIKE LINE OF io_scan->tokens.
+                CLEAR ls_eq_cm.
+                READ TABLE io_scan->tokens INDEX lv_tok_cm + 1 INTO ls_eq_cm.
+                IF sy-subrc = 0 AND ls_eq_cm-str = '='.
                   READ TABLE io_scan->tokens INDEX lv_tok_cm + 2 INTO DATA(ls_var_cm).
                   IF sy-subrc = 0 AND ls_var_cm-str IS NOT INITIAL.
                     DATA(lv_cm_actual) = ls_var_cm-str.
@@ -697,7 +892,8 @@ METHOD collect_method_calls.
               lv_cn = ls_cn-str.
               REPLACE ALL OCCURRENCES OF '(' IN lv_cn WITH ''.
               CONDENSE lv_cn NO-GAPS.
-              IF lv_cn IS NOT INITIAL.
+              " NEW #( ) — inferred type, no class to record
+              IF lv_cn IS NOT INITIAL AND lv_cn <> '#'.
                 APPEND VALUE zcl_ace=>ts_calls(
                   event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR' ) TO lt_new_calls.
               ENDIF.
@@ -753,7 +949,8 @@ METHOD collect_method_calls.
         IF lv_co_class IS INITIAL.
           lv_co_class = resolve_var_type(
             is_source = cs_source i_program = i_program i_include = i_program
-            i_evtype  = 'METHOD' i_evname = mv_event_name i_varname = lv_co_var ).
+            i_evtype  = 'METHOD' i_evname = mv_event_name i_varname = lv_co_var
+            i_class   = mv_class_name ).
         ENDIF.
 
         " Fallback: resolve the attribute in the context of its owning class.
@@ -764,7 +961,8 @@ METHOD collect_method_calls.
             WHEN lv_co_pref = 'ME' OR lv_co_pref = 'SUPER' THEN mv_class_name
             ELSE resolve_var_type(
               is_source = cs_source i_program = i_program i_include = i_program
-              i_evtype  = 'METHOD' i_evname = mv_event_name i_varname = lv_co_pref ) ).
+              i_evtype  = 'METHOD' i_evname = mv_event_name i_varname = lv_co_pref
+              i_class   = mv_class_name ) ).
           IF lv_co_owner IS NOT INITIAL.
             LOOP AT cs_source-t_vars INTO DATA(ls_co_attr)
               WHERE class = lv_co_owner AND name = lv_co_var AND type IS NOT INITIAL.
@@ -818,6 +1016,59 @@ METHOD collect_method_calls.
         collect_method_calls(
           EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
           CHANGING  cs_source = cs_source ct_calls = lt_new_calls ).
+
+      " ── RAISE EXCEPTION / RAISE SHORTDUMP ────────────────────────
+      " RAISE EXCEPTION TYPE cls [EXPORTING …] → CONSTRUCTOR call;
+      " RAISE EXCEPTION NEW cls( … ) is picked up by collect_method_calls.
+      WHEN 'RAISE EXCEPTION'.
+        DATA lv_rx_i TYPE i.
+        lv_rx_i = ls_stmt-from + 2.
+        WHILE lv_rx_i <= ls_stmt-to.
+          READ TABLE io_scan->tokens INDEX lv_rx_i INTO DATA(ls_rx_t).
+          IF sy-subrc <> 0. EXIT. ENDIF.
+          IF ls_rx_t-str = 'TYPE'.
+            READ TABLE io_scan->tokens INDEX lv_rx_i + 1 INTO DATA(ls_rx_cls).
+            IF sy-subrc = 0 AND ls_rx_cls-str IS NOT INITIAL.
+              APPEND VALUE zcl_ace=>ts_calls(
+                event = 'METHOD' class = ls_rx_cls-str name = 'CONSTRUCTOR' )
+                TO lt_new_calls.
+            ENDIF.
+            EXIT.
+          ENDIF.
+          lv_rx_i += 1.
+        ENDWHILE.
+        collect_method_calls(
+          EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
+          CHANGING  cs_source = cs_source ct_calls = lt_new_calls ).
+
+      " ── Fallback: functional calls inside any other statement ────
+      " IF check( ) = abap_true. / WHILE has_next( ). / APPEND build( ) TO …
+      " / RETURN meth( ). / string templates — everything that is neither a
+      " COMPUTE nor an explicit call statement. Declarations and SQL are
+      " skipped via C_SKIP_KEYWORDS.
+      WHEN OTHERS.
+        IF c_skip_keywords NS |;{ lv_kw };|.
+          DATA lv_fb_i    TYPE i.
+          DATA lv_fb_hit  TYPE abap_bool.
+          CLEAR lv_fb_hit.
+          lv_fb_i = ls_stmt-from.
+          WHILE lv_fb_i <= ls_stmt-to.
+            READ TABLE io_scan->tokens INDEX lv_fb_i INTO DATA(ls_fb_t).
+            IF sy-subrc <> 0. EXIT. ENDIF.
+            IF ls_fb_t-str CS '->' OR ls_fb_t-str CS '=>'
+              OR ls_fb_t-str = 'NEW'
+              OR ( ls_fb_t-str CA '(' AND lv_fb_i > ls_stmt-from ).
+              lv_fb_hit = abap_true.
+              EXIT.
+            ENDIF.
+            lv_fb_i += 1.
+          ENDWHILE.
+          IF lv_fb_hit = abap_true.
+            collect_method_calls(
+              EXPORTING io_scan = io_scan i_stmt = ls_stmt i_program = i_program
+              CHANGING  cs_source = cs_source ct_calls = lt_new_calls ).
+          ENDIF.
+        ENDIF.
 
     ENDCASE.
 
