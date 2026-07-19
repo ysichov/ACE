@@ -2521,6 +2521,17 @@ public section.
     importing
       !I_INCLUDE type PROGRAM
       !I_LINE    type I.
+    " Window caption: CLASS->METHOD / FM: name / program - include
+  methods SET_NAV_CAPTION
+    importing
+      !I_INCLUDE type PROGRAM
+      !I_CLASS   type STRING optional
+      !I_EVTYPE  type STRING optional
+      !I_EVNAME  type STRING optional .
+    " Open an object in the SAP editor when it is not part of the parsed set
+  methods NAVIGATE_EXTERNAL
+    importing
+      !I_CALL type ZIF_ACE_PARSE_DATA=>TS_CALLS .
   methods SET_MIXPROG_LINE
     importing
       !I_LINE like SY-INDEX optional .
@@ -3197,7 +3208,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             INTO ls_tgt_cl.
         ENDIF.
         IF ls_tgt_cl-include IS INITIAL.
-          MESSAGE |DBG dblclick: { ls_call-class }/{ ls_call-event }/{ ls_call-name } not found in tt_calls_line| TYPE 'I'.
+          " Not in the parsed set (standard FM/class etc.) → open externally
+          navigate_external( ls_call ).
           RETURN.
         ENDIF.
 
@@ -3224,13 +3236,17 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       MESSAGE |DBG dblclick: kw={ kw-name } — no target line resolved| TYPE 'S'.
       RETURN.
     ENDIF.
-    MESSAGE |DBG dblclick: go { lv_target_include } v_line { lv_target_vline }| TYPE 'S'.
+
+    " Record the ORIGIN in the navigation history — without it NAV_BACK has
+    " nowhere to return to when the start position was never navigated to.
+    push_nav_entry( i_include = m_prg-include i_line = fr_line ).
 
     IF lv_target_include <> m_prg-include AND lv_target_include IS NOT INITIAL.
       m_prg-include = lv_target_include.
       set_program( lv_target_include ).
     ENDIF.
     set_program_line( lv_target_vline ).
+    set_nav_caption( lv_target_include ).
 
   ENDMETHOD.
   method ON_STACK_DOUBLE_CLICK.
@@ -3585,6 +3601,89 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     ENDIF.
     APPEND VALUE ts_nav_entry( include = i_include line = i_line ) TO mt_nav_history.
     mv_nav_idx = lines( mt_nav_history ).
+  ENDMETHOD.
+  METHOD set_nav_caption.
+    DATA lv_cap TYPE string.
+
+    " Explicit unit info wins (passed on navigation to a known target)
+    IF i_evname IS NOT INITIAL.
+      CASE i_evtype.
+        WHEN 'METHOD'.
+          lv_cap = COND #( WHEN i_class IS NOT INITIAL
+                           THEN |{ i_class }->{ i_evname }|
+                           ELSE |{ i_evname }| ).
+        WHEN 'FUNCTION'.
+          lv_cap = |FM: { i_evname }|.
+        WHEN 'FORM'.
+          lv_cap = |FORM { i_evname }|.
+        WHEN OTHERS.
+          lv_cap = |{ i_evtype } { i_evname }|.
+      ENDCASE.
+    ELSE.
+      " Derive from parsed data by include
+      READ TABLE ms_sources-tt_calls_line WITH KEY include = i_include INTO DATA(ls_cl).
+      IF sy-subrc = 0 AND ls_cl-eventname IS NOT INITIAL.
+        CASE ls_cl-eventtype.
+          WHEN 'METHOD'.
+            lv_cap = |{ ls_cl-class }->{ ls_cl-eventname }|.
+          WHEN 'FUNCTION'.
+            lv_cap = |FM: { ls_cl-eventname }|.
+          WHEN 'FORM'.
+            lv_cap = |FORM { ls_cl-eventname }|.
+          WHEN OTHERS.
+            lv_cap = |{ ls_cl-eventtype } { ls_cl-eventname }|.
+        ENDCASE.
+      ENDIF.
+    ENDIF.
+
+    " Program - include suffix (only when they differ)
+    READ TABLE ms_sources-tt_progs WITH KEY include = i_include INTO DATA(ls_pr).
+    DATA(lv_prog) = COND string( WHEN sy-subrc = 0 AND ls_pr-program IS NOT INITIAL
+                                 THEN ls_pr-program ELSE CONV #( m_prg-program ) ).
+    DATA(lv_loc) = COND string(
+      WHEN lv_prog IS NOT INITIAL AND lv_prog <> i_include
+      THEN |{ lv_prog } - { i_include }|
+      ELSE |{ i_include }| ).
+
+    lv_cap = COND #( WHEN lv_cap IS INITIAL THEN lv_loc
+                     ELSE |{ lv_cap }  [{ lv_loc }]| ).
+    IF mo_box IS NOT INITIAL.
+      mo_box->set_caption( lv_cap ).
+    ENDIF.
+  ENDMETHOD.
+  METHOD navigate_external.
+    " The call target is not part of the parsed sources (e.g. a standard
+    " FM or class) — open it in the SAP workbench editor instead.
+    DATA lv_obj_type TYPE seu_obj.
+    DATA lv_obj_name TYPE string.
+
+    CASE i_call-event.
+      WHEN 'FUNCTION'.
+        lv_obj_type = 'FUNC'.
+        lv_obj_name = i_call-name.
+      WHEN 'METHOD'.
+        IF i_call-class IS INITIAL. RETURN. ENDIF.
+        lv_obj_type = 'CLAS'.
+        lv_obj_name = i_call-class.
+      WHEN OTHERS.
+        RETURN.
+    ENDCASE.
+
+    DATA lv_obj_name_c TYPE e071-obj_name.
+    lv_obj_name_c = lv_obj_name.
+    CALL FUNCTION 'RS_TOOL_ACCESS'
+      EXPORTING
+        operation           = 'SHOW'
+        object_name         = lv_obj_name_c
+        object_type         = lv_obj_type
+        in_new_window       = abap_true
+      EXCEPTIONS
+        not_executed        = 1
+        invalid_object_type = 2
+        OTHERS              = 3.
+    IF sy-subrc <> 0.
+      MESSAGE |Cannot open { lv_obj_type } { lv_obj_name } (rc={ sy-subrc })| TYPE 'S' DISPLAY LIKE 'E'.
+    ENDIF.
   ENDMETHOD.
 ENDCLASS.
 
@@ -9274,6 +9373,7 @@ METHOD hndl_expand_empty.
           ENDIF.
           mo_viewer->mo_window->mv_nav_silent = abap_true.
           mo_viewer->mo_window->set_program_line( ls_back-line ).
+          mo_viewer->mo_window->set_nav_caption( ls_back-include ).
 
         WHEN 'NAV_FORWARD'.
           CHECK mo_viewer->mo_window->mv_nav_idx < lines( mo_viewer->mo_window->mt_nav_history ).
@@ -9286,6 +9386,7 @@ METHOD hndl_expand_empty.
           ENDIF.
           mo_viewer->mo_window->mv_nav_silent = abap_true.
           mo_viewer->mo_window->set_program_line( ls_fwd-line ).
+          mo_viewer->mo_window->set_nav_caption( ls_fwd-include ).
 
         WHEN 'REFRESH'.
           mo_viewer->mo_tree_local->display( ).
@@ -16749,8 +16850,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-19T10:29:05.326Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T10:29:05.326Z`.
+* abapmerge 0.16.7 - 2026-07-19T10:49:01.034Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T10:49:01.034Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************

@@ -1168,6 +1168,7 @@ METHOD hndl_expand_empty.
           ENDIF.
           mo_viewer->mo_window->mv_nav_silent = abap_true.
           mo_viewer->mo_window->set_program_line( ls_back-line ).
+          mo_viewer->mo_window->set_nav_caption( ls_back-include ).
 
         WHEN 'NAV_FORWARD'.
           CHECK mo_viewer->mo_window->mv_nav_idx < lines( mo_viewer->mo_window->mt_nav_history ).
@@ -1180,6 +1181,7 @@ METHOD hndl_expand_empty.
           ENDIF.
           mo_viewer->mo_window->mv_nav_silent = abap_true.
           mo_viewer->mo_window->set_program_line( ls_fwd-line ).
+          mo_viewer->mo_window->set_nav_caption( ls_fwd-include ).
 
         WHEN 'REFRESH'.
           mo_viewer->mo_tree_local->display( ).
