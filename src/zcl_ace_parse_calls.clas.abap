@@ -21,8 +21,8 @@ private section.
   " look like functional method calls (NAME( … )) but must not be recorded;
   " mv_skip_keywords — statement keywords that never contain method calls
   " (declarations, SQL, …), skipped by the generic fallback scan.
-  data MV_BUILTIN_FUNCS type STRING .
-  data MV_SKIP_KEYWORDS type STRING .
+  class-data MV_BUILTIN_FUNCS type STRING .
+  class-data MV_SKIP_KEYWORDS type STRING .
 
   methods RESOLVE_VAR_TYPE
     importing
@@ -427,6 +427,21 @@ METHOD collect_method_calls.
         CONDENSE lv_par_rem NO-GAPS.
         IF lv_right CA '+'
           OR ( lv_par_rem IS NOT INITIAL AND lv_par_rem CO '0123456789*' ).
+          CLEAR lv_right.
+          lv_ti += 1. CONTINUE.
+        ENDIF.
+        " Implicit self-call: record ONLY when such a method really exists —
+        " otherwise every FUNC( token (unknown builtins, macros, …) becomes
+        " a phantom call and floods the diagrams.
+        READ TABLE cs_source-tt_calls_line
+          WITH KEY eventtype = 'METHOD' eventname = lv_right
+          TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          READ TABLE cs_source-tt_calls_line
+            WITH KEY eventtype = 'FORM' eventname = lv_right
+            TRANSPORTING NO FIELDS.
+        ENDIF.
+        IF sy-subrc <> 0.
           CLEAR lv_right.
           lv_ti += 1. CONTINUE.
         ENDIF.
