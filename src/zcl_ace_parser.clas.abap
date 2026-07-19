@@ -56,14 +56,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     IF i_stmt_idx > 0.
       READ TABLE cs_source-tt_progs WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog2>).
       CHECK sy-subrc = 0.
-      DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      INSERT `NEW`           INTO TABLE lt_pass2.
-      INSERT `PERFORM`       INTO TABLE lt_pass2.
-      INSERT `CALL FUNCTION` INTO TABLE lt_pass2.
-      INSERT `CALL METHOD`   INTO TABLE lt_pass2.
-      INSERT `+CALL_METHOD`  INTO TABLE lt_pass2.
-      INSERT `COMPUTE`       INTO TABLE lt_pass2.
-      INSERT `RAISE EVENT`   INTO TABLE lt_pass2.
       READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx INTO DATA(lv_key2).
       CHECK sy-subrc = 0.
       IF lv_key2-calls_parsed = abap_true. RETURN. ENDIF.
@@ -85,23 +77,22 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       DATA(lv_prg2) = CONV program( i_program ).
 
       " ── Сначала parse_calls — заполняет tt_calls с bindings ──────
-      READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff2 TRANSPORTING NO FIELDS.
-      IF sy-subrc = 0.
-        IF lv_eff2 = 'RAISE EVENT'.
-          DATA(lo_hdl2) = NEW zcl_ace_parse_handlers( ).
-          lo_hdl2->zif_ace_stmt_handler~handle(
-            EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
-              i_program = lv_prg2 i_include = lv_inc2
-              i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
-            CHANGING cs_source = cs_source ).
-        ELSE.
-          DATA(lo_calls2) = NEW zcl_ace_parse_calls( ).
-          lo_calls2->zif_ace_stmt_handler~handle(
-            EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
-              i_program = lv_prg2 i_include = lv_inc2
-              i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
-            CHANGING cs_source = cs_source ).
-        ENDIF.
+      " No keyword pre-filter here: zcl_ace_parse_calls dispatches by itself
+      " (incl. the generic fallback for calls inside IF/WHILE/APPEND/…)
+      IF lv_eff2 = 'RAISE EVENT'.
+        DATA(lo_hdl2) = NEW zcl_ace_parse_handlers( ).
+        lo_hdl2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+          CHANGING cs_source = cs_source ).
+      ELSE.
+        DATA(lo_calls2) = NEW zcl_ace_parse_calls( ).
+        lo_calls2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+          CHANGING cs_source = cs_source ).
       ENDIF.
 
       " ── Затем parse_vars и parse_calcs — читают tt_calls-bindings ─

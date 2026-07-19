@@ -787,8 +787,44 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       WHEN OTHERS.
         " Double-click on a recorded call (obj->meth( ), meth( ), CALL METHOD,
         " CALL FUNCTION, chained/old/new syntax) → jump to its implementation.
+
+        " Calls are parsed lazily — trigger the statement parse on demand,
+        " same as the flow builder does via parse_tokens( i_stmt_idx ).
+        IF kw-tt_calls IS INITIAL AND kw-calls_parsed = abap_false.
+          DATA lv_ctx_class TYPE string.
+          DATA lv_ctx_evty  TYPE string.
+          DATA lv_ctx_evn   TYPE string.
+          CLEAR: lv_ctx_class, lv_ctx_evty, lv_ctx_evn.
+          " Containing unit (class/method) of the clicked include — needed
+          " for variable type resolution inside the parser
+          READ TABLE ms_sources-tt_calls_line
+            WITH KEY include = kw-include INTO DATA(ls_ctx_cl).
+          IF sy-subrc = 0.
+            lv_ctx_class = ls_ctx_cl-class.
+            lv_ctx_evty  = ls_ctx_cl-eventtype.
+            lv_ctx_evn   = ls_ctx_cl-eventname.
+          ENDIF.
+          zcl_ace_parser=>parse_tokens(
+            EXPORTING
+              i_program  = CONV #( COND string( WHEN kw-program IS NOT INITIAL
+                                                THEN kw-program ELSE m_prg-program ) )
+              i_include  = CONV #( kw-include )
+              i_stmt_idx = kw-index
+              i_class    = lv_ctx_class
+              i_evtype   = lv_ctx_evty
+              i_ev_name  = lv_ctx_evn
+            CHANGING
+              cs_source  = ms_sources ).
+          " Re-read: parse_tokens fills tt_calls in tt_progs-t_keywords
+          READ TABLE ms_sources-tt_progs WITH KEY include = kw-include INTO DATA(ls_reprog).
+          IF sy-subrc = 0.
+            READ TABLE ls_reprog-t_keywords WITH KEY index = kw-index INTO DATA(ls_rekw).
+            IF sy-subrc = 0. kw-tt_calls = ls_rekw-tt_calls. ENDIF.
+          ENDIF.
+        ENDIF.
+
         IF kw-tt_calls IS INITIAL.
-          MESSAGE |DBG dblclick: kw={ kw-name } line { fr_line } — no recorded calls| TYPE 'I'.
+          MESSAGE |DBG dblclick: kw={ kw-name } line { fr_line } — no calls after parse| TYPE 'I'.
           RETURN.
         ENDIF.
 
