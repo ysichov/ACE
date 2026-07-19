@@ -784,16 +784,14 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
         " The double-clicked word (the editor selects it on double-click) —
         " used to pick the right call when the line contains several.
-        DATA lt_sel_txt TYPE STANDARD TABLE OF char255.
-        DATA lv_word    TYPE string.
-        CLEAR: lt_sel_txt, lv_word.
-        sender->get_selected_text_as_r3table(
-          IMPORTING table = lt_sel_txt EXCEPTIONS OTHERS = 1 ).
+        DATA lv_word TYPE string.
+        CLEAR lv_word.
+        sender->get_selected_text_as_stream(
+          IMPORTING selected_text = lv_word EXCEPTIONS OTHERS = 1 ).
         IF sy-subrc = 0.
-          READ TABLE lt_sel_txt INDEX 1 INTO DATA(lv_sel_line).
-          IF sy-subrc = 0.
-            lv_word = to_upper( condense( CONV string( lv_sel_line ) ) ).
-          ENDIF.
+          lv_word = to_upper( condense( lv_word ) ).
+        ELSE.
+          CLEAR lv_word.
         ENDIF.
 
         DATA ls_call LIKE LINE OF kw-tt_calls.

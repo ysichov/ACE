@@ -16699,8 +16699,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-19T10:05:15.473Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T10:05:15.473Z`.
+* abapmerge 0.16.7 - 2026-07-19T10:05:59.446Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T10:05:59.446Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
