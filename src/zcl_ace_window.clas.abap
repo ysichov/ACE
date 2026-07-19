@@ -1124,7 +1124,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         MOVE-CORRESPONDING step TO <stack>.
         SPLIT <stack>-program AT '=' INTO TABLE split.
         <stack>-prg = <stack>-program.
-        <stack>-program = split[ 1 ].
+        <stack>-program = VALUE #( split[ 1 ] OPTIONAL ).
       ENDIF.
       IF step-include <> mo_viewer->mo_window->m_prg-include. CONTINUE. ENDIF.
     ENDLOOP.
@@ -1136,7 +1136,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         MOVE-CORRESPONDING prog TO <stack>.
         SPLIT <stack>-program AT '=' INTO TABLE split.
         <stack>-prg = <stack>-program.
-        <stack>-program = split[ 1 ].
+        <stack>-program = VALUE #( split[ 1 ] OPTIONAL ).
         <stack>-stacklevel = prog-stack.
         DATA(pos) = strlen( <stack>-program ).
         pos = pos - 2.
@@ -1164,7 +1164,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           ENDIF.
         ENDIF.
         SPLIT <stack>-include AT '=' INTO TABLE split.
-        CASE split[ lines( split ) ].
+        CASE VALUE string( split[ lines( split ) ] OPTIONAL ).
           WHEN 'CP'.    <stack>-eventtype = 'Class Pool'.
           WHEN 'CU'.    <stack>-eventtype = 'Public Section'.
           WHEN 'CI'.    <stack>-eventtype = 'Private Section'.

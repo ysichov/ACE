@@ -73,6 +73,8 @@ public section.
       !ACTION
       !GETDATA
       !QUERY_TABLE .
+  " Shows/hides flow-only toolbar buttons depending on mv_type (Map vs Flow).
+  methods APPLY_TOOLBAR_MODE .
   methods SHOW_SOURCE_POPUP
     importing
       !IS_NODE type TS_NODE_MAP .
@@ -1277,7 +1279,6 @@ DATA(lv_maxlen) = 200.
        ( butn_type = 3 )
        ( function = 'CALLS'        icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow'              text = 'Calls Flow' )
        ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Code Flow'               text = 'Code Flow' )
-       ( function = 'CMAP'         icon = CONV #( icon_structure )        quickinfo = 'Static method call map'   text = 'Class Map' )
        ( function = 'FLOW_TEMP'    icon = CONV #( icon_workflow_process ) quickinfo = 'TEMP: Flow without click directives' text = 'Flow_temp' )
        ( butn_type = 3 )
        ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
@@ -1345,6 +1346,8 @@ DATA(lv_maxlen) = 200.
         add_toolbar_buttons( ).
         mo_toolbar->set_visible( 'X' ).
       ENDIF.
+
+      apply_toolbar_mode( ).
 
       CASE mv_type.
         WHEN 'CALLS'. steps_flow( i_with_params = mv_with_params i_calc_path = mv_calc_path ).
@@ -1664,7 +1667,21 @@ DATA(lv_maxlen) = 200.
   endmethod.
 
 
+  method APPLY_TOOLBAR_MODE.
+    " Flow-only buttons make no sense on the static Map — hide them there.
+    CHECK mo_toolbar IS BOUND.
+    DATA(lv_flow_vis) = COND c( WHEN mv_type = 'CMAP' THEN space ELSE 'X' ).
+    mo_toolbar->set_button_visible( fcode = 'CALLS'         visible = lv_flow_vis ).
+    mo_toolbar->set_button_visible( fcode = 'FLOW'          visible = lv_flow_vis ).
+    mo_toolbar->set_button_visible( fcode = 'FLOW_TEMP'     visible = lv_flow_vis ).
+    mo_toolbar->set_button_visible( fcode = 'TOGGLE_CALC'   visible = lv_flow_vis ).
+    mo_toolbar->set_button_visible( fcode = 'TOGGLE_PARAMS' visible = lv_flow_vis ).
+  endmethod.
+
+
   method REFRESH.
+
+      apply_toolbar_mode( ).
 
       CASE mv_type.
         WHEN 'CALLS'.
