@@ -32,6 +32,8 @@ public section.
   types tt_node_map TYPE STANDARD TABLE OF ts_node_map WITH KEY node_id .
   data MT_NODE_MAP type TT_NODE_MAP .
   data MV_CLICK_REGISTERED type ABAP_BOOL .
+  " Temporary diagnostic flag: render without mermaid click directives.
+  data MV_NO_CLICK type ABAP_BOOL .
 
   methods CONSTRUCTOR
     importing
@@ -1260,6 +1262,7 @@ DATA(lv_maxlen) = 200.
        ( function = 'CALLS'        icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow'              text = 'Calls Flow' )
        ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Code Flow'               text = 'Code Flow' )
        ( function = 'CMAP'         icon = CONV #( icon_structure )        quickinfo = 'Static method call map'   text = 'Class Map' )
+       ( function = 'FLOW_TEMP'    icon = CONV #( icon_workflow_process ) quickinfo = 'TEMP: Flow without click directives' text = 'Flow_temp' )
        ( butn_type = 3 )
        ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
@@ -1363,6 +1366,15 @@ DATA(lv_maxlen) = 200.
         ENDIF.
         GET REFERENCE OF lv_perr INTO ref_err.
         NEW zcl_ace_text_viewer( ref_err ).
+        RETURN.
+      ENDIF.
+
+      " TEMP diagnostic: render Calls flow without click directives.
+      IF fcode = 'FLOW_TEMP'.
+        mv_no_click = abap_true.
+        mv_type     = 'CALLS'.
+        refresh( ).
+        mv_no_click = abap_false.   " one-shot: next render has clicks again
         RETURN.
       ENDIF.
 
@@ -1508,6 +1520,7 @@ DATA(lv_maxlen) = 200.
 
   method ADD_CLICK_DIRECTIVES.
     rv_mm_string = i_mm_string.
+    CHECK mv_no_click = abap_false.
     CHECK mt_node_map IS NOT INITIAL.
     " mermaid: `click <id> call sapNodeClick(...)` is not available (no page
     " helper), so use an href to the sapevent pseudo-protocol which the SAPGUI
