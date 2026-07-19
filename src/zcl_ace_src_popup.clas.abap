@@ -12,9 +12,6 @@ class ZCL_ACE_SRC_POPUP definition
     data MV_FROM type I .
     data MO_SCAN type ref to CL_CI_SCAN .
     data MT_SRC type STRING_TABLE .
-    " Diagnostic trace shown in the dialog caption (MESSAGE is swallowed
-    " inside CFW event handlers).
-    data MV_DBG type STRING .
 
     methods CONSTRUCTOR
       importing
@@ -59,9 +56,11 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       ENDTRY.
     ENDIF.
 
-    DATA(lv_height) = lines( it_src ) * 18 + 100.
-    IF lv_height < 260. lv_height = 260. ENDIF.
+    " Size the dialog to the code: ~40 lines fill the 400 maximum, shorter
+    " snippets shrink proportionally so small methods get a small window.
+    DATA(lv_height) = lines( it_src ) * 9 + 60.
     IF lv_height > 400. lv_height = 400. ENDIF.
+    IF lv_height < 120. lv_height = 120. ENDIF.
 
     mo_box = create( i_width = 700 i_hight = lv_height i_name = i_title ).
     IF mo_box IS INITIAL. RETURN. ENDIF.
@@ -106,10 +105,7 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     " a continuation line (e.g. `TO cs_source-t_composed.` of a multi-line
     " APPEND VALUE ... ) must be mapped back to the statement's first token row,
     " otherwise the breakpoint is set on a line the debugger never stops at.
-    DATA(lv_raw)    = lv_abs.
     DATA(lv_mapped) = abap_false.
-    DATA lv_dbg_f TYPE i.
-    DATA lv_dbg_t TYPE i.
     IF mo_scan IS BOUND.
       LOOP AT mo_scan->statements INTO DATA(ls_stmt).
         READ TABLE mo_scan->tokens INDEX ls_stmt-from INTO DATA(ls_first_token).
@@ -117,22 +113,11 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
         READ TABLE mo_scan->tokens INDEX ls_stmt-to INTO DATA(ls_last_token).
         IF sy-subrc <> 0. CONTINUE. ENDIF.
         IF lv_abs BETWEEN ls_first_token-row AND ls_last_token-row.
-          lv_dbg_f   = ls_first_token-row.
-          lv_dbg_t   = ls_last_token-row.
-          lv_abs     = ls_first_token-row.
-          lv_mapped  = abap_true.
+          lv_abs    = ls_first_token-row.
+          lv_mapped = abap_true.
           EXIT.
         ENDIF.
       ENDLOOP.
-      " MESSAGE does not surface from a CFW event handler — show the trace in
-      " the dialog caption instead.
-      mv_dbg = |L{ line } raw{ lv_raw } st{ lines( mo_scan->statements ) }| &&
-               | map{ lv_mapped } { lv_dbg_f }..{ lv_dbg_t } abs{ lv_abs }|.
-    ELSE.
-      mv_dbg = |L{ line } raw{ lv_raw } NOSCAN|.
-    ENDIF.
-    IF mo_box IS NOT INITIAL.
-      mo_box->set_caption( CONV char200( mv_dbg ) ).
     ENDIF.
 
     " Fallback ONLY when the scan could not resolve the statement (e.g. the
@@ -167,9 +152,6 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       CALL FUNCTION 'RS_DELETE_BREAKPOINT'
         EXPORTING index = lv_abs mainprog = mv_program program = mv_include bp_type = 'S'
         EXCEPTIONS not_executed = 1 OTHERS = 2.
-      IF mo_box IS NOT INITIAL.
-        mo_box->set_caption( CONV char200( |{ mv_dbg } DELs rc{ sy-subrc }| ) ).
-      ENDIF.
       refresh_breakpoints( ).
       RETURN.
     ENDLOOP.
@@ -193,9 +175,6 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     CALL FUNCTION 'RS_SET_BREAKPOINT'
       EXPORTING index = lv_abs program = mv_include mainprogram = mv_program bp_type = lv_type
       EXCEPTIONS not_executed = 1 OTHERS = 2.
-    IF mo_box IS NOT INITIAL.
-      mo_box->set_caption( CONV char200( |{ mv_dbg } SET{ lv_abs } rc{ sy-subrc }| ) ).
-    ENDIF.
     refresh_breakpoints( ).
   endmethod.
 
@@ -215,15 +194,10 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       EXPORTING main_program         = mv_program
       IMPORTING breakpoints_complete = DATA(points)
       EXCEPTIONS OTHERS               = 4.
-    DATA lv_dbg TYPE string.
     LOOP AT points INTO DATA(point) WHERE include = mv_include.
       lv_ln = point-line - mv_from + 1.
-      lv_dbg = |{ lv_dbg } { point-line }>{ lv_ln }|.
       IF lv_ln > 0. APPEND lv_ln TO lines_s. ENDIF.
     ENDLOOP.
-    IF mo_box IS NOT INITIAL.
-      mo_box->set_caption( CONV char200( |{ mv_dbg } pts:{ lv_dbg }| ) ).
-    ENDIF.
     mo_editor->set_marker( EXPORTING marker_number = 2 marker_lines = lines_s ).
 
     " External / other-session breakpoints
