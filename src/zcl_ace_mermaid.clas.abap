@@ -739,17 +739,25 @@ DATA(lv_maxlen) = 200.
           INTO TABLE lt_flow_meth.
       ENDLOOP.
       IF lt_flow_meth IS NOT INITIAL.
+        " Build the kept set instead of deleting by index: a READ inside the
+        " loop overwrites sy-tabix, so DELETE ... INDEX sy-tabix would hit the
+        " wrong row (and shift the table underneath the loop).
+        DATA lt_keep LIKE lt_meth.
+        CLEAR lt_keep.
         LOOP AT lt_meth INTO DATA(ls_chk).
-          " keep non-method units (program blocks) and methods present in flow
-          IF ls_chk-name IS NOT INITIAL.
-            READ TABLE lt_flow_meth WITH KEY
-              table_line = |{ to_upper( ls_chk-real_class ) }\t{ to_upper( ls_chk-name ) }|
-              TRANSPORTING NO FIELDS.
-            IF sy-subrc <> 0 AND ls_chk-class IS NOT INITIAL.
-              DELETE lt_meth INDEX sy-tabix.
-            ENDIF.
+          " keep non-method units (program blocks) as they are
+          IF ls_chk-name IS INITIAL OR ls_chk-class IS INITIAL.
+            APPEND ls_chk TO lt_keep.
+            CONTINUE.
+          ENDIF.
+          READ TABLE lt_flow_meth WITH KEY
+            table_line = |{ to_upper( ls_chk-real_class ) }\t{ to_upper( ls_chk-name ) }|
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            APPEND ls_chk TO lt_keep.
           ENDIF.
         ENDLOOP.
+        lt_meth = lt_keep.
       ENDIF.
       IF lt_meth IS INITIAL.
         open_mermaid( |graph { direction }\n  none["No methods in flow"]\n| ).
@@ -1663,7 +1671,8 @@ DATA(lv_maxlen) = 200.
       it_src    = lt_src
       i_program = lv_prog
       i_include = lv_inc
-      i_from    = COND #( WHEN lv_from > 0 THEN lv_from ELSE 1 ) ).
+      i_from    = COND #( WHEN lv_from > 0 THEN lv_from ELSE 1 )
+      io_scan   = ls_prog-scan ).
   endmethod.
 
 

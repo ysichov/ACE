@@ -19,7 +19,8 @@ class ZCL_ACE_SRC_POPUP definition
         !IT_SRC    type STRING_TABLE
         !I_PROGRAM type PROGRAM
         !I_INCLUDE type PROGRAM
-        !I_FROM    type I .
+        !I_FROM    type I
+        !IO_SCAN   type ref to CL_CI_SCAN optional .
     methods ON_BORDER_CLICK
       for event BORDER_CLICK of CL_GUI_ABAPEDIT
       importing
@@ -42,8 +43,18 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     mv_include = i_include.
     mv_from    = COND #( WHEN i_from > 0 THEN i_from ELSE 1 ).
     mt_src     = it_src.
-    DATA(lo_src) = cl_ci_source_include=>create( p_name = i_include ).
-    mo_scan = NEW cl_ci_scan( p_include = lo_src ).
+    " Prefer the already parsed scan of this include — re-scanning from the
+    " database can fail or differ for generated / class-pool includes.
+    IF io_scan IS BOUND.
+      mo_scan = io_scan.
+    ELSE.
+      TRY.
+          DATA(lo_src) = cl_ci_source_include=>create( p_name = i_include ).
+          mo_scan = NEW cl_ci_scan( p_include = lo_src ).
+        CATCH cx_root.
+          CLEAR mo_scan.
+      ENDTRY.
+    ENDIF.
 
     DATA(lv_height) = lines( it_src ) * 18 + 100.
     IF lv_height < 260. lv_height = 260. ENDIF.
@@ -77,38 +88,46 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     lv_abs = mv_from + line - 1.
     CHECK lv_abs > 0.
 
-    " A breakpoint belongs to the first line of the ABAP statement.
-    " Continuation lines (for example TO ... after APPEND VALUE) must
-    " therefore be mapped back to the statement's first token row.
+    " A breakpoint belongs to the FIRST line of the ABAP statement. A click on
+    " a continuation line (e.g. `TO cs_source-t_composed.` of a multi-line
+    " APPEND VALUE ... ) must be mapped back to the statement's first token row,
+    " otherwise the breakpoint is set on a line the debugger never stops at.
+    DATA(lv_mapped) = abap_false.
     IF mo_scan IS BOUND.
       LOOP AT mo_scan->statements INTO DATA(ls_stmt).
         READ TABLE mo_scan->tokens INDEX ls_stmt-from INTO DATA(ls_first_token).
-        READ TABLE mo_scan->tokens INDEX ls_stmt-to   INTO DATA(ls_last_token).
-        IF sy-subrc = 0 AND lv_abs BETWEEN ls_first_token-row AND ls_last_token-row.
-          lv_abs = ls_first_token-row.
+        IF sy-subrc <> 0. CONTINUE. ENDIF.
+        READ TABLE mo_scan->tokens INDEX ls_stmt-to INTO DATA(ls_last_token).
+        IF sy-subrc <> 0. CONTINUE. ENDIF.
+        IF lv_abs BETWEEN ls_first_token-row AND ls_last_token-row.
+          lv_abs     = ls_first_token-row.
+          lv_mapped  = abap_true.
           EXIT.
         ENDIF.
       ENDLOOP.
     ENDIF.
 
-    " The popup displays a source slice.  If the scan belongs to a
-    " different/generated include, fall back to the displayed indentation:
-    " a continuation line belongs to the nearest preceding less-indented line.
-    IF line <= lines( mt_src ).
+    " Fallback ONLY when the scan could not resolve the statement (e.g. the
+    " include is generated and not covered by the scan): use the displayed
+    " indentation — a continuation line belongs to the nearest preceding
+    " line with a smaller indent.
+    IF lv_mapped = abap_false AND line > 0 AND line <= lines( mt_src ).
       DATA(lv_clicked) = mt_src[ line ].
-      DATA(lv_indent) = strlen( lv_clicked ) - strlen( condense( lv_clicked ) ).
-      DATA(lv_row) = line - 1.
-      WHILE lv_row > 0.
-        DATA(lv_prev) = mt_src[ lv_row ].
-        IF lv_prev IS NOT INITIAL.
-          DATA(lv_prev_indent) = strlen( lv_prev ) - strlen( condense( lv_prev ) ).
-          IF lv_prev_indent < lv_indent.
-            lv_abs = mv_from + lv_row - 1.
-            EXIT.
+      IF lv_clicked IS NOT INITIAL.
+        DATA(lv_indent) = strlen( lv_clicked ) - strlen( condense( lv_clicked ) ).
+        DATA(lv_row) = line - 1.
+        WHILE lv_row > 0.
+          DATA(lv_prev) = mt_src[ lv_row ].
+          IF lv_prev IS NOT INITIAL.
+            DATA(lv_prev_indent) = strlen( lv_prev ) - strlen( condense( lv_prev ) ).
+            IF lv_prev_indent < lv_indent.
+              lv_abs = mv_from + lv_row - 1.
+              EXIT.
+            ENDIF.
           ENDIF.
-        ENDIF.
-        lv_row = lv_row - 1.
-      ENDWHILE.
+          lv_row = lv_row - 1.
+        ENDWHILE.
+      ENDIF.
     ENDIF.
 
     " Already a session breakpoint here? → remove it.
