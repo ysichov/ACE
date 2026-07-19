@@ -1256,27 +1256,14 @@ private section.
   data MV_SUPER_CLS type STRING .
   data MV_SUPER type STRING .
 
-  " Built-in functions and constructor expressions that look like
-  " functional method calls (NAME( ... )) but must never be recorded.
-  constants C_BUILTIN_FUNCS type STRING value
-    ` ABS CEIL FLOOR FRAC SIGN TRUNC IPOW NMAX NMIN SQRT EXP LOG LOG10 SIN COS TAN`
-    & ` ASIN ACOS ATAN SINH COSH TANH ROUND RESCALE CHARLEN DBMAXLEN NUMOFCHAR STRLEN`
-    & ` XSTRLEN LINES BOOLC BOOLX XSDBOOL CONCAT_LINES_OF CONDENSE ESCAPE MATCH REPEAT`
-    & ` REPLACE REVERSE SEGMENT SHIFT_LEFT SHIFT_RIGHT SUBSTRING SUBSTRING_AFTER`
-    & ` SUBSTRING_BEFORE SUBSTRING_FROM SUBSTRING_TO TO_LOWER TO_MIXED TO_UPPER FROM_MIXED`
-    & ` TRANSLATE CMAX CMIN COUNT COUNT_ANY_OF COUNT_ANY_NOT_OF DISTANCE FIND FIND_END`
-    & ` FIND_ANY_OF FIND_ANY_NOT_OF CONTAINS CONTAINS_ANY_OF CONTAINS_ANY_NOT_OF`
-    & ` LINE_EXISTS LINE_INDEX UTCLONG_CURRENT UTCLONG_ADD UTCLONG_DIFF`
-    & ` CORRESPONDING FILTER REDUCE EXACT VALUE CONV REF CAST COND SWITCH DATA FINAL FIELD-SYMBOL ` ##NO_TEXT.
-  " Statement keywords that never contain method calls (declarations, SQL, …) —
-  " the generic fallback scan skips them to avoid false positives.
-  constants C_SKIP_KEYWORDS type STRING value
-    `;CLASS;ENDCLASS;INTERFACE;ENDINTERFACE;INTERFACES;ALIASES;METHODS;CLASS-METHODS;`
-    & `METHOD;ENDMETHOD;EVENTS;CLASS-EVENTS;DATA;CLASS-DATA;TYPES;CONSTANTS;STATICS;`
-    & `FIELD-SYMBOLS;PARAMETERS;SELECT-OPTIONS;SELECTION-SCREEN;TABLES;RANGES;NODES;`
-    & `FORM;ENDFORM;FUNCTION;ENDFUNCTION;MODULE;ENDMODULE;REPORT;PROGRAM;INCLUDE;`
-    & `TYPE-POOLS;SELECT;ENDSELECT;WITH;UPDATE;DELETE;MODIFY;INSERT;OPEN;FETCH;CLOSE;`
-    & `EXEC;ENDEXEC;DEFINE;END-OF-DEFINITION;` ##NO_TEXT.
+  " Lazily built lists (a CONSTANTS literal is limited to 255 chars,
+  " so they are concatenated at runtime on first use):
+  " mv_builtin_funcs — built-in functions and constructor expressions that
+  " look like functional method calls (NAME( … )) but must not be recorded;
+  " mv_skip_keywords — statement keywords that never contain method calls
+  " (declarations, SQL, …), skipped by the generic fallback scan.
+  data MV_BUILTIN_FUNCS type STRING .
+  data MV_SKIP_KEYWORDS type STRING .
 
   methods RESOLVE_VAR_TYPE
     importing
@@ -10742,7 +10729,19 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
     rv_type = lv_cur.
   ENDMETHOD.
   METHOD is_builtin.
-    rv_builtin = xsdbool( c_builtin_funcs CS | { i_name } | ).
+    IF mv_builtin_funcs IS INITIAL.
+      mv_builtin_funcs =
+        ` ABS CEIL FLOOR FRAC SIGN TRUNC IPOW NMAX NMIN SQRT EXP LOG LOG10 SIN COS TAN`
+        && ` ASIN ACOS ATAN SINH COSH TANH ROUND RESCALE CHARLEN DBMAXLEN NUMOFCHAR STRLEN`
+        && ` XSTRLEN LINES BOOLC BOOLX XSDBOOL CONCAT_LINES_OF CONDENSE ESCAPE MATCH REPEAT`
+        && ` REPLACE REVERSE SEGMENT SHIFT_LEFT SHIFT_RIGHT SUBSTRING SUBSTRING_AFTER`
+        && ` SUBSTRING_BEFORE SUBSTRING_FROM SUBSTRING_TO TO_LOWER TO_MIXED TO_UPPER FROM_MIXED`
+        && ` TRANSLATE CMAX CMIN COUNT COUNT_ANY_OF COUNT_ANY_NOT_OF DISTANCE FIND FIND_END`
+        && ` FIND_ANY_OF FIND_ANY_NOT_OF CONTAINS CONTAINS_ANY_OF CONTAINS_ANY_NOT_OF`
+        && ` LINE_EXISTS LINE_INDEX UTCLONG_CURRENT UTCLONG_ADD UTCLONG_DIFF`
+        && ` CORRESPONDING FILTER REDUCE EXACT VALUE CONV REF CAST COND SWITCH DATA FINAL FIELD-SYMBOL `.
+    ENDIF.
+    rv_builtin = xsdbool( mv_builtin_funcs CS | { i_name } | ).
   ENDMETHOD.
 METHOD collect_method_calls.
     DATA lv_tstr     TYPE string.
@@ -11507,7 +11506,16 @@ METHOD collect_method_calls.
       " COMPUTE nor an explicit call statement. Declarations and SQL are
       " skipped via C_SKIP_KEYWORDS.
       WHEN OTHERS.
-        IF c_skip_keywords NS |;{ lv_kw };|.
+        IF mv_skip_keywords IS INITIAL.
+          mv_skip_keywords =
+            `;CLASS;ENDCLASS;INTERFACE;ENDINTERFACE;INTERFACES;ALIASES;METHODS;CLASS-METHODS;`
+            && `METHOD;ENDMETHOD;EVENTS;CLASS-EVENTS;DATA;CLASS-DATA;TYPES;CONSTANTS;STATICS;`
+            && `FIELD-SYMBOLS;PARAMETERS;SELECT-OPTIONS;SELECTION-SCREEN;TABLES;RANGES;NODES;`
+            && `FORM;ENDFORM;FUNCTION;ENDFUNCTION;MODULE;ENDMODULE;REPORT;PROGRAM;INCLUDE;`
+            && `TYPE-POOLS;SELECT;ENDSELECT;WITH;UPDATE;DELETE;MODIFY;INSERT;OPEN;FETCH;CLOSE;`
+            && `EXEC;ENDEXEC;DEFINE;END-OF-DEFINITION;`.
+        ENDIF.
+        IF mv_skip_keywords NS |;{ lv_kw };|.
           DATA lv_fb_i    TYPE i.
           DATA lv_fb_hit  TYPE abap_bool.
           CLEAR lv_fb_hit.
@@ -16630,8 +16638,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-19T05:49:24.443Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T05:49:24.443Z`.
+* abapmerge 0.16.7 - 2026-07-19T05:53:34.277Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T05:53:34.277Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************

@@ -777,6 +777,67 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
+      WHEN OTHERS.
+        " Double-click on a recorded call (obj->meth( ), meth( ), CALL METHOD,
+        " CALL FUNCTION, chained/old/new syntax) → jump to its implementation.
+        CHECK kw-tt_calls IS NOT INITIAL.
+
+        " The double-clicked word (the editor selects it on double-click) —
+        " used to pick the right call when the line contains several.
+        DATA lt_sel_txt TYPE STANDARD TABLE OF char255.
+        DATA lv_word    TYPE string.
+        CLEAR: lt_sel_txt, lv_word.
+        sender->get_selected_text_as_r3table(
+          IMPORTING table = lt_sel_txt EXCEPTIONS OTHERS = 1 ).
+        IF sy-subrc = 0.
+          READ TABLE lt_sel_txt INDEX 1 INTO DATA(lv_sel_line).
+          IF sy-subrc = 0.
+            lv_word = to_upper( condense( CONV string( lv_sel_line ) ) ).
+          ENDIF.
+        ENDIF.
+
+        DATA ls_call LIKE LINE OF kw-tt_calls.
+        CLEAR ls_call.
+        IF lv_word IS NOT INITIAL.
+          LOOP AT kw-tt_calls INTO DATA(ls_c) WHERE name = lv_word.
+            ls_call = ls_c. EXIT.
+          ENDLOOP.
+        ENDIF.
+        IF ls_call-name IS INITIAL.
+          READ TABLE kw-tt_calls INDEX 1 INTO ls_call.
+        ENDIF.
+        CHECK ls_call-name IS NOT INITIAL.
+
+        " Find the implementation of the called unit in the parsed data
+        DATA ls_tgt_cl LIKE LINE OF ms_sources-tt_calls_line.
+        CLEAR ls_tgt_cl.
+        IF ls_call-class IS NOT INITIAL.
+          READ TABLE ms_sources-tt_calls_line
+            WITH KEY class = ls_call-class eventtype = ls_call-event
+                     eventname = ls_call-name
+            INTO ls_tgt_cl.
+        ENDIF.
+        IF ls_tgt_cl-include IS INITIAL.
+          " No class recorded (or not found under it) — match by name only
+          READ TABLE ms_sources-tt_calls_line
+            WITH KEY eventtype = ls_call-event eventname = ls_call-name
+            INTO ls_tgt_cl.
+        ENDIF.
+        CHECK ls_tgt_cl-include IS NOT INITIAL.
+
+        lv_target_include = ls_tgt_cl-include.
+        " Locate the METHOD/FORM/FUNCTION keyword of the implementation
+        " (by its statement index) to get the target viewer line
+        READ TABLE ms_sources-tt_progs WITH KEY include = lv_target_include INTO lv_tprog.
+        IF sy-subrc = 0.
+          lr_tkw = REF #( lv_tprog-t_keywords ).
+          IF lv_tprog-v_keywords IS NOT INITIAL. lr_tkw = REF #( lv_tprog-v_keywords ). ENDIF.
+          LOOP AT lr_tkw->* INTO tkw WHERE index = ls_tgt_cl-index. EXIT. ENDLOOP.
+          IF sy-subrc = 0.
+            lv_target_vline = COND #( WHEN tkw-v_line > 0 THEN tkw-v_line ELSE tkw-line ).
+          ENDIF.
+        ENDIF.
+
     ENDCASE.
 
     CHECK lv_target_vline > 0.
