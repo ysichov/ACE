@@ -1670,7 +1670,7 @@ DATA(lv_maxlen) = 200.
   method APPLY_TOOLBAR_MODE.
     " Flow-only buttons make no sense on the static Map — hide them there.
     CHECK mo_toolbar IS BOUND.
-    DATA(lv_flow_vis) = COND c( WHEN mv_type = 'CMAP' THEN space ELSE 'X' ).
+    DATA(lv_flow_vis) = COND c LENGTH 1( WHEN mv_type = 'CMAP' THEN space ELSE 'X' ).
     mo_toolbar->set_button_visible( fcode = 'CALLS'         visible = lv_flow_vis ).
     mo_toolbar->set_button_visible( fcode = 'FLOW'          visible = lv_flow_vis ).
     mo_toolbar->set_button_visible( fcode = 'FLOW_TEMP'     visible = lv_flow_vis ).
