@@ -12,6 +12,9 @@ class ZCL_ACE_SRC_POPUP definition
     data MV_FROM type I .
     data MO_SCAN type ref to CL_CI_SCAN .
     data MT_SRC type STRING_TABLE .
+    " Diagnostic trace shown in the dialog caption (MESSAGE is swallowed
+    " inside CFW event handlers).
+    data MV_DBG type STRING .
 
     methods CONSTRUCTOR
       importing
@@ -68,6 +71,17 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       EXPORTING parent = mo_box max_number_chars = 100
       EXCEPTIONS OTHERS = 1.
     IF sy-subrc <> 0. RETURN. ENDIF.
+    " Same init sequence as the main code viewer — without upload_properties
+    " and set_registered_events the control never raises BORDER_CLICK, so the
+    " editor handles the border click itself and places the breakpoint wrong.
+    mo_editor->init_completer( ).
+    mo_editor->upload_properties(
+      EXCEPTIONS dp_error_create = 1 dp_error_general = 2 dp_error_send = 3 OTHERS = 4 ).
+    DATA: lt_events TYPE cntl_simple_events,
+          ls_event  TYPE cntl_simple_event.
+    ls_event-eventid = cl_gui_textedit=>event_double_click.
+    APPEND ls_event TO lt_events.
+    mo_editor->set_registered_events( lt_events ).
     mo_editor->register_event_border_click( ).
     mo_editor->register_event_break_changed( ).
     SET HANDLER on_border_click FOR mo_editor.
@@ -110,10 +124,15 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
           EXIT.
         ENDIF.
       ENDLOOP.
-      MESSAGE |DBG bp: line={ line } from={ mv_from } raw={ lv_raw } stmts={ lines( mo_scan->statements ) }| &&
-              | mapped={ lv_mapped } stmt={ lv_dbg_f }..{ lv_dbg_t } abs={ lv_abs } inc={ mv_include }| TYPE 'I'.
+      " MESSAGE does not surface from a CFW event handler — show the trace in
+      " the dialog caption instead.
+      mv_dbg = |L{ line } raw{ lv_raw } st{ lines( mo_scan->statements ) }| &&
+               | map{ lv_mapped } { lv_dbg_f }..{ lv_dbg_t } abs{ lv_abs }|.
     ELSE.
-      MESSAGE |DBG bp: line={ line } from={ mv_from } raw={ lv_raw } — NO SCAN, inc={ mv_include }| TYPE 'I'.
+      mv_dbg = |L{ line } raw{ lv_raw } NOSCAN|.
+    ENDIF.
+    IF mo_box IS NOT INITIAL.
+      mo_box->set_caption( CONV #( mv_dbg ) ).
     ENDIF.
 
     " Fallback ONLY when the scan could not resolve the statement (e.g. the
@@ -148,6 +167,9 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       CALL FUNCTION 'RS_DELETE_BREAKPOINT'
         EXPORTING index = lv_abs mainprog = mv_program program = mv_include bp_type = 'S'
         EXCEPTIONS not_executed = 1 OTHERS = 2.
+      IF mo_box IS NOT INITIAL.
+        mo_box->set_caption( CONV #( |{ mv_dbg } DELs rc{ sy-subrc }| ) ).
+      ENDIF.
       refresh_breakpoints( ).
       RETURN.
     ENDLOOP.
@@ -171,7 +193,9 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     CALL FUNCTION 'RS_SET_BREAKPOINT'
       EXPORTING index = lv_abs program = mv_include mainprogram = mv_program bp_type = lv_type
       EXCEPTIONS not_executed = 1 OTHERS = 2.
-    MESSAGE |DBG bp SET: index={ lv_abs } prog={ mv_include } main={ mv_program } type={ lv_type } rc={ sy-subrc }| TYPE 'I'.
+    IF mo_box IS NOT INITIAL.
+      mo_box->set_caption( CONV #( |{ mv_dbg } SET{ lv_abs } rc{ sy-subrc }| ) ).
+    ENDIF.
     refresh_breakpoints( ).
   endmethod.
 
@@ -194,10 +218,12 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     DATA lv_dbg TYPE string.
     LOOP AT points INTO DATA(point) WHERE include = mv_include.
       lv_ln = point-line - mv_from + 1.
-      lv_dbg = |{ lv_dbg } { point-line }->{ lv_ln }|.
+      lv_dbg = |{ lv_dbg } { point-line }>{ lv_ln }|.
       IF lv_ln > 0. APPEND lv_ln TO lines_s. ENDIF.
     ENDLOOP.
-    MESSAGE |DBG bp SHOW: from={ mv_from } inc={ mv_include } pts(abs->editor):{ lv_dbg }| TYPE 'I'.
+    IF mo_box IS NOT INITIAL.
+      mo_box->set_caption( CONV #( |{ mv_dbg } pts:{ lv_dbg }| ) ).
+    ENDIF.
     mo_editor->set_marker( EXPORTING marker_number = 2 marker_lines = lines_s ).
 
     " External / other-session breakpoints
