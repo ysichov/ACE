@@ -1262,8 +1262,8 @@ private section.
   " look like functional method calls (NAME( … )) but must not be recorded;
   " mv_skip_keywords — statement keywords that never contain method calls
   " (declarations, SQL, …), skipped by the generic fallback scan.
-  data MV_BUILTIN_FUNCS type STRING .
-  data MV_SKIP_KEYWORDS type STRING .
+  class-data MV_BUILTIN_FUNCS type STRING .
+  class-data MV_SKIP_KEYWORDS type STRING .
 
   methods RESOLVE_VAR_TYPE
     importing
@@ -11113,6 +11113,21 @@ METHOD collect_method_calls.
           CLEAR lv_right.
           lv_ti = lv_ti + 1. CONTINUE.
         ENDIF.
+        " Implicit self-call: record ONLY when such a method really exists —
+        " otherwise every FUNC( token (unknown builtins, macros, …) becomes
+        " a phantom call and floods the diagrams.
+        READ TABLE cs_source-tt_calls_line
+          WITH KEY eventtype = 'METHOD' eventname = lv_right
+          TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          READ TABLE cs_source-tt_calls_line
+            WITH KEY eventtype = 'FORM' eventname = lv_right
+            TRANSPORTING NO FIELDS.
+        ENDIF.
+        IF sy-subrc <> 0.
+          CLEAR lv_right.
+          lv_ti = lv_ti + 1. CONTINUE.
+        ENDIF.
         lv_arrow = '->'.
         lv_left  = 'ME'.
 
@@ -16850,8 +16865,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-19T11:55:08.821Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T11:55:08.821Z`.
+* abapmerge 0.16.7 - 2026-07-19T12:54:19.163Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T12:54:19.163Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************

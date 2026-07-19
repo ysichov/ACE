@@ -983,6 +983,13 @@ DATA(lv_maxlen) = 200.
         APPEND LINES OF lt_flow_edge TO lt_edge.
       ENDIF.
 
+      DATA lv_agg_cnt TYPE i.
+      lv_agg_cnt = 0.
+      LOOP AT lt_meth TRANSPORTING NO FIELDS WHERE agg_id IS NOT INITIAL.
+        lv_agg_cnt += 1.
+      ENDLOOP.
+      MESSAGE |DBG map: allm={ mv_all_methods } meth={ lines( lt_meth ) } agg={ lv_agg_cnt } raw={ lines( lt_method_edge ) } static={ lines( lt_static_edge ) } flow={ lines( lt_flow_edge ) }| TYPE 'I'.
+
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ma>) WHERE agg_id IS NOT INITIAL.
         <ma>-node_id = <ma>-agg_id.
       ENDLOOP.
