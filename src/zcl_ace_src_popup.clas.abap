@@ -100,15 +100,21 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     " A node click activates the main window, which pushes previously opened
     " source popups behind it. Re-raise the still-open ones (oldest first,
     " dropping the closed ones) and focus this new popup last so it stays on top.
+    " Control calls are buffered by the CFW and sent as one batch, so a series
+    " of set_focus calls collapses into the last one. Flush after each raise so
+    " every window really comes forward, newest last.
     DATA lt_alive TYPE tt_open.
     LOOP AT mt_open INTO DATA(lo_prev).
       CHECK lo_prev IS BOUND AND lo_prev->mo_box IS NOT INITIAL.
       APPEND lo_prev TO lt_alive.
+      lo_prev->mo_box->set_visible( abap_true ).
       lo_prev->mo_box->set_focus( lo_prev->mo_box ).
+      cl_gui_cfw=>flush( ).
     ENDLOOP.
     mt_open = lt_alive.
     APPEND me TO mt_open.
     mo_box->set_focus( mo_box ).
+    cl_gui_cfw=>flush( ).
   endmethod.
 
 
