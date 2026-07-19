@@ -602,12 +602,19 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
                 to_line   = DATA(to_line) to_pos   = DATA(to_pos) ).
 
     READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(prog).
-    CHECK sy-subrc = 0.
+    IF sy-subrc <> 0.
+      MESSAGE |DBG dblclick: include { m_prg-include } not in tt_progs| TYPE 'I'.
+      RETURN.
+    ENDIF.
     DATA(lr_kw) = REF #( prog-t_keywords ).
     IF prog-v_keywords IS NOT INITIAL. lr_kw = REF #( prog-v_keywords ). ENDIF.
 
     LOOP AT lr_kw->* INTO DATA(kw) WHERE v_line = fr_line. EXIT. ENDLOOP.
-    CHECK sy-subrc = 0.
+    IF sy-subrc <> 0.
+      MESSAGE |DBG dblclick: no keyword for v_line { fr_line } in { m_prg-include }| TYPE 'I'.
+      RETURN.
+    ENDIF.
+    MESSAGE |DBG dblclick: line { fr_line } kw={ kw-name } calls={ lines( kw-tt_calls ) }| TYPE 'S'.
 
     DATA lv_target_vline   TYPE i.
     DATA lv_target_include TYPE program.
@@ -780,7 +787,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       WHEN OTHERS.
         " Double-click on a recorded call (obj->meth( ), meth( ), CALL METHOD,
         " CALL FUNCTION, chained/old/new syntax) → jump to its implementation.
-        CHECK kw-tt_calls IS NOT INITIAL.
+        IF kw-tt_calls IS INITIAL.
+          MESSAGE |DBG dblclick: kw={ kw-name } line { fr_line } — no recorded calls| TYPE 'I'.
+          RETURN.
+        ENDIF.
 
         " The double-clicked word (the editor selects it on double-click) —
         " used to pick the right call when the line contains several.
@@ -804,7 +814,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF ls_call-name IS INITIAL.
           READ TABLE kw-tt_calls INDEX 1 INTO ls_call.
         ENDIF.
-        CHECK ls_call-name IS NOT INITIAL.
+        IF ls_call-name IS INITIAL.
+          MESSAGE |DBG dblclick: word={ lv_word } — no matching call entry| TYPE 'I'.
+          RETURN.
+        ENDIF.
+        MESSAGE |DBG dblclick: word={ lv_word } call={ ls_call-class }/{ ls_call-event }/{ ls_call-name }| TYPE 'S'.
 
         " Find the implementation of the called unit in the parsed data
         DATA ls_tgt_cl LIKE LINE OF ms_sources-tt_calls_line.
@@ -821,7 +835,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             WITH KEY eventtype = ls_call-event eventname = ls_call-name
             INTO ls_tgt_cl.
         ENDIF.
-        CHECK ls_tgt_cl-include IS NOT INITIAL.
+        IF ls_tgt_cl-include IS INITIAL.
+          MESSAGE |DBG dblclick: { ls_call-class }/{ ls_call-event }/{ ls_call-name } not found in tt_calls_line| TYPE 'I'.
+          RETURN.
+        ENDIF.
 
         lv_target_include = ls_tgt_cl-include.
         " Locate the METHOD/FORM/FUNCTION keyword of the implementation
@@ -833,12 +850,20 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           LOOP AT lr_tkw->* INTO tkw WHERE index = ls_tgt_cl-index. EXIT. ENDLOOP.
           IF sy-subrc = 0.
             lv_target_vline = COND #( WHEN tkw-v_line > 0 THEN tkw-v_line ELSE tkw-line ).
+          ELSE.
+            MESSAGE |DBG dblclick: stmt index { ls_tgt_cl-index } not found in keywords of { lv_target_include }| TYPE 'I'.
           ENDIF.
+        ELSE.
+          MESSAGE |DBG dblclick: target include { lv_target_include } not in tt_progs| TYPE 'I'.
         ENDIF.
 
     ENDCASE.
 
-    CHECK lv_target_vline > 0.
+    IF lv_target_vline <= 0.
+      MESSAGE |DBG dblclick: kw={ kw-name } — no target line resolved| TYPE 'S'.
+      RETURN.
+    ENDIF.
+    MESSAGE |DBG dblclick: go { lv_target_include } v_line { lv_target_vline }| TYPE 'S'.
 
     IF lv_target_include <> m_prg-include AND lv_target_include IS NOT INITIAL.
       m_prg-include = lv_target_include.
