@@ -2927,12 +2927,19 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
                 to_line   = DATA(to_line) to_pos   = DATA(to_pos) ).
 
     READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(prog).
-    CHECK sy-subrc = 0.
+    IF sy-subrc <> 0.
+      MESSAGE |DBG dblclick: include { m_prg-include } not in tt_progs| TYPE 'I'.
+      RETURN.
+    ENDIF.
     DATA(lr_kw) = REF #( prog-t_keywords ).
     IF prog-v_keywords IS NOT INITIAL. lr_kw = REF #( prog-v_keywords ). ENDIF.
 
     LOOP AT lr_kw->* INTO DATA(kw) WHERE v_line = fr_line. EXIT. ENDLOOP.
-    CHECK sy-subrc = 0.
+    IF sy-subrc <> 0.
+      MESSAGE |DBG dblclick: no keyword for v_line { fr_line } in { m_prg-include }| TYPE 'I'.
+      RETURN.
+    ENDIF.
+    MESSAGE |DBG dblclick: line { fr_line } kw={ kw-name } calls={ lines( kw-tt_calls ) }| TYPE 'S'.
 
     DATA lv_target_vline   TYPE i.
     DATA lv_target_include TYPE program.
@@ -3105,7 +3112,46 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       WHEN OTHERS.
         " Double-click on a recorded call (obj->meth( ), meth( ), CALL METHOD,
         " CALL FUNCTION, chained/old/new syntax) → jump to its implementation.
-        CHECK kw-tt_calls IS NOT INITIAL.
+
+        " Calls are parsed lazily — trigger the statement parse on demand,
+        " same as the flow builder does via parse_tokens( i_stmt_idx ).
+        IF kw-tt_calls IS INITIAL AND kw-calls_parsed = abap_false.
+          DATA lv_ctx_class TYPE string.
+          DATA lv_ctx_evty  TYPE string.
+          DATA lv_ctx_evn   TYPE string.
+          CLEAR: lv_ctx_class, lv_ctx_evty, lv_ctx_evn.
+          " Containing unit (class/method) of the clicked include — needed
+          " for variable type resolution inside the parser
+          READ TABLE ms_sources-tt_calls_line
+            WITH KEY include = kw-include INTO DATA(ls_ctx_cl).
+          IF sy-subrc = 0.
+            lv_ctx_class = ls_ctx_cl-class.
+            lv_ctx_evty  = ls_ctx_cl-eventtype.
+            lv_ctx_evn   = ls_ctx_cl-eventname.
+          ENDIF.
+          zcl_ace_parser=>parse_tokens(
+            EXPORTING
+              i_program  = CONV #( COND string( WHEN kw-program IS NOT INITIAL
+                                                THEN kw-program ELSE m_prg-program ) )
+              i_include  = CONV #( kw-include )
+              i_stmt_idx = kw-index
+              i_class    = lv_ctx_class
+              i_evtype   = lv_ctx_evty
+              i_ev_name  = lv_ctx_evn
+            CHANGING
+              cs_source  = ms_sources ).
+          " Re-read: parse_tokens fills tt_calls in tt_progs-t_keywords
+          READ TABLE ms_sources-tt_progs WITH KEY include = kw-include INTO DATA(ls_reprog).
+          IF sy-subrc = 0.
+            READ TABLE ls_reprog-t_keywords WITH KEY index = kw-index INTO DATA(ls_rekw).
+            IF sy-subrc = 0. kw-tt_calls = ls_rekw-tt_calls. ENDIF.
+          ENDIF.
+        ENDIF.
+
+        IF kw-tt_calls IS INITIAL.
+          MESSAGE |DBG dblclick: kw={ kw-name } line { fr_line } — no calls after parse| TYPE 'I'.
+          RETURN.
+        ENDIF.
 
         " The double-clicked word (the editor selects it on double-click) —
         " used to pick the right call when the line contains several.
@@ -3129,7 +3175,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         IF ls_call-name IS INITIAL.
           READ TABLE kw-tt_calls INDEX 1 INTO ls_call.
         ENDIF.
-        CHECK ls_call-name IS NOT INITIAL.
+        IF ls_call-name IS INITIAL.
+          MESSAGE |DBG dblclick: word={ lv_word } — no matching call entry| TYPE 'I'.
+          RETURN.
+        ENDIF.
+        MESSAGE |DBG dblclick: word={ lv_word } call={ ls_call-class }/{ ls_call-event }/{ ls_call-name }| TYPE 'S'.
 
         " Find the implementation of the called unit in the parsed data
         DATA ls_tgt_cl LIKE LINE OF ms_sources-tt_calls_line.
@@ -3146,7 +3196,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             WITH KEY eventtype = ls_call-event eventname = ls_call-name
             INTO ls_tgt_cl.
         ENDIF.
-        CHECK ls_tgt_cl-include IS NOT INITIAL.
+        IF ls_tgt_cl-include IS INITIAL.
+          MESSAGE |DBG dblclick: { ls_call-class }/{ ls_call-event }/{ ls_call-name } not found in tt_calls_line| TYPE 'I'.
+          RETURN.
+        ENDIF.
 
         lv_target_include = ls_tgt_cl-include.
         " Locate the METHOD/FORM/FUNCTION keyword of the implementation
@@ -3158,12 +3211,20 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           LOOP AT lr_tkw->* INTO tkw WHERE index = ls_tgt_cl-index. EXIT. ENDLOOP.
           IF sy-subrc = 0.
             lv_target_vline = COND #( WHEN tkw-v_line > 0 THEN tkw-v_line ELSE tkw-line ).
+          ELSE.
+            MESSAGE |DBG dblclick: stmt index { ls_tgt_cl-index } not found in keywords of { lv_target_include }| TYPE 'I'.
           ENDIF.
+        ELSE.
+          MESSAGE |DBG dblclick: target include { lv_target_include } not in tt_progs| TYPE 'I'.
         ENDIF.
 
     ENDCASE.
 
-    CHECK lv_target_vline > 0.
+    IF lv_target_vline <= 0.
+      MESSAGE |DBG dblclick: kw={ kw-name } — no target line resolved| TYPE 'S'.
+      RETURN.
+    ENDIF.
+    MESSAGE |DBG dblclick: go { lv_target_include } v_line { lv_target_vline }| TYPE 'S'.
 
     IF lv_target_include <> m_prg-include AND lv_target_include IS NOT INITIAL.
       m_prg-include = lv_target_include.
@@ -11923,14 +11984,6 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
     IF i_stmt_idx > 0.
       READ TABLE cs_source-tt_progs WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog2>).
       CHECK sy-subrc = 0.
-      DATA lt_pass2 TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      INSERT `NEW`           INTO TABLE lt_pass2.
-      INSERT `PERFORM`       INTO TABLE lt_pass2.
-      INSERT `CALL FUNCTION` INTO TABLE lt_pass2.
-      INSERT `CALL METHOD`   INTO TABLE lt_pass2.
-      INSERT `+CALL_METHOD`  INTO TABLE lt_pass2.
-      INSERT `COMPUTE`       INTO TABLE lt_pass2.
-      INSERT `RAISE EVENT`   INTO TABLE lt_pass2.
       READ TABLE <prog2>-t_keywords WITH KEY index = i_stmt_idx INTO DATA(lv_key2).
       CHECK sy-subrc = 0.
       IF lv_key2-calls_parsed = abap_true. RETURN. ENDIF.
@@ -11952,23 +12005,22 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       DATA(lv_prg2) = CONV program( i_program ).
 
       " ── Сначала parse_calls — заполняет tt_calls с bindings ──────
-      READ TABLE lt_pass2 WITH TABLE KEY table_line = lv_eff2 TRANSPORTING NO FIELDS.
-      IF sy-subrc = 0.
-        IF lv_eff2 = 'RAISE EVENT'.
-          DATA(lo_hdl2) = NEW zcl_ace_parse_handlers( ).
-          lo_hdl2->zif_ace_stmt_handler~handle(
-            EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
-              i_program = lv_prg2 i_include = lv_inc2
-              i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
-            CHANGING cs_source = cs_source ).
-        ELSE.
-          DATA(lo_calls2) = NEW zcl_ace_parse_calls( ).
-          lo_calls2->zif_ace_stmt_handler~handle(
-            EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
-              i_program = lv_prg2 i_include = lv_inc2
-              i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
-            CHANGING cs_source = cs_source ).
-        ENDIF.
+      " No keyword pre-filter here: zcl_ace_parse_calls dispatches by itself
+      " (incl. the generic fallback for calls inside IF/WHILE/APPEND/…)
+      IF lv_eff2 = 'RAISE EVENT'.
+        DATA(lo_hdl2) = NEW zcl_ace_parse_handlers( ).
+        lo_hdl2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+          CHANGING cs_source = cs_source ).
+      ELSE.
+        DATA(lo_calls2) = NEW zcl_ace_parse_calls( ).
+        lo_calls2->zif_ace_stmt_handler~handle(
+          EXPORTING io_scan = <prog2>-scan i_stmt_idx = i_stmt_idx
+            i_program = lv_prg2 i_include = lv_inc2
+            i_class = i_class i_evtype = i_evtype i_ev_name = i_ev_name
+          CHANGING cs_source = cs_source ).
       ENDIF.
 
       " ── Затем parse_vars и parse_calcs — читают tt_calls-bindings ─
@@ -16697,8 +16749,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-19T10:09:29.326Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T10:09:29.326Z`.
+* abapmerge 0.16.7 - 2026-07-19T10:29:05.326Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T10:29:05.326Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
