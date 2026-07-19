@@ -92,7 +92,10 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     " a continuation line (e.g. `TO cs_source-t_composed.` of a multi-line
     " APPEND VALUE ... ) must be mapped back to the statement's first token row,
     " otherwise the breakpoint is set on a line the debugger never stops at.
+    DATA(lv_raw)    = lv_abs.
     DATA(lv_mapped) = abap_false.
+    DATA lv_dbg_f TYPE i.
+    DATA lv_dbg_t TYPE i.
     IF mo_scan IS BOUND.
       LOOP AT mo_scan->statements INTO DATA(ls_stmt).
         READ TABLE mo_scan->tokens INDEX ls_stmt-from INTO DATA(ls_first_token).
@@ -100,11 +103,17 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
         READ TABLE mo_scan->tokens INDEX ls_stmt-to INTO DATA(ls_last_token).
         IF sy-subrc <> 0. CONTINUE. ENDIF.
         IF lv_abs BETWEEN ls_first_token-row AND ls_last_token-row.
+          lv_dbg_f   = ls_first_token-row.
+          lv_dbg_t   = ls_last_token-row.
           lv_abs     = ls_first_token-row.
           lv_mapped  = abap_true.
           EXIT.
         ENDIF.
       ENDLOOP.
+      MESSAGE |DBG bp: line={ line } from={ mv_from } raw={ lv_raw } stmts={ lines( mo_scan->statements ) }| &&
+              | mapped={ lv_mapped } stmt={ lv_dbg_f }..{ lv_dbg_t } abs={ lv_abs } inc={ mv_include }| TYPE 'I'.
+    ELSE.
+      MESSAGE |DBG bp: line={ line } from={ mv_from } raw={ lv_raw } — NO SCAN, inc={ mv_include }| TYPE 'I'.
     ENDIF.
 
     " Fallback ONLY when the scan could not resolve the statement (e.g. the
@@ -162,6 +171,7 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     CALL FUNCTION 'RS_SET_BREAKPOINT'
       EXPORTING index = lv_abs program = mv_include mainprogram = mv_program bp_type = lv_type
       EXCEPTIONS not_executed = 1 OTHERS = 2.
+    MESSAGE |DBG bp SET: index={ lv_abs } prog={ mv_include } main={ mv_program } type={ lv_type } rc={ sy-subrc }| TYPE 'I'.
     refresh_breakpoints( ).
   endmethod.
 
@@ -181,10 +191,13 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       EXPORTING main_program         = mv_program
       IMPORTING breakpoints_complete = DATA(points)
       EXCEPTIONS OTHERS               = 4.
+    DATA lv_dbg TYPE string.
     LOOP AT points INTO DATA(point) WHERE include = mv_include.
       lv_ln = point-line - mv_from + 1.
+      lv_dbg = |{ lv_dbg } { point-line }->{ lv_ln }|.
       IF lv_ln > 0. APPEND lv_ln TO lines_s. ENDIF.
     ENDLOOP.
+    MESSAGE |DBG bp SHOW: from={ mv_from } inc={ mv_include } pts(abs->editor):{ lv_dbg }| TYPE 'I'.
     mo_editor->set_marker( EXPORTING marker_number = 2 marker_lines = lines_s ).
 
     " External / other-session breakpoints
