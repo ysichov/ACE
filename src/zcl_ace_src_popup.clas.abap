@@ -132,7 +132,7 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       mv_dbg = |L{ line } raw{ lv_raw } NOSCAN|.
     ENDIF.
     IF mo_box IS NOT INITIAL.
-      mo_box->set_caption( CONV #( mv_dbg ) ).
+      mo_box->set_caption( CONV char200( mv_dbg ) ).
     ENDIF.
 
     " Fallback ONLY when the scan could not resolve the statement (e.g. the
@@ -168,7 +168,7 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
         EXPORTING index = lv_abs mainprog = mv_program program = mv_include bp_type = 'S'
         EXCEPTIONS not_executed = 1 OTHERS = 2.
       IF mo_box IS NOT INITIAL.
-        mo_box->set_caption( CONV #( |{ mv_dbg } DELs rc{ sy-subrc }| ) ).
+        mo_box->set_caption( CONV char200( |{ mv_dbg } DELs rc{ sy-subrc }| ) ).
       ENDIF.
       refresh_breakpoints( ).
       RETURN.
@@ -194,7 +194,7 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       EXPORTING index = lv_abs program = mv_include mainprogram = mv_program bp_type = lv_type
       EXCEPTIONS not_executed = 1 OTHERS = 2.
     IF mo_box IS NOT INITIAL.
-      mo_box->set_caption( CONV #( |{ mv_dbg } SET{ lv_abs } rc{ sy-subrc }| ) ).
+      mo_box->set_caption( CONV char200( |{ mv_dbg } SET{ lv_abs } rc{ sy-subrc }| ) ).
     ENDIF.
     refresh_breakpoints( ).
   endmethod.
@@ -222,7 +222,7 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
       IF lv_ln > 0. APPEND lv_ln TO lines_s. ENDIF.
     ENDLOOP.
     IF mo_box IS NOT INITIAL.
-      mo_box->set_caption( CONV #( |{ mv_dbg } pts:{ lv_dbg }| ) ).
+      mo_box->set_caption( CONV char200( |{ mv_dbg } pts:{ lv_dbg }| ) ).
     ENDIF.
     mo_editor->set_marker( EXPORTING marker_number = 2 marker_lines = lines_s ).
 
