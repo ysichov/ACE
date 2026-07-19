@@ -1298,7 +1298,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
   METHOD set_nav_caption.
-    DATA lv_cap TYPE string.
+    DATA lv_cap TYPE char220.
 
     " Explicit unit info wins (passed on navigation to a known target)
     IF i_evname IS NOT INITIAL.
