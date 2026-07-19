@@ -23,6 +23,7 @@ CLASS zcl_ace_tree_builder DEFINITION DEFERRED.
 CLASS zcl_ace_text_viewer DEFINITION DEFERRED.
 CLASS zcl_ace_table_viewer DEFINITION DEFERRED.
 CLASS zcl_ace_stmts DEFINITION DEFERRED.
+CLASS zcl_ace_src_popup DEFINITION DEFERRED.
 CLASS zcl_ace_source_parser DEFINITION DEFERRED.
 CLASS zcl_ace_sel_opt DEFINITION DEFERRED.
 CLASS zcl_ace_rtti_tree DEFINITION DEFERRED.
@@ -1517,6 +1518,20 @@ public section.
   data MV_ALL_METHODS type BOOLEAN .
   data MV_DIRECTION type UI_FUNC .
 
+  " Maps a mermaid node id to the source unit it represents, so a click
+  " on the rendered block can open its source in a popup.
+  types:
+    BEGIN OF ts_node_map,
+      node_id TYPE string,
+      class   TYPE string,
+      event   TYPE string,
+      name    TYPE string,
+      include TYPE program,
+    END OF ts_node_map .
+  types tt_node_map TYPE STANDARD TABLE OF ts_node_map WITH KEY node_id .
+  data MT_NODE_MAP type TT_NODE_MAP .
+  data MV_CLICK_REGISTERED type ABAP_BOOL .
+
   methods CONSTRUCTOR
     importing
       !IO_DEBUGGER type ref to ZCL_ACE
@@ -1542,6 +1557,22 @@ public section.
     importing
       !I_MM_STRING type STRING .
   methods REFRESH .
+  " Appends mermaid `click` directives for every node in mt_node_map and
+  " returns the augmented diagram string.
+  methods ADD_CLICK_DIRECTIVES
+    importing
+      !I_MM_STRING type STRING
+    returning
+      value(RV_MM_STRING) type STRING .
+  methods ON_NODE_CLICK
+    for event SAPEVENT of CL_GUI_HTML_VIEWER
+    importing
+      !ACTION
+      !GETDATA
+      !QUERY_TABLE .
+  methods SHOW_SOURCE_POPUP
+    importing
+      !IS_NODE type TS_NODE_MAP .
 
 protected section.
 private section.
@@ -1931,6 +1962,35 @@ private section.
       !I_NAME type CLIKE
     returning
       value(RV_CUSTOM) type ABAP_BOOL .
+ENDCLASS.
+CLASS zcl_ace_src_popup DEFINITION
+  inheriting from ZCL_ACE_POPUP
+  final
+  create public .
+
+  public section.
+
+    data MO_EDITOR type ref to CL_GUI_ABAPEDIT .
+    data MV_PROGRAM type PROGRAM .
+    data MV_INCLUDE type PROGRAM .
+    data MV_FROM type I .
+
+    methods CONSTRUCTOR
+      importing
+        !I_TITLE   type TEXT100
+        !IT_SRC    type STRING_TABLE
+        !I_PROGRAM type PROGRAM
+        !I_INCLUDE type PROGRAM
+        !I_FROM    type I .
+    methods ON_BORDER_CLICK
+      for event BORDER_CLICK of CL_GUI_ABAPEDIT
+      importing
+        !CNTRL_PRESSED_SET
+        !LINE
+        !SHIFT_PRESSED_SET .
+    methods REFRESH_BREAKPOINTS .
+  protected section.
+  private section.
 ENDCLASS.
 "! ABAP statement grammars - port of @abaplint/core 2_statements/statements/*.ts
 "! One CLASS-METHOD per statement, name = STMT_<statement_name>.
@@ -2566,9 +2626,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'RUN' icon = CONV #( icon_execute_object ) quickinfo = 'Run report' )
 
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
-        THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
+        THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = 'Traced execution flow' text = 'Flow' ) ) )
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
-        THEN VALUE #( function = 'CMAP' icon = CONV #( icon_structure ) quickinfo = 'Static method call map' text = 'Class Map' ) ) )
+        THEN VALUE #( function = 'CMAP' icon = CONV #( icon_structure ) quickinfo = 'Static call map (whole picture)' text = 'Map' ) ) )
        ( function = 'CODEMIX'     icon = CONV #( icon_wizard )              quickinfo = 'Full code flow sequence'          text = 'Code Flow' )
        ( function = 'TOGGLE_CALC' icon = CONV #( icon_biw_formula )        quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'HANDLERS'  icon = CONV #( icon_oo_event )            quickinfo = 'Event Handlers flow'              text = 'Handlers' )
@@ -3603,7 +3663,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     mv_nav_idx = lines( mt_nav_history ).
   ENDMETHOD.
   METHOD set_nav_caption.
-    DATA lv_cap TYPE char220.
+    DATA lv_cap TYPE char200.
 
     " Explicit unit info wins (passed on navigation to a known target)
     IF i_evname IS NOT INITIAL.
@@ -6651,6 +6711,111 @@ CLASS zcl_ace_stmts IMPLEMENTATION.
       ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `CHANGING` ) ) )
       ( zcl_ace_combi=>opt( zcl_ace_combi=>str( `RECEIVING` ) ) ) ) ).
   ENDMETHOD.
+
+ENDCLASS.
+
+CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
+  method CONSTRUCTOR.
+    super->constructor( ).
+    mv_program = i_program.
+    mv_include = i_include.
+    mv_from    = COND #( WHEN i_from > 0 THEN i_from ELSE 1 ).
+
+    mo_box = create( i_width = 700 i_hight = 500 i_name = i_title ).
+    IF mo_box IS INITIAL. RETURN. ENDIF.
+    SET HANDLER on_box_close FOR mo_box.
+
+    CREATE OBJECT mo_editor
+      EXPORTING parent = mo_box max_number_chars = 100
+      EXCEPTIONS OTHERS = 1.
+    IF sy-subrc <> 0. RETURN. ENDIF.
+    mo_editor->register_event_border_click( ).
+    mo_editor->register_event_break_changed( ).
+    SET HANDLER on_border_click FOR mo_editor.
+    mo_editor->set_statusbar_mode( statusbar_mode = cl_gui_abapedit=>true ).
+    mo_editor->create_document( ).
+    mo_editor->set_readonly_mode( 1 ).
+
+    DATA lt_src TYPE STANDARD TABLE OF string.
+    lt_src = it_src.
+    mo_editor->set_text( table = lt_src ).
+    refresh_breakpoints( ).
+  endmethod.
+  method ON_BORDER_CLICK.
+    DATA lv_type TYPE char1.
+    DATA lv_abs  TYPE i.
+    lv_abs = mv_from + line - 1.
+    CHECK lv_abs > 0.
+
+    " Already a session breakpoint here? → remove it.
+    CALL METHOD cl_abap_debugger=>read_breakpoints
+      EXPORTING main_program         = mv_program
+      IMPORTING breakpoints_complete = DATA(points)
+      EXCEPTIONS OTHERS               = 4.
+    LOOP AT points INTO DATA(point) WHERE include = mv_include AND line = lv_abs.
+      CALL FUNCTION 'RS_DELETE_BREAKPOINT'
+        EXPORTING index = lv_abs mainprog = mv_program program = mv_include bp_type = 'S'
+        EXCEPTIONS not_executed = 1 OTHERS = 2.
+      refresh_breakpoints( ).
+      RETURN.
+    ENDLOOP.
+
+    " Already an external breakpoint here? → remove it.
+    CALL METHOD cl_abap_debugger=>read_breakpoints
+      EXPORTING main_program         = mv_include
+                flag_other_session   = abap_true
+      IMPORTING breakpoints_complete = points
+      EXCEPTIONS OTHERS               = 4.
+    LOOP AT points INTO point WHERE include = mv_include AND line = lv_abs.
+      CALL FUNCTION 'RS_DELETE_BREAKPOINT'
+        EXPORTING index = lv_abs mainprog = mv_include program = mv_include bp_type = 'E'
+        EXCEPTIONS not_executed = 1 OTHERS = 2.
+      refresh_breakpoints( ).
+      RETURN.
+    ENDLOOP.
+
+    " None yet → set one. Ctrl-click makes it an external (other-session) breakpoint.
+    lv_type = COND #( WHEN cntrl_pressed_set IS INITIAL THEN 'S' ELSE 'E' ).
+    CALL FUNCTION 'RS_SET_BREAKPOINT'
+      EXPORTING index = lv_abs program = mv_include mainprogram = mv_program bp_type = lv_type
+      EXCEPTIONS not_executed = 1 OTHERS = 2.
+    refresh_breakpoints( ).
+  endmethod.
+  method REFRESH_BREAKPOINTS.
+    TYPES lntab TYPE STANDARD TABLE OF i.
+    DATA lines_s TYPE lntab.
+    DATA lines_e TYPE lntab.
+    DATA lv_ln   TYPE i.
+
+    IF mo_editor IS INITIAL. RETURN. ENDIF.
+    mo_editor->remove_all_marker( 2 ).
+    mo_editor->remove_all_marker( 4 ).
+
+    " Session breakpoints (current user)
+    CALL METHOD cl_abap_debugger=>read_breakpoints
+      EXPORTING main_program         = mv_program
+      IMPORTING breakpoints_complete = DATA(points)
+      EXCEPTIONS OTHERS               = 4.
+    LOOP AT points INTO DATA(point) WHERE include = mv_include.
+      lv_ln = point-line - mv_from + 1.
+      IF lv_ln > 0. APPEND lv_ln TO lines_s. ENDIF.
+    ENDLOOP.
+    mo_editor->set_marker( EXPORTING marker_number = 2 marker_lines = lines_s ).
+
+    " External / other-session breakpoints
+    CALL METHOD cl_abap_debugger=>read_breakpoints
+      EXPORTING main_program         = mv_include
+                flag_other_session   = abap_true
+      IMPORTING breakpoints_complete = points
+      EXCEPTIONS OTHERS               = 4.
+    LOOP AT points INTO point WHERE include = mv_include.
+      lv_ln = point-line - mv_from + 1.
+      IF lv_ln > 0. APPEND lv_ln TO lines_e. ENDIF.
+    ENDLOOP.
+    mo_editor->set_marker( EXPORTING marker_number = 4 marker_lines = lines_e ).
+
+    mo_editor->draw( ).
+  endmethod.
 
 ENDCLASS.
 
@@ -11783,10 +11948,14 @@ METHOD collect_method_calls.
       READ TABLE <prog>-t_keywords WITH KEY index = i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw>) BINARY SEARCH.
       IF sy-subrc = 0.
         LOOP AT lt_new_calls INTO DATA(ls_nc).
+          " tt_calls is a plain STANDARD TABLE (unsorted) — a BINARY SEARCH
+          " dedup here silently misses existing rows and lets duplicates in,
+          " which then make code_execution_scanner descend twice and produce
+          " duplicated blocks in the flow diagram. Use a linear key read.
           READ TABLE <kw>-tt_calls WITH KEY event = ls_nc-event
                                             name  = ls_nc-name
                                             class = ls_nc-class
-            TRANSPORTING NO FIELDS BINARY SEARCH.
+            TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
             APPEND ls_nc TO <kw>-tt_calls.
           ENDIF.
@@ -14469,6 +14638,7 @@ DATA(lv_maxlen) = 200.
           lv_sgseq   TYPE i.
 
     direction = COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'LR' ).
+    CLEAR mt_node_map.
     DATA(lo_win) = mo_viewer->mo_window.
     DATA(lv_focus) = mo_viewer->mv_cmap_focus.
     DATA(lv_focus_prog) = VALUE progname( ).
@@ -14494,6 +14664,12 @@ DATA(lv_maxlen) = 200.
     DATA(lv_pkg_mode) = xsdbool( lv_focus IS INITIAL
                             AND ( mo_viewer->mv_package IS NOT INITIAL
                                OR mo_viewer->mt_pkg_objects IS NOT INITIAL ) ).
+
+    " Aggregate methods into class/program nodes only in the default package
+    " overview. When "All Methods" is on, keep method-level nodes (the original
+    " detailed view) so the package graph shows individual methods and their
+    " method->method calls, exactly like the single-class focus view.
+    DATA(lv_aggregate) = xsdbool( lv_pkg_mode = abap_true AND mv_all_methods = abap_false ).
 
     " --- 1. Collect all METHOD units directly from the parsed scan
     "     (METHOD..ENDMETHOD in t_keywords). This does NOT depend on
@@ -14571,13 +14747,43 @@ DATA(lv_maxlen) = 200.
       RETURN.
     ENDIF.
 
+    " When the map is scoped to one class or program (focus), show only the
+    " methods that actually occur in the traced flow — not every method that
+    " exists in the source. Falls back to all methods if no flow was traced.
+    IF ( lv_focus IS NOT INITIAL OR lv_focus_prog IS NOT INITIAL )
+       AND mo_viewer->mt_steps IS NOT INITIAL.
+      DATA lt_flow_meth TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+      LOOP AT mo_viewer->mt_steps INTO DATA(ls_fstep)
+        WHERE eventtype = 'METHOD' AND eventname IS NOT INITIAL.
+        INSERT |{ to_upper( ls_fstep-class ) }\t{ to_upper( ls_fstep-eventname ) }|
+          INTO TABLE lt_flow_meth.
+      ENDLOOP.
+      IF lt_flow_meth IS NOT INITIAL.
+        LOOP AT lt_meth INTO DATA(ls_chk).
+          " keep non-method units (program blocks) and methods present in flow
+          IF ls_chk-name IS NOT INITIAL.
+            READ TABLE lt_flow_meth WITH KEY
+              table_line = |{ to_upper( ls_chk-real_class ) }\t{ to_upper( ls_chk-name ) }|
+              TRANSPORTING NO FIELDS.
+            IF sy-subrc <> 0 AND ls_chk-class IS NOT INITIAL.
+              DELETE lt_meth INDEX sy-tabix.
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+      IF lt_meth IS INITIAL.
+        open_mermaid( |graph { direction }\n  none["No methods in flow"]\n| ).
+        RETURN.
+      ENDIF.
+    ENDIF.
+
     LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<m>).
       <m>-node_id = |M{ sy-tabix }|.
     ENDLOOP.
 
     " --- Package overview (no focus): aggregate to program/class nodes.
     "     Methods remain only as analysis points for parsing their calls. ---
-    IF lv_pkg_mode = abap_true.
+    IF lv_aggregate = abap_true.
       DATA lt_nmap TYPE HASHED TABLE OF lty_nmap WITH UNIQUE KEY kind name.
       TYPES: BEGIN OF lty_pmap,
                program TYPE program,
@@ -14770,7 +14976,7 @@ DATA(lv_maxlen) = 200.
       ENDLOOP.
     ENDLOOP.
 
-    IF lv_pkg_mode = abap_true.
+    IF lv_aggregate = abap_true.
       TYPES: BEGIN OF lty_call_stack,
                stacklevel TYPE i,
                node_id    TYPE string,
@@ -14870,9 +15076,19 @@ DATA(lv_maxlen) = 200.
         ENDIF.
       ENDLOOP.
 
-      lt_edge = lt_static_edge.
+      " Path Only  → only the execution-path edges (flow scan).
+      " All Methods → every parsed call edge (static). Keeping static in both
+      " modes made the toggle almost invisible: static edges dominated and the
+      " ~flow edges added on top were mostly redundant after dedup.
       IF lv_flow_used = abap_true.
-        APPEND LINES OF lt_flow_edge TO lt_edge.
+        " Flow gives internal path edges; keep external static edges so
+        " calls to standard/other objects still show under "Show External".
+        lt_edge = lt_flow_edge.
+        LOOP AT lt_static_edge INTO DATA(ls_ext_only) WHERE external = abap_true.
+          APPEND ls_ext_only TO lt_edge.
+        ENDLOOP.
+      ELSE.
+        lt_edge = lt_static_edge.
       ENDIF.
 
       LOOP AT lt_meth ASSIGNING FIELD-SYMBOL(<ma>) WHERE agg_id IS NOT INITIAL.
@@ -14960,6 +15176,20 @@ DATA(lv_maxlen) = 200.
     " --- 4. Render ---
     mm_string = |graph { direction }\n|.
 
+    " Map each node id to a source unit for click navigation (first method
+    " of an aggregated class/program node wins).
+    LOOP AT lt_meth INTO DATA(ls_nmap) WHERE node_id IS NOT INITIAL.
+      READ TABLE mt_node_map WITH KEY node_id = ls_nmap-node_id TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        APPEND VALUE ts_node_map(
+          node_id = ls_nmap-node_id
+          class   = COND #( WHEN ls_nmap-real_class IS NOT INITIAL THEN ls_nmap-real_class ELSE ls_nmap-class )
+          event   = COND #( WHEN ls_nmap-name IS NOT INITIAL AND ls_nmap-class <> 'Programs' THEN 'METHOD' ELSE '' )
+          name    = ls_nmap-name
+          include = ls_nmap-include ) TO mt_node_map.
+      ENDIF.
+    ENDLOOP.
+
     " which classes have visible internal nodes
     LOOP AT lt_meth INTO ls_meth.
       IF lv_sel > 0 AND ls_meth-node_id <> lv_sel_id
@@ -14971,7 +15201,7 @@ DATA(lv_maxlen) = 200.
 
     DATA lt_seen TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
     DATA lv_node_label TYPE string.
-    IF lv_pkg_mode = abap_true.
+    IF lv_aggregate = abap_true.
       LOOP AT lt_meth INTO ls_meth.
         IF ls_meth-disp_class <> 'Programs'. CONTINUE. ENDIF.
         READ TABLE lt_seen WITH KEY table_line = ls_meth-node_id TRANSPORTING NO FIELDS.
@@ -15036,7 +15266,7 @@ DATA(lv_maxlen) = 200.
     IF mv_show_ext = abap_true.
       mm_string = |{ mm_string }classDef ext fill:#FDECEA,stroke:#E06666,color:#000\n|.
     ENDIF.
-    IF lv_pkg_mode = abap_true.
+    IF lv_aggregate = abap_true.
       mm_string = |{ mm_string }classDef prog fill:#FFF2CC,stroke:#D6B656,color:#000\n|.
       mm_string = |{ mm_string }classDef cls fill:#E8E6FF,stroke:#9673A6,color:#000\n|.
     ENDIF.
@@ -15063,7 +15293,7 @@ DATA(lv_maxlen) = 200.
        ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
        ( function = 'TOGGLE_EXT'   icon = CONV #( icon_connect )          quickinfo = 'Toggle: show / hide external calls (Class Map)' text = 'Show External' )
-       ( function = 'TOGGLE_ALLM'  icon = CONV #( icon_complete )         quickinfo = 'Toggle: include calls from all methods in Class Map' text = 'All Methods' )
+       ( function = 'TOGGLE_ALLM'  icon = CONV #( icon_complete )         quickinfo = 'Toggle: programs/classes only  vs  all blocks (events/forms/methods)' text = 'All Blocks' )
        ( butn_type = 3 )
        ( function = 'DEPTH_M'  icon = CONV #( icon_arrow_left )            quickinfo = 'Decrease depth' text = '' )
        ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level )  quickinfo = 'Depth level' text = |Depth { lv_depth }| )
@@ -15189,8 +15419,8 @@ DATA(lv_maxlen) = 200.
         mo_toolbar->set_button_info(
           EXPORTING fcode = 'TOGGLE_ALLM'
                     text  = COND #( WHEN mv_all_methods = abap_true
-                                    THEN 'Path Only'
-                                    ELSE 'All Methods' ) ).
+                                    THEN 'Prog/Class'
+                                    ELSE 'All Blocks' ) ).
       ELSEIF fcode = 'DEPTH_M'.
         IF mo_viewer->mo_window->m_hist_depth > 0.
           mo_viewer->mo_window->m_hist_depth = mo_viewer->mo_window->m_hist_depth - 1.
@@ -15258,16 +15488,34 @@ DATA(lv_maxlen) = 200.
           IF mo_diagram IS INITIAL.
             CREATE OBJECT mo_diagram TYPE ('ZCL_WD_GUI_MERMAID_JS_DIAGRAM')
               EXPORTING parent = mo_mm_container hide_scrollbars = abap_false.
-            " Raise mermaid limits so large package graphs still render
+            " Raise mermaid limits so large package graphs still render, and
+            " switch securityLevel to 'loose' so node `click` directives work.
             DATA lv_cfg TYPE string.
             CALL METHOD mo_diagram->('GET_CONFIGURATION_JSON') RECEIVING result = lv_cfg.
             IF lv_cfg NP '*maxEdges*'.
               REPLACE FIRST OCCURRENCE OF '{' IN lv_cfg
                 WITH '{"maxEdges":100000,"maxTextSize":90000000,'.
-              CALL METHOD mo_diagram->('SET_CONFIGURATION_JSON') EXPORTING config_json = lv_cfg.
+            ENDIF.
+            REPLACE ALL OCCURRENCES OF '"securityLevel":"strict"' IN lv_cfg
+              WITH '"securityLevel":"loose"'.
+            IF lv_cfg NP '*securityLevel*'.
+              REPLACE FIRST OCCURRENCE OF '{' IN lv_cfg WITH '{"securityLevel":"loose",'.
+            ENDIF.
+            CALL METHOD mo_diagram->('SET_CONFIGURATION_JSON') EXPORTING config_json = lv_cfg.
+          ENDIF.
+
+          " Register the click handler on the underlying HTML viewer once.
+          IF mv_click_registered = abap_false.
+            DATA lo_html TYPE REF TO cl_gui_html_viewer.
+            CALL METHOD mo_diagram->('GET_HTML_VIEWER') RECEIVING result = lo_html.
+            IF lo_html IS BOUND.
+              SET HANDLER on_node_click FOR lo_html.
+              mv_click_registered = abap_true.
             ENDIF.
           ENDIF.
-          CALL METHOD mo_diagram->('SET_SOURCE_CODE_STRING') EXPORTING source_code = i_mm_string.
+
+          CALL METHOD mo_diagram->('SET_SOURCE_CODE_STRING')
+            EXPORTING source_code = add_click_directives( i_mm_string ).
           CALL METHOD mo_diagram->('DISPLAY').
         CATCH cx_root.
           CLEAR: mo_diagram,
@@ -15278,6 +15526,117 @@ DATA(lv_maxlen) = 200.
                  mo_box.
       ENDTRY.
 
+  endmethod.
+  method ADD_CLICK_DIRECTIVES.
+    rv_mm_string = i_mm_string.
+    CHECK mt_node_map IS NOT INITIAL.
+    " mermaid: `click <id> call sapNodeClick(...)` is not available (no page
+    " helper), so use an href to the sapevent pseudo-protocol which the SAPGUI
+    " HTML control turns into the SAPEVENT event with the node id as parameter.
+    LOOP AT mt_node_map INTO DATA(ls_nm).
+      CHECK ls_nm-node_id IS NOT INITIAL.
+      rv_mm_string = |{ rv_mm_string }\nclick { ls_nm-node_id } "sapevent:ACENODE?id={ ls_nm-node_id }" _self|.
+    ENDLOOP.
+  endmethod.
+  method ON_NODE_CLICK.
+    " Depending on the SAPEVENTWITHQUESTMARK feature the control puts the
+    " query either in getdata (action='ACENODE') or leaves it in action
+    " (action='ACENODE?id=..'), so accept both and parse defensively.
+    DATA(lv_action) = CONV string( action ).
+    CHECK lv_action CS 'ACENODE'.
+
+    DATA lv_id TYPE string.
+    DATA(lv_src) = |{ lv_action } { getdata }|.
+    IF lv_src CS 'id='.
+      lv_id = substring_after( val = lv_src sub = 'id=' ).
+      IF lv_id CS '&'. SPLIT lv_id AT '&' INTO lv_id DATA(lv_rest). ENDIF.
+      IF lv_id CS ` `. SPLIT lv_id AT ` ` INTO lv_id lv_rest. ENDIF.
+    ENDIF.
+    IF lv_id IS INITIAL.
+      READ TABLE query_table INTO DATA(ls_q) WITH KEY name = 'id'.
+      IF sy-subrc = 0. lv_id = ls_q-value. ENDIF.
+    ENDIF.
+    CONDENSE lv_id NO-GAPS.
+    CHECK lv_id IS NOT INITIAL.
+
+    READ TABLE mt_node_map INTO DATA(ls_node) WITH KEY node_id = lv_id.
+    CHECK sy-subrc = 0.
+    show_source_popup( ls_node ).
+  endmethod.
+  method SHOW_SOURCE_POPUP.
+    DATA lt_src   TYPE STANDARD TABLE OF string.
+    DATA lv_from  TYPE i.
+    DATA lv_to    TYPE i.
+    DATA lv_inc   TYPE program.
+    DATA lv_title TYPE text100.
+
+    lv_inc = is_node-include.
+
+    " Locate the block (METHOD/FORM/FUNCTION) range in the parsed source.
+    IF lv_inc IS INITIAL AND is_node-name IS NOT INITIAL.
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line INTO DATA(ls_cl)
+        WITH KEY eventtype = is_node-event eventname = is_node-name class = is_node-class.
+      IF sy-subrc <> 0.
+        READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line INTO ls_cl
+          WITH KEY eventtype = is_node-event eventname = is_node-name.
+      ENDIF.
+      IF sy-subrc = 0. lv_inc = ls_cl-include. ENDIF.
+    ENDIF.
+
+    " Resolve the line range of the block from the include keywords.
+    IF lv_inc IS NOT INITIAL.
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(ls_prog)
+        WITH KEY include = lv_inc.
+      IF sy-subrc = 0 AND ls_prog-scan IS BOUND.
+        DATA(lv_want) = COND string( WHEN is_node-event = 'METHOD' THEN 'METHOD'
+                                     WHEN is_node-event = 'FORM'   THEN 'FORM'
+                                     WHEN is_node-event = 'FUNCTION' THEN 'FUNCTION'
+                                     ELSE '' ).
+        LOOP AT ls_prog-t_keywords INTO DATA(ls_kw) WHERE name = lv_want.
+          READ TABLE ls_prog-scan->tokens INDEX ls_kw-from + 1 INTO DATA(ls_ntok).
+          IF sy-subrc = 0 AND to_upper( ls_ntok-str ) = to_upper( is_node-name ).
+            READ TABLE ls_prog-scan->tokens INDEX ls_kw-from INTO DATA(ls_ftok).
+            IF sy-subrc = 0. lv_from = ls_ftok-row. ENDIF.
+            LOOP AT ls_prog-t_keywords INTO DATA(ls_ekw)
+              WHERE index > ls_kw-index
+                AND ( name = |END{ lv_want }| ).
+              READ TABLE ls_prog-scan->tokens INDEX ls_ekw-to INTO DATA(ls_etok).
+              IF sy-subrc = 0. lv_to = ls_etok-row. ENDIF.
+              EXIT.
+            ENDLOOP.
+            EXIT.
+          ENDIF.
+        ENDLOOP.
+        " Slice the source lines of the block
+        IF lv_from > 0.
+          IF lv_to < lv_from. lv_to = lv_from. ENDIF.
+          LOOP AT ls_prog-source_tab INTO DATA(lv_line) FROM lv_from TO lv_to.
+            APPEND lv_line TO lt_src.
+          ENDLOOP.
+        ELSE.
+          lt_src = ls_prog-source_tab.   " whole include as a fallback
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    IF lt_src IS INITIAL.
+      MESSAGE |Source for { is_node-class } { is_node-name } not found| TYPE 'S' DISPLAY LIKE 'W'.
+      RETURN.
+    ENDIF.
+
+    lv_title = COND #( WHEN is_node-class IS NOT INITIAL
+                       THEN |{ is_node-class }->{ is_node-name }|
+                       ELSE |{ is_node-event } { is_node-name }| ).
+
+    " Read-only source popup that also displays / sets / clears breakpoints.
+    DATA(lv_prog) = COND program( WHEN ls_prog-program IS NOT INITIAL
+                                  THEN ls_prog-program ELSE CONV #( lv_inc ) ).
+    NEW zcl_ace_src_popup(
+      i_title   = CONV #( lv_title )
+      it_src    = lt_src
+      i_program = lv_prog
+      i_include = lv_inc
+      i_from    = COND #( WHEN lv_from > 0 THEN lv_from ELSE 1 ) ).
   endmethod.
   method REFRESH.
 
@@ -15335,6 +15694,7 @@ DATA(lv_maxlen) = 200.
           call_stack   TYPE TABLE OF t_stack_entry.
 
     DATA(copy) = mo_viewer->mt_steps.
+    CLEAR mt_node_map.
 
     " Filter steps to only calculated ones when requested
     IF i_calc_path = abap_true.
@@ -15356,12 +15716,30 @@ DATA(lv_maxlen) = 200.
       copy = lt_copy_filt.
     ENDIF.
 
+    " Toggle OFF (default) → aggregate the flow to program/class blocks;
+    " Toggle ON ("All Blocks") → keep event/form/method-level detail.
+    DATA(lv_agg) = xsdbool( mv_all_methods = abap_false ).
+
     " ── Step 1: collect unique nodes ────────────────────────────────
     LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
       entity-event     = <copy>-eventtype.
       entity-eventname = <copy>-eventname.   " save raw name before overwrite below
 
-      IF <copy>-eventtype = 'METHOD'.
+      IF lv_agg = abap_true.
+        " Collapse to the owning class (methods) or program (everything else)
+        IF <copy>-eventtype = 'METHOD' AND <copy>-class IS NOT INITIAL.
+          entity-name  = |"{ <copy>-class }"|.
+          entity-style = c_style_method.
+          entity-class = <copy>-class.
+        ELSE.
+          entity-name  = |"{ <copy>-program }"|.
+          entity-style = c_style_event.
+          entity-class = CONV string( <copy>-program ).
+        ENDIF.
+        <copy>-eventname = entity-name.
+        entity-include   = ''.   " collapse across includes of the same unit
+
+      ELSEIF <copy>-eventtype = 'METHOD'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
           WITH KEY include   = <copy>-include
                    eventtype = 'METHOD'
@@ -15372,6 +15750,10 @@ DATA(lv_maxlen) = 200.
         entity-style = COND string(
           WHEN <copy>-eventname = 'CONSTRUCTOR' OR <copy>-eventname = 'CLASS_CONSTRUCTOR'
           THEN c_style_constr ELSE c_style_method ).
+        <copy>-eventname = entity-name.
+        entity-include = <copy>-include.
+        entity-class   = <copy>-class.
+
       ELSE.
         entity-name = SWITCH string( <copy>-eventtype
           WHEN 'FUNCTION'    THEN |"FUNCTION:{ <copy>-eventname }"|
@@ -15386,11 +15768,10 @@ DATA(lv_maxlen) = 200.
           WHEN 'ENHANCEMENT' THEN c_style_enh
           WHEN 'MODULE'      THEN c_style_form
           ELSE                    c_style_event ).
+        <copy>-eventname   = entity-name.
+        entity-include = <copy>-include.
+        entity-class   = <copy>-class.
       ENDIF.
-
-      <copy>-eventname   = entity-name.
-      entity-include = <copy>-include.
-      entity-class   = <copy>-class.
 
       READ TABLE entities
         WITH KEY include = entity-include class = entity-class name = entity-name
@@ -15406,6 +15787,13 @@ DATA(lv_maxlen) = 200.
           WHEN c_style_enh.      APPEND lv_node_id TO ids_enh.
           WHEN c_style_function. APPEND lv_node_id TO ids_function.
         ENDCASE.
+        " Remember the real source unit behind this node for click navigation
+        " (use the raw step values, not the aggregated label).
+        APPEND VALUE ts_node_map( node_id = lv_node_id
+                                  class   = <copy>-class
+                                  event   = entity-event
+                                  name    = entity-eventname
+                                  include = <copy>-include ) TO mt_node_map.
       ENDIF.
     ENDLOOP.
 
@@ -16865,8 +17253,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-19T12:54:19.163Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T12:54:19.163Z`.
+* abapmerge 0.16.7 - 2026-07-19T14:05:11.971Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T14:05:11.971Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************

@@ -231,9 +231,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'RUN' icon = CONV #( icon_execute_object ) quickinfo = 'Run report' )
 
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
-        THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = ' Calls Flow' text = 'Diagrams' ) ) )
+        THEN VALUE #( function = 'CALLS' icon = CONV #( icon_workflow_process ) quickinfo = 'Traced execution flow' text = 'Flow' ) ) )
        ( COND #( WHEN ZCL_ACE=>I_MERMAID_ACTIVE = abap_true
-        THEN VALUE #( function = 'CMAP' icon = CONV #( icon_structure ) quickinfo = 'Static method call map' text = 'Class Map' ) ) )
+        THEN VALUE #( function = 'CMAP' icon = CONV #( icon_structure ) quickinfo = 'Static call map (whole picture)' text = 'Map' ) ) )
        ( function = 'CODEMIX'     icon = CONV #( icon_wizard )              quickinfo = 'Full code flow sequence'          text = 'Code Flow' )
        ( function = 'TOGGLE_CALC' icon = CONV #( icon_biw_formula )        quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'HANDLERS'  icon = CONV #( icon_oo_event )            quickinfo = 'Event Handlers flow'              text = 'Handlers' )
@@ -1298,7 +1298,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
   METHOD set_nav_caption.
-    DATA lv_cap TYPE char220.
+    DATA lv_cap TYPE char200.
 
     " Explicit unit info wins (passed on navigation to a known target)
     IF i_evname IS NOT INITIAL.

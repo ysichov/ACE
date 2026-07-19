@@ -1102,10 +1102,14 @@ METHOD collect_method_calls.
       READ TABLE <prog>-t_keywords WITH KEY index = i_stmt_idx ASSIGNING FIELD-SYMBOL(<kw>) BINARY SEARCH.
       IF sy-subrc = 0.
         LOOP AT lt_new_calls INTO DATA(ls_nc).
+          " tt_calls is a plain STANDARD TABLE (unsorted) — a BINARY SEARCH
+          " dedup here silently misses existing rows and lets duplicates in,
+          " which then make code_execution_scanner descend twice and produce
+          " duplicated blocks in the flow diagram. Use a linear key read.
           READ TABLE <kw>-tt_calls WITH KEY event = ls_nc-event
                                             name  = ls_nc-name
                                             class = ls_nc-class
-            TRANSPORTING NO FIELDS BINARY SEARCH.
+            TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
             APPEND ls_nc TO <kw>-tt_calls.
           ENDIF.
