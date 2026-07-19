@@ -13,10 +13,6 @@ class ZCL_ACE_SRC_POPUP definition
     data MO_SCAN type ref to CL_CI_SCAN .
     data MT_SRC type STRING_TABLE .
 
-    " Registry of source popups that are currently open, in opening order.
-    types TT_OPEN type STANDARD TABLE OF ref to ZCL_ACE_SRC_POPUP WITH DEFAULT KEY .
-    class-data MT_OPEN type TT_OPEN .
-
     methods CONSTRUCTOR
       importing
         !I_TITLE   type TEXT100
@@ -97,24 +93,10 @@ CLASS ZCL_ACE_SRC_POPUP IMPLEMENTATION.
     mo_editor->set_text( table = lt_src ).
     refresh_breakpoints( ).
 
-    " A node click activates the main window, which pushes previously opened
-    " source popups behind it. Re-raise the still-open ones (oldest first,
-    " dropping the closed ones) and focus this new popup last so it stays on top.
-    " Control calls are buffered by the CFW and sent as one batch, so a series
-    " of set_focus calls collapses into the last one. Flush after each raise so
-    " every window really comes forward, newest last.
-    DATA lt_alive TYPE tt_open.
-    LOOP AT mt_open INTO DATA(lo_prev).
-      CHECK lo_prev IS BOUND AND lo_prev->mo_box IS NOT INITIAL.
-      APPEND lo_prev TO lt_alive.
-      lo_prev->mo_box->set_visible( abap_true ).
-      lo_prev->mo_box->set_focus( lo_prev->mo_box ).
-      cl_gui_cfw=>flush( ).
-    ENDLOOP.
-    mt_open = lt_alive.
-    APPEND me TO mt_open.
+    " Note: the z-order of SAPGUI dialog windows is owned by the frontend.
+    " set_focus only moves the input focus inside the control set, so already
+    " open popups cannot be raised from ABAP — the user has to click them.
     mo_box->set_focus( mo_box ).
-    cl_gui_cfw=>flush( ).
   endmethod.
 
 
