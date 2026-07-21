@@ -1296,7 +1296,7 @@ DATA(lv_maxlen) = 200.
        ( function = 'LR'       icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
        ( butn_type = 3 )
        ( function = 'CALLS'        icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow'              text = 'Calls Flow' )
-       ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Code Flow'               text = 'Code Flow' )
+       ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Control-structure scheme of the current unit' text = 'Flow Scheme' )
        ( butn_type = 3 )
        ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
@@ -1488,6 +1488,11 @@ DATA(lv_maxlen) = 200.
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
         RETURN.
+      ELSEIF fcode = 'FLOW'.
+        " Was MAGIC_SEARCH; now the same scheme the source window builds,
+        " so there is one implementation of the control-structure picture.
+        mv_type   = 'SCHEME'.
+        mv_scheme = mo_viewer->mo_window->build_scheme_string( ).
       ELSE.
         mv_type = fcode.
       ENDIF.

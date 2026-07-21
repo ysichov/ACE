@@ -216,6 +216,10 @@ public section.
       !FCODE .
     " Rebuilds the branch scheme popup for the unit currently shown
   methods REFRESH_SCHEME .
+    " Mermaid source of the control-structure scheme of the current unit
+  methods BUILD_SCHEME_STRING
+    returning
+      value(R_MM) type STRING .
     " Brings a stretch of code into view and selects it — used when a node
     " of the branch scheme is clicked.
   methods FOCUS_CODE_RANGE
@@ -489,7 +493,15 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     " when the scheme is opened and after every navigation, so the diagram
     " follows the code the user is looking at.
     CHECK mo_scheme IS BOUND AND mo_scheme->mo_box IS NOT INITIAL.
+    mo_scheme->mv_scheme = build_scheme_string( ).
+    mo_scheme->refresh( ).
+    mo_scheme->mo_box->set_caption( |Branch scheme: { unit_title( ) }| ).
+  ENDMETHOD.
 
+
+  METHOD build_scheme_string.
+    " Single source of the control-structure picture — used by the Scheme
+    " popup of the source window and by Flow Scheme in the mermaid window.
     READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_prog).
     DATA lt_src TYPE sci_include.
     IF ls_prog-v_source IS NOT INITIAL.
@@ -503,14 +515,12 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     DATA(lr_kw) = REF #( ls_prog-t_keywords ).
     IF ls_prog-v_keywords IS NOT INITIAL. lr_kw = REF #( ls_prog-v_keywords ). ENDIF.
 
-    mo_scheme->mv_scheme = zcl_ace_code_html=>build_scheme(
+    r_mm = zcl_ace_code_html=>build_scheme(
       it_source   = lt_src
       it_kw       = lr_kw->*
       io_scan     = ls_prog-scan
       i_title     = unit_title( )
       it_expanded = mt_scheme_exp ).
-    mo_scheme->refresh( ).
-    mo_scheme->mo_box->set_caption( |Branch scheme: { unit_title( ) }| ).
   ENDMETHOD.
 
 
