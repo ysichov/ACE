@@ -65,6 +65,12 @@ CLASS zcl_ace_code_html DEFINITION
       END OF ts_open,
       tt_open TYPE STANDARD TABLE OF ts_open WITH EMPTY KEY.
 
+    " Quote characters as constants: literals like `'` and '`' inline in the
+    " code are the kind of thing that trips up serialization round-trips.
+    CONSTANTS c_apos  TYPE c LENGTH 1 VALUE ''''.
+    CONSTANTS c_btick TYPE c LENGTH 1 VALUE '`'.
+    CONSTANTS c_blank TYPE c LENGTH 1 VALUE ' '.
+
     CONSTANTS c_branches TYPE string VALUE
       ' ELSEIF ELSE WHEN CATCH CLEANUP '.
     CONSTANTS c_closers TYPE string VALUE
@@ -417,7 +423,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       lv_char = i_text+lv_pos(1).
 
       CASE lv_char.
-        WHEN `'` OR '`'.
+        WHEN c_apos OR c_btick.
           " String literal up to the matching quote (or end of line)
           DATA(lv_quote) = lv_char.
           DATA(lv_from)  = lv_pos.
@@ -487,7 +493,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF '>' IN r_text WITH '&gt;'.
     " Blanks become entities: the HTML is shipped through a fixed-length
     " character table, where a blank landing on a row boundary is dropped.
-    REPLACE ALL OCCURRENCES OF ` ` IN r_text WITH '&nbsp;'.
+    REPLACE ALL OCCURRENCES OF c_blank IN r_text WITH '&nbsp;'.
   ENDMETHOD.
 
 
@@ -498,7 +504,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       " Never let a row end on a blank — the fixed-length row would drop it
       " and glue two tag attributes together.
       DATA(lv_cut) = 255.
-      WHILE lv_cut > 1 AND substring( val = lv_rest off = lv_cut - 1 len = 1 ) = ` `.
+      WHILE lv_cut > 1 AND substring( val = lv_rest off = lv_cut - 1 len = 1 ) = c_blank.
         lv_cut = lv_cut - 1.
       ENDWHILE.
       APPEND lv_rest(lv_cut) TO ct_html.
