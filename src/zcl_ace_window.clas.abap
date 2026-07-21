@@ -133,6 +133,8 @@ public section.
   data MO_HTML_VIEW type ref to CL_GUI_HTML_VIEWER .
   data MV_HTML_MODE type ABAP_BOOL .
   data MV_HTML_FOLDED type ABAP_BOOL .
+  " Latest branch-scheme popup — the one that follows navigation
+  data MO_SCHEME type ref to ZCL_ACE_MERMAID .
   data:
     mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
@@ -210,6 +212,8 @@ public section.
     for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
     importing
       !FCODE .
+    " Rebuilds the branch scheme popup for the unit currently shown
+  methods REFRESH_SCHEME .
     " Qualified name of the unit on display: CLASS=>METHOD / FORM x / FM x
   methods UNIT_TITLE
     returning
@@ -394,29 +398,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
   METHOD hnd_view_toolbar.
     IF fcode = 'SCHEME'.
-      " Always a fresh popup, so several branches can be compared side by side
-      READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_scm_prog).
-      DATA lt_scm_src TYPE sci_include.
-      IF ls_scm_prog-v_source IS NOT INITIAL.
-        lt_scm_src = ls_scm_prog-v_source.
-      ELSE.
-        lt_scm_src = ls_scm_prog-source_tab.
-      ENDIF.
-      IF lt_scm_src IS INITIAL.
-        mo_code_viewer->get_text( IMPORTING table = lt_scm_src ).
-      ENDIF.
-      DATA(lr_scm_kw) = REF #( ls_scm_prog-t_keywords ).
-      IF ls_scm_prog-v_keywords IS NOT INITIAL. lr_scm_kw = REF #( ls_scm_prog-v_keywords ). ENDIF.
-
-      DATA(lo_scheme) = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'SCHEME' ).
-      lo_scheme->mv_scheme = zcl_ace_code_html=>build_scheme(
-        it_source = lt_scm_src
-        it_kw     = lr_scm_kw->*
-        io_scan   = ls_scm_prog-scan
-        i_title   = unit_title( ) ).
-      lo_scheme->refresh( ).
-      IF lo_scheme->mo_box IS NOT INITIAL.
-        lo_scheme->mo_box->set_focus( lo_scheme->mo_box ).
+      " Always a fresh popup, so several branches can be compared side by
+      " side. Only the latest one follows the navigation; the older ones stay
+      " on the branch they were opened for.
+      mo_scheme = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'SCHEME' ).
+      refresh_scheme( ).
+      IF mo_scheme->mo_box IS NOT INITIAL.
+        mo_scheme->mo_box->set_focus( mo_scheme->mo_box ).
       ENDIF.
       RETURN.
     ENDIF.
@@ -446,6 +434,35 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_view_toolbar->set_button_info( EXPORTING fcode = 'VIEWMODE' text = 'HTML view' ).
     ENDIF.
     cl_gui_cfw=>flush( ).
+  ENDMETHOD.
+
+
+  METHOD refresh_scheme.
+    " Rebuilds the branch scheme for the unit currently on display. Called
+    " when the scheme is opened and after every navigation, so the diagram
+    " follows the code the user is looking at.
+    CHECK mo_scheme IS BOUND AND mo_scheme->mo_box IS NOT INITIAL.
+
+    READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_prog).
+    DATA lt_src TYPE sci_include.
+    IF ls_prog-v_source IS NOT INITIAL.
+      lt_src = ls_prog-v_source.
+    ELSE.
+      lt_src = ls_prog-source_tab.
+    ENDIF.
+    IF lt_src IS INITIAL.
+      mo_code_viewer->get_text( IMPORTING table = lt_src ).
+    ENDIF.
+    DATA(lr_kw) = REF #( ls_prog-t_keywords ).
+    IF ls_prog-v_keywords IS NOT INITIAL. lr_kw = REF #( ls_prog-v_keywords ). ENDIF.
+
+    mo_scheme->mv_scheme = zcl_ace_code_html=>build_scheme(
+      it_source = lt_src
+      it_kw     = lr_kw->*
+      io_scan   = ls_prog-scan
+      i_title   = unit_title( ) ).
+    mo_scheme->refresh( ).
+    mo_scheme->mo_box->set_caption( |Branch scheme: { unit_title( ) }| ).
   ENDMETHOD.
 
 
@@ -1325,6 +1342,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         mo_code_viewer->set_text( table = <sp_prog>-source_tab ).
       ENDIF.
       refresh_html_view( ).
+      " An open scheme follows the code: double-clicking through to another
+      " method redraws it for that method.
+      refresh_scheme( ).
     ENDIF.
   ENDMETHOD.
 
