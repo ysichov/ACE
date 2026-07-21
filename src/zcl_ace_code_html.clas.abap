@@ -69,7 +69,10 @@ CLASS zcl_ace_code_html DEFINITION
     " code are the kind of thing that trips up serialization round-trips.
     CONSTANTS c_apos  TYPE c LENGTH 1 VALUE ''''.
     CONSTANTS c_btick TYPE c LENGTH 1 VALUE '`'.
-    CONSTANTS c_blank TYPE c LENGTH 1 VALUE ' '.
+    " A blank MUST stay a string literal: as TYPE c its trailing blank is
+    " stripped, which turns a REPLACE pattern into an empty one and loops
+    " forever (CX_SY_REPLACE_INFINITE_LOOP).
+    CONSTANTS c_blank TYPE string VALUE ` `.
 
     CONSTANTS c_branches TYPE string VALUE
       ' ELSEIF ELSE WHEN CATCH CLEANUP '.
