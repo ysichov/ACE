@@ -45,6 +45,7 @@ CLASS zcl_ace_html_viewer DEFINITION DEFERRED.
 CLASS zcl_ace_exprs DEFINITION DEFERRED.
 CLASS zcl_ace_combi_node DEFINITION DEFERRED.
 CLASS zcl_ace_combi DEFINITION DEFERRED.
+CLASS zcl_ace_code_html DEFINITION DEFERRED.
 CLASS zcl_ace_alv_common DEFINITION DEFERRED.
 CLASS zcl_ace DEFINITION DEFERRED.
 INTERFACE zif_ace_parse_data.
@@ -715,6 +716,160 @@ public section.
       value(E_INDEX) type I .
 protected section.
 private section.
+ENDCLASS.
+"! Renders ABAP source as HTML for the code window's "HTML view" mode.
+"!
+"! Two things the SAP GUI editor control (CL_GUI_ABAPEDIT) cannot do and
+"! that this renderer provides:
+"!   * every identifier (call, variable, object name) becomes a hyperlink
+"!     that reports its viewer line back through sapevent, so the window
+"!     can reuse the very same navigation logic as a double-click;
+"!   * branch-aware folding — an IF can be collapsed down to its ELSEIF /
+"!     ELSE headers and a CASE down to its WHEN headers, each of which can
+"!     then be expanded on its own.
+"!
+"! Segment model: for every foldable header line the builder precomputes
+"! the last line of the block that belongs to that header (data-end).
+"! For IF/ELSEIF/ELSE and WHEN that block stops at the *next branch header
+"! of the same nesting depth*, which is exactly what gives the "collapse to
+"! the branch headers" behaviour. Folding itself is plain JS on data-end.
+CLASS zcl_ace_code_html DEFINITION
+  FINAL
+  CREATE PRIVATE.
+
+  PUBLIC SECTION.
+
+    TYPES tt_lines TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+
+    "! Builds a complete HTML page for the given source lines.
+    "! @parameter it_source | source as shown in the editor (1 line = 1 viewer line)
+    "! @parameter i_title   | caption printed above the code
+    "! @parameter it_kw     | parsed statement keywords of the include; folding
+    "!                        is derived from these, never from the raw text
+    "! @parameter it_bp_s   | viewer lines carrying a session breakpoint
+    "! @parameter it_bp_e   | viewer lines carrying an external breakpoint
+    CLASS-METHODS build
+      IMPORTING it_source     TYPE STANDARD TABLE
+                it_kw         TYPE zif_ace_parse_data=>tt_kword OPTIONAL
+                io_scan       TYPE REF TO cl_ci_scan OPTIONAL
+                i_title       TYPE string OPTIONAL
+                it_bp_s       TYPE tt_lines OPTIONAL
+                it_bp_e       TYPE tt_lines OPTIONAL
+                i_focus       TYPE i OPTIONAL
+                i_folded      TYPE abap_bool DEFAULT abap_false
+      RETURNING VALUE(rt_html) TYPE w3htmltab.
+
+    "! Mermaid flowchart of the control structure of the same source:
+    "! IF/ELSEIF/ELSE, CASE/WHEN, LOOP/DO/WHILE, TRY/CATCH and the enclosing
+    "! METHOD/FORM. Plain statements are left out — the point is the shape of
+    "! the branch, not its every line.
+    CLASS-METHODS build_scheme
+      IMPORTING it_source     TYPE STANDARD TABLE
+                it_kw         TYPE zif_ace_parse_data=>tt_kword OPTIONAL
+                io_scan       TYPE REF TO cl_ci_scan OPTIONAL
+                i_title       TYPE string OPTIONAL
+                it_expanded   TYPE tt_lines OPTIONAL
+      RETURNING VALUE(rv_mm)  TYPE string.
+
+  PRIVATE SECTION.
+
+    TYPES:
+      BEGIN OF ts_line,
+        line  TYPE i,
+        text  TYPE string,
+        word  TYPE string,   " first word, uppercased
+        depth TYPE i,
+        kind  TYPE char1,   " 'O'=opener 'B'=branch 'C'=closer 'P'=plain
+                            " 'S'=whole block on one line (scheme only)
+        end   TYPE i,       " last line of this header's own branch segment
+        all   TYPE i,       " openers: last line before the matching closer
+      END OF ts_line,
+      tt_line TYPE STANDARD TABLE OF ts_line WITH EMPTY KEY.
+
+    " Openers are only accepted once their own closer has actually been
+    " found. SELECT and AT matter here: "SELECT ... INTO TABLE" and
+    " "AT line-selection" have no closer, and counting them as blocks used
+    " to shift the nesting level of everything that followed.
+    TYPES:
+      BEGIN OF ts_open,
+        line   TYPE i,
+        word   TYPE string,
+        closer TYPE string,
+      END OF ts_open,
+      tt_open TYPE STANDARD TABLE OF ts_open WITH EMPTY KEY.
+
+    " One entry per statement, in program order — several statements can
+    " share a line ("IF x. y. ENDIF." written on one line).
+    TYPES:
+      BEGIN OF ts_stmt,
+        index TYPE i,
+        line  TYPE i,
+        word  TYPE string,
+      END OF ts_stmt,
+      tt_stmt TYPE STANDARD TABLE OF ts_stmt WITH EMPTY KEY.
+
+    " A confirmed block: opener and closer found, on different lines.
+    TYPES:
+      BEGIN OF ts_block,
+        open  TYPE i,
+        close TYPE i,
+        word  TYPE string,
+      END OF ts_block,
+      tt_block TYPE STANDARD TABLE OF ts_block WITH EMPTY KEY.
+
+    " Quote characters as constants: literals like `'` and '`' inline in the
+    " code are the kind of thing that trips up serialization round-trips.
+    CONSTANTS c_apos  TYPE c LENGTH 1 VALUE ''''.
+    CONSTANTS c_btick TYPE c LENGTH 1 VALUE '`'.
+    " A blank MUST stay a string literal: as TYPE c its trailing blank is
+    " stripped, which turns a REPLACE pattern into an empty one and loops
+    " forever (CX_SY_REPLACE_INFINITE_LOOP).
+    CONSTANTS c_blank TYPE string VALUE ` `.
+
+    CONSTANTS c_branches TYPE string VALUE
+      ' ELSEIF ELSE WHEN CATCH CLEANUP '.
+    CONSTANTS c_closers TYPE string VALUE
+      ' ENDIF ENDCASE ENDLOOP ENDDO ENDWHILE ENDTRY ENDMETHOD ENDFORM ENDMODULE ENDSELECT ENDAT ENDPROVIDE '.
+
+    "! Classifies every line and computes the fold segments.
+    CLASS-METHODS analyze
+      IMPORTING it_source      TYPE STANDARD TABLE
+                it_kw          TYPE zif_ace_parse_data=>tt_kword
+                io_scan        TYPE REF TO cl_ci_scan OPTIONAL
+      RETURNING VALUE(rt_lines) TYPE tt_line.
+
+    "! First word of a statement line, uppercased ('' for comments/blank).
+    "! Only used when the parser's keyword table is unavailable.
+    CLASS-METHODS first_word
+      IMPORTING i_text        TYPE string
+      RETURNING VALUE(r_word) TYPE string.
+
+    "! Closing keyword expected for an opening one, '' if not a block opener.
+    CLASS-METHODS closer_of
+      IMPORTING i_word         TYPE string
+      RETURNING VALUE(r_closer) TYPE string.
+
+    "! Source line → syntax-highlighted HTML with identifier hyperlinks.
+    CLASS-METHODS render_line
+      IMPORTING i_text        TYPE string
+                i_line        TYPE i
+      RETURNING VALUE(r_html) TYPE string.
+
+    CLASS-METHODS escape
+      IMPORTING i_text        TYPE string
+      RETURNING VALUE(r_text) TYPE string.
+
+    "! Source text of a structure line, trimmed and stripped of the
+    "! characters that would break a mermaid label.
+    CLASS-METHODS scheme_label
+      IMPORTING i_text        TYPE string
+      RETURNING VALUE(r_text) TYPE string.
+
+    "! Appends a string to the w3htmltab, splitting on the 255 char limit.
+    CLASS-METHODS add
+      IMPORTING i_text TYPE string
+      CHANGING  ct_html TYPE w3htmltab.
+
 ENDCLASS.
 "! Combinator factory — direct port of exported functions in abaplint combi.ts:
 "!   str(), tok(), regex(), seq(), alt(), opt(), star(), plus(), per(), ver(), expr().
@@ -1531,6 +1686,9 @@ public section.
   types tt_node_map TYPE STANDARD TABLE OF ts_node_map WITH KEY node_id .
   data MT_NODE_MAP type TT_NODE_MAP .
   data MV_CLICK_REGISTERED type ABAP_BOOL .
+  " Ready-made diagram for MV_TYPE = 'SCHEME' — the control-structure picture
+  " of one include, generated by ZCL_ACE_CODE_HTML=>BUILD_SCHEME.
+  data MV_SCHEME type STRING .
 
   methods CONSTRUCTOR
     importing
@@ -1541,10 +1699,6 @@ public section.
       !I_DIRECTION   type UI_FUNC    optional
       !I_WITH_PARAMS type BOOLEAN    optional
       !I_CALC_PATH   type BOOLEAN    optional .
-  methods MAGIC_SEARCH
-    importing
-      !I_DIRECTION type UI_FUNC optional
-      !I_CALC_PATH type BOOLEAN optional .
   methods CLASS_MAP
     importing
       !I_DIRECTION type UI_FUNC optional .
@@ -1575,6 +1729,15 @@ public section.
   methods SHOW_SOURCE_POPUP
     importing
       !IS_NODE type TS_NODE_MAP .
+  " Reads one parameter of a sapevent URL, from the action/getdata string
+  " or from the parsed query table, whichever carries it.
+  methods SCHEME_PARAM
+    importing
+      !I_SRC        type STRING
+      !I_NAME       type STRING
+      !IT_QUERY     type CNHT_QUERY_TABLE
+    returning
+      value(R_VAL)  type STRING .
 
 protected section.
 private section.
@@ -2537,6 +2700,18 @@ public section.
   data MO_STACK_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_HIST_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_CODE_VIEWER type ref to CL_GUI_ABAPEDIT .
+  " --- second toolbar: Classic / HTML view of the source ---
+  data MO_VIEW_SPLITTER type ref to CL_GUI_SPLITTER_CONTAINER .
+  data MO_VIEW_TB_CONTAINER type ref to CL_GUI_CONTAINER .
+  data MO_SRC_CONTAINER type ref to CL_GUI_CONTAINER .
+  data MO_VIEW_TOOLBAR type ref to CL_GUI_TOOLBAR .
+  data MO_HTML_VIEW type ref to CL_GUI_HTML_VIEWER .
+  data MV_HTML_MODE type ABAP_BOOL .
+  data MV_HTML_FOLDED type ABAP_BOOL .
+  " Latest branch-scheme popup — the one that follows navigation
+  data MO_SCHEME type ref to ZCL_ACE_MERMAID .
+  " Anchor lines whose "N operations" node is currently expanded
+  data MT_SCHEME_EXP type ZCL_ACE_CODE_HTML=>TT_LINES .
   data:
     mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
@@ -2608,6 +2783,56 @@ public section.
     importing
       !I_LINE like SY-INDEX optional .
   methods CREATE_CODE_VIEWER .
+    " Second toolbar above the source: Classic <-> HTML view toggle
+  methods ADD_VIEW_TOOLBAR_BUTTONS .
+  methods HND_VIEW_TOOLBAR
+    for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
+    importing
+      !FCODE .
+    " Rebuilds the branch scheme popup for the unit currently shown
+  methods REFRESH_SCHEME .
+    " Mermaid source of the control-structure scheme of the current unit
+  methods BUILD_SCHEME_STRING
+    returning
+      value(R_MM) type STRING .
+    " Brings a stretch of code into view and selects it — used when a node
+    " of the branch scheme is clicked.
+  methods FOCUS_CODE_RANGE
+    importing
+      !I_FROM type I
+      !I_TO   type I optional .
+    " Click on an "N operations" node: expand it into single statements,
+    " or fold it back if it is already expanded.
+  methods TOGGLE_SCHEME_EXPAND
+    importing
+      !I_LINE type I .
+    " Qualified name of the unit on display: CLASS=>METHOD / FORM x / FM x
+  methods UNIT_TITLE
+    returning
+      value(R_TITLE) type STRING .
+    " Re-renders the currently shown source into the HTML control.
+    " i_focus keeps the viewport on that line after the reload.
+  methods REFRESH_HTML_VIEW
+    importing
+      !I_FOCUS type I default 0 .
+    " Hyperlink click in the HTML view -> same navigation as a double-click
+  methods ON_HTML_SAPEVENT
+    for event SAPEVENT of CL_GUI_HTML_VIEWER
+    importing
+      !ACTION
+      !QUERY_TABLE .
+    " Shared navigation: resolves the target of the clicked line/word.
+    " Called both by the editor double-click and by the HTML hyperlinks.
+  methods NAVIGATE_TO_SOURCE
+    importing
+      !I_LINE type I
+      !I_WORD type STRING optional .
+    " Shared breakpoint toggle: editor border click and HTML gutter click.
+    " i_external = Ctrl was held -> external instead of session breakpoint.
+  methods TOGGLE_BREAKPOINT
+    importing
+      !I_LINE     type I
+      !I_EXTERNAL type ABAP_BOOL default ABAP_FALSE .
   methods APPLY_DEPTH .
   methods SHOW_STACK .
   methods SHOW_COVERAGE .
@@ -2685,6 +2910,19 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       CREATE OBJECT mo_splitter_code
         EXPORTING parent = mo_code_container rows = 1 columns = 2 EXCEPTIONS OTHERS = 1.
       mo_splitter_code->get_container( EXPORTING row = 1 column = 2 RECEIVING container = mo_editor_container ).
+      " The editor area is split again: a thin toolbar row on top of the source
+      CREATE OBJECT mo_view_splitter
+        EXPORTING parent = mo_editor_container rows = 2 columns = 1 EXCEPTIONS OTHERS = 1.
+      mo_view_splitter->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_view_tb_container ).
+      mo_view_splitter->get_container( EXPORTING row = 2 column = 1 RECEIVING container = mo_src_container ).
+      " Absolute mode: a percentage of the editor area leaves the toolbar
+      " clipped, a fixed pixel height always fits the buttons
+      mo_view_splitter->set_row_mode( mode = cl_gui_splitter_container=>mode_absolute ).
+      mo_view_splitter->set_row_height( id = 1 height = 28 ).
+      mo_view_splitter->set_row_sash( id = 1 type = 0 value = 0 ).
+      CREATE OBJECT mo_view_toolbar EXPORTING parent = mo_view_tb_container.
+      add_view_toolbar_buttons( ).
+      mo_view_toolbar->set_visible( 'X' ).
       mo_splitter_code->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_locals_container ).
       mo_splitter_code->set_column_width( EXPORTING id = 1 width = '35' ).
       SET HANDLER on_box_close FOR mo_box.
@@ -2699,7 +2937,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             event  TYPE cntl_simple_event.
       CHECK mo_code_viewer IS INITIAL.
       CREATE OBJECT mo_code_viewer
-        EXPORTING parent = mo_editor_container max_number_chars = 100.
+        EXPORTING parent = mo_src_container max_number_chars = 100.
       mo_code_viewer->init_completer( ).
       mo_code_viewer->upload_properties(
         EXCEPTIONS dp_error_create = 1 dp_error_general = 2 dp_error_send = 3 OTHERS = 4 ).
@@ -2714,6 +2952,241 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->create_document( ).
       mo_code_viewer->set_readonly_mode( 1 ).
   endmethod.
+  METHOD add_view_toolbar_buttons.
+    DATA: button TYPE ttb_button,
+          events TYPE cntl_simple_events,
+          event  LIKE LINE OF events.
+    button = VALUE #(
+      ( function = 'VIEWMODE' icon = CONV #( icon_htm )
+        quickinfo = 'Toggle source rendering: Classic editor / HTML with links and branch folding'
+        text = 'Classic view' )
+      ( butn_type = 3 )
+      ( function = 'FOLDALL' icon = CONV #( icon_collapse )
+        quickinfo = 'Collapse / expand all control structures (HTML view only)'
+        text = 'Collapse all' )
+      ( butn_type = 3 )
+      ( function = 'SCHEME' icon = CONV #( icon_structure )
+        quickinfo = 'Mermaid scheme of the control structure of this source'
+        text = 'Scheme' ) ).
+    mo_view_toolbar->add_button_group( button ).
+    event-eventid = cl_gui_toolbar=>m_id_function_selected.
+    event-appl_event = space.
+    APPEND event TO events.
+    mo_view_toolbar->set_registered_events( events = events ).
+    SET HANDLER me->hnd_view_toolbar FOR mo_view_toolbar.
+  ENDMETHOD.
+  METHOD hnd_view_toolbar.
+    IF fcode = 'SCHEME'.
+      " Always a fresh popup, so several branches can be compared side by
+      " side. Only the latest one follows the navigation; the older ones stay
+      " on the branch they were opened for.
+      " A new popup starts fully collapsed
+      CLEAR mt_scheme_exp.
+      mo_scheme = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'SCHEME' ).
+      refresh_scheme( ).
+      IF mo_scheme->mo_box IS NOT INITIAL.
+        mo_scheme->mo_box->set_focus( mo_scheme->mo_box ).
+      ENDIF.
+      RETURN.
+    ENDIF.
+    IF fcode = 'FOLDALL'.
+      IF mv_html_mode IS INITIAL.
+        MESSAGE 'Folding is available in HTML view only' TYPE 'S'.
+        RETURN.
+      ENDIF.
+      mv_html_folded = xsdbool( mv_html_folded IS INITIAL ).
+      mo_view_toolbar->set_button_info(
+        EXPORTING fcode = 'FOLDALL'
+                  text  = COND #( WHEN mv_html_folded = abap_true
+                                  THEN 'Expand all' ELSE 'Collapse all' ) ).
+      refresh_html_view( ).
+      RETURN.
+    ENDIF.
+    CHECK fcode = 'VIEWMODE'.
+    IF mv_html_mode = abap_true.
+      mv_html_mode = abap_false.
+      IF mo_html_view IS NOT INITIAL. mo_html_view->set_visible( space ). ENDIF.
+      mo_code_viewer->set_visible( 'X' ).
+      mo_view_toolbar->set_button_info( EXPORTING fcode = 'VIEWMODE' text = 'Classic view' ).
+    ELSE.
+      mv_html_mode = abap_true.
+      mo_code_viewer->set_visible( space ).
+      refresh_html_view( ).
+      mo_view_toolbar->set_button_info( EXPORTING fcode = 'VIEWMODE' text = 'HTML view' ).
+    ENDIF.
+    cl_gui_cfw=>flush( ).
+  ENDMETHOD.
+  METHOD focus_code_range.
+    " Clicking a node in the scheme brings the matching stretch of code into
+    " view: selected in the classic editor, scrolled to in the HTML view.
+    CHECK i_from > 0.
+    DATA(lv_to) = COND i( WHEN i_to >= i_from THEN i_to ELSE i_from ).
+
+    IF mv_html_mode = abap_true.
+      refresh_html_view( i_focus = i_from ).
+      RETURN.
+    ENDIF.
+
+    mo_code_viewer->select_lines( EXPORTING from_line = i_from to_line = lv_to
+                                  EXCEPTIONS OTHERS = 1 ).
+    " Put the block near the top rather than at the very edge of the viewport
+    DATA(lv_first) = COND i( WHEN i_from > 3 THEN i_from - 3 ELSE 1 ).
+    mo_code_viewer->set_first_visible_line( EXPORTING line = lv_first
+                                            EXCEPTIONS OTHERS = 1 ).
+    cl_gui_cfw=>flush( ).
+  ENDMETHOD.
+  METHOD toggle_scheme_expand.
+    READ TABLE mt_scheme_exp TRANSPORTING NO FIELDS WITH KEY table_line = i_line.
+    IF sy-subrc = 0.
+      DELETE mt_scheme_exp WHERE table_line = i_line.
+    ELSE.
+      APPEND i_line TO mt_scheme_exp.
+    ENDIF.
+    refresh_scheme( ).
+  ENDMETHOD.
+  METHOD refresh_scheme.
+    " Rebuilds the branch scheme for the unit currently on display. Called
+    " when the scheme is opened and after every navigation, so the diagram
+    " follows the code the user is looking at.
+    CHECK mo_scheme IS BOUND AND mo_scheme->mo_box IS NOT INITIAL.
+    mo_scheme->mv_scheme = build_scheme_string( ).
+    mo_scheme->refresh( ).
+    mo_scheme->mo_box->set_caption( |Branch scheme: { unit_title( ) }| ).
+  ENDMETHOD.
+  METHOD build_scheme_string.
+    " Single source of the control-structure picture — used by the Scheme
+    " popup of the source window and by Flow Scheme in the mermaid window.
+    READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_prog).
+    DATA lt_src TYPE sci_include.
+    IF ls_prog-v_source IS NOT INITIAL.
+      lt_src = ls_prog-v_source.
+    ELSE.
+      lt_src = ls_prog-source_tab.
+    ENDIF.
+    IF lt_src IS INITIAL.
+      mo_code_viewer->get_text( IMPORTING table = lt_src ).
+    ENDIF.
+    DATA(lr_kw) = REF #( ls_prog-t_keywords ).
+    IF ls_prog-v_keywords IS NOT INITIAL. lr_kw = REF #( ls_prog-v_keywords ). ENDIF.
+
+    r_mm = zcl_ace_code_html=>build_scheme(
+      it_source   = lt_src
+      it_kw       = lr_kw->*
+      io_scan     = ls_prog-scan
+      i_title     = unit_title( )
+      it_expanded = mt_scheme_exp ).
+  ENDMETHOD.
+  METHOD unit_title.
+    " Qualified name of the unit currently shown, rather than the technical
+    " include: CLASS=>METHOD, FORM name, FM name — whatever the parse knows.
+    READ TABLE ms_sources-tt_calls_line WITH KEY include = m_prg-include
+      INTO DATA(ls_cl).
+    r_title = COND string(
+      WHEN sy-subrc <> 0 OR ls_cl-eventname IS INITIAL
+        THEN CONV string( m_prg-program )
+      WHEN ls_cl-class IS NOT INITIAL
+        THEN |{ ls_cl-class }=>{ ls_cl-eventname }|
+      WHEN ls_cl-eventtype = 'FORM'
+        THEN |FORM { ls_cl-eventname }|
+      WHEN ls_cl-eventtype = 'FUNCTION'
+        THEN |FM { ls_cl-eventname }|
+      ELSE |{ ls_cl-eventname }| ).
+  ENDMETHOD.
+  METHOD refresh_html_view.
+
+    CHECK mv_html_mode = abap_true.
+
+    IF mo_html_view IS INITIAL.
+      CREATE OBJECT mo_html_view
+        EXPORTING parent = mo_src_container
+        EXCEPTIONS OTHERS = 1.
+      IF sy-subrc <> 0.
+        mv_html_mode = abap_false.
+        mo_code_viewer->set_visible( 'X' ).
+        MESSAGE 'HTML view is not available in this GUI' TYPE 'I'.
+        RETURN.
+      ENDIF.
+      " The renderer emits sapevent:nav?l=<line>&w=<word> links
+      DATA: lt_events TYPE cntl_simple_events,
+            ls_event  TYPE cntl_simple_event.
+      ls_event-eventid    = cl_gui_html_viewer=>m_id_sapevent.
+      ls_event-appl_event = abap_true.
+      APPEND ls_event TO lt_events.
+      mo_html_view->set_registered_events( events = lt_events ).
+      SET HANDLER on_html_sapevent FOR mo_html_view.
+    ENDIF.
+
+    " Take exactly the lines the classic editor shows, so viewer line
+    " numbers stay identical in both modes and navigation keeps working.
+    DATA lt_src TYPE sci_include.
+    READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_prog).
+    IF sy-subrc = 0.
+      IF ls_prog-v_source IS NOT INITIAL.
+        lt_src = ls_prog-v_source.
+      ELSE.
+        lt_src = ls_prog-source_tab.
+      ENDIF.
+    ENDIF.
+    IF lt_src IS INITIAL.
+      mo_code_viewer->get_text( IMPORTING table = lt_src ).
+    ENDIF.
+
+    " MT_BPOINTS holds real source lines; the gutter needs viewer lines,
+    " so map them through the keyword table just like SET_PROGRAM_LINE does.
+    DATA lt_bp_s TYPE zcl_ace_code_html=>tt_lines.
+    DATA lt_bp_e TYPE zcl_ace_code_html=>tt_lines.
+    DATA(lr_bpkw) = REF #( ls_prog-t_keywords ).
+    IF ls_prog-v_keywords IS NOT INITIAL. lr_bpkw = REF #( ls_prog-v_keywords ). ENDIF.
+    LOOP AT mt_bpoints INTO DATA(ls_bp).
+      LOOP AT lr_bpkw->* INTO DATA(ls_bpkw)
+        WHERE include = ls_bp-include AND line = ls_bp-line. EXIT. ENDLOOP.
+      CHECK sy-subrc = 0.
+      DATA(lv_vline) = COND i( WHEN ls_bpkw-v_line > 0 THEN ls_bpkw-v_line ELSE ls_bpkw-line ).
+      IF ls_bp-type = 'E'. APPEND lv_vline TO lt_bp_e. ELSE. APPEND lv_vline TO lt_bp_s. ENDIF.
+    ENDLOOP.
+
+    " Structure detection uses the parser's scan, not the raw text
+    DATA(lt_html) = zcl_ace_code_html=>build(
+      it_source = lt_src
+      it_kw     = lr_bpkw->*
+      io_scan   = ls_prog-scan
+      i_title   = unit_title( )
+      it_bp_s   = lt_bp_s
+      it_bp_e   = lt_bp_e
+      i_focus   = i_focus
+      i_folded  = mv_html_folded ).
+
+    DATA lv_url TYPE w3url.
+    mo_html_view->load_data(
+      IMPORTING assigned_url = lv_url
+      CHANGING  data_table   = lt_html
+      EXCEPTIONS OTHERS      = 1 ).
+    CHECK sy-subrc = 0.
+    mo_html_view->show_url( url = lv_url ).
+    mo_html_view->set_visible( 'X' ).
+    cl_gui_cfw=>flush( ).
+
+  ENDMETHOD.
+  METHOD on_html_sapevent.
+    DATA lv_line TYPE i.
+    DATA lv_word TYPE string.
+    DATA lv_ctrl TYPE abap_bool.
+    DATA(lv_action) = to_upper( action ).
+    CHECK lv_action = 'NAV' OR lv_action = 'BP'.
+    LOOP AT query_table INTO DATA(ls_q).
+      CASE to_lower( ls_q-name ).
+        WHEN 'l'. lv_line = ls_q-value.
+        WHEN 'w'. lv_word = ls_q-value.
+        WHEN 'c'. lv_ctrl = xsdbool( ls_q-value = '1' ).
+      ENDCASE.
+    ENDLOOP.
+    CHECK lv_line > 0.
+    IF lv_action = 'BP'.
+      toggle_breakpoint( i_line = lv_line i_external = lv_ctrl ).
+    ELSE.
+      navigate_to_source( i_line = lv_line i_word = lv_word ).
+    ENDIF.
+  ENDMETHOD.
   METHOD hnd_toolbar.
     CONSTANTS: c_mask TYPE x VALUE '01'.
     FIELD-SYMBOLS: <any> TYPE any.
@@ -2971,10 +3444,17 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     ENDCASE.
   ENDMETHOD.
   method ON_EDITOR_BORDER_CLICK.
+      " Thin wrapper — the border click carries the line and the Ctrl state,
+      " the work is shared with the HTML view's line-number clicks.
+      toggle_breakpoint( i_line = line
+                         i_external = xsdbool( cntrl_pressed_set IS NOT INITIAL ) ).
+  endmethod.
+  method TOGGLE_BREAKPOINT.
       DATA: type TYPE char1, program TYPE program, include TYPE program, code_line TYPE i.
+      DATA(line) = i_line.
       DATA keyword TYPE zif_ace_parse_data=>ts_kword.
       DATA candidate TYPE zif_ace_parse_data=>ts_kword.
-      IF cntrl_pressed_set IS INITIAL. type = 'S'. ELSE. type = 'E'. ENDIF.
+      IF i_external IS INITIAL. type = 'S'. ELSE. type = 'E'. ENDIF.
       IF m_prg-include = 'Code_Flow_Mix'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = 'Code_Flow_Mix' INTO DATA(prog_mix).
@@ -3020,11 +3500,26 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDIF.
       DELETE mt_bpoints WHERE del IS NOT INITIAL.
       IF m_prg-include = 'Code_Flow_Mix'. set_mixprog_line( ). ELSE. set_program_line( ). ENDIF.
+      " set_*_line refills MT_BPOINTS — redraw the HTML gutter from it,
+      " keeping the viewport on the clicked line
+      refresh_html_view( i_focus = line ).
   endmethod.
   METHOD on_editor_double_click.
+    " Thin wrapper: the editor supplies the clicked line and word, the
+    " actual resolution lives in NAVIGATE_TO_SOURCE so that the HTML
+    " view's hyperlinks can reuse it unchanged.
+    DATA lv_word TYPE string.
     sender->get_selection_pos(
       IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos)
                 to_line   = DATA(to_line) to_pos   = DATA(to_pos) ).
+    sender->get_selected_text_as_stream(
+      IMPORTING selected_text = lv_word EXCEPTIONS OTHERS = 1 ).
+    IF sy-subrc <> 0. CLEAR lv_word. ENDIF.
+    navigate_to_source( i_line = fr_line i_word = lv_word ).
+  ENDMETHOD.
+  METHOD navigate_to_source.
+
+    DATA(fr_line) = i_line.
 
     READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(prog).
     IF sy-subrc <> 0.
@@ -3253,17 +3748,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        " The double-clicked word (the editor selects it on double-click) —
-        " used to pick the right call when the line contains several.
-        DATA lv_word TYPE string.
-        CLEAR lv_word.
-        sender->get_selected_text_as_stream(
-          IMPORTING selected_text = lv_word EXCEPTIONS OTHERS = 1 ).
-        IF sy-subrc = 0.
-          lv_word = to_upper( condense( lv_word ) ).
-        ELSE.
-          CLEAR lv_word.
-        ENDIF.
+        " The clicked word (double-click selection in the editor, or the
+        " hyperlink text in HTML view) — used to pick the right call when
+        " the line contains several.
+        DATA(lv_word) = to_upper( condense( i_word ) ).
 
         DATA ls_call LIKE LINE OF kw-tt_calls.
         CLEAR ls_call.
@@ -3414,6 +3902,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       IF sy-subrc = 0.
         <sp_virt>-selected = abap_true.
         mo_code_viewer->set_text( table = <sp_virt>-source_tab ).
+        refresh_html_view( ).
       ENDIF.
       RETURN.
     ENDIF.
@@ -3440,6 +3929,12 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ELSE.
         mo_code_viewer->set_text( table = <sp_prog>-source_tab ).
       ENDIF.
+      refresh_html_view( ).
+      " An open scheme follows the code: double-clicking through to another
+      " method redraws it for that method. Expansion state is per unit —
+      " the line numbers it refers to mean nothing in the next one.
+      CLEAR mt_scheme_exp.
+      refresh_scheme( ).
     ENDIF.
   ENDMETHOD.
   method SET_PROGRAM_LINE.
@@ -14648,49 +15143,7 @@ DATA(lv_maxlen) = 200.
     ENDLOOP.
 
   endmethod.
-  METHOD magic_search.
 
-    DATA: mm_string TYPE string,
-          direction TYPE string.
-
-    CLEAR mo_viewer->mt_if.
-    DATA(lines) = mo_viewer->get_code_flow( i_calc_path = i_calc_path ).
-    "CHECK lines IS NOT INITIAL.
-
-    direction = COND string(
-      WHEN i_direction IS NOT INITIAL THEN i_direction
-      WHEN lines( lines ) < 100       THEN 'LR'
-      ELSE                                 'TB' ).
-
-    mm_string = |graph { direction }\n |.
-
-    build_nodes( EXPORTING i_direction = direction
-                 CHANGING  ct_lines = lines cv_mm_string = mm_string ).
-
-    build_edges( EXPORTING it_lines = lines
-                 CHANGING  cv_mm_string = mm_string ).
-
-    " --- Highlight active blocks (active_root = X) with a light-blue fill ---
-    DATA: lv_active_ids TYPE string.
-    LOOP AT lines INTO DATA(line) WHERE active_root = abap_true AND cond <> 'ELSE'
-                                                                AND cond <> 'ELSEIF'
-                                                                AND cond <> 'WHEN'.
-      IF lv_active_ids IS INITIAL.
-        lv_active_ids = |{ line-ind }|.
-      ELSE.
-        lv_active_ids = |{ lv_active_ids },{ line-ind }|.
-      ENDIF.
-    ENDLOOP.
-
-    IF lv_active_ids IS NOT INITIAL.
-      mm_string = |{ mm_string }\nclassDef activeNode fill:#AEE6FF,stroke:#3399CC,color:#000\n|.
-      mm_string = |{ mm_string }class { lv_active_ids } activeNode\n|.
-    ENDIF.
-
-    mm_string = |{ mm_string }\n|.
-    open_mermaid( mm_string ).
-
-  ENDMETHOD.
   METHOD class_map.
 
     TYPES: BEGIN OF lty_meth,
@@ -15410,7 +15863,7 @@ DATA(lv_maxlen) = 200.
        ( function = 'LR'       icon = CONV #( icon_view_expand_horizontal ) quickinfo = 'Horizontal' text = '' )
        ( butn_type = 3 )
        ( function = 'CALLS'        icon = CONV #( icon_workflow_process ) quickinfo = 'Calls Flow'              text = 'Calls Flow' )
-       ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Code Flow'               text = 'Code Flow' )
+       ( function = 'FLOW'         icon = CONV #( icon_wizard )           quickinfo = 'Control-structure scheme of the current unit' text = 'Flow Scheme' )
        ( butn_type = 3 )
        ( function = 'TOGGLE_CALC'  icon = CONV #( icon_biw_formula )      quickinfo = 'Toggle: show all steps / only calculated' text = 'Show All Steps' )
        ( function = 'TOGGLE_PARAMS' icon = CONV #( icon_parameter )       quickinfo = 'Toggle: show / hide call parameters'      text = 'Show Params' )
@@ -15448,8 +15901,8 @@ DATA(lv_maxlen) = 200.
 
       CASE mv_type.
         WHEN 'CALLS'. text = 'Calls flow'.
-        WHEN 'FLOW'.  text = 'Calculations sequence'.
         WHEN 'CMAP'.  text = 'Class map'.
+        WHEN 'SCHEME'. text = 'Branch scheme'.
       ENDCASE.
 
       IF mo_box IS INITIAL.
@@ -15480,7 +15933,6 @@ DATA(lv_maxlen) = 200.
 
       CASE mv_type.
         WHEN 'CALLS'. steps_flow( i_with_params = mv_with_params i_calc_path = mv_calc_path ).
-        WHEN 'FLOW'.  magic_search( i_calc_path = mv_calc_path ).
         WHEN 'CMAP'.  class_map( ).
       ENDCASE.
 
@@ -15597,6 +16049,11 @@ DATA(lv_maxlen) = 200.
           EXPORTING fcode = 'DEPTH'
                     text  = |Depth { mo_viewer->mo_window->m_hist_depth }| ).
         RETURN.
+      ELSEIF fcode = 'FLOW'.
+        " Was MAGIC_SEARCH; now the same scheme the source window builds,
+        " so there is one implementation of the control-structure picture.
+        mv_type   = 'SCHEME'.
+        mv_scheme = mo_viewer->mo_window->build_scheme_string( ).
       ELSE.
         mv_type = fcode.
       ENDIF.
@@ -15677,6 +16134,30 @@ DATA(lv_maxlen) = 200.
     " query either in getdata (action='ACENODE') or leaves it in action
     " (action='ACENODE?id=..'), so accept both and parse defensively.
     DATA(lv_action) = CONV string( action ).
+
+    " Branch scheme: a click on an "N operations" node expands it into the
+    " individual statements, a second click folds it back.
+    IF lv_action CS 'SCHEMEEXP'.
+      DATA(lv_ln) = scheme_param( i_src    = |{ lv_action } { getdata }|
+                                  i_name   = 'l'
+                                  it_query = query_table ).
+      CHECK lv_ln IS NOT INITIAL.
+      mo_viewer->mo_window->toggle_scheme_expand( CONV i( lv_ln ) ).
+      RETURN.
+    ENDIF.
+
+    " Branch scheme: a click on a structure node selects that block in the
+    " code window, so the diagram doubles as a table of contents.
+    IF lv_action CS 'SCHEMEGO'.
+      DATA(lv_gs) = |{ lv_action } { getdata }|.
+      DATA(lv_gl) = scheme_param( i_src = lv_gs i_name = 'l' it_query = query_table ).
+      DATA(lv_ge) = scheme_param( i_src = lv_gs i_name = 'e' it_query = query_table ).
+      CHECK lv_gl IS NOT INITIAL.
+      mo_viewer->mo_window->focus_code_range( i_from = CONV i( lv_gl )
+                                              i_to   = CONV i( lv_ge ) ).
+      RETURN.
+    ENDIF.
+
     CHECK lv_action CS 'ACENODE'.
 
     DATA lv_id TYPE string.
@@ -15696,6 +16177,19 @@ DATA(lv_maxlen) = 200.
     READ TABLE mt_node_map INTO DATA(ls_node) WITH KEY node_id = lv_id.
     CHECK sy-subrc = 0.
     show_source_popup( ls_node ).
+  endmethod.
+  method SCHEME_PARAM.
+    DATA lv_rest TYPE string.
+    IF i_src CS |{ i_name }=|.
+      r_val = substring_after( val = i_src sub = |{ i_name }=| ).
+      IF r_val CS '&'. SPLIT r_val AT '&' INTO r_val lv_rest. ENDIF.
+      IF r_val CS ` `. SPLIT r_val AT ` ` INTO r_val lv_rest. ENDIF.
+    ENDIF.
+    IF r_val IS INITIAL.
+      READ TABLE it_query INTO DATA(ls_q) WITH KEY name = i_name.
+      IF sy-subrc = 0. r_val = ls_q-value. ENDIF.
+    ENDIF.
+    CONDENSE r_val NO-GAPS.
   endmethod.
   method SHOW_SOURCE_POPUP.
     DATA lt_src   TYPE STANDARD TABLE OF string.
@@ -15776,6 +16270,23 @@ DATA(lv_maxlen) = 200.
   method APPLY_TOOLBAR_MODE.
     " Flow-only buttons make no sense on the static Map — hide them there.
     CHECK mo_toolbar IS BOUND.
+
+    " The branch scheme is built from one include's own source: nothing about
+    " call flows, parameters or history depth applies. Only layout direction
+    " and the diagram text / parse error stay.
+    IF mv_type = 'SCHEME'.
+      mo_toolbar->set_button_visible( fcode = 'CALLS'         visible = space ).
+      mo_toolbar->set_button_visible( fcode = 'FLOW'          visible = space ).
+      mo_toolbar->set_button_visible( fcode = 'TOGGLE_CALC'   visible = space ).
+      mo_toolbar->set_button_visible( fcode = 'TOGGLE_PARAMS' visible = space ).
+      mo_toolbar->set_button_visible( fcode = 'TOGGLE_EXT'    visible = space ).
+      mo_toolbar->set_button_visible( fcode = 'TOGGLE_ALLM'   visible = space ).
+      mo_toolbar->set_button_visible( fcode = 'DEPTH_M'       visible = space ).
+      mo_toolbar->set_button_visible( fcode = 'DEPTH'         visible = space ).
+      mo_toolbar->set_button_visible( fcode = 'DEPTH_P'       visible = space ).
+      RETURN.
+    ENDIF.
+
     DATA lv_flow_vis TYPE c LENGTH 1.
     lv_flow_vis = COND #( WHEN mv_type = 'CMAP' THEN space ELSE 'X' ).
     mo_toolbar->set_button_visible( fcode = 'CALLS'         visible = lv_flow_vis ).
@@ -15792,11 +16303,15 @@ DATA(lv_maxlen) = 200.
           steps_flow( i_direction   = mv_direction
                       i_with_params = mv_with_params
                       i_calc_path   = mv_calc_path ).
-        WHEN 'FLOW'.
-          magic_search( i_direction = mv_direction
-                        i_calc_path = mv_calc_path ).
         WHEN 'CMAP'.
           class_map( i_direction = mv_direction ).
+        WHEN 'SCHEME'.
+          CHECK mv_scheme IS NOT INITIAL.
+          DATA(lv_mm) = mv_scheme.
+          IF mv_direction = 'TB'.
+            REPLACE FIRST OCCURRENCE OF 'flowchart LR' IN lv_mm WITH 'flowchart TD'.
+          ENDIF.
+          open_mermaid( lv_mm ).
       ENDCASE.
 
   endmethod.
@@ -16568,6 +17083,712 @@ CLASS zcl_ace_combi IMPLEMENTATION.
 
   METHOD expr.
     result = zcl_ace_combi_node=>new_expr( name ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS zcl_ace_code_html IMPLEMENTATION.
+  METHOD build.
+
+    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan ).
+
+    add( EXPORTING i_text = '<html><head><meta http-equiv="X-UA-Compatible" content="IE=edge">'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '<style>' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'body{font-family:Consolas,"Courier New",monospace;font-size:12px;' &&
+                            'background:#ffffff;color:#000000;margin:0;padding:0}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.hdr{background:#eef3f8;border-bottom:1px solid #c0c8d0;padding:3px 6px;' &&
+                            'font-weight:bold}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.hdr button{font-family:inherit;font-size:11px;margin-left:6px}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.ln{white-space:pre;padding-left:2px}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.ln:hover{background:#f2f7ff}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.num{display:inline-block;width:44px;text-align:right;color:#808080;' &&
+                            'background:#f4f4f4;margin-right:6px;cursor:pointer}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.num:hover{background:#dde6f0;color:#000000}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.bp{display:inline-block;width:9px;height:9px;margin-right:3px;' &&
+                            'border-radius:5px;vertical-align:middle}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.bps{background:#d00000}.bpe{background:#0060d0}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.tg{display:inline-block;width:12px;color:#3070c0;cursor:pointer;' &&
+                            'font-weight:bold}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.tgx{display:inline-block;width:12px}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.k{color:#0000c0;font-weight:bold}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.c{color:#3f7f5f;font-style:italic}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.s{color:#a31515}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.n{color:#098658}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'a.id{color:#101010;text-decoration:none;border-bottom:1px dotted #8090a0}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'a.id:hover{color:#0050d0;background:#e8f0ff;border-bottom:1px solid #0050d0}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.fold{color:#3070c0;font-style:italic}' CHANGING ct_html = rt_html ).
+    " Global folding is one class switch on the container, not a per-row DOM
+    " walk: on a 4000-line include the walk made tens of thousands of
+    " getElementById calls and the GUI's script engine gave up half way.
+    add( EXPORTING i_text = '#code.folded .f{display:none}' CHANGING ct_html = rt_html ).
+    " Line counts precomputed in ABAP, shown only while globally folded
+    add( EXPORTING i_text = '.gf{display:none;color:#3070c0;font-style:italic}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '#code.folded .gf{display:inline}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '</style></head><body>' CHANGING ct_html = rt_html ).
+
+    " Folding is driven from the window toolbar, not from inside the page,
+    " so there is a single button and a single state.
+    add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }</div>|
+         CHANGING ct_html = rt_html ).
+
+    " Folded state is rendered straight into the markup — no startup script
+    add( EXPORTING i_text = COND string( WHEN i_folded = abap_true
+                                         THEN '<div id="code" class="folded">'
+                                         ELSE '<div id="code">' )
+         CHANGING ct_html = rt_html ).
+
+    LOOP AT lt_lines INTO DATA(ls_line).
+      DATA(lv_toggle) = COND string(
+        WHEN ls_line-end > ls_line-line OR ls_line-all > ls_line-line
+        THEN |<span class="tg" id="t{ ls_line-line }" title="Click: fold this branch only| &&
+             | / Ctrl+click: fold every branch of the block"| &&
+             | onclick="tog({ ls_line-line },event)">-</span>|
+        ELSE '<span class="tgx"></span>' ).
+      " Breakpoint dot + line number: click toggles a session breakpoint,
+      " Ctrl+click an external one — same semantics as the editor's border.
+      " Explicitly typed: an inline DATA( ) would inherit the literal's
+      " fixed C length and truncate the longer breakpoint variants mid-tag.
+      DATA lv_bp TYPE string.
+      lv_bp = '<span class="bp"></span>'.
+      READ TABLE it_bp_s TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
+      IF sy-subrc = 0.
+        lv_bp = '<span class="bp bps" title="Session breakpoint"></span>'.
+      ELSE.
+        READ TABLE it_bp_e TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
+        IF sy-subrc = 0.
+          lv_bp = '<span class="bp bpe" title="External breakpoint"></span>'.
+        ENDIF.
+      ENDIF.
+
+      " Statements sitting inside a control structure carry class "f" — that
+      " is all the global Collapse all needs to hide them.
+      DATA(lv_cls) = COND string(
+        WHEN ls_line-kind = 'P' AND ls_line-depth > 0 THEN 'ln f' ELSE 'ln' ).
+
+      add( EXPORTING i_text = |<div class="{ lv_cls }" id="r{ ls_line-line }" data-end="{ ls_line-end }"| &&
+                              | data-all="{ ls_line-all }" data-d="{ ls_line-depth }"| &&
+                              | data-kind="{ ls_line-kind }">{ lv_bp }| &&
+                              |<span class="num" title="Click: session breakpoint| &&
+                              | / Ctrl+click: external breakpoint"| &&
+                              | onclick="bp({ ls_line-line },event)">{ ls_line-line }</span>| &&
+                              lv_toggle && render_line( i_text = ls_line-text i_line = ls_line-line ) &&
+                              |<span class="fold" id="f{ ls_line-line }"></span>| &&
+                              COND string( WHEN ls_line-end > ls_line-line
+                                THEN |<span class="gf">&nbsp;&nbsp;... { ls_line-end - ls_line-line } lines</span>|
+                                ELSE '' ) && '</div>'
+           CHANGING ct_html = rt_html ).
+    ENDLOOP.
+
+    add( EXPORTING i_text = '</div>' CHANGING ct_html = rt_html ).
+
+    " --- folding script (ES5 — the GUI control is IE based) ---
+    add( EXPORTING i_text = '<script type="text/javascript">' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'function row(n){return document.getElementById("r"+n);}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'function att(e,n){return parseInt(e.getAttribute(n),10);}'
+         CHANGING ct_html = rt_html ).
+    " Show restores display:"block" rather than "": clearing the inline style
+    " would hand control back to the global .folded rule and the block the
+    " user just expanded would stay hidden.
+    add( EXPORTING i_text = 'function setSeg(n,hide){var e=row(n);if(!e)return;' &&
+                            'var end=att(e,"data-end");if(end<=n)return;var i;' &&
+                            'for(i=n+1;i<=end;i++){var r=row(i);' &&
+                            'if(r)r.style.display=hide?"none":"block";' &&
+                            'var t=document.getElementById("t"+i);if(t)t.innerHTML="-";' &&
+                            'var f=document.getElementById("f"+i);if(f)f.innerHTML="";}' &&
+                            'var tg=document.getElementById("t"+n);if(tg)tg.innerHTML=hide?"+":"-";' &&
+                            'var fl=document.getElementById("f"+n);' &&
+                            'if(fl)fl.innerHTML=hide?("  ... "+(end-n)+" lines"):"";}'
+         CHANGING ct_html = rt_html ).
+    " Chain fold: the header itself plus every sibling branch of the same
+    " block (ELSEIF/ELSE of an IF, all WHENs of a CASE), so what remains
+    " visible is exactly the branch headers.
+    add( EXPORTING i_text = 'function foldChain(n,hide){var e=row(n);if(!e)return;' &&
+                            'var d=att(e,"data-d");var a=att(e,"data-all");' &&
+                            'if(!(a>n))a=att(e,"data-end");setSeg(n,hide);var i;' &&
+                            'for(i=n+1;i<=a;i++){var r=row(i);if(!r)continue;' &&
+                            'if(att(r,"data-d")==d&&r.getAttribute("data-kind")=="B")setSeg(i,hide);}}'
+         CHANGING ct_html = rt_html ).
+    " Plain click folds only this header's own branch — for an IF that is the
+    " body down to the first ELSEIF/ELSE. Ctrl+click folds every branch of the
+    " block at once, leaving just the branch headers. A header with no branch
+    " of its own (CASE, whose first WHEN follows immediately) always chains.
+    add( EXPORTING i_text = 'function tog(n,ev){var e=row(n);var tg=document.getElementById("t"+n);' &&
+                            'var evt=ev?ev:window.event;var ctrl=evt&&evt.ctrlKey;' &&
+                            'var hide=tg.innerHTML!="+";var b=att(e,"data-end");' &&
+                            'if(ctrl||!(b>n))foldChain(n,hide);else setSeg(n,hide);}'
+         CHANGING ct_html = rt_html ).
+    " The trailing timestamp matters: without it a second click builds the
+    " very same URL, the browser treats it as "already there" and no sapevent
+    " ever reaches ABAP — the breakpoint would set but never clear.
+    add( EXPORTING i_text = 'function bp(n,ev){var evt=ev?ev:window.event;' &&
+                            'var c=(evt&&evt.ctrlKey)?1:0;' &&
+                            'window.location.href="sapevent:bp?l="+n+"&c="+c' &&
+                            '+"&t="+(new Date()).getTime();return false;}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'function nav(n,w){window.location.href="sapevent:nav?l="+n+"&w="+w' &&
+                            '+"&t="+(new Date()).getTime();return false;}'
+         CHANGING ct_html = rt_html ).
+    " Global include-wide toggle, independent of the per-click folding above:
+    " hides every statement that sits inside a control structure, so what is
+    " left standing is the skeleton — LOOP/DO/WHILE/IF/ELSE/CASE/WHEN/TRY and
+    " METHOD/FORM with their closers, nested ones included.
+    add( EXPORTING i_text = 'function foldAll(){var d=document.getElementById("code");' &&
+                            'd.className=(d.className=="folded")?"":"folded";}'
+         CHANGING ct_html = rt_html ).
+    " Setting a breakpoint round-trips through sapevent, which reloads the
+    " page — scroll back to the line the user clicked so the view stays put.
+    IF i_focus > 0.
+      add( EXPORTING i_text = |var fr=row({ i_focus });| &&
+                              'if(fr)window.scrollTo(0,fr.offsetTop-120);'
+           CHANGING ct_html = rt_html ).
+    ENDIF.
+    add( EXPORTING i_text = '</script></body></html>' CHANGING ct_html = rt_html ).
+
+  ENDMETHOD.
+  METHOD analyze.
+
+    FIELD-SYMBOLS <lv_src> TYPE any.
+    DATA lv_depth TYPE i.
+    DATA lt_stack TYPE tt_open.
+    DATA lt_stmt  TYPE tt_stmt.
+    DATA lt_block TYPE tt_block.
+
+    " Pass 1 — one entry per source line.
+    LOOP AT it_source ASSIGNING <lv_src>.
+      APPEND INITIAL LINE TO rt_lines ASSIGNING FIELD-SYMBOL(<ls_line>).
+      <ls_line>-line = sy-tabix.
+      <ls_line>-text = <lv_src>.
+      " 'P' rather than a blank: a string template drops trailing blanks,
+      " so data-kind=" " would reach the page as an empty attribute.
+      <ls_line>-kind = 'P'.
+    ENDLOOP.
+
+    " Pass 2 — statement keywords come from the parser's scan, so a line is
+    " only a structure line if a statement really starts there. Reading the
+    " first word of the raw text instead misreads continuation lines of
+    " multi-line statements (WRITE: / ..., chained calls) as keywords.
+    " The scan is not always at hand though — the whole-class view and any
+    " include that was not parsed arrive without keywords — so fall back to
+    " the first word rather than showing no folding at all.
+    IF it_kw IS NOT INITIAL.
+      LOOP AT it_kw INTO DATA(ls_kw).
+        DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
+        CHECK lv_vline > 0 AND lv_vline <= lines( rt_lines ).
+        APPEND VALUE #( index = ls_kw-index
+                        line  = lv_vline
+                        word  = to_upper( ls_kw-name ) ) TO lt_stmt.
+      ENDLOOP.
+      SORT lt_stmt BY index.
+    ELSE.
+      LOOP AT rt_lines ASSIGNING <ls_line>.
+        DATA(lv_fw) = first_word( <ls_line>-text ).
+        CHECK lv_fw IS NOT INITIAL.
+        APPEND VALUE #( index = sy-tabix line = sy-tabix word = lv_fw ) TO lt_stmt.
+      ENDLOOP.
+    ENDIF.
+
+    " The line's own word is the FIRST statement starting on it — that is
+    " what the fold marker and the scheme label refer to.
+    LOOP AT lt_stmt INTO DATA(ls_first).
+      READ TABLE rt_lines ASSIGNING <ls_line> INDEX ls_first-line.
+      CHECK sy-subrc = 0.
+      IF <ls_line>-word IS INITIAL. <ls_line>-word = ls_first-word. ENDIF.
+    ENDLOOP.
+
+    " Pass 3 — blocks. The scanner already knows them: CL_CI_SCAN->STRUCTURES
+    " holds one entry per block with its first/last statement and the opening
+    " keyword, so nothing has to be paired up by hand.
+    IF io_scan IS BOUND.
+      LOOP AT io_scan->structures INTO DATA(ls_struc).
+        READ TABLE lt_stmt INTO DATA(ls_sf) WITH KEY index = ls_struc-stmnt_from.
+        CHECK sy-subrc = 0.
+        READ TABLE lt_stmt INTO DATA(ls_st) WITH KEY index = ls_struc-stmnt_to.
+        CHECK sy-subrc = 0.
+        " KEY_START is a flag (domain BOOLEAN), not the keyword — the opening
+        " word comes from the statement itself. This also filters out the
+        " structures that are not blocks at all.
+        DATA(lv_key) = ls_sf-word.
+        CHECK closer_of( lv_key ) IS NOT INITIAL.
+        " A block written on one line holds nothing to fold, but it is still
+        " part of the control structure and belongs in the scheme: mark it
+        " 'S' — no toggle, no nesting effect, but visible to BUILD_SCHEME.
+        IF ls_sf-line = ls_st-line.
+          READ TABLE rt_lines ASSIGNING <ls_line> INDEX ls_sf-line.
+          IF sy-subrc = 0 AND <ls_line>-kind = 'P'. <ls_line>-kind = 'S'. ENDIF.
+          CONTINUE.
+        ENDIF.
+        APPEND VALUE #( open = ls_sf-line close = ls_st-line word = lv_key ) TO lt_block.
+      ENDLOOP.
+    ENDIF.
+
+    " Fallback when no scan is at hand (whole-class view): pair openers with
+    " closers over the STATEMENT list — not over lines, because "IF ... ENDIF."
+    " on one line is two statements sharing one line.
+    LOOP AT lt_stmt INTO DATA(ls_stmt).
+      CHECK io_scan IS NOT BOUND.
+      IF c_closers CS | { ls_stmt-word } |.
+        " The stack grows at index 1, so index 1 is the innermost block:
+        " take the FIRST match, or a nested ENDIF would pair with an outer IF.
+        DATA(lv_hit) = 0.
+        LOOP AT lt_stack INTO DATA(ls_open).
+          IF ls_open-closer = ls_stmt-word. lv_hit = sy-tabix. EXIT. ENDIF.
+        ENDLOOP.
+        IF lv_hit > 0.
+          READ TABLE lt_stack INTO ls_open INDEX lv_hit.
+          " A block opened and closed on the same line holds nothing to fold
+          IF ls_open-line < ls_stmt-line.
+            APPEND VALUE #( open = ls_open-line
+                            close = ls_stmt-line
+                            word = ls_open-word ) TO lt_block.
+          ENDIF.
+          " Drop the match and everything stacked on top of it (those never
+          " got a closer). FROM would delete towards the table end, i.e. the
+          " enclosing blocks — that is how ENDIF used to swallow its LOOP.
+          DELETE lt_stack TO lv_hit.
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      DATA(lv_closer) = closer_of( ls_stmt-word ).
+      IF lv_closer IS NOT INITIAL.
+        INSERT VALUE #( line = ls_stmt-line word = ls_stmt-word closer = lv_closer )
+          INTO lt_stack INDEX 1.
+      ENDIF.
+    ENDLOOP.
+
+    " Pass 4 — depth as a running sum over the confirmed blocks, and the
+    " opener/closer marks that go with them.
+    DATA lt_delta TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+    DO lines( rt_lines ) TIMES.
+      APPEND 0 TO lt_delta.
+    ENDDO.
+    LOOP AT lt_block INTO DATA(ls_block).
+      READ TABLE rt_lines ASSIGNING <ls_line> INDEX ls_block-open.
+      IF sy-subrc = 0. <ls_line>-kind = 'O'. ENDIF.
+      READ TABLE rt_lines ASSIGNING <ls_line> INDEX ls_block-close.
+      IF sy-subrc = 0. <ls_line>-kind = 'C'. ENDIF.
+      " Everything strictly inside the block sits one level deeper
+      READ TABLE lt_delta ASSIGNING FIELD-SYMBOL(<lv_d>) INDEX ls_block-open + 1.
+      IF sy-subrc = 0. <lv_d> = <lv_d> + 1. ENDIF.
+      READ TABLE lt_delta ASSIGNING <lv_d> INDEX ls_block-close.
+      IF sy-subrc = 0. <lv_d> = <lv_d> - 1. ENDIF.
+    ENDLOOP.
+
+    lv_depth = 0.
+    LOOP AT rt_lines ASSIGNING <ls_line>.
+      READ TABLE lt_delta INTO DATA(lv_step) INDEX sy-tabix.
+      IF sy-subrc = 0. lv_depth = lv_depth + lv_step. ENDIF.
+      IF lv_depth < 0. lv_depth = 0. ENDIF.
+      <ls_line>-depth = lv_depth.
+    ENDLOOP.
+
+    " Pass 5 — branches, attached to the block that encloses them.
+    DATA lt_owner TYPE STANDARD TABLE OF string WITH EMPTY KEY.
+    LOOP AT rt_lines ASSIGNING <ls_line>.
+      DATA(lv_line_no) = sy-tabix.
+      LOOP AT lt_block INTO ls_block WHERE open = lv_line_no.
+        INSERT ls_block-word INTO lt_owner INDEX 1.
+      ENDLOOP.
+      LOOP AT lt_block INTO ls_block WHERE close = lv_line_no.
+        DELETE lt_owner INDEX 1.
+      ENDLOOP.
+
+      CHECK <ls_line>-kind = 'P'.
+      CHECK <ls_line>-word IS NOT INITIAL.
+      CHECK c_branches CS | { <ls_line>-word } |.
+      READ TABLE lt_owner INDEX 1 INTO DATA(lv_owner).
+      CHECK sy-subrc = 0.
+      " ELSEIF/ELSE belong to IF, WHEN to CASE, CATCH/CLEANUP to TRY
+      DATA(lv_ok) = xsdbool(
+        (    ( <ls_line>-word = 'ELSEIF' OR <ls_line>-word = 'ELSE' ) AND lv_owner = 'IF' )
+        OR ( <ls_line>-word = 'WHEN' AND lv_owner = 'CASE' )
+        OR ( ( <ls_line>-word = 'CATCH' OR <ls_line>-word = 'CLEANUP' ) AND lv_owner = 'TRY' ) ).
+      CHECK lv_ok = abap_true.
+      <ls_line>-kind  = 'B'.
+      <ls_line>-depth = <ls_line>-depth - 1.
+      IF <ls_line>-depth < 0. <ls_line>-depth = 0. ENDIF.
+    ENDLOOP.
+
+    " Pass 5 — for every header, the segment ends right before the next
+    " line at the same depth that is a branch or a closer.
+    LOOP AT rt_lines ASSIGNING <ls_line> WHERE kind = 'O' OR kind = 'B'.
+      DATA(lv_start) = sy-tabix.
+      DATA(lv_end)   = <ls_line>-line.
+      DATA(lv_from)  = lv_start + 1.
+      LOOP AT rt_lines ASSIGNING FIELD-SYMBOL(<ls_next>) FROM lv_from.
+        IF <ls_next>-depth <= <ls_line>-depth
+          AND ( <ls_next>-kind = 'B' OR <ls_next>-kind = 'C' ).
+          EXIT.
+        ENDIF.
+        lv_end = <ls_next>-line.
+      ENDLOOP.
+      <ls_line>-end = lv_end.
+    ENDLOOP.
+
+    " Pass 6 — openers additionally get the whole-block extent, ending on
+    " the line before their matching closer (the closer itself stays
+    " visible, so a folded block still reads as IF ... ENDIF).
+    LOOP AT rt_lines ASSIGNING <ls_line> WHERE kind = 'O'.
+      DATA(lv_ostart) = sy-tabix.
+      DATA(lv_ofrom)  = lv_ostart + 1.
+      LOOP AT rt_lines ASSIGNING <ls_next> FROM lv_ofrom.
+        IF <ls_next>-kind = 'C' AND <ls_next>-depth = <ls_line>-depth.
+          <ls_line>-all = <ls_next>-line - 1.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+      IF <ls_line>-all < <ls_line>-line. <ls_line>-all = <ls_line>-line. ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+  METHOD build_scheme.
+
+    TYPES: BEGIN OF ts_prev,
+             depth TYPE i,
+             node  TYPE string,
+             line  TYPE i,
+           END OF ts_prev.
+    DATA lt_prev TYPE STANDARD TABLE OF ts_prev WITH EMPTY KEY.
+
+    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan ).
+
+    " Running count of plain statements, so the number of operations between
+    " any two lines is one subtraction rather than a scan.
+    DATA lt_ops TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+    DATA(lv_run) = 0.
+    LOOP AT lt_lines INTO DATA(ls_cnt).
+      IF ls_cnt-kind = 'P' AND ls_cnt-word IS NOT INITIAL.
+        lv_run = lv_run + 1.
+      ENDIF.
+      APPEND lv_run TO lt_ops.
+    ENDLOOP.
+
+    " Left to right by default: a branch reads as a sequence, and the wide
+    " condition labels waste far less space than stacked vertically.
+    rv_mm = |flowchart LR\n|.
+
+    " When the source is a single unit, its METHOD/FORM line is the root and
+    " carries the qualified name — no extra start node above it.
+    DATA(lv_root) = 0.
+    LOOP AT lt_lines INTO DATA(ls_root)
+      WHERE kind = 'O' AND ( word = 'METHOD' OR word = 'FORM' OR word = 'MODULE' ).
+      lv_root = ls_root-line.
+      EXIT.
+    ENDLOOP.
+
+    " Edges are collected separately and appended after every node and frame
+    " has been declared: an edge written inside a subgraph pulls its nodes
+    " into that subgraph, which silently wrecks the nesting.
+    DATA lv_edges TYPE string.
+    " click directives go last, after the nodes they refer to
+    DATA lv_clicks TYPE string.
+
+    DATA(lv_prev_node)  = ||.
+    DATA(lv_prev_depth) = 0.
+    DATA(lv_prev_line)  = 0.
+    IF lv_root = 0.
+      rv_mm = rv_mm && |  start(["{ scheme_label( i_title ) }"])\n|.
+      lv_prev_node = |start|.
+    ENDIF.
+
+    " Open subgraphs, innermost first, with the line their block ends on
+    TYPES: BEGIN OF ts_sub,
+             endline TYPE i,
+           END OF ts_sub.
+    DATA lt_sub TYPE STANDARD TABLE OF ts_sub WITH EMPTY KEY.
+
+    LOOP AT lt_lines INTO DATA(ls_line).
+
+      " Close every subgraph whose block ended before this line. Without the
+      " frame, the body of a nested LOOP was drawn as a sibling chain and the
+      " nesting was impossible to see.
+      WHILE lines( lt_sub ) > 0.
+        READ TABLE lt_sub INTO DATA(ls_sub) INDEX 1.
+        IF ls_sub-endline >= ls_line-line. EXIT. ENDIF.
+        rv_mm = rv_mm && |  end\n|.
+        DELETE lt_sub INDEX 1.
+      ENDWHILE.
+
+      " Only the structure itself — plain statements would drown the picture.
+      " 'S' is a block written on a single line: not foldable, but it is a
+      " branch all the same and has to show up here.
+      CHECK ls_line-kind = 'O' OR ls_line-kind = 'B' OR ls_line-kind = 'S'.
+
+      DATA(lv_node)  = |n{ ls_line-line }|.
+      " The unit line shows the qualified name (CLASS=>METHOD) instead of the
+      " bare METHOD statement — class and method read as one block.
+      DATA(lv_label) = COND string(
+        WHEN ls_line-line = lv_root AND i_title IS NOT INITIAL
+        THEN scheme_label( i_title )
+        ELSE scheme_label( ls_line-text ) ).
+
+      " A loop is the frame around its body, not a node of its own: its text
+      " is the subgraph caption, and the chain simply flows into the first
+      " statement inside. Everything else is a node.
+      DATA(lv_is_loop) = xsdbool(
+        ls_line-kind = 'O' AND ls_line-all > ls_line-line
+        AND ( ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE' ) ).
+
+      IF lv_is_loop = abap_true.
+        rv_mm = rv_mm && |  subgraph g{ ls_line-line }["{ lv_label }"]\n|.
+        rv_mm = rv_mm && |  direction LR\n|.
+        INSERT VALUE #( endline = ls_line-all ) INTO lt_sub INDEX 1.
+        CONTINUE.
+      ENDIF.
+
+      " Shape carries the meaning: decisions are rhombi, units are boxed,
+      " branches are rounded.
+      DATA(lv_shape) = SWITCH string( ls_line-word
+        WHEN 'IF' OR 'CASE'                      THEN |{ lv_node }\{"{ lv_label }"\}|
+        WHEN 'METHOD' OR 'FORM' OR 'MODULE'      THEN |{ lv_node }[["{ lv_label }"]]|
+        ELSE                                          |{ lv_node }("{ lv_label }")| ).
+      rv_mm = rv_mm && |  { lv_shape }\n|.
+      " Clicking a structure node selects that stretch of code in the window
+      lv_clicks = lv_clicks && |  click { lv_node } "sapevent:SCHEMEGO?l={ ls_line-line }| &&
+                  |&e={ COND i( WHEN ls_line-all > ls_line-line THEN ls_line-all
+                                WHEN ls_line-end > ls_line-line THEN ls_line-end
+                                ELSE ls_line-line ) }" _self\n|.
+
+      " Edge source: the previous node of the same nesting level, or the
+      " enclosing header when this is the first line of a block.
+      DATA(lv_from) = lv_prev_node.
+      DATA(lv_from_line) = lv_prev_line.
+      LOOP AT lt_prev INTO DATA(ls_prev) WHERE depth = ls_line-depth.
+        lv_from      = ls_prev-node.
+        lv_from_line = ls_prev-line.
+      ENDLOOP.
+      IF ls_line-depth > lv_prev_depth.
+        lv_from      = lv_prev_node.
+        lv_from_line = lv_prev_line.
+      ENDIF.
+
+      " The root has nothing above it
+      IF lv_from IS NOT INITIAL.
+        " Plain statements between the two structure lines become one node,
+        " so the picture keeps a sense of how much code sits in between.
+        DATA(lv_ops) = 0.
+        IF ls_line-line > lv_from_line + 1 AND lv_from_line > 0.
+          READ TABLE lt_ops INTO DATA(lv_to_cnt) INDEX ls_line-line - 1.
+          IF sy-subrc = 0.
+            READ TABLE lt_ops INTO DATA(lv_fr_cnt) INDEX lv_from_line.
+            IF sy-subrc = 0. lv_ops = lv_to_cnt - lv_fr_cnt. ENDIF.
+          ENDIF.
+        ENDIF.
+
+        IF lv_ops > 0.
+          READ TABLE it_expanded TRANSPORTING NO FIELDS
+            WITH KEY table_line = ls_line-line.
+          IF sy-subrc = 0.
+            " Expanded: every statement of the stretch as its own node
+            DATA(lv_chain) = lv_from.
+            LOOP AT lt_lines INTO DATA(ls_op)
+              WHERE line > lv_from_line AND line < ls_line-line
+                AND kind = 'P' AND word IS NOT INITIAL.
+              DATA(lv_opn) = |p{ ls_op-line }|.
+              rv_mm = rv_mm && |  { lv_opn }("{ scheme_label( ls_op-text ) }")\n|.
+              lv_edges = lv_edges && |  { lv_chain } --> { lv_opn }\n|.
+              lv_chain = lv_opn.
+            ENDLOOP.
+            " The first node of the stretch folds it back up
+            lv_clicks = lv_clicks && |  click p{ lv_from_line + 1 }| &&
+                        | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+            lv_edges = lv_edges && |  { lv_chain } --> { lv_node }\n|.
+          ELSE.
+            DATA(lv_ops_node) = |o{ ls_line-line }|.
+            rv_mm = rv_mm && |  { lv_ops_node }["{ lv_ops } { COND string(
+              WHEN lv_ops = 1 THEN 'operation' ELSE 'operations' ) }"]\n|.
+            lv_edges = lv_edges && |  { lv_from } --> { lv_ops_node }\n|.
+            lv_edges = lv_edges && |  { lv_ops_node } --> { lv_node }\n|.
+            " Click opens the stretch up
+            lv_clicks = lv_clicks && |  click { lv_ops_node }| &&
+                        | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+          ENDIF.
+        ELSE.
+          lv_edges = lv_edges && |  { lv_from } --> { lv_node }\n|.
+        ENDIF.
+      ENDIF.
+
+      DELETE lt_prev WHERE depth >= ls_line-depth.
+      APPEND VALUE #( depth = ls_line-depth node = lv_node line = ls_line-line ) TO lt_prev.
+      lv_prev_node  = lv_node.
+      lv_prev_depth = ls_line-depth.
+      lv_prev_line  = ls_line-line.
+    ENDLOOP.
+
+    " Frames still open at the end of the source
+    WHILE lines( lt_sub ) > 0.
+      rv_mm = rv_mm && |  end\n|.
+      DELETE lt_sub INDEX 1.
+    ENDWHILE.
+
+    rv_mm = rv_mm && lv_edges && lv_clicks.
+
+  ENDMETHOD.
+  METHOD scheme_label.
+    r_text = condense( i_text ).
+    " The diagram source passes through HTML twice, so angle brackets are
+    " read as tags: FIELD-SYMBOL(<WATCH>) loses everything from the '<' on,
+    " and the browser injects closing tags into the mermaid text. Entities
+    " do not survive either — they decode back to '<' on the second pass —
+    " so the brackets are removed outright.
+    " Operators keep their meaning; the bare brackets that remain are almost
+    " always field symbols, which read fine as (name).
+    REPLACE ALL OCCURRENCES OF '<>' IN r_text WITH ' NE '.
+    REPLACE ALL OCCURRENCES OF '<=' IN r_text WITH ' LE '.
+    REPLACE ALL OCCURRENCES OF '>=' IN r_text WITH ' GE '.
+    REPLACE ALL OCCURRENCES OF '->' IN r_text WITH '.'.
+    REPLACE ALL OCCURRENCES OF '=>' IN r_text WITH '.'.
+    REPLACE ALL OCCURRENCES OF '<' IN r_text WITH '('.
+    REPLACE ALL OCCURRENCES OF '>' IN r_text WITH ')'.
+    " Characters that would end a mermaid node or its label
+    REPLACE ALL OCCURRENCES OF '"' IN r_text WITH c_apos.
+    REPLACE ALL OCCURRENCES OF '[' IN r_text WITH '('.
+    REPLACE ALL OCCURRENCES OF ']' IN r_text WITH ')'.
+    REPLACE ALL OCCURRENCES OF '{' IN r_text WITH '('.
+    REPLACE ALL OCCURRENCES OF '}' IN r_text WITH ')'.
+    REPLACE ALL OCCURRENCES OF '|' IN r_text WITH '/'.
+    REPLACE ALL OCCURRENCES OF ';' IN r_text WITH ' '.
+    IF strlen( r_text ) > 80.
+      r_text = |{ r_text(77) }...|.
+    ENDIF.
+  ENDMETHOD.
+  METHOD first_word.
+    DATA(lv_text) = condense( i_text ).
+    IF lv_text IS INITIAL OR lv_text(1) = '*'. RETURN. ENDIF.
+    IF lv_text(1) = '"'. RETURN. ENDIF.
+    SPLIT to_upper( lv_text ) AT space INTO r_word DATA(lv_rest).
+    " Strip a trailing period so "ELSE." and "TRY." are recognised too
+    IF r_word CS '.'.
+      SPLIT r_word AT '.' INTO r_word lv_rest.
+    ENDIF.
+  ENDMETHOD.
+  METHOD closer_of.
+    CASE i_word.
+      WHEN 'IF'.      r_closer = 'ENDIF'.
+      WHEN 'CASE'.    r_closer = 'ENDCASE'.
+      WHEN 'LOOP'.    r_closer = 'ENDLOOP'.
+      WHEN 'DO'.      r_closer = 'ENDDO'.
+      WHEN 'WHILE'.   r_closer = 'ENDWHILE'.
+      WHEN 'TRY'.     r_closer = 'ENDTRY'.
+      WHEN 'METHOD'.  r_closer = 'ENDMETHOD'.
+      WHEN 'FORM'.    r_closer = 'ENDFORM'.
+      WHEN 'MODULE'.  r_closer = 'ENDMODULE'.
+      WHEN 'SELECT'.  r_closer = 'ENDSELECT'.
+      WHEN 'AT'.      r_closer = 'ENDAT'.
+      WHEN 'PROVIDE'. r_closer = 'ENDPROVIDE'.
+    ENDCASE.
+  ENDMETHOD.
+  METHOD render_line.
+
+    DATA lv_pos  TYPE i.
+    DATA lv_char TYPE c LENGTH 1.
+    DATA lv_word TYPE string.
+
+    DATA(lv_len) = strlen( i_text ).
+    IF lv_len = 0. r_html = '&nbsp;'. RETURN. ENDIF.
+
+    " Full-line comment
+    DATA(lv_trim) = condense( i_text ).
+    IF lv_trim IS NOT INITIAL AND lv_trim(1) = '*'.
+      r_html = |<span class="c">{ escape( i_text ) }</span>|.
+      RETURN.
+    ENDIF.
+
+    WHILE lv_pos < lv_len.
+      lv_char = i_text+lv_pos(1).
+
+      CASE lv_char.
+        WHEN c_apos OR c_btick.
+          " String literal up to the matching quote (or end of line)
+          DATA(lv_quote) = lv_char.
+          DATA(lv_from)  = lv_pos.
+          lv_pos = lv_pos + 1.
+          WHILE lv_pos < lv_len AND i_text+lv_pos(1) <> lv_quote.
+            lv_pos = lv_pos + 1.
+          ENDWHILE.
+          IF lv_pos < lv_len. lv_pos = lv_pos + 1. ENDIF.
+          r_html = r_html && |<span class="s">| &&
+                   escape( substring( val = i_text off = lv_from len = lv_pos - lv_from ) ) && '</span>'.
+
+        WHEN '"'.
+          " Trailing comment — rest of the line
+          r_html = r_html && |<span class="c">| &&
+                   escape( substring( val = i_text off = lv_pos ) ) && '</span>'.
+          RETURN.
+
+        WHEN OTHERS.
+          IF lv_char CA 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/~'.
+            lv_from = lv_pos.
+            WHILE lv_pos < lv_len.
+              lv_char = i_text+lv_pos(1).
+              IF lv_char CA 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/~'.
+                lv_pos = lv_pos + 1.
+              ELSEIF lv_char = '-' AND lv_pos + 1 < lv_len AND i_text+lv_pos(2) <> '->'.
+                " structure component (SY-SUBRC) stays one token, but the
+                " object operator -> splits obj and method into two links
+                lv_pos = lv_pos + 1.
+              ELSE.
+                EXIT.
+              ENDIF.
+            ENDWHILE.
+            lv_word = substring( val = i_text off = lv_from len = lv_pos - lv_from ).
+
+            IF zcl_ace_keywords=>is_keyword( to_upper( lv_word ) ) = abap_true.
+              r_html = r_html && |<span class="k">{ escape( lv_word ) }</span>|.
+            ELSEIF lv_word CO '0123456789'.
+              r_html = r_html && |<span class="n">{ escape( lv_word ) }</span>|.
+            ELSE.
+              " Identifier — hyperlink carrying the viewer line and the word,
+              " which is all ZCL_ACE_WINDOW needs to resolve the target.
+              " Routed through nav() for the same reason as bp(): repeating
+              " an identical sapevent URL would be swallowed by the browser.
+              r_html = r_html && |<a class="id" href="#" onclick="return nav(| &&
+                       |{ i_line },'{ to_upper( lv_word ) }')">| &&
+                       escape( lv_word ) && '</a>'.
+            ENDIF.
+          ELSEIF lv_char = space.
+            " c -> string conversion would drop the blank, and a blank at a
+            " w3htmltab row boundary would be lost too: emit it as an entity
+            r_html = r_html && '&nbsp;'.
+            lv_pos = lv_pos + 1.
+          ELSE.
+            r_html = r_html && escape( CONV string( lv_char ) ).
+            lv_pos = lv_pos + 1.
+          ENDIF.
+      ENDCASE.
+    ENDWHILE.
+
+  ENDMETHOD.
+  METHOD escape.
+    r_text = i_text.
+    REPLACE ALL OCCURRENCES OF '&' IN r_text WITH '&amp;'.
+    REPLACE ALL OCCURRENCES OF '<' IN r_text WITH '&lt;'.
+    REPLACE ALL OCCURRENCES OF '>' IN r_text WITH '&gt;'.
+    " Blanks become entities: the HTML is shipped through a fixed-length
+    " character table, where a blank landing on a row boundary is dropped.
+    REPLACE ALL OCCURRENCES OF c_blank IN r_text WITH '&nbsp;'.
+  ENDMETHOD.
+  METHOD add.
+    DATA lv_rest TYPE string.
+    lv_rest = i_text.
+    WHILE strlen( lv_rest ) > 255.
+      " Never let a row end on a blank — the fixed-length row would drop it
+      " and glue two tag attributes together.
+      DATA(lv_cut) = 255.
+      WHILE lv_cut > 1 AND substring( val = lv_rest off = lv_cut - 1 len = 1 ) = c_blank.
+        lv_cut = lv_cut - 1.
+      ENDWHILE.
+      APPEND lv_rest(lv_cut) TO ct_html.
+      lv_rest = lv_rest+lv_cut.
+    ENDWHILE.
+    APPEND lv_rest TO ct_html.
   ENDMETHOD.
 
 ENDCLASS.
@@ -17413,8 +18634,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-19T16:33:20.420Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-19T16:33:20.420Z`.
+* abapmerge 0.16.7 - 2026-07-21T11:14:33.175Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-21T11:14:33.175Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************

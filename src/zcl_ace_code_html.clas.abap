@@ -525,13 +525,6 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
   METHOD build_scheme.
 
-    TYPES: BEGIN OF ts_prev,
-             depth TYPE i,
-             node  TYPE string,
-             line  TYPE i,
-           END OF ts_prev.
-    DATA lt_prev TYPE STANDARD TABLE OF ts_prev WITH EMPTY KEY.
-
     DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan ).
 
     " Running count of plain statements, so the number of operations between
@@ -579,7 +572,38 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
            END OF ts_sub.
     DATA lt_sub TYPE STANDARD TABLE OF ts_sub WITH EMPTY KEY.
 
+    " Open IF/CASE blocks, innermost first: the header every branch fans out
+    " from, and the tail of each branch already walked, so that they can be
+    " joined back together on the closing statement.
+    TYPES: BEGIN OF ts_cond,
+             closeline TYPE i,
+             depth     TYPE i,
+             word      TYPE string,
+             header    TYPE string,
+             tails     TYPE string_table,
+           END OF ts_cond.
+    DATA lt_cond TYPE STANDARD TABLE OF ts_cond WITH EMPTY KEY.
+
     LOOP AT lt_lines INTO DATA(ls_line).
+
+      " Join the branches of every IF/CASE that closes on this line. Without
+      " it the branches ran on as one chain and the IF looked as if it never
+      " ended.
+      WHILE lines( lt_cond ) > 0.
+        READ TABLE lt_cond INTO DATA(ls_cond) INDEX 1.
+        IF ls_cond-closeline <> ls_line-line. EXIT. ENDIF.
+        APPEND lv_prev_node TO ls_cond-tails.
+        DATA(lv_join) = |j{ ls_line-line }|.
+        rv_mm = rv_mm && |  { lv_join }(( ))\n|.
+        LOOP AT ls_cond-tails INTO DATA(lv_tail).
+          CHECK lv_tail IS NOT INITIAL.
+          lv_edges = lv_edges && |  { lv_tail } --> { lv_join }\n|.
+        ENDLOOP.
+        lv_prev_node  = lv_join.
+        lv_prev_line  = ls_line-line.
+        lv_prev_depth = ls_cond-depth.
+        DELETE lt_cond INDEX 1.
+      ENDWHILE.
 
       " Close every subgraph whose block ended before this line. Without the
       " frame, the body of a nested LOOP was drawn as a sibling chain and the
@@ -631,17 +655,18 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                                 WHEN ls_line-end > ls_line-line THEN ls_line-end
                                 ELSE ls_line-line ) }" _self\n|.
 
-      " Edge source: the previous node of the same nesting level, or the
-      " enclosing header when this is the first line of a block.
-      DATA(lv_from) = lv_prev_node.
+      " Edge source. A branch header does not continue the previous branch —
+      " it fans out from the IF/CASE itself, and the branch just walked is
+      " remembered so it can be joined at the closing statement.
+      DATA(lv_from)      = lv_prev_node.
       DATA(lv_from_line) = lv_prev_line.
-      LOOP AT lt_prev INTO DATA(ls_prev) WHERE depth = ls_line-depth.
-        lv_from      = ls_prev-node.
-        lv_from_line = ls_prev-line.
-      ENDLOOP.
-      IF ls_line-depth > lv_prev_depth.
-        lv_from      = lv_prev_node.
-        lv_from_line = lv_prev_line.
+      IF ls_line-kind = 'B'.
+        READ TABLE lt_cond ASSIGNING FIELD-SYMBOL(<ls_cond>) INDEX 1.
+        IF sy-subrc = 0.
+          APPEND lv_prev_node TO <ls_cond>-tails.
+          lv_from      = <ls_cond>-header.
+          lv_from_line = ls_line-line.
+        ENDIF.
       ENDIF.
 
       " The root has nothing above it
@@ -690,8 +715,15 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      DELETE lt_prev WHERE depth >= ls_line-depth.
-      APPEND VALUE #( depth = ls_line-depth node = lv_node line = ls_line-line ) TO lt_prev.
+      " An IF/CASE opens a fan-out that has to be closed again
+      IF ls_line-kind = 'O' AND ls_line-all > ls_line-line
+        AND ( ls_line-word = 'IF' OR ls_line-word = 'CASE' ).
+        INSERT VALUE #( closeline = ls_line-all + 1
+                        depth     = ls_line-depth
+                        word      = ls_line-word
+                        header    = lv_node ) INTO lt_cond INDEX 1.
+      ENDIF.
+
       lv_prev_node  = lv_node.
       lv_prev_depth = ls_line-depth.
       lv_prev_line  = ls_line-line.
