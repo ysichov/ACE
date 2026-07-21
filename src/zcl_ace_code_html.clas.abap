@@ -40,6 +40,16 @@ CLASS zcl_ace_code_html DEFINITION
                 i_folded      TYPE abap_bool DEFAULT abap_false
       RETURNING VALUE(rt_html) TYPE w3htmltab.
 
+    "! Mermaid flowchart of the control structure of the same source:
+    "! IF/ELSEIF/ELSE, CASE/WHEN, LOOP/DO/WHILE, TRY/CATCH and the enclosing
+    "! METHOD/FORM. Plain statements are left out — the point is the shape of
+    "! the branch, not its every line.
+    CLASS-METHODS build_scheme
+      IMPORTING it_source     TYPE STANDARD TABLE
+                it_kw         TYPE zif_ace_parse_data=>tt_kword OPTIONAL
+                i_title       TYPE string OPTIONAL
+      RETURNING VALUE(rv_mm)  TYPE string.
+
   PRIVATE SECTION.
 
     TYPES:
@@ -106,6 +116,12 @@ CLASS zcl_ace_code_html DEFINITION
       IMPORTING i_text        TYPE string
       RETURNING VALUE(r_text) TYPE string.
 
+    "! Source text of a structure line, trimmed and stripped of the
+    "! characters that would break a mermaid label.
+    CLASS-METHODS scheme_label
+      IMPORTING i_text        TYPE string
+      RETURNING VALUE(r_text) TYPE string.
+
     "! Appends a string to the w3htmltab, splitting on the 255 char limit.
     CLASS-METHODS add
       IMPORTING i_text TYPE string
@@ -164,19 +180,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
     " Folding is driven from the window toolbar, not from inside the page,
     " so there is a single button and a single state.
-    " DBG: what the classification actually produced for this include
-    DATA(lv_o) = 0. DATA(lv_b) = 0. DATA(lv_c) = 0. DATA(lv_w) = 0.
-    LOOP AT lt_lines INTO DATA(ls_dbg).
-      IF ls_dbg-word IS NOT INITIAL. lv_w = lv_w + 1. ENDIF.
-      CASE ls_dbg-kind.
-        WHEN 'O'. lv_o = lv_o + 1.
-        WHEN 'B'. lv_b = lv_b + 1.
-        WHEN 'C'. lv_c = lv_c + 1.
-      ENDCASE.
-    ENDLOOP.
-    add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }| &&
-                            | &nbsp; DBG lines={ lines( lt_lines ) } words={ lv_w }| &&
-                            | O={ lv_o } B={ lv_b } C={ lv_c }</div>|
+    add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }</div>|
          CHANGING ct_html = rt_html ).
 
     " Folded state is rendered straight into the markup — no startup script
@@ -429,6 +433,74 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       IF <ls_line>-all < <ls_line>-line. <ls_line>-all = <ls_line>-line. ENDIF.
     ENDLOOP.
 
+  ENDMETHOD.
+
+
+  METHOD build_scheme.
+
+    TYPES: BEGIN OF ts_prev,
+             depth TYPE i,
+             node  TYPE string,
+           END OF ts_prev.
+    DATA lt_prev TYPE STANDARD TABLE OF ts_prev WITH EMPTY KEY.
+
+    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw ).
+
+    rv_mm = |flowchart TD\n|.
+    rv_mm = rv_mm && |  start(["{ scheme_label( i_title ) }"])\n|.
+
+    DATA(lv_prev_node) = |start|.
+    DATA(lv_prev_depth) = 0.
+
+    LOOP AT lt_lines INTO DATA(ls_line).
+      " Only the structure itself — plain statements would drown the picture
+      CHECK ls_line-kind = 'O' OR ls_line-kind = 'B'.
+
+      DATA(lv_node)  = |n{ ls_line-line }|.
+      DATA(lv_label) = scheme_label( ls_line-text ).
+
+      " Shape carries the meaning: decisions are rhombi, loops are barrels,
+      " units are boxed, branches are rounded.
+      DATA(lv_shape) = SWITCH string( ls_line-word
+        WHEN 'IF' OR 'CASE'                      THEN |{ lv_node }\{"{ lv_label }"\}|
+        WHEN 'LOOP' OR 'DO' OR 'WHILE'           THEN |{ lv_node }[/"{ lv_label }"/]|
+        WHEN 'METHOD' OR 'FORM' OR 'MODULE'      THEN |{ lv_node }[["{ lv_label }"]]|
+        ELSE                                          |{ lv_node }("{ lv_label }")| ).
+      rv_mm = rv_mm && |  { lv_shape }\n|.
+
+      " Edge source: the previous node of the same nesting level, or the
+      " enclosing header when this is the first line of a block.
+      DATA(lv_from) = lv_prev_node.
+      LOOP AT lt_prev INTO DATA(ls_prev) WHERE depth = ls_line-depth.
+        lv_from = ls_prev-node.
+      ENDLOOP.
+      IF ls_line-depth > lv_prev_depth.
+        lv_from = lv_prev_node.
+      ENDIF.
+      rv_mm = rv_mm && |  { lv_from } --> { lv_node }\n|.
+
+      DELETE lt_prev WHERE depth >= ls_line-depth.
+      APPEND VALUE #( depth = ls_line-depth node = lv_node ) TO lt_prev.
+      lv_prev_node  = lv_node.
+      lv_prev_depth = ls_line-depth.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+  METHOD scheme_label.
+    r_text = condense( i_text ).
+    " Characters that would end a mermaid node or its label
+    REPLACE ALL OCCURRENCES OF '"' IN r_text WITH c_apos.
+    REPLACE ALL OCCURRENCES OF '[' IN r_text WITH '('.
+    REPLACE ALL OCCURRENCES OF ']' IN r_text WITH ')'.
+    REPLACE ALL OCCURRENCES OF '{' IN r_text WITH '('.
+    REPLACE ALL OCCURRENCES OF '}' IN r_text WITH ')'.
+    REPLACE ALL OCCURRENCES OF '|' IN r_text WITH '/'.
+    REPLACE ALL OCCURRENCES OF ';' IN r_text WITH ' '.
+    IF strlen( r_text ) > 80.
+      r_text = |{ r_text(77) }...|.
+    ENDIF.
   ENDMETHOD.
 
 

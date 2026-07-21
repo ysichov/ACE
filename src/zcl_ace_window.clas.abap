@@ -374,7 +374,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ( butn_type = 3 )
       ( function = 'FOLDALL' icon = CONV #( icon_collapse )
         quickinfo = 'Collapse / expand all control structures (HTML view only)'
-        text = 'Collapse all' ) ).
+        text = 'Collapse all' )
+      ( butn_type = 3 )
+      ( function = 'SCHEME' icon = CONV #( icon_structure )
+        quickinfo = 'Mermaid scheme of the control structure of this source'
+        text = 'Scheme' ) ).
     mo_view_toolbar->add_button_group( button ).
     event-eventid = cl_gui_toolbar=>m_id_function_selected.
     event-appl_event = space.
@@ -385,6 +389,32 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
   METHOD hnd_view_toolbar.
+    IF fcode = 'SCHEME'.
+      " Always a fresh popup, so several branches can be compared side by side
+      READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_scm_prog).
+      DATA lt_scm_src TYPE sci_include.
+      IF ls_scm_prog-v_source IS NOT INITIAL.
+        lt_scm_src = ls_scm_prog-v_source.
+      ELSE.
+        lt_scm_src = ls_scm_prog-source_tab.
+      ENDIF.
+      IF lt_scm_src IS INITIAL.
+        mo_code_viewer->get_text( IMPORTING table = lt_scm_src ).
+      ENDIF.
+      DATA(lr_scm_kw) = REF #( ls_scm_prog-t_keywords ).
+      IF ls_scm_prog-v_keywords IS NOT INITIAL. lr_scm_kw = REF #( ls_scm_prog-v_keywords ). ENDIF.
+
+      DATA(lo_scheme) = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'SCHEME' ).
+      lo_scheme->mv_scheme = zcl_ace_code_html=>build_scheme(
+        it_source = lt_scm_src
+        it_kw     = lr_scm_kw->*
+        i_title   = |{ m_prg-program } - { m_prg-include }| ).
+      lo_scheme->refresh( ).
+      IF lo_scheme->mo_box IS NOT INITIAL.
+        lo_scheme->mo_box->set_focus( lo_scheme->mo_box ).
+      ENDIF.
+      RETURN.
+    ENDIF.
     IF fcode = 'FOLDALL'.
       IF mv_html_mode IS INITIAL.
         MESSAGE 'Folding is available in HTML view only' TYPE 'S'.
