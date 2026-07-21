@@ -1257,6 +1257,7 @@ DATA(lv_maxlen) = 200.
        ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level )  quickinfo = 'Depth level' text = |Depth { lv_depth }| )
        ( function = 'DEPTH_P'  icon = CONV #( icon_arrow_right )           quickinfo = 'Increase depth' text = '' )
        ( butn_type = 3 )
+       ( function = 'SCHEXP'   icon = CONV #( icon_expand )                quickinfo = 'Expand / collapse every stretch of operations' text = 'Expand all' )
        ( function = 'NEWWIN'   icon = CONV #( icon_create_text )           quickinfo = 'Node click: open a separate source popup instead of reusing the source window' text = 'Main window' )
        ( butn_type = 3 )
        ( function = 'TEXT'     icon = CONV #( icon_wd_caption )            quickinfo = 'Mermaid Diagram text' text = '' )
@@ -1353,6 +1354,15 @@ DATA(lv_maxlen) = 200.
         ENDIF.
         GET REFERENCE OF lv_perr INTO ref_err.
         NEW zcl_ace_text_viewer( ref_err ).
+        RETURN.
+      ENDIF.
+
+      IF fcode = 'SCHEXP'.
+        mo_viewer->mo_window->toggle_scheme_expand_all( ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'SCHEXP'
+                    text  = COND #( WHEN mo_viewer->mo_window->mv_scheme_all = abap_true
+                                    THEN 'Collapse all' ELSE 'Expand all' ) ).
         RETURN.
       ENDIF.
 
@@ -1731,6 +1741,9 @@ DATA(lv_maxlen) = 200.
       mo_toolbar->set_button_visible( fcode = 'DEPTH_P'       visible = space ).
       RETURN.
     ENDIF.
+
+    " Expanding stretches of operations only means something on the scheme
+    mo_toolbar->set_button_visible( fcode = 'SCHEXP' visible = space ).
 
     DATA lv_flow_vis TYPE c LENGTH 1.
     lv_flow_vis = COND #( WHEN mv_type = 'CMAP' THEN space ELSE 'X' ).

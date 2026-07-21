@@ -137,6 +137,8 @@ public section.
   data MO_SCHEME type ref to ZCL_ACE_MERMAID .
   " Anchor lines whose "N operations" node is currently expanded
   data MT_SCHEME_EXP type ZCL_ACE_CODE_HTML=>TT_LINES .
+  " Every stretch expanded at once, from the scheme toolbar
+  data MV_SCHEME_ALL type ABAP_BOOL .
   data:
     mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
@@ -220,6 +222,8 @@ public section.
   methods BUILD_SCHEME_STRING
     returning
       value(R_MM) type STRING .
+    " Parses TT_CALLS for the whole unit on display, up front
+  methods ENSURE_CALLS_PARSED .
     " Brings a stretch of code into view and selects it — used when a node
     " of the branch scheme is clicked.
   methods FOCUS_CODE_RANGE
@@ -231,6 +235,8 @@ public section.
   methods TOGGLE_SCHEME_EXPAND
     importing
       !I_LINE type I .
+    " Expand / collapse every stretch of the scheme at once
+  methods TOGGLE_SCHEME_EXPAND_ALL .
     " Qualified name of the unit on display: CLASS=>METHOD / FORM x / FM x
   methods UNIT_TITLE
     returning
@@ -477,6 +483,15 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD toggle_scheme_expand_all.
+    " Every stretch open, or every stretch closed — the per-node state is
+    " dropped so the two ways of expanding cannot contradict each other.
+    mv_scheme_all = xsdbool( mv_scheme_all IS INITIAL ).
+    CLEAR mt_scheme_exp.
+    refresh_scheme( ).
+  ENDMETHOD.
+
+
   METHOD toggle_scheme_expand.
     READ TABLE mt_scheme_exp TRANSPORTING NO FIELDS WITH KEY table_line = i_line.
     IF sy-subrc = 0.
@@ -499,9 +514,37 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD ensure_calls_parsed.
+    " TT_CALLS is filled one statement at a time, on demand — the editor does
+    " it when a line is double-clicked. Both the HTML view and the scheme need
+    " it for the whole unit up front: without it a call is indistinguishable
+    " from ordinary code, so it is neither coloured nor kept out of the
+    " "N operations" nodes.
+    READ TABLE ms_sources-tt_calls_line WITH KEY include = m_prg-include INTO DATA(ls_ctx).
+    LOOP AT ms_sources-tt_progs INTO DATA(ls_pre) WHERE include = m_prg-include.
+      LOOP AT ls_pre-t_keywords INTO DATA(ls_prekw) WHERE calls_parsed = abap_false.
+        zcl_ace_parser=>parse_tokens(
+          EXPORTING
+            i_program  = CONV #( COND string( WHEN ls_prekw-program IS NOT INITIAL
+                                              THEN ls_prekw-program ELSE m_prg-program ) )
+            i_include  = CONV #( ls_prekw-include )
+            i_stmt_idx = ls_prekw-index
+            i_class    = ls_ctx-class
+            i_evtype   = ls_ctx-eventtype
+            i_ev_name  = ls_ctx-eventname
+          CHANGING
+            cs_source  = ms_sources ).
+      ENDLOOP.
+    ENDLOOP.
+  ENDMETHOD.
+
+
   METHOD build_scheme_string.
     " Single source of the control-structure picture — used by the Scheme
     " popup of the source window and by Flow Scheme in the mermaid window.
+
+    ensure_calls_parsed( ).
+
     READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_prog).
     DATA lt_src TYPE sci_include.
     IF ls_prog-v_source IS NOT INITIAL.
@@ -512,15 +555,26 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     IF lt_src IS INITIAL.
       mo_code_viewer->get_text( IMPORTING table = lt_src ).
     ENDIF.
-    DATA(lr_kw) = REF #( ls_prog-t_keywords ).
-    IF ls_prog-v_keywords IS NOT INITIAL. lr_kw = REF #( ls_prog-v_keywords ). ENDIF.
+    " V_KEYWORDS carries the virtual line numbers the source is shown with,
+    " but PARSE_TOKENS fills TT_CALLS in T_KEYWORDS — take the lines from one
+    " and the calls from the other, or every call looks like ordinary code.
+    DATA(lt_kw) = ls_prog-t_keywords.
+    IF ls_prog-v_keywords IS NOT INITIAL.
+      lt_kw = ls_prog-v_keywords.
+      LOOP AT lt_kw ASSIGNING FIELD-SYMBOL(<ls_vkw>) WHERE tt_calls IS INITIAL.
+        READ TABLE ls_prog-t_keywords INTO DATA(ls_tkw) WITH KEY index = <ls_vkw>-index.
+        CHECK sy-subrc = 0.
+        <ls_vkw>-tt_calls = ls_tkw-tt_calls.
+      ENDLOOP.
+    ENDIF.
 
     r_mm = zcl_ace_code_html=>build_scheme(
       it_source   = lt_src
-      it_kw       = lr_kw->*
+      it_kw       = lt_kw
       io_scan     = ls_prog-scan
-      i_title     = unit_title( )
-      it_expanded = mt_scheme_exp ).
+      i_title      = unit_title( )
+      it_expanded  = mt_scheme_exp
+      i_expand_all = mv_scheme_all ).
   ENDMETHOD.
 
 
@@ -565,6 +619,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_html_view->set_registered_events( events = lt_events ).
       SET HANDLER on_html_sapevent FOR mo_html_view.
     ENDIF.
+
+    " Calls have to be known before rendering: the renderer colours them
+    ensure_calls_parsed( ).
 
     " Take exactly the lines the classic editor shows, so viewer line
     " numbers stay identical in both modes and navigation keeps working.

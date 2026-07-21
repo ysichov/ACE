@@ -770,6 +770,7 @@ CLASS zcl_ace_code_html DEFINITION
                 io_scan       TYPE REF TO cl_ci_scan OPTIONAL
                 i_title       TYPE string OPTIONAL
                 it_expanded   TYPE tt_lines OPTIONAL
+                i_expand_all  TYPE abap_bool DEFAULT abap_false
       RETURNING VALUE(rv_mm)  TYPE string.
 
   PRIVATE SECTION.
@@ -784,6 +785,8 @@ CLASS zcl_ace_code_html DEFINITION
                             " 'S'=whole block on one line (scheme only)
         end   TYPE i,       " last line of this header's own branch segment
         all   TYPE i,       " openers: last line before the matching closer
+        call  TYPE abap_bool, " statement invokes something (from TT_CALLS)
+        call_names TYPE string, " what it invokes, blank separated, uppercase
       END OF ts_line,
       tt_line TYPE STANDARD TABLE OF ts_line WITH EMPTY KEY.
 
@@ -862,6 +865,7 @@ CLASS zcl_ace_code_html DEFINITION
     CLASS-METHODS render_line
       IMPORTING i_text        TYPE string
                 i_line        TYPE i
+                i_calls       TYPE string OPTIONAL
       RETURNING VALUE(r_html) TYPE string.
 
     CLASS-METHODS escape
@@ -885,10 +889,34 @@ CLASS zcl_ace_code_html DEFINITION
                 it_ops        TYPE tt_lines
                 it_lines      TYPE tt_line
                 it_expanded   TYPE tt_lines OPTIONAL
+                i_expand_all  TYPE abap_bool DEFAULT abap_false
       CHANGING  cv_mm         TYPE string
                 cv_edges      TYPE string
                 cv_clicks     TYPE string
+                cv_styles     TYPE string
       RETURNING VALUE(r_node) TYPE string.
+
+    "! Renders the statements collected since the last call as one node —
+    "! their count, or the statement itself when there is only one.
+    CLASS-METHODS flush_pending
+      IMPORTING it_pend       TYPE tt_lines
+                it_lines      TYPE tt_line
+                i_anchor      TYPE i
+                i_prev        TYPE string
+                i_label       TYPE string OPTIONAL
+      CHANGING  cv_mm         TYPE string
+                cv_edges      TYPE string
+                cv_clicks     TYPE string
+                cv_first      TYPE string
+      RETURNING VALUE(r_node) TYPE string.
+
+    "! Whole statement text: the line plus its continuation lines, which
+    "! carry no keyword of their own. A call shown as just "obj->meth(" says
+    "! nothing about what is passed to it.
+    CLASS-METHODS stmt_text
+      IMPORTING it_lines      TYPE tt_line
+                i_line        TYPE i
+      RETURNING VALUE(r_text) TYPE string.
 
     "! Source text of a structure line, trimmed and stripped of the
     "! characters that would break a mermaid label.
@@ -2761,6 +2789,8 @@ public section.
   data MO_SCHEME type ref to ZCL_ACE_MERMAID .
   " Anchor lines whose "N operations" node is currently expanded
   data MT_SCHEME_EXP type ZCL_ACE_CODE_HTML=>TT_LINES .
+  " Every stretch expanded at once, from the scheme toolbar
+  data MV_SCHEME_ALL type ABAP_BOOL .
   data:
     mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
@@ -2844,6 +2874,8 @@ public section.
   methods BUILD_SCHEME_STRING
     returning
       value(R_MM) type STRING .
+    " Parses TT_CALLS for the whole unit on display, up front
+  methods ENSURE_CALLS_PARSED .
     " Brings a stretch of code into view and selects it — used when a node
     " of the branch scheme is clicked.
   methods FOCUS_CODE_RANGE
@@ -2855,6 +2887,8 @@ public section.
   methods TOGGLE_SCHEME_EXPAND
     importing
       !I_LINE type I .
+    " Expand / collapse every stretch of the scheme at once
+  methods TOGGLE_SCHEME_EXPAND_ALL .
     " Qualified name of the unit on display: CLASS=>METHOD / FORM x / FM x
   methods UNIT_TITLE
     returning
@@ -3084,6 +3118,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
                                             EXCEPTIONS OTHERS = 1 ).
     cl_gui_cfw=>flush( ).
   ENDMETHOD.
+  METHOD toggle_scheme_expand_all.
+    " Every stretch open, or every stretch closed — the per-node state is
+    " dropped so the two ways of expanding cannot contradict each other.
+    mv_scheme_all = xsdbool( mv_scheme_all IS INITIAL ).
+    CLEAR mt_scheme_exp.
+    refresh_scheme( ).
+  ENDMETHOD.
   METHOD toggle_scheme_expand.
     READ TABLE mt_scheme_exp TRANSPORTING NO FIELDS WITH KEY table_line = i_line.
     IF sy-subrc = 0.
@@ -3102,9 +3143,35 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     mo_scheme->refresh( ).
     mo_scheme->mo_box->set_caption( |Branch scheme: { unit_title( ) }| ).
   ENDMETHOD.
+  METHOD ensure_calls_parsed.
+    " TT_CALLS is filled one statement at a time, on demand — the editor does
+    " it when a line is double-clicked. Both the HTML view and the scheme need
+    " it for the whole unit up front: without it a call is indistinguishable
+    " from ordinary code, so it is neither coloured nor kept out of the
+    " "N operations" nodes.
+    READ TABLE ms_sources-tt_calls_line WITH KEY include = m_prg-include INTO DATA(ls_ctx).
+    LOOP AT ms_sources-tt_progs INTO DATA(ls_pre) WHERE include = m_prg-include.
+      LOOP AT ls_pre-t_keywords INTO DATA(ls_prekw) WHERE calls_parsed = abap_false.
+        zcl_ace_parser=>parse_tokens(
+          EXPORTING
+            i_program  = CONV #( COND string( WHEN ls_prekw-program IS NOT INITIAL
+                                              THEN ls_prekw-program ELSE m_prg-program ) )
+            i_include  = CONV #( ls_prekw-include )
+            i_stmt_idx = ls_prekw-index
+            i_class    = ls_ctx-class
+            i_evtype   = ls_ctx-eventtype
+            i_ev_name  = ls_ctx-eventname
+          CHANGING
+            cs_source  = ms_sources ).
+      ENDLOOP.
+    ENDLOOP.
+  ENDMETHOD.
   METHOD build_scheme_string.
     " Single source of the control-structure picture — used by the Scheme
     " popup of the source window and by Flow Scheme in the mermaid window.
+
+    ensure_calls_parsed( ).
+
     READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_prog).
     DATA lt_src TYPE sci_include.
     IF ls_prog-v_source IS NOT INITIAL.
@@ -3115,15 +3182,26 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     IF lt_src IS INITIAL.
       mo_code_viewer->get_text( IMPORTING table = lt_src ).
     ENDIF.
-    DATA(lr_kw) = REF #( ls_prog-t_keywords ).
-    IF ls_prog-v_keywords IS NOT INITIAL. lr_kw = REF #( ls_prog-v_keywords ). ENDIF.
+    " V_KEYWORDS carries the virtual line numbers the source is shown with,
+    " but PARSE_TOKENS fills TT_CALLS in T_KEYWORDS — take the lines from one
+    " and the calls from the other, or every call looks like ordinary code.
+    DATA(lt_kw) = ls_prog-t_keywords.
+    IF ls_prog-v_keywords IS NOT INITIAL.
+      lt_kw = ls_prog-v_keywords.
+      LOOP AT lt_kw ASSIGNING FIELD-SYMBOL(<ls_vkw>) WHERE tt_calls IS INITIAL.
+        READ TABLE ls_prog-t_keywords INTO DATA(ls_tkw) WITH KEY index = <ls_vkw>-index.
+        CHECK sy-subrc = 0.
+        <ls_vkw>-tt_calls = ls_tkw-tt_calls.
+      ENDLOOP.
+    ENDIF.
 
     r_mm = zcl_ace_code_html=>build_scheme(
       it_source   = lt_src
-      it_kw       = lr_kw->*
+      it_kw       = lt_kw
       io_scan     = ls_prog-scan
-      i_title     = unit_title( )
-      it_expanded = mt_scheme_exp ).
+      i_title      = unit_title( )
+      it_expanded  = mt_scheme_exp
+      i_expand_all = mv_scheme_all ).
   ENDMETHOD.
   METHOD unit_title.
     " Qualified name of the unit currently shown, rather than the technical
@@ -3164,6 +3242,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_html_view->set_registered_events( events = lt_events ).
       SET HANDLER on_html_sapevent FOR mo_html_view.
     ENDIF.
+
+    " Calls have to be known before rendering: the renderer colours them
+    ensure_calls_parsed( ).
 
     " Take exactly the lines the classic editor shows, so viewer line
     " numbers stay identical in both modes and navigation keeps working.
@@ -16076,6 +16157,7 @@ DATA(lv_maxlen) = 200.
        ( function = 'DEPTH'    icon = CONV #( icon_next_hierarchy_level )  quickinfo = 'Depth level' text = |Depth { lv_depth }| )
        ( function = 'DEPTH_P'  icon = CONV #( icon_arrow_right )           quickinfo = 'Increase depth' text = '' )
        ( butn_type = 3 )
+       ( function = 'SCHEXP'   icon = CONV #( icon_expand )                quickinfo = 'Expand / collapse every stretch of operations' text = 'Expand all' )
        ( function = 'NEWWIN'   icon = CONV #( icon_create_text )           quickinfo = 'Node click: open a separate source popup instead of reusing the source window' text = 'Main window' )
        ( butn_type = 3 )
        ( function = 'TEXT'     icon = CONV #( icon_wd_caption )            quickinfo = 'Mermaid Diagram text' text = '' )
@@ -16168,6 +16250,15 @@ DATA(lv_maxlen) = 200.
         ENDIF.
         GET REFERENCE OF lv_perr INTO ref_err.
         NEW zcl_ace_text_viewer( ref_err ).
+        RETURN.
+      ENDIF.
+
+      IF fcode = 'SCHEXP'.
+        mo_viewer->mo_window->toggle_scheme_expand_all( ).
+        mo_toolbar->set_button_info(
+          EXPORTING fcode = 'SCHEXP'
+                    text  = COND #( WHEN mo_viewer->mo_window->mv_scheme_all = abap_true
+                                    THEN 'Collapse all' ELSE 'Expand all' ) ).
         RETURN.
       ENDIF.
 
@@ -16532,6 +16623,9 @@ DATA(lv_maxlen) = 200.
       mo_toolbar->set_button_visible( fcode = 'DEPTH_P'       visible = space ).
       RETURN.
     ENDIF.
+
+    " Expanding stretches of operations only means something on the scheme
+    mo_toolbar->set_button_visible( fcode = 'SCHEXP' visible = space ).
 
     DATA lv_flow_vis TYPE c LENGTH 1.
     lv_flow_vis = COND #( WHEN mv_type = 'CMAP' THEN space ELSE 'X' ).
@@ -17369,6 +17463,9 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
          CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = 'a.id:hover{color:#0050d0;background:#e8f0ff;border-bottom:1px solid #0050d0}'
          CHANGING ct_html = rt_html ).
+    " What the line invokes, told apart from ordinary identifiers
+    add( EXPORTING i_text = 'a.call{color:#800000;font-weight:bold;border-bottom:1px solid #b06060}'
+         CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.fold{color:#3070c0;font-style:italic}' CHANGING ct_html = rt_html ).
     " Global folding is one class switch on the container, not a per-row DOM
     " walk: on a 4000-line include the walk made tens of thousands of
@@ -17443,7 +17540,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                               |<span class="num" title="Click: session breakpoint| &&
                               | / Ctrl+click: external breakpoint"| &&
                               | onclick="bp({ ls_line-line },event)">{ ls_line-line }</span>| &&
-                              lv_toggle && render_line( i_text = ls_line-text i_line = ls_line-line ) &&
+                              lv_toggle && render_line( i_text = ls_line-text i_line = ls_line-line
+                                           i_calls = ls_line-call_names ) &&
                               |<span class="fold" id="f{ ls_line-line }"></span>| &&
                               COND string( WHEN ls_line-end > ls_line-line
                                 THEN |<span class="gf">&nbsp;&nbsp;... { ls_line-end - ls_line-line } lines</span>|
@@ -17551,6 +17649,20 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         APPEND VALUE #( index = ls_kw-index
                         line  = lv_vline
                         word  = to_upper( ls_kw-name ) ) TO lt_stmt.
+        " The parser already resolved what this statement invokes — the same
+        " table the editor's double-click navigates by. No need to recognise
+        " calls by their first token.
+        CHECK ls_kw-tt_calls IS NOT INITIAL.
+        READ TABLE rt_lines ASSIGNING <ls_line> INDEX lv_vline.
+        CHECK sy-subrc = 0.
+        <ls_line>-call = abap_true.
+        " Names of what is invoked here, so the renderer can pick those
+        " identifiers out of the line and mark them as calls.
+        LOOP AT ls_kw-tt_calls INTO DATA(ls_call).
+          CHECK ls_call-name IS NOT INITIAL.
+          <ls_line>-call_names = |{ <ls_line>-call_names } { to_upper( ls_call-name ) }|.
+        ENDLOOP.
+        <ls_line>-call_names = |{ <ls_line>-call_names } |.
       ENDLOOP.
       SORT lt_stmt BY index.
     ELSEIF io_scan IS BOUND.
@@ -17813,9 +17925,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                                    it_ops  = lt_ops
                                    it_lines = lt_lines
                                    it_expanded = it_expanded
+                                   i_expand_all = i_expand_all
                          CHANGING  cv_mm     = rv_mm
                                    cv_edges  = lv_edges
-                                   cv_clicks = lv_clicks ) TO ls_cond-tails.
+                                   cv_clicks = lv_clicks
+                                                 cv_styles = lv_styles ) TO ls_cond-tails.
         CLEAR lv_lbl.
         " The closing statement is worth a node of its own — unlike ENDLOOP,
         " where the frame around the body already shows where it ends.
@@ -17879,6 +17993,28 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
           READ TABLE it_expanded TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
           IF sy-subrc <> 0. lv_is_loop = abap_false. ENDIF.
         ENDIF.
+      ENDIF.
+
+      " Statements that ran BEFORE this block must be drawn before its frame
+      " is opened, or they land inside a frame they never belonged to: the
+      " code between an ENDTRY and the next TRY used to end up in that next
+      " TRY, because it was only flushed when the next structure line came.
+      IF lv_is_loop = abap_true.
+        lv_prev_node = ops_node( EXPORTING i_from      = lv_prev_line
+                                           i_to        = ls_line-line
+                                           i_id        = |o{ ls_line-line }|
+                                           i_prev      = lv_prev_node
+                                           i_label     = lv_lbl
+                                           it_ops      = lt_ops
+                                           it_lines    = lt_lines
+                                           it_expanded = it_expanded
+                                           i_expand_all = i_expand_all
+                                 CHANGING  cv_mm     = rv_mm
+                                           cv_edges  = lv_edges
+                                           cv_clicks = lv_clicks
+                                                 cv_styles = lv_styles ).
+        CLEAR lv_lbl.
+        lv_prev_line = ls_line-line.
       ENDIF.
 
       IF lv_is_loop = abap_true AND lv_inner = 1.
@@ -17953,9 +18089,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                                                    it_ops  = lt_ops
                                                    it_lines = lt_lines
                                                    it_expanded = it_expanded
+                                                   i_expand_all = i_expand_all
                                          CHANGING  cv_mm     = rv_mm
                                                    cv_edges  = lv_edges
-                                                   cv_clicks = lv_clicks ).
+                                                   cv_clicks = lv_clicks
+                                                 cv_styles = lv_styles ).
           IF <ls_br>-word = 'CASE' AND <ls_br>-seen = abap_false.
             " Statements between CASE and its first WHEN run unconditionally,
             " before the dispatch — so they are not a branch, and every WHEN
@@ -18018,9 +18156,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                                                  it_ops     = lt_ops
                                                  it_lines   = lt_lines
                                                  it_expanded = it_expanded
+                                   i_expand_all = i_expand_all
                                        CHANGING  cv_mm     = rv_mm
                                                  cv_edges  = lv_edges
-                                                 cv_clicks = lv_clicks ).
+                                                 cv_clicks = lv_clicks
+                                                 cv_styles = lv_styles ).
         IF lv_after_ops <> lv_from.
           CLEAR lv_lbl.
           lv_edges = lv_edges && |  { lv_after_ops } --> { lv_node }\n|.
@@ -18053,6 +18193,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     IF lv_styles IS NOT INITIAL.
       rv_mm = rv_mm && |classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000\n| && lv_styles.
     ENDIF.
+    " Clickable nodes read as links rather than revealing themselves on hover
+    rv_mm = rv_mm && |classDef default color:#12369e\n|.
+    " Calls stand out: they are where the method hands work to someone else
+    rv_mm = rv_mm && |classDef callnode fill:#fbeeee,stroke:#800000,color:#800000\n|.
     rv_mm = rv_mm && lv_edges && lv_clicks.
 
   ENDMETHOD.
@@ -18079,43 +18223,117 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     DATA(lv_ops) = lv_to_cnt - lv_fr_cnt.
     CHECK lv_ops > 0.
 
-    " Expanded: every statement of the stretch as its own node, the first of
-    " them folding it back up again. A single statement is always shown in
-    " full — hiding one line behind "1 operation" saves no space and costs
-    " the reader a click.
     READ TABLE it_expanded TRANSPORTING NO FIELDS WITH KEY table_line = i_to.
-    IF sy-subrc = 0 OR lv_ops = 1.
-      DATA(lv_chain) = i_prev.
-      DATA(lv_first) = ||.
-      LOOP AT it_lines INTO DATA(ls_op)
-        WHERE line > i_from AND line < i_to
-          AND kind = 'P' AND word IS NOT INITIAL.
-        CHECK c_decls NS | { ls_op-word } |.
-        DATA(lv_opn) = |p{ ls_op-line }|.
-        cv_mm = cv_mm && |  { lv_opn }("{ scheme_label( ls_op-text ) }")\n|.
-        cv_edges = cv_edges && |  { lv_chain }{ COND string(
-          WHEN lv_chain = i_prev THEN arrow( i_label ) ELSE ` --> ` ) }{ lv_opn }\n|.
-        IF lv_first IS INITIAL. lv_first = lv_opn. ENDIF.
-        lv_chain = lv_opn.
-      ENDLOOP.
-      IF lv_first IS NOT INITIAL.
-        " Nothing to fold back when there was only the one statement
-        IF lv_ops > 1.
-          cv_clicks = cv_clicks && |click { lv_first } "sapevent:aceexp_{ i_to }" _self\n|.
-        ENDIF.
-        r_node = lv_chain.
+    DATA(lv_expanded) = xsdbool( sy-subrc = 0 OR i_expand_all = abap_true ).
+
+    " Calls are what the flow is about, so they always get a node of their
+    " own; the linear work around them is what gets aggregated. Everything
+    " is shown one by one while the stretch is expanded, and a single
+    " statement is never hidden — one line behind "1 operation" saves no
+    " space and costs a click.
+    DATA lt_pend TYPE tt_lines.
+    DATA(lv_chain) = i_prev.
+    DATA(lv_first) = ||.
+
+    LOOP AT it_lines INTO DATA(ls_op)
+      WHERE line > i_from AND line < i_to
+        AND kind = 'P' AND word IS NOT INITIAL.
+      CHECK c_decls NS | { ls_op-word } |.
+
+      " A call is what the parser recorded in TT_CALLS — the same table the
+      " editor navigates by on double-click. No guessing from the text.
+      DATA(lv_txt) = stmt_text( it_lines = it_lines i_line = ls_op-line ).
+      DATA(lv_is_call) = ls_op-call.
+
+      IF lv_expanded = abap_false AND lv_is_call = abap_false.
+        APPEND ls_op-line TO lt_pend.
+        CONTINUE.
       ENDIF.
+
+      " Flush what was collected before this call
+      lv_chain = flush_pending( EXPORTING it_pend  = lt_pend
+                                          it_lines = it_lines
+                                          i_anchor = i_to
+                                          i_prev   = lv_chain
+                                          i_label  = COND string( WHEN lv_chain = i_prev
+                                                                  THEN i_label ELSE `` )
+                                CHANGING  cv_mm     = cv_mm
+                                          cv_edges  = cv_edges
+                                          cv_clicks = cv_clicks
+                                          cv_first  = lv_first ).
+      CLEAR lt_pend.
+
+      DATA(lv_opn) = |p{ ls_op-line }|.
+      cv_mm = cv_mm && |  { lv_opn }("{ scheme_label( lv_txt ) }")\n|.
+      IF lv_is_call = abap_true.
+        cv_styles = cv_styles && |class { lv_opn } callnode\n|.
+      ENDIF.
+      cv_edges = cv_edges && |  { lv_chain }{ COND string(
+        WHEN lv_chain = i_prev THEN arrow( i_label ) ELSE ` --> ` ) }{ lv_opn }\n|.
+      IF lv_first IS INITIAL. lv_first = lv_opn. ENDIF.
+      lv_chain = lv_opn.
+    ENDLOOP.
+
+    " Whatever is left over after the last call
+    lv_chain = flush_pending( EXPORTING it_pend  = lt_pend
+                                        it_lines = it_lines
+                                        i_anchor = i_to
+                                        i_prev   = lv_chain
+                                        i_label  = COND string( WHEN lv_chain = i_prev
+                                                                THEN i_label ELSE `` )
+                              CHANGING  cv_mm     = cv_mm
+                                        cv_edges  = cv_edges
+                                        cv_clicks = cv_clicks
+                                        cv_first  = lv_first ).
+
+    " Expanded stretches fold back up from their first node
+    IF lv_expanded = abap_true AND lv_first IS NOT INITIAL.
+      cv_clicks = cv_clicks && |click { lv_first } "sapevent:aceexp_{ i_to }" _self\n|.
+    ENDIF.
+    r_node = lv_chain.
+
+  ENDMETHOD.
+  METHOD flush_pending.
+
+    r_node = i_prev.
+    CHECK it_pend IS NOT INITIAL.
+
+    IF lines( it_pend ) = 1.
+      " A single statement is shown in full rather than counted
+      READ TABLE it_pend INTO DATA(lv_one) INDEX 1.
+      READ TABLE it_lines INTO DATA(ls_one) WITH KEY line = lv_one.
+      CHECK sy-subrc = 0.
+      DATA(lv_id1) = |p{ lv_one }|.
+      cv_mm = cv_mm && |  { lv_id1 }("{ scheme_label( stmt_text( it_lines = it_lines i_line = lv_one ) ) }")\n|.
+      cv_edges = cv_edges && |  { i_prev }{ arrow( i_label ) }{ lv_id1 }\n|.
+      IF cv_first IS INITIAL. cv_first = lv_id1. ENDIF.
+      r_node = lv_id1.
       RETURN.
     ENDIF.
 
-    cv_mm = cv_mm && |  { i_id }["{ lv_ops } { COND string(
-      WHEN lv_ops = 1 THEN 'operation' ELSE 'operations' ) }"]\n|.
-    cv_edges = cv_edges && |  { i_prev }{ arrow( i_label ) }{ i_id }\n|.
-    " Every "N operations" node opens up on click, wherever it was built —
-    " the tails of branches used to be built here without one.
-    cv_clicks = cv_clicks && |click { i_id } "sapevent:aceexp_{ i_to }" _self\n|.
-    r_node = i_id.
+    READ TABLE it_pend INTO DATA(lv_from_line) INDEX 1.
+    DATA(lv_id) = |o{ lv_from_line }|.
+    cv_mm = cv_mm && |  { lv_id }["{ lines( it_pend ) } operations"]\n|.
+    cv_edges = cv_edges && |  { i_prev }{ arrow( i_label ) }{ lv_id }\n|.
+    " Opens the whole stretch this chunk belongs to
+    cv_clicks = cv_clicks && |click { lv_id } "sapevent:aceexp_{ i_anchor }" _self\n|.
+    IF cv_first IS INITIAL. cv_first = lv_id. ENDIF.
+    r_node = lv_id.
 
+  ENDMETHOD.
+  METHOD stmt_text.
+    LOOP AT it_lines INTO DATA(ls_l) WHERE line >= i_line.
+      DATA(lv_part) = condense( ls_l-text ).
+      " A continuation line has no statement of its own; a blank one or the
+      " next statement ends the run.
+      IF ls_l-line > i_line AND ( ls_l-word IS NOT INITIAL OR lv_part IS INITIAL ).
+        EXIT.
+      ENDIF.
+      IF lv_part IS INITIAL. CONTINUE. ENDIF.
+      r_text = COND string( WHEN r_text IS INITIAL THEN lv_part
+                            ELSE |{ r_text } { lv_part }| ).
+      IF strlen( r_text ) > 120. EXIT. ENDIF.
+    ENDLOOP.
   ENDMETHOD.
   METHOD scheme_label.
     r_text = condense( i_text ).
@@ -18235,7 +18453,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
               " which is all ZCL_ACE_WINDOW needs to resolve the target.
               " Routed through nav() for the same reason as bp(): repeating
               " an identical sapevent URL would be swallowed by the browser.
-              r_html = r_html && |<a class="id" href="#" onclick="return nav(| &&
+              " A call is marked as such: the same TT_CALLS the double-click
+              " navigates by decides it, no guessing from the text.
+              DATA(lv_cls_id) = COND string(
+                WHEN i_calls CS | { to_upper( lv_word ) } | THEN 'id call' ELSE 'id' ).
+              r_html = r_html && |<a class="{ lv_cls_id }" href="#" onclick="return nav(| &&
                        |{ i_line },'{ to_upper( lv_word ) }')">| &&
                        escape( lv_word ) && '</a>'.
             ENDIF.
@@ -19120,8 +19342,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-21T14:20:41.002Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-21T14:20:41.002Z`.
+* abapmerge 0.16.7 - 2026-07-21T15:13:38.398Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-21T15:13:38.398Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
