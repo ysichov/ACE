@@ -21,12 +21,19 @@ CLASS zcl_ace_code_html DEFINITION
 
   PUBLIC SECTION.
 
+    TYPES tt_lines TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+
     "! Builds a complete HTML page for the given source lines.
     "! @parameter it_source | source as shown in the editor (1 line = 1 viewer line)
     "! @parameter i_title   | caption printed above the code
+    "! @parameter it_bp_s   | viewer lines carrying a session breakpoint
+    "! @parameter it_bp_e   | viewer lines carrying an external breakpoint
     CLASS-METHODS build
       IMPORTING it_source     TYPE STANDARD TABLE
                 i_title       TYPE string OPTIONAL
+                it_bp_s       TYPE tt_lines OPTIONAL
+                it_bp_e       TYPE tt_lines OPTIONAL
+                i_focus       TYPE i OPTIONAL
       RETURNING VALUE(rt_html) TYPE w3htmltab.
 
   PRIVATE SECTION.
@@ -97,7 +104,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     add( EXPORTING i_text = '.ln{white-space:pre;padding-left:2px}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.ln:hover{background:#f2f7ff}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.num{display:inline-block;width:44px;text-align:right;color:#808080;' &&
-                            'background:#f4f4f4;margin-right:6px}' CHANGING ct_html = rt_html ).
+                            'background:#f4f4f4;margin-right:6px;cursor:pointer}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.num:hover{background:#dde6f0;color:#000000}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.bp{display:inline-block;width:10px;text-align:center;font-weight:bold}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.bps{color:#d00000}.bpe{color:#0060d0}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.tg{display:inline-block;width:12px;color:#3070c0;cursor:pointer;' &&
                             'font-weight:bold}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.tgx{display:inline-block;width:12px}' CHANGING ct_html = rt_html ).
@@ -122,12 +133,29 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     LOOP AT lt_lines INTO DATA(ls_line).
       DATA(lv_toggle) = COND string(
         WHEN ls_line-end > ls_line-line OR ls_line-all > ls_line-line
-        THEN |<span class="tg" id="t{ ls_line-line }" title="Click: fold this branch| &&
-             | / Ctrl+click: fold the whole block" onclick="tog({ ls_line-line },event)">-</span>|
+        THEN |<span class="tg" id="t{ ls_line-line }" title="Click: fold this branch only| &&
+             | / Ctrl+click: fold every branch of the block"| &&
+             | onclick="tog({ ls_line-line },event)">-</span>|
         ELSE '<span class="tgx"></span>' ).
+      " Breakpoint dot + line number: click toggles a session breakpoint,
+      " Ctrl+click an external one — same semantics as the editor's border.
+      DATA(lv_bp) = '<span class="bp"></span>'.
+      READ TABLE it_bp_s TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
+      IF sy-subrc = 0.
+        lv_bp = '<span class="bp bps" title="Session breakpoint">&#9679;</span>'.
+      ELSE.
+        READ TABLE it_bp_e TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
+        IF sy-subrc = 0.
+          lv_bp = '<span class="bp bpe" title="External breakpoint">&#9679;</span>'.
+        ENDIF.
+      ENDIF.
+
       add( EXPORTING i_text = |<div class="ln" id="r{ ls_line-line }" data-end="{ ls_line-end }"| &&
-                              | data-all="{ ls_line-all }"| &&
-                              | data-kind="{ ls_line-kind }"><span class="num">{ ls_line-line }</span>| &&
+                              | data-all="{ ls_line-all }" data-d="{ ls_line-depth }"| &&
+                              | data-kind="{ ls_line-kind }">{ lv_bp }| &&
+                              |<span class="num" title="Click: session breakpoint| &&
+                              | / Ctrl+click: external breakpoint"| &&
+                              | onclick="bp({ ls_line-line },event)">{ ls_line-line }</span>| &&
                               lv_toggle && render_line( i_text = ls_line-text i_line = ls_line-line ) &&
                               |<span class="fold" id="f{ ls_line-line }"></span></div>|
            CHANGING ct_html = rt_html ).
@@ -139,15 +167,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     add( EXPORTING i_text = '<script type="text/javascript">' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = 'function row(n){return document.getElementById("r"+n);}'
          CHANGING ct_html = rt_html ).
-    " whole=1 folds down to the matching closer (data-all), otherwise only
-    " the header's own branch (data-end). A header whose branch segment is
-    " empty — CASE, whose first WHEN follows immediately — folds whole.
-    add( EXPORTING i_text = 'function segEnd(e,whole){var a=parseInt(e.getAttribute("data-all"),10);' &&
-                            'var b=parseInt(e.getAttribute("data-end"),10);' &&
-                            'if(whole&&a>0)return a;if(b>0)return b;return a>0?a:0;}'
+    add( EXPORTING i_text = 'function att(e,n){return parseInt(e.getAttribute(n),10);}'
          CHANGING ct_html = rt_html ).
-    add( EXPORTING i_text = 'function setSeg(n,hide,whole){var e=row(n);if(!e)return;' &&
-                            'var end=segEnd(e,whole);if(end<=n){if(!hide)return;}var i;' &&
+    add( EXPORTING i_text = 'function setSeg(n,hide){var e=row(n);if(!e)return;' &&
+                            'var end=att(e,"data-end");if(end<=n)return;var i;' &&
                             'for(i=n+1;i<=end;i++){var r=row(i);if(r)r.style.display=hide?"none":"";' &&
                             'var t=document.getElementById("t"+i);if(t)t.innerHTML="-";' &&
                             'var f=document.getElementById("f"+i);if(f)f.innerHTML="";}' &&
@@ -155,10 +178,27 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                             'var fl=document.getElementById("f"+n);' &&
                             'if(fl)fl.innerHTML=hide?("  ... "+(end-n)+" lines"):"";}'
          CHANGING ct_html = rt_html ).
+    " Chain fold: the header itself plus every sibling branch of the same
+    " block (ELSEIF/ELSE of an IF, all WHENs of a CASE), so what remains
+    " visible is exactly the branch headers.
+    add( EXPORTING i_text = 'function foldChain(n,hide){var e=row(n);if(!e)return;' &&
+                            'var d=att(e,"data-d");var a=att(e,"data-all");' &&
+                            'if(!(a>n))a=att(e,"data-end");setSeg(n,hide);var i;' &&
+                            'for(i=n+1;i<=a;i++){var r=row(i);if(!r)continue;' &&
+                            'if(att(r,"data-d")==d&&r.getAttribute("data-kind")=="B")setSeg(i,hide);}}'
+         CHANGING ct_html = rt_html ).
+    " Plain click folds only this header's own branch — for an IF that is the
+    " body down to the first ELSEIF/ELSE. Ctrl+click folds every branch of the
+    " block at once, leaving just the branch headers. A header with no branch
+    " of its own (CASE, whose first WHEN follows immediately) always chains.
     add( EXPORTING i_text = 'function tog(n,ev){var e=row(n);var tg=document.getElementById("t"+n);' &&
                             'var evt=ev?ev:window.event;var ctrl=evt&&evt.ctrlKey;' &&
-                            'var b=parseInt(e.getAttribute("data-end"),10);' &&
-                            'var whole=ctrl||!(b>n);setSeg(n,tg.innerHTML!="+",whole);}'
+                            'var hide=tg.innerHTML!="+";var b=att(e,"data-end");' &&
+                            'if(ctrl||!(b>n))foldChain(n,hide);else setSeg(n,hide);}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'function bp(n,ev){var evt=ev?ev:window.event;' &&
+                            'var c=(evt&&evt.ctrlKey)?1:0;' &&
+                            'window.location.href="sapevent:bp?l="+n+"&c="+c;}'
          CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = 'function foldAll(hide){var d=document.getElementById("code");' &&
                             'var ch=d.childNodes;var i;var ids=[];' &&
@@ -167,11 +207,15 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                             'if(!hide){for(i=0;i<ids.length;i++){var r=row(ids[i]);r.style.display="";' &&
                             'var t=document.getElementById("t"+ids[i]);if(t)t.innerHTML="-";' &&
                             'var f=document.getElementById("f"+ids[i]);if(f)f.innerHTML="";}return;}' &&
-                            'for(i=ids.length-1;i>=0;i--){var e=row(ids[i]);' &&
-                            'var b=parseInt(e.getAttribute("data-end"),10);' &&
-                            'var a=parseInt(e.getAttribute("data-all"),10);' &&
-                            'if(b>ids[i]||a>ids[i])setSeg(ids[i],1,!(b>ids[i]));}}'
+                            'for(i=ids.length-1;i>=0;i--){setSeg(ids[i],1);}}'
          CHANGING ct_html = rt_html ).
+    " Setting a breakpoint round-trips through sapevent, which reloads the
+    " page — scroll back to the line the user clicked so the view stays put.
+    IF i_focus > 0.
+      add( EXPORTING i_text = |var fr=row({ i_focus });| &&
+                              'if(fr)window.scrollTo(0,fr.offsetTop-120);'
+           CHANGING ct_html = rt_html ).
+    ENDIF.
     add( EXPORTING i_text = '</script></body></html>' CHANGING ct_html = rt_html ).
 
   ENDMETHOD.

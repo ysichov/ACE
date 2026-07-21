@@ -209,8 +209,11 @@ public section.
     for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
     importing
       !FCODE .
-    " Re-renders the currently shown source into the HTML control
-  methods REFRESH_HTML_VIEW .
+    " Re-renders the currently shown source into the HTML control.
+    " i_focus keeps the viewport on that line after the reload.
+  methods REFRESH_HTML_VIEW
+    importing
+      !I_FOCUS type I default 0 .
     " Hyperlink click in the HTML view -> same navigation as a double-click
   methods ON_HTML_SAPEVENT
     for event SAPEVENT of CL_GUI_HTML_VIEWER
@@ -223,6 +226,12 @@ public section.
     importing
       !I_LINE type I
       !I_WORD type STRING optional .
+    " Shared breakpoint toggle: editor border click and HTML gutter click.
+    " i_external = Ctrl was held -> external instead of session breakpoint.
+  methods TOGGLE_BREAKPOINT
+    importing
+      !I_LINE     type I
+      !I_EXTERNAL type ABAP_BOOL default ABAP_FALSE .
   methods APPLY_DEPTH .
   methods SHOW_STACK .
   methods SHOW_COVERAGE .
@@ -423,9 +432,26 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->get_text( IMPORTING table = lt_src ).
     ENDIF.
 
+    " MT_BPOINTS holds real source lines; the gutter needs viewer lines,
+    " so map them through the keyword table just like SET_PROGRAM_LINE does.
+    DATA lt_bp_s TYPE zcl_ace_code_html=>tt_lines.
+    DATA lt_bp_e TYPE zcl_ace_code_html=>tt_lines.
+    DATA(lr_bpkw) = REF #( ls_prog-t_keywords ).
+    IF ls_prog-v_keywords IS NOT INITIAL. lr_bpkw = REF #( ls_prog-v_keywords ). ENDIF.
+    LOOP AT mt_bpoints INTO DATA(ls_bp).
+      LOOP AT lr_bpkw->* INTO DATA(ls_bpkw)
+        WHERE include = ls_bp-include AND line = ls_bp-line. EXIT. ENDLOOP.
+      CHECK sy-subrc = 0.
+      DATA(lv_vline) = COND i( WHEN ls_bpkw-v_line > 0 THEN ls_bpkw-v_line ELSE ls_bpkw-line ).
+      IF ls_bp-type = 'E'. APPEND lv_vline TO lt_bp_e. ELSE. APPEND lv_vline TO lt_bp_s. ENDIF.
+    ENDLOOP.
+
     DATA(lt_html) = zcl_ace_code_html=>build(
       it_source = lt_src
-      i_title   = |{ m_prg-program } - { m_prg-include }| ).
+      i_title   = |{ m_prg-program } - { m_prg-include }|
+      it_bp_s   = lt_bp_s
+      it_bp_e   = lt_bp_e
+      i_focus   = i_focus ).
 
     DATA lv_url TYPE w3url.
     mo_html_view->load_data(
@@ -443,15 +469,22 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   METHOD on_html_sapevent.
     DATA lv_line TYPE i.
     DATA lv_word TYPE string.
-    CHECK to_upper( action ) = 'NAV'.
+    DATA lv_ctrl TYPE abap_bool.
+    DATA(lv_action) = to_upper( action ).
+    CHECK lv_action = 'NAV' OR lv_action = 'BP'.
     LOOP AT query_table INTO DATA(ls_q).
       CASE to_lower( ls_q-name ).
         WHEN 'l'. lv_line = ls_q-value.
         WHEN 'w'. lv_word = ls_q-value.
+        WHEN 'c'. lv_ctrl = xsdbool( ls_q-value = '1' ).
       ENDCASE.
     ENDLOOP.
     CHECK lv_line > 0.
-    navigate_to_source( i_line = lv_line i_word = lv_word ).
+    IF lv_action = 'BP'.
+      toggle_breakpoint( i_line = lv_line i_external = lv_ctrl ).
+    ELSE.
+      navigate_to_source( i_line = lv_line i_word = lv_word ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -714,10 +747,19 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
   method ON_EDITOR_BORDER_CLICK.
+      " Thin wrapper — the border click carries the line and the Ctrl state,
+      " the work is shared with the HTML view's line-number clicks.
+      toggle_breakpoint( i_line = line
+                         i_external = xsdbool( cntrl_pressed_set IS NOT INITIAL ) ).
+  endmethod.
+
+
+  method TOGGLE_BREAKPOINT.
       DATA: type TYPE char1, program TYPE program, include TYPE program, code_line TYPE i.
+      DATA(line) = i_line.
       DATA keyword TYPE zif_ace_parse_data=>ts_kword.
       DATA candidate TYPE zif_ace_parse_data=>ts_kword.
-      IF cntrl_pressed_set IS INITIAL. type = 'S'. ELSE. type = 'E'. ENDIF.
+      IF i_external IS INITIAL. type = 'S'. ELSE. type = 'E'. ENDIF.
       IF m_prg-include = 'Code_Flow_Mix'.
         READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
           WITH KEY include = 'Code_Flow_Mix' INTO DATA(prog_mix).
@@ -763,6 +805,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDIF.
       DELETE mt_bpoints WHERE del IS NOT INITIAL.
       IF m_prg-include = 'Code_Flow_Mix'. set_mixprog_line( ). ELSE. set_program_line( ). ENDIF.
+      " set_*_line refills MT_BPOINTS — redraw the HTML gutter from it,
+      " keeping the viewport on the clicked line
+      refresh_html_view( i_focus = line ).
   endmethod.
 
 
