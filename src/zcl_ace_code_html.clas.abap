@@ -156,6 +156,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     " walk: on a 4000-line include the walk made tens of thousands of
     " getElementById calls and the GUI's script engine gave up half way.
     add( EXPORTING i_text = '#code.folded .f{display:none}' CHANGING ct_html = rt_html ).
+    " Line counts precomputed in ABAP, shown only while globally folded
+    add( EXPORTING i_text = '.gf{display:none;color:#3070c0;font-style:italic}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '#code.folded .gf{display:inline}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '</style></head><body>' CHANGING ct_html = rt_html ).
 
     " Folding is driven from the window toolbar, not from inside the page,
@@ -216,7 +220,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                               | / Ctrl+click: external breakpoint"| &&
                               | onclick="bp({ ls_line-line },event)">{ ls_line-line }</span>| &&
                               lv_toggle && render_line( i_text = ls_line-text i_line = ls_line-line ) &&
-                              |<span class="fold" id="f{ ls_line-line }"></span></div>|
+                              |<span class="fold" id="f{ ls_line-line }"></span>| &&
+                              COND string( WHEN ls_line-end > ls_line-line
+                                THEN |<span class="gf">&nbsp;&nbsp;... { ls_line-end - ls_line-line } lines</span>|
+                                ELSE '' ) && '</div>'
            CHANGING ct_html = rt_html ).
     ENDLOOP.
 
@@ -228,9 +235,13 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
          CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = 'function att(e,n){return parseInt(e.getAttribute(n),10);}'
          CHANGING ct_html = rt_html ).
+    " Show restores display:"block" rather than "": clearing the inline style
+    " would hand control back to the global .folded rule and the block the
+    " user just expanded would stay hidden.
     add( EXPORTING i_text = 'function setSeg(n,hide){var e=row(n);if(!e)return;' &&
                             'var end=att(e,"data-end");if(end<=n)return;var i;' &&
-                            'for(i=n+1;i<=end;i++){var r=row(i);if(r)r.style.display=hide?"none":"";' &&
+                            'for(i=n+1;i<=end;i++){var r=row(i);' &&
+                            'if(r)r.style.display=hide?"none":"block";' &&
                             'var t=document.getElementById("t"+i);if(t)t.innerHTML="-";' &&
                             'var f=document.getElementById("f"+i);if(f)f.innerHTML="";}' &&
                             'var tg=document.getElementById("t"+n);if(tg)tg.innerHTML=hide?"+":"-";' &&
