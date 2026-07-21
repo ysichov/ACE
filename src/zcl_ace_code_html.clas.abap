@@ -379,12 +379,15 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     " keyword, so nothing has to be paired up by hand.
     IF io_scan IS BOUND.
       LOOP AT io_scan->structures INTO DATA(ls_struc).
-        DATA(lv_key) = to_upper( CONV string( ls_struc-key_start ) ).
-        CHECK closer_of( lv_key ) IS NOT INITIAL.
         READ TABLE lt_stmt INTO DATA(ls_sf) WITH KEY index = ls_struc-stmnt_from.
         CHECK sy-subrc = 0.
         READ TABLE lt_stmt INTO DATA(ls_st) WITH KEY index = ls_struc-stmnt_to.
         CHECK sy-subrc = 0.
+        " KEY_START is a flag (domain BOOLEAN), not the keyword — the opening
+        " word comes from the statement itself. This also filters out the
+        " structures that are not blocks at all.
+        DATA(lv_key) = ls_sf-word.
+        CHECK closer_of( lv_key ) IS NOT INITIAL.
         " A block written on one line holds nothing to fold, but it is still
         " part of the control structure and belongs in the scheme: mark it
         " 'S' — no toggle, no nesting effect, but visible to BUILD_SCHEME.
