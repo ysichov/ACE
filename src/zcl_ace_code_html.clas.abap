@@ -329,6 +329,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
               r_html = r_html && |<a class="id" href="sapevent:nav?l={ i_line }&w={ to_upper( lv_word ) }">| &&
                        escape( lv_word ) && '</a>'.
             ENDIF.
+          ELSEIF lv_char = space.
+            " c -> string conversion would drop the blank, and a blank at a
+            " w3htmltab row boundary would be lost too: emit it as an entity
+            r_html = r_html && '&nbsp;'.
+            lv_pos = lv_pos + 1.
           ELSE.
             r_html = r_html && escape( CONV string( lv_char ) ).
             lv_pos = lv_pos + 1.
@@ -344,6 +349,9 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     REPLACE ALL OCCURRENCES OF '&' IN r_text WITH '&amp;'.
     REPLACE ALL OCCURRENCES OF '<' IN r_text WITH '&lt;'.
     REPLACE ALL OCCURRENCES OF '>' IN r_text WITH '&gt;'.
+    " Blanks become entities: the HTML is shipped through a fixed-length
+    " character table, where a blank landing on a row boundary is dropped.
+    REPLACE ALL OCCURRENCES OF ` ` IN r_text WITH '&nbsp;'.
   ENDMETHOD.
 
 
@@ -351,8 +359,14 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     DATA lv_rest TYPE string.
     lv_rest = i_text.
     WHILE strlen( lv_rest ) > 255.
-      APPEND lv_rest(255) TO ct_html.
-      lv_rest = lv_rest+255.
+      " Never let a row end on a blank — the fixed-length row would drop it
+      " and glue two tag attributes together.
+      DATA(lv_cut) = 255.
+      WHILE lv_cut > 1 AND substring( val = lv_rest off = lv_cut - 1 len = 1 ) = ` `.
+        lv_cut = lv_cut - 1.
+      ENDWHILE.
+      APPEND lv_rest(lv_cut) TO ct_html.
+      lv_rest = lv_rest+lv_cut.
     ENDWHILE.
     APPEND lv_rest TO ct_html.
   ENDMETHOD.
