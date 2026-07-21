@@ -298,7 +298,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                        escape( lv_word ) && '</a>'.
             ENDIF.
           ELSE.
-            r_html = r_html && escape( lv_char ).
+            r_html = r_html && escape( CONV string( lv_char ) ).
             lv_pos = lv_pos + 1.
           ENDIF.
       ENDCASE.
