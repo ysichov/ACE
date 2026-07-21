@@ -132,6 +132,7 @@ public section.
   data MO_VIEW_TOOLBAR type ref to CL_GUI_TOOLBAR .
   data MO_HTML_VIEW type ref to CL_GUI_HTML_VIEWER .
   data MV_HTML_MODE type ABAP_BOOL .
+  data MV_HTML_FOLDED type ABAP_BOOL .
   data:
     mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
@@ -369,7 +370,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     button = VALUE #(
       ( function = 'VIEWMODE' icon = CONV #( icon_htm )
         quickinfo = 'Toggle source rendering: Classic editor / HTML with links and branch folding'
-        text = 'Classic view' ) ).
+        text = 'Classic view' )
+      ( butn_type = 3 )
+      ( function = 'FOLDALL' icon = CONV #( icon_collapse )
+        quickinfo = 'Collapse / expand all control structures (HTML view only)'
+        text = 'Collapse all' ) ).
     mo_view_toolbar->add_button_group( button ).
     event-eventid = cl_gui_toolbar=>m_id_function_selected.
     event-appl_event = space.
@@ -380,6 +385,19 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
   METHOD hnd_view_toolbar.
+    IF fcode = 'FOLDALL'.
+      IF mv_html_mode IS INITIAL.
+        MESSAGE 'Folding is available in HTML view only' TYPE 'S'.
+        RETURN.
+      ENDIF.
+      mv_html_folded = xsdbool( mv_html_folded IS INITIAL ).
+      mo_view_toolbar->set_button_info(
+        EXPORTING fcode = 'FOLDALL'
+                  text  = COND #( WHEN mv_html_folded = abap_true
+                                  THEN 'Expand all' ELSE 'Collapse all' ) ).
+      refresh_html_view( ).
+      RETURN.
+    ENDIF.
     CHECK fcode = 'VIEWMODE'.
     IF mv_html_mode = abap_true.
       mv_html_mode = abap_false.
@@ -456,7 +474,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       i_title   = |{ m_prg-program } - { m_prg-include }|
       it_bp_s   = lt_bp_s
       it_bp_e   = lt_bp_e
-      i_focus   = i_focus ).
+      i_focus   = i_focus
+      i_folded  = mv_html_folded ).
 
     DATA lv_url TYPE w3url.
     mo_html_view->load_data(

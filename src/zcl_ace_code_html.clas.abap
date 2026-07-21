@@ -37,6 +37,7 @@ CLASS zcl_ace_code_html DEFINITION
                 it_bp_s       TYPE tt_lines OPTIONAL
                 it_bp_e       TYPE tt_lines OPTIONAL
                 i_focus       TYPE i OPTIONAL
+                i_folded      TYPE abap_bool DEFAULT abap_false
       RETURNING VALUE(rt_html) TYPE w3htmltab.
 
   PRIVATE SECTION.
@@ -47,7 +48,7 @@ CLASS zcl_ace_code_html DEFINITION
         text  TYPE string,
         word  TYPE string,   " first word, uppercased
         depth TYPE i,
-        kind  TYPE char1,   " 'O'=opener 'B'=branch 'C'=closer ' '=plain
+        kind  TYPE char1,   " 'O'=opener 'B'=branch 'C'=closer 'P'=plain
         end   TYPE i,       " last line of this header's own branch segment
         all   TYPE i,       " openers: last line before the matching closer
       END OF ts_line,
@@ -138,8 +139,9 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     add( EXPORTING i_text = '.fold{color:#3070c0;font-style:italic}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '</style></head><body>' CHANGING ct_html = rt_html ).
 
-    add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }| &&
-                            '<button id="ftog" onclick="foldAll()">Collapse all</button></div>'
+    " Folding is driven from the window toolbar, not from inside the page,
+    " so there is a single button and a single state.
+    add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }</div>|
          CHANGING ct_html = rt_html ).
 
     add( EXPORTING i_text = '<div id="code">' CHANGING ct_html = rt_html ).
@@ -234,14 +236,15 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                             'for(i=0;i<ch.length;i++){var r=ch[i];' &&
                             'if(!r.id||r.id.charAt(0)!="r")continue;' &&
                             'var k=r.getAttribute("data-kind");' &&
-                            'var hide=gFolded&&k==" "&&att(r,"data-d")>0;' &&
+                            'var hide=gFolded&&k=="P"&&att(r,"data-d")>0;' &&
                             'r.style.display=hide?"none":"";' &&
                             'var n=parseInt(r.id.substring(1),10);' &&
                             'var t=document.getElementById("t"+n);if(t)t.innerHTML="-";' &&
-                            'var f=document.getElementById("f"+n);if(f)f.innerHTML="";}' &&
-                            'document.getElementById("ftog").innerHTML=' &&
-                            'gFolded?"Expand all":"Collapse all";}'
+                            'var f=document.getElementById("f"+n);if(f)f.innerHTML="";}}'
          CHANGING ct_html = rt_html ).
+    IF i_folded = abap_true.
+      add( EXPORTING i_text = 'foldAll();' CHANGING ct_html = rt_html ).
+    ENDIF.
     " Setting a breakpoint round-trips through sapevent, which reloads the
     " page — scroll back to the line the user clicked so the view stays put.
     IF i_focus > 0.
@@ -265,7 +268,9 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       APPEND INITIAL LINE TO rt_lines ASSIGNING FIELD-SYMBOL(<ls_line>).
       <ls_line>-line = sy-tabix.
       <ls_line>-text = <lv_src>.
-      <ls_line>-kind = ' '.
+      " 'P' rather than a blank: a string template drops trailing blanks,
+      " so data-kind=" " would reach the page as an empty attribute.
+      <ls_line>-kind = 'P'.
     ENDLOOP.
 
     " Pass 2 — statement keywords come from the parser's scan, so a line is
