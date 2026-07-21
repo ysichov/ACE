@@ -85,6 +85,12 @@ CLASS zcl_ace_code_html DEFINITION
                 it_kw          TYPE zif_ace_parse_data=>tt_kword
       RETURNING VALUE(rt_lines) TYPE tt_line.
 
+    "! First word of a statement line, uppercased ('' for comments/blank).
+    "! Only used when the parser's keyword table is unavailable.
+    CLASS-METHODS first_word
+      IMPORTING i_text        TYPE string
+      RETURNING VALUE(r_word) TYPE string.
+
     "! Closing keyword expected for an opening one, '' if not a block opener.
     CLASS-METHODS closer_of
       IMPORTING i_word         TYPE string
@@ -284,14 +290,23 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
     " Pass 2 — statement keywords come from the parser's scan, so a line is
     " only a structure line if a statement really starts there. Reading the
-    " first word of the raw text instead used to misread continuation lines
-    " of multi-line statements (WRITE: / ..., chained calls) as keywords.
-    LOOP AT it_kw INTO DATA(ls_kw).
-      DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
-      READ TABLE rt_lines ASSIGNING <ls_line> INDEX lv_vline.
-      CHECK sy-subrc = 0.
-      <ls_line>-word = to_upper( ls_kw-name ).
-    ENDLOOP.
+    " first word of the raw text instead misreads continuation lines of
+    " multi-line statements (WRITE: / ..., chained calls) as keywords.
+    " The scan is not always at hand though — the whole-class view and any
+    " include that was not parsed arrive without keywords — so fall back to
+    " the first word rather than showing no folding at all.
+    IF it_kw IS NOT INITIAL.
+      LOOP AT it_kw INTO DATA(ls_kw).
+        DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
+        READ TABLE rt_lines ASSIGNING <ls_line> INDEX lv_vline.
+        CHECK sy-subrc = 0.
+        <ls_line>-word = to_upper( ls_kw-name ).
+      ENDLOOP.
+    ELSE.
+      LOOP AT rt_lines ASSIGNING <ls_line>.
+        <ls_line>-word = first_word( <ls_line>-text ).
+      ENDLOOP.
+    ENDIF.
 
     " Pass 3 — pair openers with their closers. An opener counts as a block
     " only once its own closer shows up: SELECT ... INTO TABLE and
