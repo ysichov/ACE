@@ -794,15 +794,15 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         " A loop drawn as a node holds its body hidden: click opens it up
         lv_clicks = lv_clicks && |  click { lv_node }| &&
                     | "sapevent:aceexp_{ ls_line-line }" _self\n|.
+      ELSE.
+        " Clicking a structure node selects that stretch of code in the source
+        " window. Line numbers ride in the action name because the control
+        " percent encodes '?', '=' and '&', leaving a query string unreadable.
+        lv_clicks = lv_clicks && |  click { lv_node } "sapevent:acego_{ ls_line-line }_| &&
+                    |{ COND i( WHEN ls_line-all > ls_line-line THEN ls_line-all
+                               WHEN ls_line-end > ls_line-line THEN ls_line-end
+                               ELSE ls_line-line ) }" _self\n|.
       ENDIF.
-      " Parked until the click handling is sorted out: a click on a structure
-      " node was meant to select that stretch of code in the source window.
-      " Line numbers ride in the action name because the control percent
-      " encodes '?', '=' and '&', which leaves a query string unreadable.
-*      lv_clicks = lv_clicks && |  click { lv_node } "sapevent:acego_{ ls_line-line }_| &&
-*                  |{ COND i( WHEN ls_line-all > ls_line-line THEN ls_line-all
-*                             WHEN ls_line-end > ls_line-line THEN ls_line-end
-*                             ELSE ls_line-line ) }" _self\n|.
 
       " Edge source. A branch header does not continue the previous branch —
       " it fans out from the IF/CASE itself, and the branch just walked is
