@@ -479,7 +479,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     ENDLOOP.
     MESSAGE |DBG html: inc={ m_prg-include } found={ COND string( WHEN ls_prog-include IS INITIAL
       THEN 'NO' ELSE 'YES' ) } src={ lines( lt_src ) } kw={ lines( lr_bpkw->* ) }| &&
-      | vkw={ lines( ls_prog-v_keywords ) } blocks={ lv_dbg_blocks }| TYPE 'S'.
+      | vkw={ lines( ls_prog-v_keywords ) } blocks={ lv_dbg_blocks }| TYPE 'I'.
 
     " Structure detection uses the parser's scan, not the raw text
     DATA(lt_html) = zcl_ace_code_html=>build(
