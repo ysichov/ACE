@@ -145,6 +145,19 @@ CLASS zcl_ace_code_html DEFINITION
       IMPORTING i_text        TYPE string
       RETURNING VALUE(r_text) TYPE string.
 
+    "! Emits an "N operations" node for the executable statements between two
+    "! lines and wires it after i_prev. Returns the node the chain now ends
+    "! on — the new node, or i_prev when there was nothing in between.
+    CLASS-METHODS ops_node
+      IMPORTING i_from        TYPE i
+                i_to          TYPE i
+                i_id          TYPE string
+                i_prev        TYPE string
+                it_ops        TYPE tt_lines
+      CHANGING  cv_mm         TYPE string
+                cv_edges      TYPE string
+      RETURNING VALUE(r_node) TYPE string.
+
     "! Source text of a structure line, trimmed and stripped of the
     "! characters that would break a mermaid label.
     CLASS-METHODS scheme_label
@@ -597,7 +610,15 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       WHILE lines( lt_cond ) > 0.
         READ TABLE lt_cond INTO DATA(ls_cond) INDEX 1.
         IF ls_cond-closeline <> ls_line-line. EXIT. ENDIF.
-        APPEND lv_prev_node TO ls_cond-tails.
+        " Statements after the last structure of the branch still belong to
+        " it — without this they fell out of the picture entirely.
+        APPEND ops_node( EXPORTING i_from = lv_prev_line
+                                   i_to   = ls_line-line
+                                   i_id   = |x{ ls_line-line }|
+                                   i_prev = lv_prev_node
+                                   it_ops = lt_ops
+                         CHANGING  cv_mm    = rv_mm
+                                   cv_edges = lv_edges ) TO ls_cond-tails.
         " The closing statement is worth a node of its own — unlike ENDLOOP,
         " where the frame around the body already shows where it ends.
         DATA(lv_join) = |j{ ls_line-line }|.
@@ -731,7 +752,14 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       IF ls_line-kind = 'B'.
         READ TABLE lt_cond ASSIGNING FIELD-SYMBOL(<ls_cond>) INDEX 1.
         IF sy-subrc = 0.
-          APPEND lv_prev_node TO <ls_cond>-tails.
+          " Same for the trailing statements of the branch just walked
+          APPEND ops_node( EXPORTING i_from = lv_prev_line
+                                     i_to   = ls_line-line
+                                     i_id   = |y{ ls_line-line }|
+                                     i_prev = lv_prev_node
+                                     it_ops = lt_ops
+                           CHANGING  cv_mm    = rv_mm
+                                     cv_edges = lv_edges ) TO <ls_cond>-tails.
           lv_from      = <ls_cond>-header.
           lv_from_line = ls_line-line.
         ENDIF.
@@ -805,6 +833,28 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     ENDWHILE.
 
     rv_mm = rv_mm && lv_edges && lv_clicks.
+
+  ENDMETHOD.
+
+
+  METHOD ops_node.
+
+    r_node = i_prev.
+    CHECK i_prev IS NOT INITIAL.
+    CHECK i_from > 0 AND i_to > i_from + 1.
+
+    READ TABLE it_ops INTO DATA(lv_to_cnt) INDEX i_to - 1.
+    CHECK sy-subrc = 0.
+    READ TABLE it_ops INTO DATA(lv_fr_cnt) INDEX i_from.
+    CHECK sy-subrc = 0.
+
+    DATA(lv_ops) = lv_to_cnt - lv_fr_cnt.
+    CHECK lv_ops > 0.
+
+    cv_mm = cv_mm && |  { i_id }["{ lv_ops } { COND string(
+      WHEN lv_ops = 1 THEN 'operation' ELSE 'operations' ) }"]\n|.
+    cv_edges = cv_edges && |  { i_prev } --> { i_id }\n|.
+    r_node = i_id.
 
   ENDMETHOD.
 
