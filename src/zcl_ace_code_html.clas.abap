@@ -557,6 +557,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       EXIT.
     ENDLOOP.
 
+    " Edges are collected separately and appended after every node and frame
+    " has been declared: an edge written inside a subgraph pulls its nodes
+    " into that subgraph, which silently wrecks the nesting.
+    DATA lv_edges TYPE string.
+
     DATA(lv_prev_node)  = ||.
     DATA(lv_prev_depth) = 0.
     DATA(lv_prev_line)  = 0.
@@ -596,11 +601,24 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         THEN scheme_label( i_title )
         ELSE scheme_label( ls_line-text ) ).
 
-      " Shape carries the meaning: decisions are rhombi, loops are barrels,
-      " units are boxed, branches are rounded.
+      " A loop is the frame around its body, not a node of its own: its text
+      " is the subgraph caption, and the chain simply flows into the first
+      " statement inside. Everything else is a node.
+      DATA(lv_is_loop) = xsdbool(
+        ls_line-kind = 'O' AND ls_line-all > ls_line-line
+        AND ( ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE' ) ).
+
+      IF lv_is_loop = abap_true.
+        rv_mm = rv_mm && |  subgraph g{ ls_line-line }["{ lv_label }"]\n|.
+        rv_mm = rv_mm && |  direction LR\n|.
+        INSERT VALUE #( endline = ls_line-all ) INTO lt_sub INDEX 1.
+        CONTINUE.
+      ENDIF.
+
+      " Shape carries the meaning: decisions are rhombi, units are boxed,
+      " branches are rounded.
       DATA(lv_shape) = SWITCH string( ls_line-word
         WHEN 'IF' OR 'CASE'                      THEN |{ lv_node }\{"{ lv_label }"\}|
-        WHEN 'LOOP' OR 'DO' OR 'WHILE'           THEN |{ lv_node }[/"{ lv_label }"/]|
         WHEN 'METHOD' OR 'FORM' OR 'MODULE'      THEN |{ lv_node }[["{ lv_label }"]]|
         ELSE                                          |{ lv_node }("{ lv_label }")| ).
       rv_mm = rv_mm && |  { lv_shape }\n|.
@@ -635,20 +653,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
           DATA(lv_ops_node) = |o{ ls_line-line }|.
           rv_mm = rv_mm && |  { lv_ops_node }["{ lv_ops } { COND string(
             WHEN lv_ops = 1 THEN 'operation' ELSE 'operations' ) }"]\n|.
-          rv_mm = rv_mm && |  { lv_from } --> { lv_ops_node }\n|.
-          rv_mm = rv_mm && |  { lv_ops_node } --> { lv_node }\n|.
+          lv_edges = lv_edges && |  { lv_from } --> { lv_ops_node }\n|.
+          lv_edges = lv_edges && |  { lv_ops_node } --> { lv_node }\n|.
         ELSE.
-          rv_mm = rv_mm && |  { lv_from } --> { lv_node }\n|.
+          lv_edges = lv_edges && |  { lv_from } --> { lv_node }\n|.
         ENDIF.
-      ENDIF.
-
-      " Loops and units get a frame around their body; conditions stay plain
-      " nodes, their branches are already expressed by the ELSE/WHEN nodes.
-      IF ls_line-kind = 'O' AND ls_line-all > ls_line-line
-        AND ( ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE'
-           OR ls_line-word = 'METHOD' OR ls_line-word = 'FORM' OR ls_line-word = 'MODULE' ).
-        rv_mm = rv_mm && |  subgraph g{ ls_line-line }[" "]\n|.
-        INSERT VALUE #( endline = ls_line-all ) INTO lt_sub INDEX 1.
       ENDIF.
 
       DELETE lt_prev WHERE depth >= ls_line-depth.
@@ -663,6 +672,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       rv_mm = rv_mm && |  end\n|.
       DELETE lt_sub INDEX 1.
     ENDWHILE.
+
+    rv_mm = rv_mm && lv_edges.
 
   ENDMETHOD.
 
