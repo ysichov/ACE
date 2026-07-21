@@ -606,6 +606,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
              depth     TYPE i,
              word      TYPE string,
              header    TYPE string,
+             seen      TYPE abap_bool,   " first branch already passed
              tails     TYPE string_table,
            END OF ts_cond.
     DATA lt_cond TYPE STANDARD TABLE OF ts_cond WITH EMPTY KEY.
@@ -750,12 +751,19 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                                                    it_ops  = lt_ops
                                          CHANGING  cv_mm    = rv_mm
                                                    cv_edges = lv_edges ).
-          " Still standing on the header means the stretch was empty — the
-          " gap between CASE and its first WHEN, most often. An empty path
-          " adds an arrow that says nothing.
-          IF lv_tail_node <> <ls_br>-header.
+          IF <ls_br>-word = 'CASE' AND <ls_br>-seen = abap_false.
+            " Statements between CASE and its first WHEN run unconditionally,
+            " before the dispatch — so they are not a branch, and every WHEN
+            " has to fan out from the end of them rather than from the CASE.
+            IF lv_tail_node <> <ls_br>-header.
+              <ls_br>-header = lv_tail_node.
+            ENDIF.
+          ELSEIF lv_tail_node <> <ls_br>-header.
+            " Still standing on the header means the branch was empty, and an
+            " empty path only adds an arrow that says nothing.
             APPEND lv_tail_node TO <ls_br>-tails.
           ENDIF.
+          <ls_br>-seen = abap_true.
           " This branch's own condition goes on the arrow leaving the IF/CASE
           lv_lbl        = lv_label.
           lv_prev_node  = <ls_br>-header.
