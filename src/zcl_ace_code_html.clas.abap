@@ -863,7 +863,9 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     IF i_label IS INITIAL.
       r_text = ` --> `.
     ELSE.
-      r_text = | -->\|{ i_label }\| |.
+      " Quoted: an unquoted edge label ends at the first bracket, and
+      " conditions like m_tabname+0(3) = 'HRP' are full of them.
+      r_text = | -->\|"{ i_label }"\| |.
     ENDIF.
   ENDMETHOD.
 
