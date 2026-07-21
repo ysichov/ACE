@@ -45,10 +45,6 @@ public section.
       !I_DIRECTION   type UI_FUNC    optional
       !I_WITH_PARAMS type BOOLEAN    optional
       !I_CALC_PATH   type BOOLEAN    optional .
-  methods MAGIC_SEARCH
-    importing
-      !I_DIRECTION type UI_FUNC optional
-      !I_CALC_PATH type BOOLEAN optional .
   methods CLASS_MAP
     importing
       !I_DIRECTION type UI_FUNC optional .
@@ -529,50 +525,6 @@ DATA(lv_maxlen) = 200.
 
   endmethod.
 
-
-  METHOD magic_search.
-
-    DATA: mm_string TYPE string,
-          direction TYPE string.
-
-    CLEAR mo_viewer->mt_if.
-    DATA(lines) = mo_viewer->get_code_flow( i_calc_path = i_calc_path ).
-    "CHECK lines IS NOT INITIAL.
-
-    direction = COND string(
-      WHEN i_direction IS NOT INITIAL THEN i_direction
-      WHEN lines( lines ) < 100       THEN 'LR'
-      ELSE                                 'TB' ).
-
-    mm_string = |graph { direction }\n |.
-
-    build_nodes( EXPORTING i_direction = direction
-                 CHANGING  ct_lines = lines cv_mm_string = mm_string ).
-
-    build_edges( EXPORTING it_lines = lines
-                 CHANGING  cv_mm_string = mm_string ).
-
-    " --- Highlight active blocks (active_root = X) with a light-blue fill ---
-    DATA: lv_active_ids TYPE string.
-    LOOP AT lines INTO DATA(line) WHERE active_root = abap_true AND cond <> 'ELSE'
-                                                                AND cond <> 'ELSEIF'
-                                                                AND cond <> 'WHEN'.
-      IF lv_active_ids IS INITIAL.
-        lv_active_ids = |{ line-ind }|.
-      ELSE.
-        lv_active_ids = |{ lv_active_ids },{ line-ind }|.
-      ENDIF.
-    ENDLOOP.
-
-    IF lv_active_ids IS NOT INITIAL.
-      mm_string = |{ mm_string }\nclassDef activeNode fill:#AEE6FF,stroke:#3399CC,color:#000\n|.
-      mm_string = |{ mm_string }class { lv_active_ids } activeNode\n|.
-    ENDIF.
-
-    mm_string = |{ mm_string }\n|.
-    open_mermaid( mm_string ).
-
-  ENDMETHOD.
 
 
   METHOD class_map.
@@ -1758,9 +1710,6 @@ DATA(lv_maxlen) = 200.
           steps_flow( i_direction   = mv_direction
                       i_with_params = mv_with_params
                       i_calc_path   = mv_calc_path ).
-        WHEN 'FLOW'.
-          magic_search( i_direction = mv_direction
-                        i_calc_path = mv_calc_path ).
         WHEN 'CMAP'.
           class_map( i_direction = mv_direction ).
         WHEN 'SCHEME'.
