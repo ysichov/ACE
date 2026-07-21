@@ -50,6 +50,7 @@ CLASS zcl_ace_code_html DEFINITION
                 it_kw         TYPE zif_ace_parse_data=>tt_kword OPTIONAL
                 io_scan       TYPE REF TO cl_ci_scan OPTIONAL
                 i_title       TYPE string OPTIONAL
+                it_expanded   TYPE tt_lines OPTIONAL
       RETURNING VALUE(rv_mm)  TYPE string.
 
   PRIVATE SECTION.
@@ -561,6 +562,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     " has been declared: an edge written inside a subgraph pulls its nodes
     " into that subgraph, which silently wrecks the nesting.
     DATA lv_edges TYPE string.
+    " click directives go last, after the nodes they refer to
+    DATA lv_clicks TYPE string.
 
     DATA(lv_prev_node)  = ||.
     DATA(lv_prev_depth) = 0.
@@ -622,6 +625,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         WHEN 'METHOD' OR 'FORM' OR 'MODULE'      THEN |{ lv_node }[["{ lv_label }"]]|
         ELSE                                          |{ lv_node }("{ lv_label }")| ).
       rv_mm = rv_mm && |  { lv_shape }\n|.
+      " Clicking a structure node selects that stretch of code in the window
+      lv_clicks = lv_clicks && |  click { lv_node } "sapevent:SCHEMEGO?l={ ls_line-line }| &&
+                  |&e={ COND i( WHEN ls_line-all > ls_line-line THEN ls_line-all
+                                WHEN ls_line-end > ls_line-line THEN ls_line-end
+                                ELSE ls_line-line ) }" _self\n|.
 
       " Edge source: the previous node of the same nesting level, or the
       " enclosing header when this is the first line of a block.
@@ -650,11 +658,33 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         ENDIF.
 
         IF lv_ops > 0.
-          DATA(lv_ops_node) = |o{ ls_line-line }|.
-          rv_mm = rv_mm && |  { lv_ops_node }["{ lv_ops } { COND string(
-            WHEN lv_ops = 1 THEN 'operation' ELSE 'operations' ) }"]\n|.
-          lv_edges = lv_edges && |  { lv_from } --> { lv_ops_node }\n|.
-          lv_edges = lv_edges && |  { lv_ops_node } --> { lv_node }\n|.
+          READ TABLE it_expanded TRANSPORTING NO FIELDS
+            WITH KEY table_line = ls_line-line.
+          IF sy-subrc = 0.
+            " Expanded: every statement of the stretch as its own node
+            DATA(lv_chain) = lv_from.
+            LOOP AT lt_lines INTO DATA(ls_op)
+              WHERE line > lv_from_line AND line < ls_line-line
+                AND kind = 'P' AND word IS NOT INITIAL.
+              DATA(lv_opn) = |p{ ls_op-line }|.
+              rv_mm = rv_mm && |  { lv_opn }("{ scheme_label( ls_op-text ) }")\n|.
+              lv_edges = lv_edges && |  { lv_chain } --> { lv_opn }\n|.
+              lv_chain = lv_opn.
+            ENDLOOP.
+            " The first node of the stretch folds it back up
+            lv_clicks = lv_clicks && |  click p{ lv_from_line + 1 }| &&
+                        | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+            lv_edges = lv_edges && |  { lv_chain } --> { lv_node }\n|.
+          ELSE.
+            DATA(lv_ops_node) = |o{ ls_line-line }|.
+            rv_mm = rv_mm && |  { lv_ops_node }["{ lv_ops } { COND string(
+              WHEN lv_ops = 1 THEN 'operation' ELSE 'operations' ) }"]\n|.
+            lv_edges = lv_edges && |  { lv_from } --> { lv_ops_node }\n|.
+            lv_edges = lv_edges && |  { lv_ops_node } --> { lv_node }\n|.
+            " Click opens the stretch up
+            lv_clicks = lv_clicks && |  click { lv_ops_node }| &&
+                        | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+          ENDIF.
         ELSE.
           lv_edges = lv_edges && |  { lv_from } --> { lv_node }\n|.
         ENDIF.
@@ -673,7 +703,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       DELETE lt_sub INDEX 1.
     ENDWHILE.
 
-    rv_mm = rv_mm && lv_edges.
+    rv_mm = rv_mm && lv_edges && lv_clicks.
 
   ENDMETHOD.
 

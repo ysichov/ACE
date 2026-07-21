@@ -135,6 +135,8 @@ public section.
   data MV_HTML_FOLDED type ABAP_BOOL .
   " Latest branch-scheme popup — the one that follows navigation
   data MO_SCHEME type ref to ZCL_ACE_MERMAID .
+  " Anchor lines whose "N operations" node is currently expanded
+  data MT_SCHEME_EXP type ZCL_ACE_CODE_HTML=>TT_LINES .
   data:
     mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
@@ -214,6 +216,11 @@ public section.
       !FCODE .
     " Rebuilds the branch scheme popup for the unit currently shown
   methods REFRESH_SCHEME .
+    " Click on an "N operations" node: expand it into single statements,
+    " or fold it back if it is already expanded.
+  methods TOGGLE_SCHEME_EXPAND
+    importing
+      !I_LINE type I .
     " Qualified name of the unit on display: CLASS=>METHOD / FORM x / FM x
   methods UNIT_TITLE
     returning
@@ -401,6 +408,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       " Always a fresh popup, so several branches can be compared side by
       " side. Only the latest one follows the navigation; the older ones stay
       " on the branch they were opened for.
+      " A new popup starts fully collapsed
+      CLEAR mt_scheme_exp.
       mo_scheme = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'SCHEME' ).
       refresh_scheme( ).
       IF mo_scheme->mo_box IS NOT INITIAL.
@@ -437,6 +446,17 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD toggle_scheme_expand.
+    READ TABLE mt_scheme_exp TRANSPORTING NO FIELDS WITH KEY table_line = i_line.
+    IF sy-subrc = 0.
+      DELETE mt_scheme_exp WHERE table_line = i_line.
+    ELSE.
+      APPEND i_line TO mt_scheme_exp.
+    ENDIF.
+    refresh_scheme( ).
+  ENDMETHOD.
+
+
   METHOD refresh_scheme.
     " Rebuilds the branch scheme for the unit currently on display. Called
     " when the scheme is opened and after every navigation, so the diagram
@@ -457,10 +477,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     IF ls_prog-v_keywords IS NOT INITIAL. lr_kw = REF #( ls_prog-v_keywords ). ENDIF.
 
     mo_scheme->mv_scheme = zcl_ace_code_html=>build_scheme(
-      it_source = lt_src
-      it_kw     = lr_kw->*
-      io_scan   = ls_prog-scan
-      i_title   = unit_title( ) ).
+      it_source   = lt_src
+      it_kw       = lr_kw->*
+      io_scan     = ls_prog-scan
+      i_title     = unit_title( )
+      it_expanded = mt_scheme_exp ).
     mo_scheme->refresh( ).
     mo_scheme->mo_box->set_caption( |Branch scheme: { unit_title( ) }| ).
   ENDMETHOD.
@@ -1343,7 +1364,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDIF.
       refresh_html_view( ).
       " An open scheme follows the code: double-clicking through to another
-      " method redraws it for that method.
+      " method redraws it for that method. Expansion state is per unit —
+      " the line numbers it refers to mean nothing in the next one.
+      CLEAR mt_scheme_exp.
       refresh_scheme( ).
     ENDIF.
   ENDMETHOD.

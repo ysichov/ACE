@@ -1567,6 +1567,27 @@ DATA(lv_maxlen) = 200.
     " query either in getdata (action='ACENODE') or leaves it in action
     " (action='ACENODE?id=..'), so accept both and parse defensively.
     DATA(lv_action) = CONV string( action ).
+
+    " Branch scheme: a click on an "N operations" node expands it into the
+    " individual statements, a second click folds it back.
+    IF lv_action CS 'SCHEMEEXP'.
+      DATA lv_ln TYPE string.
+      DATA(lv_es) = |{ lv_action } { getdata }|.
+      IF lv_es CS 'l='.
+        lv_ln = substring_after( val = lv_es sub = 'l=' ).
+        IF lv_ln CS '&'. SPLIT lv_ln AT '&' INTO lv_ln DATA(lv_er). ENDIF.
+        IF lv_ln CS ` `. SPLIT lv_ln AT ` ` INTO lv_ln lv_er. ENDIF.
+      ENDIF.
+      IF lv_ln IS INITIAL.
+        READ TABLE query_table INTO DATA(ls_eq) WITH KEY name = 'l'.
+        IF sy-subrc = 0. lv_ln = ls_eq-value. ENDIF.
+      ENDIF.
+      CONDENSE lv_ln NO-GAPS.
+      CHECK lv_ln IS NOT INITIAL.
+      mo_viewer->mo_window->toggle_scheme_expand( CONV i( lv_ln ) ).
+      RETURN.
+    ENDIF.
+
     CHECK lv_action CS 'ACENODE'.
 
     DATA lv_id TYPE string.
