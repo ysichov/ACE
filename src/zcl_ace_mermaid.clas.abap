@@ -1713,8 +1713,8 @@ DATA(lv_maxlen) = 200.
         WHEN 'SCHEME'.
           CHECK mv_scheme IS NOT INITIAL.
           DATA(lv_mm) = mv_scheme.
-          IF mv_direction = 'LR'.
-            REPLACE FIRST OCCURRENCE OF 'flowchart TD' IN lv_mm WITH 'flowchart LR'.
+          IF mv_direction = 'TB'.
+            REPLACE FIRST OCCURRENCE OF 'flowchart LR' IN lv_mm WITH 'flowchart TD'.
           ENDIF.
           open_mermaid( lv_mm ).
       ENDCASE.

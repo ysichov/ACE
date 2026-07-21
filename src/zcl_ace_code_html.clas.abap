@@ -527,12 +527,26 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     TYPES: BEGIN OF ts_prev,
              depth TYPE i,
              node  TYPE string,
+             line  TYPE i,
            END OF ts_prev.
     DATA lt_prev TYPE STANDARD TABLE OF ts_prev WITH EMPTY KEY.
 
     DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan ).
 
-    rv_mm = |flowchart TD\n|.
+    " Running count of plain statements, so the number of operations between
+    " any two lines is one subtraction rather than a scan.
+    DATA lt_ops TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+    DATA(lv_run) = 0.
+    LOOP AT lt_lines INTO DATA(ls_cnt).
+      IF ls_cnt-kind = 'P' AND ls_cnt-word IS NOT INITIAL.
+        lv_run = lv_run + 1.
+      ENDIF.
+      APPEND lv_run TO lt_ops.
+    ENDLOOP.
+
+    " Left to right by default: a branch reads as a sequence, and the wide
+    " condition labels waste far less space than stacked vertically.
+    rv_mm = |flowchart LR\n|.
 
     " When the source is a single unit, its METHOD/FORM line is the root and
     " carries the qualified name — no extra start node above it.
@@ -545,12 +559,30 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
     DATA(lv_prev_node)  = ||.
     DATA(lv_prev_depth) = 0.
+    DATA(lv_prev_line)  = 0.
     IF lv_root = 0.
       rv_mm = rv_mm && |  start(["{ scheme_label( i_title ) }"])\n|.
       lv_prev_node = |start|.
     ENDIF.
 
+    " Open subgraphs, innermost first, with the line their block ends on
+    TYPES: BEGIN OF ts_sub,
+             endline TYPE i,
+           END OF ts_sub.
+    DATA lt_sub TYPE STANDARD TABLE OF ts_sub WITH EMPTY KEY.
+
     LOOP AT lt_lines INTO DATA(ls_line).
+
+      " Close every subgraph whose block ended before this line. Without the
+      " frame, the body of a nested LOOP was drawn as a sibling chain and the
+      " nesting was impossible to see.
+      WHILE lines( lt_sub ) > 0.
+        READ TABLE lt_sub INTO DATA(ls_sub) INDEX 1.
+        IF ls_sub-endline >= ls_line-line. EXIT. ENDIF.
+        rv_mm = rv_mm && |  end\n|.
+        DELETE lt_sub INDEX 1.
+      ENDWHILE.
+
       " Only the structure itself — plain statements would drown the picture.
       " 'S' is a block written on a single line: not foldable, but it is a
       " branch all the same and has to show up here.
@@ -576,22 +608,61 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       " Edge source: the previous node of the same nesting level, or the
       " enclosing header when this is the first line of a block.
       DATA(lv_from) = lv_prev_node.
+      DATA(lv_from_line) = lv_prev_line.
       LOOP AT lt_prev INTO DATA(ls_prev) WHERE depth = ls_line-depth.
-        lv_from = ls_prev-node.
+        lv_from      = ls_prev-node.
+        lv_from_line = ls_prev-line.
       ENDLOOP.
       IF ls_line-depth > lv_prev_depth.
-        lv_from = lv_prev_node.
+        lv_from      = lv_prev_node.
+        lv_from_line = lv_prev_line.
       ENDIF.
+
       " The root has nothing above it
       IF lv_from IS NOT INITIAL.
-        rv_mm = rv_mm && |  { lv_from } --> { lv_node }\n|.
+        " Plain statements between the two structure lines become one node,
+        " so the picture keeps a sense of how much code sits in between.
+        DATA(lv_ops) = 0.
+        IF ls_line-line > lv_from_line + 1 AND lv_from_line > 0.
+          READ TABLE lt_ops INTO DATA(lv_to_cnt) INDEX ls_line-line - 1.
+          IF sy-subrc = 0.
+            READ TABLE lt_ops INTO DATA(lv_fr_cnt) INDEX lv_from_line.
+            IF sy-subrc = 0. lv_ops = lv_to_cnt - lv_fr_cnt. ENDIF.
+          ENDIF.
+        ENDIF.
+
+        IF lv_ops > 0.
+          DATA(lv_ops_node) = |o{ ls_line-line }|.
+          rv_mm = rv_mm && |  { lv_ops_node }["{ lv_ops } { COND string(
+            WHEN lv_ops = 1 THEN 'operation' ELSE 'operations' ) }"]\n|.
+          rv_mm = rv_mm && |  { lv_from } --> { lv_ops_node }\n|.
+          rv_mm = rv_mm && |  { lv_ops_node } --> { lv_node }\n|.
+        ELSE.
+          rv_mm = rv_mm && |  { lv_from } --> { lv_node }\n|.
+        ENDIF.
+      ENDIF.
+
+      " Loops and units get a frame around their body; conditions stay plain
+      " nodes, their branches are already expressed by the ELSE/WHEN nodes.
+      IF ls_line-kind = 'O' AND ls_line-all > ls_line-line
+        AND ( ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE'
+           OR ls_line-word = 'METHOD' OR ls_line-word = 'FORM' OR ls_line-word = 'MODULE' ).
+        rv_mm = rv_mm && |  subgraph g{ ls_line-line }[" "]\n|.
+        INSERT VALUE #( endline = ls_line-all ) INTO lt_sub INDEX 1.
       ENDIF.
 
       DELETE lt_prev WHERE depth >= ls_line-depth.
-      APPEND VALUE #( depth = ls_line-depth node = lv_node ) TO lt_prev.
+      APPEND VALUE #( depth = ls_line-depth node = lv_node line = ls_line-line ) TO lt_prev.
       lv_prev_node  = lv_node.
       lv_prev_depth = ls_line-depth.
+      lv_prev_line  = ls_line-line.
     ENDLOOP.
+
+    " Frames still open at the end of the source
+    WHILE lines( lt_sub ) > 0.
+      rv_mm = rv_mm && |  end\n|.
+      DELETE lt_sub INDEX 1.
+    ENDWHILE.
 
   ENDMETHOD.
 
