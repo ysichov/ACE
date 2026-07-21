@@ -321,7 +321,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         EXPORTING parent = mo_editor_container rows = 2 columns = 1 EXCEPTIONS OTHERS = 1.
       mo_view_splitter->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_view_tb_container ).
       mo_view_splitter->get_container( EXPORTING row = 2 column = 1 RECEIVING container = mo_src_container ).
-      mo_view_splitter->set_row_height( id = 1 height = '4' ).
+      " Absolute mode: a percentage of the editor area leaves the toolbar
+      " clipped, a fixed pixel height always fits the buttons
+      mo_view_splitter->set_row_mode( mode = cl_gui_splitter_container=>mode_absolute ).
+      mo_view_splitter->set_row_height( id = 1 height = 28 ).
       mo_view_splitter->set_row_sash( id = 1 type = 0 value = 0 ).
       CREATE OBJECT mo_view_toolbar EXPORTING parent = mo_view_tb_container.
       add_view_toolbar_buttons( ).

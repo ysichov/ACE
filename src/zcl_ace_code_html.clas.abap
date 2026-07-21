@@ -106,9 +106,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     add( EXPORTING i_text = '.num{display:inline-block;width:44px;text-align:right;color:#808080;' &&
                             'background:#f4f4f4;margin-right:6px;cursor:pointer}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.num:hover{background:#dde6f0;color:#000000}' CHANGING ct_html = rt_html ).
-    add( EXPORTING i_text = '.bp{display:inline-block;width:10px;text-align:center;font-weight:bold}'
+    add( EXPORTING i_text = '.bp{display:inline-block;width:9px;height:9px;margin-right:3px;' &&
+                            'border-radius:5px;vertical-align:middle}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.bps{background:#d00000}.bpe{background:#0060d0}'
          CHANGING ct_html = rt_html ).
-    add( EXPORTING i_text = '.bps{color:#d00000}.bpe{color:#0060d0}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.tg{display:inline-block;width:12px;color:#3070c0;cursor:pointer;' &&
                             'font-weight:bold}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.tgx{display:inline-block;width:12px}' CHANGING ct_html = rt_html ).
@@ -142,11 +143,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       DATA(lv_bp) = '<span class="bp"></span>'.
       READ TABLE it_bp_s TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
       IF sy-subrc = 0.
-        lv_bp = '<span class="bp bps" title="Session breakpoint">&#9679;</span>'.
+        lv_bp = '<span class="bp bps" title="Session breakpoint"></span>'.
       ELSE.
         READ TABLE it_bp_e TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
         IF sy-subrc = 0.
-          lv_bp = '<span class="bp bpe" title="External breakpoint">&#9679;</span>'.
+          lv_bp = '<span class="bp bpe" title="External breakpoint"></span>'.
         ENDIF.
       ENDIF.
 
@@ -196,9 +197,16 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                             'var hide=tg.innerHTML!="+";var b=att(e,"data-end");' &&
                             'if(ctrl||!(b>n))foldChain(n,hide);else setSeg(n,hide);}'
          CHANGING ct_html = rt_html ).
+    " The trailing timestamp matters: without it a second click builds the
+    " very same URL, the browser treats it as "already there" and no sapevent
+    " ever reaches ABAP — the breakpoint would set but never clear.
     add( EXPORTING i_text = 'function bp(n,ev){var evt=ev?ev:window.event;' &&
                             'var c=(evt&&evt.ctrlKey)?1:0;' &&
-                            'window.location.href="sapevent:bp?l="+n+"&c="+c;}'
+                            'window.location.href="sapevent:bp?l="+n+"&c="+c' &&
+                            '+"&t="+(new Date()).getTime();return false;}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'function nav(n,w){window.location.href="sapevent:nav?l="+n+"&w="+w' &&
+                            '+"&t="+(new Date()).getTime();return false;}'
          CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = 'function foldAll(hide){var d=document.getElementById("code");' &&
                             'var ch=d.childNodes;var i;var ids=[];' &&
@@ -370,7 +378,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
             ELSE.
               " Identifier — hyperlink carrying the viewer line and the word,
               " which is all ZCL_ACE_WINDOW needs to resolve the target.
-              r_html = r_html && |<a class="id" href="sapevent:nav?l={ i_line }&w={ to_upper( lv_word ) }">| &&
+              " Routed through nav() for the same reason as bp(): repeating
+              " an identical sapevent URL would be swallowed by the browser.
+              r_html = r_html && |<a class="id" href="#" onclick="return nav(| &&
+                       |{ i_line },'{ to_upper( lv_word ) }')">| &&
                        escape( lv_word ) && '</a>'.
             ENDIF.
           ELSEIF lv_char = space.
