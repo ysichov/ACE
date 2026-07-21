@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<abapGit version="v1.0.0" serializer="LCL_OBJECT_CLAS" serializer_version="v1.0.0">
+ <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
+  <asx:values>
+   <VSEOCLASS>
+    <CLSNAME>ZCL_ACE_CODE_HTML</CLSNAME>
+    <LANGU>E</LANGU>
+    <DESCRIPT>ACE - HTML rendering of ABAP source</DESCRIPT>
+    <STATE>1</STATE>
+    <CLSCCINCL>X</CLSCCINCL>
+    <FIXPT>X</FIXPT>
+    <UNICODE>X</UNICODE>
+   </VSEOCLASS>
+   <DESCRIPTIONS>
+    <SEOCOMPOTX>
+     <CMPNAME>BUILD</CMPNAME>
+     <LANGU>E</LANGU>
+     <DESCRIPT>Build HTML page for source lines</DESCRIPT>
+    </SEOCOMPOTX>
+   </DESCRIPTIONS>
+   <DESCRIPTIONS_SUB>
+    <SEOSUBCOTX>
+     <CMPNAME>BUILD</CMPNAME>
+     <SCONAME>IT_SOURCE</SCONAME>
+     <LANGU>E</LANGU>
+     <DESCRIPT>Source lines</DESCRIPT>
+    </SEOSUBCOTX>
+    <SEOSUBCOTX>
+     <CMPNAME>BUILD</CMPNAME>
+     <SCONAME>I_TITLE</SCONAME>
+     <LANGU>E</LANGU>
+     <DESCRIPT>Caption</DESCRIPT>
+    </SEOSUBCOTX>
+   </DESCRIPTIONS_SUB>
+  </asx:values>
+ </asx:abap>
+</abapGit>

@@ -125,6 +125,13 @@ public section.
   data MO_STACK_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_HIST_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_CODE_VIEWER type ref to CL_GUI_ABAPEDIT .
+  " --- second toolbar: Classic / HTML view of the source ---
+  data MO_VIEW_SPLITTER type ref to CL_GUI_SPLITTER_CONTAINER .
+  data MO_VIEW_TB_CONTAINER type ref to CL_GUI_CONTAINER .
+  data MO_SRC_CONTAINER type ref to CL_GUI_CONTAINER .
+  data MO_VIEW_TOOLBAR type ref to CL_GUI_TOOLBAR .
+  data MO_HTML_VIEW type ref to CL_GUI_HTML_VIEWER .
+  data MV_HTML_MODE type ABAP_BOOL .
   data:
     mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
@@ -196,6 +203,26 @@ public section.
     importing
       !I_LINE like SY-INDEX optional .
   methods CREATE_CODE_VIEWER .
+    " Second toolbar above the source: Classic <-> HTML view toggle
+  methods ADD_VIEW_TOOLBAR_BUTTONS .
+  methods HND_VIEW_TOOLBAR
+    for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
+    importing
+      !FCODE .
+    " Re-renders the currently shown source into the HTML control
+  methods REFRESH_HTML_VIEW .
+    " Hyperlink click in the HTML view -> same navigation as a double-click
+  methods ON_HTML_SAPEVENT
+    for event SAPEVENT of CL_GUI_HTML_VIEWER
+    importing
+      !ACTION
+      !QUERY_TABLE .
+    " Shared navigation: resolves the target of the clicked line/word.
+    " Called both by the editor double-click and by the HTML hyperlinks.
+  methods NAVIGATE_TO_SOURCE
+    importing
+      !I_LINE type I
+      !I_WORD type STRING optional .
   methods APPLY_DEPTH .
   methods SHOW_STACK .
   methods SHOW_COVERAGE .
@@ -280,6 +307,16 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       CREATE OBJECT mo_splitter_code
         EXPORTING parent = mo_code_container rows = 1 columns = 2 EXCEPTIONS OTHERS = 1.
       mo_splitter_code->get_container( EXPORTING row = 1 column = 2 RECEIVING container = mo_editor_container ).
+      " The editor area is split again: a thin toolbar row on top of the source
+      CREATE OBJECT mo_view_splitter
+        EXPORTING parent = mo_editor_container rows = 2 columns = 1 EXCEPTIONS OTHERS = 1.
+      mo_view_splitter->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_view_tb_container ).
+      mo_view_splitter->get_container( EXPORTING row = 2 column = 1 RECEIVING container = mo_src_container ).
+      mo_view_splitter->set_row_height( id = 1 height = '4' ).
+      mo_view_splitter->set_row_sash( id = 1 type = 0 value = 0 ).
+      CREATE OBJECT mo_view_toolbar EXPORTING parent = mo_view_tb_container.
+      add_view_toolbar_buttons( ).
+      mo_view_toolbar->set_visible( 'X' ).
       mo_splitter_code->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_locals_container ).
       mo_splitter_code->set_column_width( EXPORTING id = 1 width = '35' ).
       SET HANDLER on_box_close FOR mo_box.
@@ -296,7 +333,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             event  TYPE cntl_simple_event.
       CHECK mo_code_viewer IS INITIAL.
       CREATE OBJECT mo_code_viewer
-        EXPORTING parent = mo_editor_container max_number_chars = 100.
+        EXPORTING parent = mo_src_container max_number_chars = 100.
       mo_code_viewer->init_completer( ).
       mo_code_viewer->upload_properties(
         EXCEPTIONS dp_error_create = 1 dp_error_general = 2 dp_error_send = 3 OTHERS = 4 ).
@@ -311,6 +348,111 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_code_viewer->create_document( ).
       mo_code_viewer->set_readonly_mode( 1 ).
   endmethod.
+
+
+  METHOD add_view_toolbar_buttons.
+    DATA: button TYPE ttb_button,
+          events TYPE cntl_simple_events,
+          event  LIKE LINE OF events.
+    button = VALUE #(
+      ( function = 'VIEWMODE' icon = CONV #( icon_htm )
+        quickinfo = 'Toggle source rendering: Classic editor / HTML with links and branch folding'
+        text = 'Classic view' ) ).
+    mo_view_toolbar->add_button_group( button ).
+    event-eventid = cl_gui_toolbar=>m_id_function_selected.
+    event-appl_event = space.
+    APPEND event TO events.
+    mo_view_toolbar->set_registered_events( events = events ).
+    SET HANDLER me->hnd_view_toolbar FOR mo_view_toolbar.
+  ENDMETHOD.
+
+
+  METHOD hnd_view_toolbar.
+    CHECK fcode = 'VIEWMODE'.
+    IF mv_html_mode = abap_true.
+      mv_html_mode = abap_false.
+      IF mo_html_view IS NOT INITIAL. mo_html_view->set_visible( space ). ENDIF.
+      mo_code_viewer->set_visible( 'X' ).
+      mo_view_toolbar->set_button_info( EXPORTING fcode = 'VIEWMODE' text = 'Classic view' ).
+    ELSE.
+      mv_html_mode = abap_true.
+      mo_code_viewer->set_visible( space ).
+      refresh_html_view( ).
+      mo_view_toolbar->set_button_info( EXPORTING fcode = 'VIEWMODE' text = 'HTML view' ).
+    ENDIF.
+    cl_gui_cfw=>flush( ).
+  ENDMETHOD.
+
+
+  METHOD refresh_html_view.
+
+    CHECK mv_html_mode = abap_true.
+
+    IF mo_html_view IS INITIAL.
+      CREATE OBJECT mo_html_view
+        EXPORTING parent = mo_src_container
+        EXCEPTIONS OTHERS = 1.
+      IF sy-subrc <> 0.
+        mv_html_mode = abap_false.
+        mo_code_viewer->set_visible( 'X' ).
+        MESSAGE 'HTML view is not available in this GUI' TYPE 'I'.
+        RETURN.
+      ENDIF.
+      " The renderer emits sapevent:nav?l=<line>&w=<word> links
+      DATA: lt_events TYPE cntl_simple_events,
+            ls_event  TYPE cntl_simple_event.
+      ls_event-eventid    = cl_gui_html_viewer=>m_id_sapevent.
+      ls_event-appl_event = abap_true.
+      APPEND ls_event TO lt_events.
+      mo_html_view->set_registered_events( events = lt_events ).
+      SET HANDLER on_html_sapevent FOR mo_html_view.
+    ENDIF.
+
+    " Take exactly the lines the classic editor shows, so viewer line
+    " numbers stay identical in both modes and navigation keeps working.
+    DATA lt_src TYPE sci_include.
+    READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_prog).
+    IF sy-subrc = 0.
+      IF ls_prog-v_source IS NOT INITIAL.
+        lt_src = ls_prog-v_source.
+      ELSE.
+        lt_src = ls_prog-source_tab.
+      ENDIF.
+    ENDIF.
+    IF lt_src IS INITIAL.
+      mo_code_viewer->get_text_as_r3table( IMPORTING table = lt_src ).
+    ENDIF.
+
+    DATA(lt_html) = zcl_ace_code_html=>build(
+      it_source = lt_src
+      i_title   = |{ m_prg-program } - { m_prg-include }| ).
+
+    DATA lv_url TYPE w3url.
+    mo_html_view->load_data(
+      IMPORTING assigned_url = lv_url
+      CHANGING  data_table   = lt_html
+      EXCEPTIONS OTHERS      = 1 ).
+    CHECK sy-subrc = 0.
+    mo_html_view->show_url( url = lv_url ).
+    mo_html_view->set_visible( 'X' ).
+    cl_gui_cfw=>flush( ).
+
+  ENDMETHOD.
+
+
+  METHOD on_html_sapevent.
+    DATA lv_line TYPE i.
+    DATA lv_word TYPE string.
+    CHECK to_upper( action ) = 'NAV'.
+    LOOP AT query_table INTO DATA(ls_q).
+      CASE to_lower( ls_q-name ).
+        WHEN 'l'. lv_line = ls_q-value.
+        WHEN 'w'. lv_word = ls_q-value.
+      ENDCASE.
+    ENDLOOP.
+    CHECK lv_line > 0.
+    navigate_to_source( i_line = lv_line i_word = lv_word ).
+  ENDMETHOD.
 
 
   METHOD hnd_toolbar.
@@ -625,9 +767,23 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
   METHOD on_editor_double_click.
+    " Thin wrapper: the editor supplies the clicked line and word, the
+    " actual resolution lives in NAVIGATE_TO_SOURCE so that the HTML
+    " view's hyperlinks can reuse it unchanged.
+    DATA lv_word TYPE string.
     sender->get_selection_pos(
       IMPORTING from_line = DATA(fr_line) from_pos = DATA(fr_pos)
                 to_line   = DATA(to_line) to_pos   = DATA(to_pos) ).
+    sender->get_selected_text_as_stream(
+      IMPORTING selected_text = lv_word EXCEPTIONS OTHERS = 1 ).
+    IF sy-subrc <> 0. CLEAR lv_word. ENDIF.
+    navigate_to_source( i_line = fr_line i_word = lv_word ).
+  ENDMETHOD.
+
+
+  METHOD navigate_to_source.
+
+    DATA(fr_line) = i_line.
 
     READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(prog).
     IF sy-subrc <> 0.
@@ -856,17 +1012,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        " The double-clicked word (the editor selects it on double-click) —
-        " used to pick the right call when the line contains several.
-        DATA lv_word TYPE string.
-        CLEAR lv_word.
-        sender->get_selected_text_as_stream(
-          IMPORTING selected_text = lv_word EXCEPTIONS OTHERS = 1 ).
-        IF sy-subrc = 0.
-          lv_word = to_upper( condense( lv_word ) ).
-        ELSE.
-          CLEAR lv_word.
-        ENDIF.
+        " The clicked word (double-click selection in the editor, or the
+        " hyperlink text in HTML view) — used to pick the right call when
+        " the line contains several.
+        DATA(lv_word) = to_upper( condense( i_word ) ).
 
         DATA ls_call LIKE LINE OF kw-tt_calls.
         CLEAR ls_call.
@@ -1025,6 +1174,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       IF sy-subrc = 0.
         <sp_virt>-selected = abap_true.
         mo_code_viewer->set_text( table = <sp_virt>-source_tab ).
+        refresh_html_view( ).
       ENDIF.
       RETURN.
     ENDIF.
@@ -1051,6 +1201,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ELSE.
         mo_code_viewer->set_text( table = <sp_prog>-source_tab ).
       ENDIF.
+      refresh_html_view( ).
     ENDIF.
   ENDMETHOD.
 
