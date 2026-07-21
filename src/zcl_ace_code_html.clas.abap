@@ -728,7 +728,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         " Clicking the first statement folds the loop back into one node
         IF lv_lfirst IS NOT INITIAL.
           lv_clicks = lv_clicks && |  click { lv_lfirst }| &&
-                      | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+                      | "sapevent:aceexp_{ ls_line-line }" _self\n|.
           lv_prev_node = lv_lchain.
           lv_prev_line = ls_line-all.
           lv_prev_depth = ls_line-depth.
@@ -784,13 +784,15 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       IF ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE'.
         " A loop drawn as a node holds its body hidden: click opens it up
         lv_clicks = lv_clicks && |  click { lv_node }| &&
-                    | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+                    | "sapevent:aceexp_{ ls_line-line }" _self\n|.
       ELSE.
         " Clicking a structure node selects that stretch of code in the window
-        lv_clicks = lv_clicks && |  click { lv_node } "sapevent:SCHEMEGO?l={ ls_line-line }| &&
-                    |&e={ COND i( WHEN ls_line-all > ls_line-line THEN ls_line-all
-                                  WHEN ls_line-end > ls_line-line THEN ls_line-end
-                                  ELSE ls_line-line ) }" _self\n|.
+        " Line numbers ride in the action name itself: the control percent
+        " encodes '?', '=' and '&', which left the parameters unreadable.
+        lv_clicks = lv_clicks && |  click { lv_node } "sapevent:acego_{ ls_line-line }_| &&
+                    |{ COND i( WHEN ls_line-all > ls_line-line THEN ls_line-all
+                               WHEN ls_line-end > ls_line-line THEN ls_line-end
+                               ELSE ls_line-line ) }" _self\n|.
       ENDIF.
 
       " Edge source. A branch header does not continue the previous branch —
@@ -829,7 +831,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
             ENDLOOP.
             " The first node of the stretch folds it back up
             lv_clicks = lv_clicks && |  click p{ lv_from_line + 1 }| &&
-                        | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+                        | "sapevent:aceexp_{ ls_line-line }" _self\n|.
             lv_edges = lv_edges && |  { lv_chain } --> { lv_node }\n|.
           ELSE.
             DATA(lv_ops_node) = |o{ ls_line-line }|.
@@ -840,7 +842,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
             lv_edges = lv_edges && |  { lv_ops_node } --> { lv_node }\n|.
             " Click opens the stretch up
             lv_clicks = lv_clicks && |  click { lv_ops_node }| &&
-                        | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+                        | "sapevent:aceexp_{ ls_line-line }" _self\n|.
           ENDIF.
         ELSE.
           lv_edges = lv_edges && |  { lv_from }{ arrow( lv_lbl ) }{ lv_node }\n|.

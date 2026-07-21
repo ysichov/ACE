@@ -75,15 +75,6 @@ public section.
   methods SHOW_SOURCE_POPUP
     importing
       !IS_NODE type TS_NODE_MAP .
-  " Reads one parameter of a sapevent URL, from the action/getdata string
-  " or from the parsed query table, whichever carries it.
-  methods SCHEME_PARAM
-    importing
-      !I_SRC        type STRING
-      !I_NAME       type STRING
-      !IT_QUERY     type CNHT_QUERY_TABLE
-    returning
-      value(R_VAL)  type STRING .
 
 protected section.
 private section.
@@ -1532,26 +1523,27 @@ DATA(lv_maxlen) = 200.
     " (action='ACENODE?id=..'), so accept both and parse defensively.
     DATA(lv_action) = CONV string( action ).
 
-    " Branch scheme: a click on an "N operations" node expands it into the
-    " individual statements, a second click folds it back.
-    IF lv_action CS 'SCHEMEEXP'.
-      DATA(lv_ln) = scheme_param( i_src    = |{ lv_action } { getdata }|
-                                  i_name   = 'l'
-                                  it_query = query_table ).
-      CHECK lv_ln IS NOT INITIAL.
-      mo_viewer->mo_window->toggle_scheme_expand( CONV i( lv_ln ) ).
+    " Branch scheme. The line numbers travel inside the action name
+    " ("aceexp_70", "acego_70_80") because the control percent encodes '?',
+    " '=' and '&', which made a normal query string unreadable.
+    DATA(lv_up) = to_upper( lv_action ).
+
+    IF lv_up CS 'ACEGO_'.
+      SPLIT lv_up AT '_' INTO DATA(lv_g0) DATA(lv_gfrom) DATA(lv_gto).
+      CHECK lv_gfrom CO '0123456789' AND lv_gfrom IS NOT INITIAL.
+      IF lv_gto CO '0123456789' AND lv_gto IS NOT INITIAL.
+        mo_viewer->mo_window->focus_code_range( i_from = CONV i( lv_gfrom )
+                                                i_to   = CONV i( lv_gto ) ).
+      ELSE.
+        mo_viewer->mo_window->focus_code_range( i_from = CONV i( lv_gfrom ) ).
+      ENDIF.
       RETURN.
     ENDIF.
 
-    " Branch scheme: a click on a structure node selects that block in the
-    " code window, so the diagram doubles as a table of contents.
-    IF lv_action CS 'SCHEMEGO'.
-      DATA(lv_gs) = |{ lv_action } { getdata }|.
-      DATA(lv_gl) = scheme_param( i_src = lv_gs i_name = 'l' it_query = query_table ).
-      DATA(lv_ge) = scheme_param( i_src = lv_gs i_name = 'e' it_query = query_table ).
-      CHECK lv_gl IS NOT INITIAL.
-      mo_viewer->mo_window->focus_code_range( i_from = CONV i( lv_gl )
-                                              i_to   = CONV i( lv_ge ) ).
+    IF lv_up CS 'ACEEXP_'.
+      SPLIT lv_up AT '_' INTO DATA(lv_e0) DATA(lv_ln).
+      CHECK lv_ln CO '0123456789' AND lv_ln IS NOT INITIAL.
+      mo_viewer->mo_window->toggle_scheme_expand( CONV i( lv_ln ) ).
       RETURN.
     ENDIF.
 
@@ -1574,21 +1566,6 @@ DATA(lv_maxlen) = 200.
     READ TABLE mt_node_map INTO DATA(ls_node) WITH KEY node_id = lv_id.
     CHECK sy-subrc = 0.
     show_source_popup( ls_node ).
-  endmethod.
-
-
-  method SCHEME_PARAM.
-    DATA lv_rest TYPE string.
-    IF i_src CS |{ i_name }=|.
-      r_val = substring_after( val = i_src sub = |{ i_name }=| ).
-      IF r_val CS '&'. SPLIT r_val AT '&' INTO r_val lv_rest. ENDIF.
-      IF r_val CS ` `. SPLIT r_val AT ` ` INTO r_val lv_rest. ENDIF.
-    ENDIF.
-    IF r_val IS INITIAL.
-      READ TABLE it_query INTO DATA(ls_q) WITH KEY name = i_name.
-      IF sy-subrc = 0. r_val = ls_q-value. ENDIF.
-    ENDIF.
-    CONDENSE r_val NO-GAPS.
   endmethod.
 
 
