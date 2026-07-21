@@ -420,7 +420,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDIF.
     ENDIF.
     IF lt_src IS INITIAL.
-      mo_code_viewer->get_text_as_r3table( IMPORTING table = lt_src ).
+      mo_code_viewer->get_text( IMPORTING table = lt_src ).
     ENDIF.
 
     DATA(lt_html) = zcl_ace_code_html=>build(
