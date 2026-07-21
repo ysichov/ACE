@@ -403,6 +403,18 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD first_word.
+    DATA(lv_text) = condense( i_text ).
+    IF lv_text IS INITIAL OR lv_text(1) = '*'. RETURN. ENDIF.
+    IF lv_text(1) = '"'. RETURN. ENDIF.
+    SPLIT to_upper( lv_text ) AT space INTO r_word DATA(lv_rest).
+    " Strip a trailing period so "ELSE." and "TRY." are recognised too
+    IF r_word CS '.'.
+      SPLIT r_word AT '.' INTO r_word lv_rest.
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD closer_of.
     CASE i_word.
       WHEN 'IF'.      r_closer = 'ENDIF'.
