@@ -140,7 +140,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         ELSE '<span class="tgx"></span>' ).
       " Breakpoint dot + line number: click toggles a session breakpoint,
       " Ctrl+click an external one — same semantics as the editor's border.
-      DATA(lv_bp) = '<span class="bp"></span>'.
+      " Explicitly typed: an inline DATA( ) would inherit the literal's
+      " fixed C length and truncate the longer breakpoint variants mid-tag.
+      DATA lv_bp TYPE string.
+      lv_bp = '<span class="bp"></span>'.
       READ TABLE it_bp_s TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
       IF sy-subrc = 0.
         lv_bp = '<span class="bp bps" title="Session breakpoint"></span>'.
