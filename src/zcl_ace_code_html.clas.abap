@@ -317,17 +317,22 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       CHECK <ls_line>-word IS NOT INITIAL.
 
       IF c_closers CS | { <ls_line>-word } |.
+        " The stack grows at index 1, so index 1 is the innermost block:
+        " take the FIRST match, not the last, or a nested ENDIF would be
+        " paired with an outer IF instead of its own.
         DATA(lv_hit) = 0.
         LOOP AT lt_stack INTO DATA(ls_open).
-          IF ls_open-closer = <ls_line>-word. lv_hit = sy-tabix. ENDIF.
+          IF ls_open-closer = <ls_line>-word. lv_hit = sy-tabix. EXIT. ENDIF.
         ENDLOOP.
         IF lv_hit > 0.
           READ TABLE lt_stack INTO ls_open INDEX lv_hit.
           READ TABLE rt_lines ASSIGNING FIELD-SYMBOL(<ls_open>) INDEX ls_open-tabix.
           IF sy-subrc = 0. <ls_open>-kind = 'O'. ENDIF.
           <ls_line>-kind = 'C'.
-          " Everything stacked above the match was never a block
-          DELETE lt_stack FROM lv_hit.
+          " Drop the match and everything stacked on top of it (those never
+          " got a closer). FROM would delete towards the table end, i.e. the
+          " enclosing blocks — that is how ENDIF used to swallow its LOOP.
+          DELETE lt_stack TO lv_hit.
         ENDIF.
         CONTINUE.
       ENDIF.
