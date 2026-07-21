@@ -39,6 +39,7 @@ CLASS zcl_ace_code_html DEFINITION
                 it_bp_e       TYPE tt_lines OPTIONAL
                 i_focus       TYPE i OPTIONAL
                 i_folded      TYPE abap_bool DEFAULT abap_false
+                i_offset      TYPE i DEFAULT 1
       RETURNING VALUE(rt_html) TYPE w3htmltab.
 
     "! Mermaid flowchart of the control structure of the same source:
@@ -118,10 +119,14 @@ CLASS zcl_ace_code_html DEFINITION
       ' ENDIF ENDCASE ENDLOOP ENDDO ENDWHILE ENDTRY ENDMETHOD ENDFORM ENDMODULE ENDSELECT ENDAT ENDPROVIDE '.
 
     "! Classifies every line and computes the fold segments.
+    "! i_offset: first source line shown, when it_source is only a slice of
+    "! the include (the source popup shows one method) — scan rows are
+    "! absolute and have to be shifted onto the slice.
     CLASS-METHODS analyze
       IMPORTING it_source      TYPE STANDARD TABLE
                 it_kw          TYPE zif_ace_parse_data=>tt_kword
                 io_scan        TYPE REF TO cl_ci_scan OPTIONAL
+                i_offset       TYPE i DEFAULT 1
       RETURNING VALUE(rt_lines) TYPE tt_line.
 
     "! First word of a statement line, uppercased ('' for comments/blank).
@@ -187,7 +192,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
   METHOD build.
 
-    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan ).
+    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan i_offset = i_offset ).
 
     add( EXPORTING i_text = '<html><head><meta http-equiv="X-UA-Compatible" content="IE=edge">'
          CHANGING ct_html = rt_html ).
@@ -379,12 +384,26 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     IF it_kw IS NOT INITIAL.
       LOOP AT it_kw INTO DATA(ls_kw).
         DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
+        lv_vline = lv_vline - i_offset + 1.
         CHECK lv_vline > 0 AND lv_vline <= lines( rt_lines ).
         APPEND VALUE #( index = ls_kw-index
                         line  = lv_vline
                         word  = to_upper( ls_kw-name ) ) TO lt_stmt.
       ENDLOOP.
       SORT lt_stmt BY index.
+    ELSEIF io_scan IS BOUND.
+      " No keyword table (source popup): the scan alone is enough — every
+      " statement's first token carries both its row and its keyword.
+      LOOP AT io_scan->statements INTO DATA(ls_sst).
+        DATA(lv_sidx) = sy-tabix.
+        READ TABLE io_scan->tokens INDEX ls_sst-from INTO DATA(ls_stok).
+        CHECK sy-subrc = 0.
+        DATA(lv_srow) = ls_stok-row - i_offset + 1.
+        CHECK lv_srow > 0 AND lv_srow <= lines( rt_lines ).
+        APPEND VALUE #( index = lv_sidx
+                        line  = lv_srow
+                        word  = to_upper( ls_stok-str ) ) TO lt_stmt.
+      ENDLOOP.
     ELSE.
       LOOP AT rt_lines ASSIGNING <ls_line>.
         DATA(lv_fw) = first_word( <ls_line>-text ).
