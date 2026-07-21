@@ -203,6 +203,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                             'font-weight:bold}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.hdr button{font-family:inherit;font-size:11px;margin-left:6px}'
          CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = '.ratio{float:right;font-weight:normal;color:#40607f}'
+         CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.ln{white-space:pre;padding-left:2px}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.ln:hover{background:#f2f7ff}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.num{display:inline-block;width:44px;text-align:right;color:#808080;' &&
@@ -236,7 +238,25 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
     " Folding is driven from the window toolbar, not from inside the page,
     " so there is a single button and a single state.
-    add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }</div>|
+    " How much of the source is control flow: characters left standing when
+    " everything inside a control structure is folded away, against the whole
+    " source. A low ratio means the shape of the method is a small part of it.
+    DATA(lv_all_ch)   = 0.
+    DATA(lv_shown_ch) = 0.
+    LOOP AT lt_lines INTO DATA(ls_ratio).
+      DATA(lv_len) = strlen( condense( ls_ratio-text ) ).
+      lv_all_ch = lv_all_ch + lv_len.
+      CHECK NOT ( ls_ratio-kind = 'P' AND ls_ratio-depth > 0 ).
+      lv_shown_ch = lv_shown_ch + lv_len.
+    ENDLOOP.
+    DATA(lv_ratio) = COND i( WHEN lv_all_ch > 0
+                             THEN lv_shown_ch * 100 / lv_all_ch
+                             ELSE 0 ).
+
+    add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }| &&
+                            |<span class="ratio" title="Characters left when all control| &&
+                            | structures are collapsed, against the whole source">| &&
+                            |Main Logic Token Ratio: { lv_ratio }%</span></div>|
          CHANGING ct_html = rt_html ).
 
     " Folded state is rendered straight into the markup — no startup script
@@ -891,7 +911,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     ENDWHILE.
 
     IF lv_styles IS NOT INITIAL.
-      rv_mm = rv_mm && |classDef tryblk fill:#fdf3e3,stroke:#d09030,color:#000\n| && lv_styles.
+      rv_mm = rv_mm && |classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000\n| && lv_styles.
     ENDIF.
     rv_mm = rv_mm && lv_edges && lv_clicks.
 

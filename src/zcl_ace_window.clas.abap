@@ -1394,6 +1394,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     READ TABLE ms_sources-tt_progs WITH KEY include = i_include ASSIGNING <sp_prog>.
     IF sy-subrc = 0.
       <sp_prog>-selected = abap_true.
+      " The include on display is decided here, not by whoever called: some
+      " callers set M_PRG-INCLUDE only afterwards, and the HTML view and the
+      " scheme, both refreshed below, would then render the previous unit.
+      m_prg-include = i_include.
       IF <sp_prog>-v_source IS NOT INITIAL.
         mo_code_viewer->set_text( table = <sp_prog>-v_source ).
       ELSE.
