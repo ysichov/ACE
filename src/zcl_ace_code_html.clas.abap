@@ -152,6 +152,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     add( EXPORTING i_text = 'a.id:hover{color:#0050d0;background:#e8f0ff;border-bottom:1px solid #0050d0}'
          CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '.fold{color:#3070c0;font-style:italic}' CHANGING ct_html = rt_html ).
+    " Global folding is one class switch on the container, not a per-row DOM
+    " walk: on a 4000-line include the walk made tens of thousands of
+    " getElementById calls and the GUI's script engine gave up half way.
+    add( EXPORTING i_text = '#code.folded .f{display:none}' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '</style></head><body>' CHANGING ct_html = rt_html ).
 
     " Folding is driven from the window toolbar, not from inside the page,
@@ -171,7 +175,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                             | O={ lv_o } B={ lv_b } C={ lv_c }</div>|
          CHANGING ct_html = rt_html ).
 
-    add( EXPORTING i_text = '<div id="code">' CHANGING ct_html = rt_html ).
+    " Folded state is rendered straight into the markup — no startup script
+    add( EXPORTING i_text = COND string( WHEN i_folded = abap_true
+                                         THEN '<div id="code" class="folded">'
+                                         ELSE '<div id="code">' )
+         CHANGING ct_html = rt_html ).
 
     LOOP AT lt_lines INTO DATA(ls_line).
       DATA(lv_toggle) = COND string(
@@ -196,7 +204,12 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      add( EXPORTING i_text = |<div class="ln" id="r{ ls_line-line }" data-end="{ ls_line-end }"| &&
+      " Statements sitting inside a control structure carry class "f" — that
+      " is all the global Collapse all needs to hide them.
+      DATA(lv_cls) = COND string(
+        WHEN ls_line-kind = 'P' AND ls_line-depth > 0 THEN 'ln f' ELSE 'ln' ).
+
+      add( EXPORTING i_text = |<div class="{ lv_cls }" id="r{ ls_line-line }" data-end="{ ls_line-end }"| &&
                               | data-all="{ ls_line-all }" data-d="{ ls_line-depth }"| &&
                               | data-kind="{ ls_line-kind }">{ lv_bp }| &&
                               |<span class="num" title="Click: session breakpoint| &&
@@ -257,21 +270,9 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     " hides every statement that sits inside a control structure, so what is
     " left standing is the skeleton — LOOP/DO/WHILE/IF/ELSE/CASE/WHEN/TRY and
     " METHOD/FORM with their closers, nested ones included.
-    add( EXPORTING i_text = 'var gFolded=0;' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = 'function foldAll(){var d=document.getElementById("code");' &&
-                            'var ch=d.childNodes;var i;gFolded=gFolded?0:1;' &&
-                            'for(i=0;i<ch.length;i++){var r=ch[i];' &&
-                            'if(!r.id||r.id.charAt(0)!="r")continue;' &&
-                            'var k=r.getAttribute("data-kind");' &&
-                            'var hide=gFolded&&k=="P"&&att(r,"data-d")>0;' &&
-                            'r.style.display=hide?"none":"";' &&
-                            'var n=parseInt(r.id.substring(1),10);' &&
-                            'var t=document.getElementById("t"+n);if(t)t.innerHTML="-";' &&
-                            'var f=document.getElementById("f"+n);if(f)f.innerHTML="";}}'
+                            'd.className=(d.className=="folded")?"":"folded";}'
          CHANGING ct_html = rt_html ).
-    IF i_folded = abap_true.
-      add( EXPORTING i_text = 'foldAll();' CHANGING ct_html = rt_html ).
-    ENDIF.
     " Setting a breakpoint round-trips through sapevent, which reloads the
     " page — scroll back to the line the user clicked so the view stays put.
     IF i_focus > 0.
