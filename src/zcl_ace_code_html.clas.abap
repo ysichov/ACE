@@ -156,7 +156,19 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
     " Folding is driven from the window toolbar, not from inside the page,
     " so there is a single button and a single state.
-    add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }</div>|
+    " DBG: what the classification actually produced for this include
+    DATA(lv_o) = 0. DATA(lv_b) = 0. DATA(lv_c) = 0. DATA(lv_w) = 0.
+    LOOP AT lt_lines INTO DATA(ls_dbg).
+      IF ls_dbg-word IS NOT INITIAL. lv_w = lv_w + 1. ENDIF.
+      CASE ls_dbg-kind.
+        WHEN 'O'. lv_o = lv_o + 1.
+        WHEN 'B'. lv_b = lv_b + 1.
+        WHEN 'C'. lv_c = lv_c + 1.
+      ENDCASE.
+    ENDLOOP.
+    add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }| &&
+                            | &nbsp; DBG lines={ lines( lt_lines ) } words={ lv_w }| &&
+                            | O={ lv_o } B={ lv_b } C={ lv_c }</div>|
          CHANGING ct_html = rt_html ).
 
     add( EXPORTING i_text = '<div id="code">' CHANGING ct_html = rt_html ).
