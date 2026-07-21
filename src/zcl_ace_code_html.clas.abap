@@ -160,8 +160,11 @@ CLASS zcl_ace_code_html DEFINITION
                 i_prev        TYPE string
                 i_label       TYPE string OPTIONAL
                 it_ops        TYPE tt_lines
+                it_lines      TYPE tt_line
+                it_expanded   TYPE tt_lines OPTIONAL
       CHANGING  cv_mm         TYPE string
                 cv_edges      TYPE string
+                cv_clicks     TYPE string
       RETURNING VALUE(r_node) TYPE string.
 
     "! Source text of a structure line, trimmed and stripped of the
@@ -627,8 +630,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                                    i_prev  = lv_prev_node
                                    i_label = lv_lbl
                                    it_ops  = lt_ops
-                         CHANGING  cv_mm    = rv_mm
-                                   cv_edges = lv_edges ) TO ls_cond-tails.
+                                   it_lines = lt_lines
+                                   it_expanded = it_expanded
+                         CHANGING  cv_mm     = rv_mm
+                                   cv_edges  = lv_edges
+                                   cv_clicks = lv_clicks ) TO ls_cond-tails.
         CLEAR lv_lbl.
         " The closing statement is worth a node of its own — unlike ENDLOOP,
         " where the frame around the body already shows where it ends.
@@ -749,8 +755,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                                                    i_prev  = lv_prev_node
                                                    i_label = lv_lbl
                                                    it_ops  = lt_ops
-                                         CHANGING  cv_mm    = rv_mm
-                                                   cv_edges = lv_edges ).
+                                                   it_lines = lt_lines
+                                                   it_expanded = it_expanded
+                                         CHANGING  cv_mm     = rv_mm
+                                                   cv_edges  = lv_edges
+                                                   cv_clicks = lv_clicks ).
           IF <ls_br>-word = 'CASE' AND <ls_br>-seen = abap_false.
             " Statements between CASE and its first WHEN run unconditionally,
             " before the dispatch — so they are not a branch, and every WHEN
@@ -805,45 +814,20 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       IF lv_from IS NOT INITIAL.
         " Plain statements between the two structure lines become one node,
         " so the picture keeps a sense of how much code sits in between.
-        DATA(lv_ops) = 0.
-        IF ls_line-line > lv_from_line + 1 AND lv_from_line > 0.
-          READ TABLE lt_ops INTO DATA(lv_to_cnt) INDEX ls_line-line - 1.
-          IF sy-subrc = 0.
-            READ TABLE lt_ops INTO DATA(lv_fr_cnt) INDEX lv_from_line.
-            IF sy-subrc = 0. lv_ops = lv_to_cnt - lv_fr_cnt. ENDIF.
-          ENDIF.
-        ENDIF.
-
-        IF lv_ops > 0.
-          READ TABLE it_expanded TRANSPORTING NO FIELDS
-            WITH KEY table_line = ls_line-line.
-          IF sy-subrc = 0.
-            " Expanded: every statement of the stretch as its own node
-            DATA(lv_chain) = lv_from.
-            LOOP AT lt_lines INTO DATA(ls_op)
-              WHERE line > lv_from_line AND line < ls_line-line
-                AND kind = 'P' AND word IS NOT INITIAL.
-              CHECK c_decls NS | { ls_op-word } |.
-              DATA(lv_opn) = |p{ ls_op-line }|.
-              rv_mm = rv_mm && |  { lv_opn }("{ scheme_label( ls_op-text ) }")\n|.
-              lv_edges = lv_edges && |  { lv_chain } --> { lv_opn }\n|.
-              lv_chain = lv_opn.
-            ENDLOOP.
-            " The first node of the stretch folds it back up
-            lv_clicks = lv_clicks && |  click p{ lv_from_line + 1 }| &&
-                        | "sapevent:aceexp_{ ls_line-line }" _self\n|.
-            lv_edges = lv_edges && |  { lv_chain } --> { lv_node }\n|.
-          ELSE.
-            DATA(lv_ops_node) = |o{ ls_line-line }|.
-            rv_mm = rv_mm && |  { lv_ops_node }["{ lv_ops } { COND string(
-              WHEN lv_ops = 1 THEN 'operation' ELSE 'operations' ) }"]\n|.
-            lv_edges = lv_edges && |  { lv_from }{ arrow( lv_lbl ) }{ lv_ops_node }\n|.
-            CLEAR lv_lbl.
-            lv_edges = lv_edges && |  { lv_ops_node } --> { lv_node }\n|.
-            " Click opens the stretch up
-            lv_clicks = lv_clicks && |  click { lv_ops_node }| &&
-                        | "sapevent:aceexp_{ ls_line-line }" _self\n|.
-          ENDIF.
+        DATA(lv_after_ops) = ops_node( EXPORTING i_from     = lv_from_line
+                                                 i_to       = ls_line-line
+                                                 i_id       = |o{ ls_line-line }|
+                                                 i_prev     = lv_from
+                                                 i_label    = lv_lbl
+                                                 it_ops     = lt_ops
+                                                 it_lines   = lt_lines
+                                                 it_expanded = it_expanded
+                                       CHANGING  cv_mm     = rv_mm
+                                                 cv_edges  = lv_edges
+                                                 cv_clicks = lv_clicks ).
+        IF lv_after_ops <> lv_from.
+          CLEAR lv_lbl.
+          lv_edges = lv_edges && |  { lv_after_ops } --> { lv_node }\n|.
         ELSE.
           lv_edges = lv_edges && |  { lv_from }{ arrow( lv_lbl ) }{ lv_node }\n|.
           CLEAR lv_lbl.
@@ -900,9 +884,36 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     DATA(lv_ops) = lv_to_cnt - lv_fr_cnt.
     CHECK lv_ops > 0.
 
+    " Expanded: every statement of the stretch as its own node, the first of
+    " them folding it back up again.
+    READ TABLE it_expanded TRANSPORTING NO FIELDS WITH KEY table_line = i_to.
+    IF sy-subrc = 0.
+      DATA(lv_chain) = i_prev.
+      DATA(lv_first) = ||.
+      LOOP AT it_lines INTO DATA(ls_op)
+        WHERE line > i_from AND line < i_to
+          AND kind = 'P' AND word IS NOT INITIAL.
+        CHECK c_decls NS | { ls_op-word } |.
+        DATA(lv_opn) = |p{ ls_op-line }|.
+        cv_mm = cv_mm && |  { lv_opn }("{ scheme_label( ls_op-text ) }")\n|.
+        cv_edges = cv_edges && |  { lv_chain }{ COND string(
+          WHEN lv_chain = i_prev THEN arrow( i_label ) ELSE ` --> ` ) }{ lv_opn }\n|.
+        IF lv_first IS INITIAL. lv_first = lv_opn. ENDIF.
+        lv_chain = lv_opn.
+      ENDLOOP.
+      IF lv_first IS NOT INITIAL.
+        cv_clicks = cv_clicks && |click { lv_first } "sapevent:aceexp_{ i_to }" _self\n|.
+        r_node = lv_chain.
+      ENDIF.
+      RETURN.
+    ENDIF.
+
     cv_mm = cv_mm && |  { i_id }["{ lv_ops } { COND string(
       WHEN lv_ops = 1 THEN 'operation' ELSE 'operations' ) }"]\n|.
     cv_edges = cv_edges && |  { i_prev }{ arrow( i_label ) }{ i_id }\n|.
+    " Every "N operations" node opens up on click, wherever it was built —
+    " the tails of branches used to be built here without one.
+    cv_clicks = cv_clicks && |click { i_id } "sapevent:aceexp_{ i_to }" _self\n|.
     r_node = i_id.
 
   ENDMETHOD.
