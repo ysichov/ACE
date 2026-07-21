@@ -605,6 +605,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     DATA lv_clicks TYPE string.
     " Condition of the branch just entered, waiting to be put on its arrow
     DATA lv_lbl TYPE string.
+    " classDef / class lines, emitted after everything they refer to
+    DATA lv_styles TYPE string.
 
     DATA(lv_prev_node)  = ||.
     DATA(lv_prev_depth) = 0.
@@ -696,9 +698,12 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       " holds structure of its own. A loop over plain statements would give
       " an empty frame with nothing to draw inside and no edge reaching it,
       " which is how loops ended up floating unconnected; those stay nodes.
+      " TRY gets a frame of its own too: its CATCH blocks are separate paths
+      " out of the protected code, and a frame is what makes that readable.
       DATA(lv_is_loop) = xsdbool(
         ls_line-kind = 'O' AND ls_line-all > ls_line-line
-        AND ( ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE' ) ).
+        AND ( ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE'
+           OR ls_line-word = 'TRY' ) ).
 
       IF lv_is_loop = abap_true.
         DATA(lv_inner) = 0.
@@ -719,6 +724,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       IF lv_is_loop = abap_true AND lv_inner = 1.
         rv_mm = rv_mm && |  subgraph g{ ls_line-line }["{ lv_label }"]\n|.
         rv_mm = rv_mm && |  direction LR\n|.
+        " A protected block is coloured apart from a loop
+        IF ls_line-word = 'TRY'.
+          lv_styles = lv_styles && |class g{ ls_line-line } tryblk\n|.
+        ENDIF.
         INSERT VALUE #( endline = ls_line-all ) INTO lt_sub INDEX 1.
         CONTINUE.
       ENDIF.
@@ -763,9 +772,17 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
       " A branch is not a box of its own: its condition rides on the arrow
       " leaving the IF/CASE, which is both shorter and how the flow reads.
+      FIELD-SYMBOLS <ls_br> TYPE ts_cond.
+      UNASSIGN <ls_br>.
       IF ls_line-kind = 'B'.
-        READ TABLE lt_cond ASSIGNING FIELD-SYMBOL(<ls_br>) INDEX 1.
-        IF sy-subrc = 0.
+        READ TABLE lt_cond ASSIGNING <ls_br> INDEX 1.
+        " Only when the branch really belongs to that IF/CASE. A CATCH sits
+        " one level down inside its TRY and used to grab the enclosing IF —
+        " that is how TRY/CATCH ended up tangled with the conditions.
+        IF sy-subrc = 0 AND <ls_br>-depth <> ls_line-depth.
+          UNASSIGN <ls_br>.
+        ENDIF.
+        IF <ls_br> IS ASSIGNED.
           " The branch just walked ends here: its trailing statements, then
           " its tail is remembered for the join at the closing statement.
           DATA(lv_tail_node) = ops_node( EXPORTING i_from  = lv_prev_line
@@ -873,6 +890,9 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       DELETE lt_sub INDEX 1.
     ENDWHILE.
 
+    IF lv_styles IS NOT INITIAL.
+      rv_mm = rv_mm && |classDef tryblk fill:#fdf3e3,stroke:#d09030,color:#000\n| && lv_styles.
+    ENDIF.
     rv_mm = rv_mm && lv_edges && lv_clicks.
 
   ENDMETHOD.
@@ -904,9 +924,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     CHECK lv_ops > 0.
 
     " Expanded: every statement of the stretch as its own node, the first of
-    " them folding it back up again.
+    " them folding it back up again. A single statement is always shown in
+    " full — hiding one line behind "1 operation" saves no space and costs
+    " the reader a click.
     READ TABLE it_expanded TRANSPORTING NO FIELDS WITH KEY table_line = i_to.
-    IF sy-subrc = 0.
+    IF sy-subrc = 0 OR lv_ops = 1.
       DATA(lv_chain) = i_prev.
       DATA(lv_first) = ||.
       LOOP AT it_lines INTO DATA(ls_op)
@@ -921,7 +943,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         lv_chain = lv_opn.
       ENDLOOP.
       IF lv_first IS NOT INITIAL.
-        cv_clicks = cv_clicks && |click { lv_first } "sapevent:aceexp_{ i_to }" _self\n|.
+        " Nothing to fold back when there was only the one statement
+        IF lv_ops > 1.
+          cv_clicks = cv_clicks && |click { lv_first } "sapevent:aceexp_{ i_to }" _self\n|.
+        ENDIF.
         r_node = lv_chain.
       ENDIF.
       RETURN.

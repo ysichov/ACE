@@ -1702,17 +1702,17 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    " Program - include suffix (only when they differ)
-    READ TABLE ms_sources-tt_progs WITH KEY include = i_include INTO DATA(ls_pr).
-    DATA(lv_prog) = COND string( WHEN sy-subrc = 0 AND ls_pr-program IS NOT INITIAL
-                                 THEN ls_pr-program ELSE CONV #( m_prg-program ) ).
-    DATA(lv_loc) = COND string(
-      WHEN lv_prog IS NOT INITIAL AND lv_prog <> i_include
-      THEN |{ lv_prog } - { i_include }|
-      ELSE |{ i_include }| ).
-
-    lv_cap = COND #( WHEN lv_cap IS INITIAL THEN lv_loc
-                     ELSE |{ lv_cap }  [{ lv_loc }]| ).
+    " CLASS->METHOD already says everything; the CP / CM005 include pair
+    " behind it is technical noise. Only units without a name of their own
+    " fall back to the program and include.
+    IF lv_cap IS INITIAL.
+      READ TABLE ms_sources-tt_progs WITH KEY include = i_include INTO DATA(ls_pr).
+      DATA(lv_prog) = COND string( WHEN sy-subrc = 0 AND ls_pr-program IS NOT INITIAL
+                                   THEN ls_pr-program ELSE CONV #( m_prg-program ) ).
+      lv_cap = COND #( WHEN lv_prog IS NOT INITIAL AND lv_prog <> i_include
+                       THEN |{ lv_prog } - { i_include }|
+                       ELSE |{ i_include }| ).
+    ENDIF.
     IF mo_box IS NOT INITIAL.
       mo_box->set_caption( lv_cap ).
     ENDIF.
