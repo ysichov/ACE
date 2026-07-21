@@ -742,14 +742,20 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         IF sy-subrc = 0.
           " The branch just walked ends here: its trailing statements, then
           " its tail is remembered for the join at the closing statement.
-          APPEND ops_node( EXPORTING i_from  = lv_prev_line
-                                     i_to    = ls_line-line
-                                     i_id    = |y{ ls_line-line }|
-                                     i_prev  = lv_prev_node
-                                     i_label = lv_lbl
-                                     it_ops  = lt_ops
-                           CHANGING  cv_mm    = rv_mm
-                                     cv_edges = lv_edges ) TO <ls_br>-tails.
+          DATA(lv_tail_node) = ops_node( EXPORTING i_from  = lv_prev_line
+                                                   i_to    = ls_line-line
+                                                   i_id    = |y{ ls_line-line }|
+                                                   i_prev  = lv_prev_node
+                                                   i_label = lv_lbl
+                                                   it_ops  = lt_ops
+                                         CHANGING  cv_mm    = rv_mm
+                                                   cv_edges = lv_edges ).
+          " Still standing on the header means the stretch was empty — the
+          " gap between CASE and its first WHEN, most often. An empty path
+          " adds an arrow that says nothing.
+          IF lv_tail_node <> <ls_br>-header.
+            APPEND lv_tail_node TO <ls_br>-tails.
+          ENDIF.
           " This branch's own condition goes on the arrow leaving the IF/CASE
           lv_lbl        = lv_label.
           lv_prev_node  = <ls_br>-header.
