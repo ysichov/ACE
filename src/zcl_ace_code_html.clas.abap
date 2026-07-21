@@ -108,6 +108,13 @@ CLASS zcl_ace_code_html DEFINITION
     " forever (CX_SY_REPLACE_INFINITE_LOOP).
     CONSTANTS c_blank TYPE string VALUE ` `.
 
+    " Declarations are not execution: they never appear in the scheme and do
+    " not count towards the "N operations" between two branches.
+    CONSTANTS c_decls TYPE string VALUE
+      ' DATA CLASS-DATA CONSTANTS STATICS FIELD-SYMBOLS TYPES TYPE-POOLS TABLES RANGES ' &&
+      'INCLUDE METHODS CLASS-METHODS EVENTS INTERFACES ALIASES DEFINE PARAMETERS ' &&
+      'SELECT-OPTIONS NODES INFOTYPES '.
+
     CONSTANTS c_branches TYPE string VALUE
       ' ELSEIF ELSE WHEN CATCH CLEANUP '.
     CONSTANTS c_closers TYPE string VALUE
@@ -532,7 +539,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     DATA lt_ops TYPE STANDARD TABLE OF i WITH EMPTY KEY.
     DATA(lv_run) = 0.
     LOOP AT lt_lines INTO DATA(ls_cnt).
-      IF ls_cnt-kind = 'P' AND ls_cnt-word IS NOT INITIAL.
+      IF ls_cnt-kind = 'P' AND ls_cnt-word IS NOT INITIAL
+        AND c_decls NS | { ls_cnt-word } |.
         lv_run = lv_run + 1.
       ENDIF.
       APPEND lv_run TO lt_ops.
@@ -672,6 +680,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         LOOP AT lt_lines INTO DATA(ls_lop)
           WHERE line > ls_line-line AND line <= ls_line-all
             AND kind = 'P' AND word IS NOT INITIAL.
+          CHECK c_decls NS | { ls_lop-word } |.
           DATA(lv_lopn) = |p{ ls_lop-line }|.
           rv_mm = rv_mm && |  { lv_lopn }("{ scheme_label( ls_lop-text ) }")\n|.
           IF lv_lchain IS NOT INITIAL.
@@ -753,6 +762,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
             LOOP AT lt_lines INTO DATA(ls_op)
               WHERE line > lv_from_line AND line < ls_line-line
                 AND kind = 'P' AND word IS NOT INITIAL.
+              CHECK c_decls NS | { ls_op-word } |.
               DATA(lv_opn) = |p{ ls_op-line }|.
               rv_mm = rv_mm && |  { lv_opn }("{ scheme_label( ls_op-text ) }")\n|.
               lv_edges = lv_edges && |  { lv_chain } --> { lv_opn }\n|.
