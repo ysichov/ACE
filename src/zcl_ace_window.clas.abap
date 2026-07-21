@@ -449,8 +449,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       IF ls_bp-type = 'E'. APPEND lv_vline TO lt_bp_e. ELSE. APPEND lv_vline TO lt_bp_s. ENDIF.
     ENDLOOP.
 
+    " Structure detection uses the parser's scan, not the raw text
     DATA(lt_html) = zcl_ace_code_html=>build(
       it_source = lt_src
+      it_kw     = lr_bpkw->*
       i_title   = |{ m_prg-program } - { m_prg-include }|
       it_bp_s   = lt_bp_s
       it_bp_e   = lt_bp_e

@@ -26,10 +26,13 @@ CLASS zcl_ace_code_html DEFINITION
     "! Builds a complete HTML page for the given source lines.
     "! @parameter it_source | source as shown in the editor (1 line = 1 viewer line)
     "! @parameter i_title   | caption printed above the code
+    "! @parameter it_kw     | parsed statement keywords of the include; folding
+    "!                        is derived from these, never from the raw text
     "! @parameter it_bp_s   | viewer lines carrying a session breakpoint
     "! @parameter it_bp_e   | viewer lines carrying an external breakpoint
     CLASS-METHODS build
       IMPORTING it_source     TYPE STANDARD TABLE
+                it_kw         TYPE zif_ace_parse_data=>tt_kword OPTIONAL
                 i_title       TYPE string OPTIONAL
                 it_bp_s       TYPE tt_lines OPTIONAL
                 it_bp_e       TYPE tt_lines OPTIONAL
@@ -42,6 +45,7 @@ CLASS zcl_ace_code_html DEFINITION
       BEGIN OF ts_line,
         line  TYPE i,
         text  TYPE string,
+        word  TYPE string,   " first word, uppercased
         depth TYPE i,
         kind  TYPE char1,   " 'O'=opener 'B'=branch 'C'=closer ' '=plain
         end   TYPE i,       " last line of this header's own branch segment
@@ -49,8 +53,17 @@ CLASS zcl_ace_code_html DEFINITION
       END OF ts_line,
       tt_line TYPE STANDARD TABLE OF ts_line WITH EMPTY KEY.
 
-    CONSTANTS c_openers TYPE string VALUE
-      ' IF CASE LOOP DO WHILE TRY METHOD FORM MODULE SELECT AT PROVIDE '.
+    " Openers are only accepted once their own closer has actually been
+    " found. SELECT and AT matter here: "SELECT ... INTO TABLE" and
+    " "AT line-selection" have no closer, and counting them as blocks used
+    " to shift the nesting level of everything that followed.
+    TYPES:
+      BEGIN OF ts_open,
+        tabix  TYPE i,
+        closer TYPE string,
+      END OF ts_open,
+      tt_open TYPE STANDARD TABLE OF ts_open WITH EMPTY KEY.
+
     CONSTANTS c_branches TYPE string VALUE
       ' ELSEIF ELSE WHEN CATCH CLEANUP '.
     CONSTANTS c_closers TYPE string VALUE
@@ -59,12 +72,13 @@ CLASS zcl_ace_code_html DEFINITION
     "! Classifies every line and computes the fold segments.
     CLASS-METHODS analyze
       IMPORTING it_source      TYPE STANDARD TABLE
+                it_kw          TYPE zif_ace_parse_data=>tt_kword
       RETURNING VALUE(rt_lines) TYPE tt_line.
 
-    "! First word of a statement line, uppercased ('' for comments/blank).
-    CLASS-METHODS first_word
-      IMPORTING i_text        TYPE string
-      RETURNING VALUE(r_word) TYPE string.
+    "! Closing keyword expected for an opening one, '' if not a block opener.
+    CLASS-METHODS closer_of
+      IMPORTING i_word         TYPE string
+      RETURNING VALUE(r_closer) TYPE string.
 
     "! Source line → syntax-highlighted HTML with identifier hyperlinks.
     CLASS-METHODS render_line
@@ -90,7 +104,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
   METHOD build.
 
-    DATA(lt_lines) = analyze( it_source ).
+    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw ).
 
     add( EXPORTING i_text = '<html><head><meta http-equiv="X-UA-Compatible" content="IE=edge">'
          CHANGING ct_html = rt_html ).
@@ -125,8 +139,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     add( EXPORTING i_text = '</style></head><body>' CHANGING ct_html = rt_html ).
 
     add( EXPORTING i_text = |<div class="hdr">{ escape( i_title ) }| &&
-                            '<button onclick="foldAll(1)">Collapse branches</button>' &&
-                            '<button onclick="foldAll(0)">Expand all</button></div>'
+                            '<button id="ftog" onclick="foldAll()">Collapse all</button></div>'
          CHANGING ct_html = rt_html ).
 
     add( EXPORTING i_text = '<div id="code">' CHANGING ct_html = rt_html ).
@@ -211,14 +224,23 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     add( EXPORTING i_text = 'function nav(n,w){window.location.href="sapevent:nav?l="+n+"&w="+w' &&
                             '+"&t="+(new Date()).getTime();return false;}'
          CHANGING ct_html = rt_html ).
-    add( EXPORTING i_text = 'function foldAll(hide){var d=document.getElementById("code");' &&
-                            'var ch=d.childNodes;var i;var ids=[];' &&
-                            'for(i=0;i<ch.length;i++){if(ch[i].id&&ch[i].id.charAt(0)=="r")' &&
-                            'ids.push(parseInt(ch[i].id.substring(1),10));}' &&
-                            'if(!hide){for(i=0;i<ids.length;i++){var r=row(ids[i]);r.style.display="";' &&
-                            'var t=document.getElementById("t"+ids[i]);if(t)t.innerHTML="-";' &&
-                            'var f=document.getElementById("f"+ids[i]);if(f)f.innerHTML="";}return;}' &&
-                            'for(i=ids.length-1;i>=0;i--){setSeg(ids[i],1);}}'
+    " Global include-wide toggle, independent of the per-click folding above:
+    " hides every statement that sits inside a control structure, so what is
+    " left standing is the skeleton — LOOP/DO/WHILE/IF/ELSE/CASE/WHEN/TRY and
+    " METHOD/FORM with their closers, nested ones included.
+    add( EXPORTING i_text = 'var gFolded=0;' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'function foldAll(){var d=document.getElementById("code");' &&
+                            'var ch=d.childNodes;var i;gFolded=gFolded?0:1;' &&
+                            'for(i=0;i<ch.length;i++){var r=ch[i];' &&
+                            'if(!r.id||r.id.charAt(0)!="r")continue;' &&
+                            'var k=r.getAttribute("data-kind");' &&
+                            'var hide=gFolded&&k==" "&&att(r,"data-d")>0;' &&
+                            'r.style.display=hide?"none":"";' &&
+                            'var n=parseInt(r.id.substring(1),10);' &&
+                            'var t=document.getElementById("t"+n);if(t)t.innerHTML="-";' &&
+                            'var f=document.getElementById("f"+n);if(f)f.innerHTML="";}' &&
+                            'document.getElementById("ftog").innerHTML=' &&
+                            'gFolded?"Expand all":"Collapse all";}'
          CHANGING ct_html = rt_html ).
     " Setting a breakpoint round-trips through sapevent, which reloads the
     " page — scroll back to the line the user clicked so the view stays put.
@@ -236,44 +258,89 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
     FIELD-SYMBOLS <lv_src> TYPE any.
     DATA lv_depth TYPE i.
+    DATA lt_stack TYPE tt_open.
 
-    " Pass 1 — classify each line and assign its nesting depth.
+    " Pass 1 — one entry per source line.
     LOOP AT it_source ASSIGNING <lv_src>.
       APPEND INITIAL LINE TO rt_lines ASSIGNING FIELD-SYMBOL(<ls_line>).
       <ls_line>-line = sy-tabix.
       <ls_line>-text = <lv_src>.
       <ls_line>-kind = ' '.
+    ENDLOOP.
 
-      DATA(lv_word) = first_word( <ls_line>-text ).
-      IF lv_word IS INITIAL.
-        <ls_line>-depth = lv_depth.
+    " Pass 2 — statement keywords come from the parser's scan, so a line is
+    " only a structure line if a statement really starts there. Reading the
+    " first word of the raw text instead used to misread continuation lines
+    " of multi-line statements (WRITE: / ..., chained calls) as keywords.
+    LOOP AT it_kw INTO DATA(ls_kw).
+      DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
+      READ TABLE rt_lines ASSIGNING <ls_line> INDEX lv_vline.
+      CHECK sy-subrc = 0.
+      <ls_line>-word = to_upper( ls_kw-name ).
+    ENDLOOP.
+
+    " Pass 3 — pair openers with their closers. An opener counts as a block
+    " only once its own closer shows up: SELECT ... INTO TABLE and
+    " AT line-selection have none, and treating them as blocks used to shift
+    " the nesting level of everything below them.
+    LOOP AT rt_lines ASSIGNING <ls_line>.
+      DATA(lv_tabix) = sy-tabix.
+      CHECK <ls_line>-word IS NOT INITIAL.
+
+      IF c_closers CS | { <ls_line>-word } |.
+        DATA(lv_hit) = 0.
+        LOOP AT lt_stack INTO DATA(ls_open).
+          IF ls_open-closer = <ls_line>-word. lv_hit = sy-tabix. ENDIF.
+        ENDLOOP.
+        IF lv_hit > 0.
+          READ TABLE lt_stack INTO ls_open INDEX lv_hit.
+          READ TABLE rt_lines ASSIGNING FIELD-SYMBOL(<ls_open>) INDEX ls_open-tabix.
+          IF sy-subrc = 0. <ls_open>-kind = 'O'. ENDIF.
+          <ls_line>-kind = 'C'.
+          " Everything stacked above the match was never a block
+          DELETE lt_stack FROM lv_hit.
+        ENDIF.
         CONTINUE.
       ENDIF.
 
-      IF c_closers CS | { lv_word } |.
-        lv_depth = lv_depth - 1.
-        IF lv_depth < 0. lv_depth = 0. ENDIF.
-        <ls_line>-kind = 'C'.
-        <ls_line>-depth = lv_depth.
-      ELSEIF c_branches CS | { lv_word } |.
-        " A branch header lives one level up from the body it introduces.
-        <ls_line>-kind = 'B'.
-        <ls_line>-depth = lv_depth - 1.
-        IF <ls_line>-depth < 0. <ls_line>-depth = 0. ENDIF.
-      ELSEIF c_openers CS | { lv_word } |.
-        " Single-line SELECT ... INTO / AT ... without a block form: only
-        " treat as an opener when no period closes it on the same line is
-        " not decidable here, so rely on the matching closer instead — an
-        " unmatched opener simply keeps its segment until the next closer.
-        <ls_line>-kind = 'O'.
-        <ls_line>-depth = lv_depth.
-        lv_depth = lv_depth + 1.
-      ELSE.
-        <ls_line>-depth = lv_depth.
+      DATA(lv_closer) = closer_of( <ls_line>-word ).
+      IF lv_closer IS NOT INITIAL.
+        INSERT VALUE #( tabix = lv_tabix closer = lv_closer ) INTO lt_stack INDEX 1.
       ENDIF.
     ENDLOOP.
 
-    " Pass 2 — for every header, the segment ends right before the next
+    " Pass 4 — nesting level, plus branches attached to their owning block.
+    DATA lt_owner TYPE STANDARD TABLE OF string WITH EMPTY KEY.
+    LOOP AT rt_lines ASSIGNING <ls_line>.
+      CASE <ls_line>-kind.
+        WHEN 'C'.
+          lv_depth = lv_depth - 1.
+          IF lv_depth < 0. lv_depth = 0. ENDIF.
+          DELETE lt_owner INDEX 1.
+          <ls_line>-depth = lv_depth.
+        WHEN 'O'.
+          <ls_line>-depth = lv_depth.
+          INSERT <ls_line>-word INTO lt_owner INDEX 1.
+          lv_depth = lv_depth + 1.
+        WHEN OTHERS.
+          <ls_line>-depth = lv_depth.
+          CHECK <ls_line>-word IS NOT INITIAL.
+          CHECK c_branches CS | { <ls_line>-word } |.
+          READ TABLE lt_owner INDEX 1 INTO DATA(lv_owner).
+          CHECK sy-subrc = 0.
+          " ELSEIF/ELSE belong to IF, WHEN to CASE, CATCH/CLEANUP to TRY
+          DATA(lv_ok) = xsdbool(
+            (    ( <ls_line>-word = 'ELSEIF' OR <ls_line>-word = 'ELSE' ) AND lv_owner = 'IF' )
+            OR ( <ls_line>-word = 'WHEN' AND lv_owner = 'CASE' )
+            OR ( ( <ls_line>-word = 'CATCH' OR <ls_line>-word = 'CLEANUP' ) AND lv_owner = 'TRY' ) ).
+          CHECK lv_ok = abap_true.
+          <ls_line>-kind  = 'B'.
+          <ls_line>-depth = lv_depth - 1.
+          IF <ls_line>-depth < 0. <ls_line>-depth = 0. ENDIF.
+      ENDCASE.
+    ENDLOOP.
+
+    " Pass 5 — for every header, the segment ends right before the next
     " line at the same depth that is a branch or a closer.
     LOOP AT rt_lines ASSIGNING <ls_line> WHERE kind = 'O' OR kind = 'B'.
       DATA(lv_start) = sy-tabix.
@@ -289,7 +356,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       <ls_line>-end = lv_end.
     ENDLOOP.
 
-    " Pass 3 — openers additionally get the whole-block extent, ending on
+    " Pass 6 — openers additionally get the whole-block extent, ending on
     " the line before their matching closer (the closer itself stays
     " visible, so a folded block still reads as IF ... ENDIF).
     LOOP AT rt_lines ASSIGNING <ls_line> WHERE kind = 'O'.
@@ -307,15 +374,21 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD first_word.
-    DATA(lv_text) = condense( i_text ).
-    IF lv_text IS INITIAL OR lv_text(1) = '*'. RETURN. ENDIF.
-    IF lv_text(1) = '"'. RETURN. ENDIF.
-    SPLIT to_upper( lv_text ) AT space INTO r_word DATA(lv_rest).
-    " Strip a trailing period so "ELSE." and "TRY." are recognised too.
-    IF r_word CS '.'.
-      SPLIT r_word AT '.' INTO r_word lv_rest.
-    ENDIF.
+  METHOD closer_of.
+    CASE i_word.
+      WHEN 'IF'.      r_closer = 'ENDIF'.
+      WHEN 'CASE'.    r_closer = 'ENDCASE'.
+      WHEN 'LOOP'.    r_closer = 'ENDLOOP'.
+      WHEN 'DO'.      r_closer = 'ENDDO'.
+      WHEN 'WHILE'.   r_closer = 'ENDWHILE'.
+      WHEN 'TRY'.     r_closer = 'ENDTRY'.
+      WHEN 'METHOD'.  r_closer = 'ENDMETHOD'.
+      WHEN 'FORM'.    r_closer = 'ENDFORM'.
+      WHEN 'MODULE'.  r_closer = 'ENDMODULE'.
+      WHEN 'SELECT'.  r_closer = 'ENDSELECT'.
+      WHEN 'AT'.      r_closer = 'ENDAT'.
+      WHEN 'PROVIDE'. r_closer = 'ENDPROVIDE'.
+    ENDCASE.
   ENDMETHOD.
 
 
