@@ -210,6 +210,10 @@ public section.
     for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
     importing
       !FCODE .
+    " Qualified name of the unit on display: CLASS=>METHOD / FORM x / FM x
+  methods UNIT_TITLE
+    returning
+      value(R_TITLE) type STRING .
     " Re-renders the currently shown source into the HTML control.
     " i_focus keeps the viewport on that line after the reload.
   methods REFRESH_HTML_VIEW
@@ -408,7 +412,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       lo_scheme->mv_scheme = zcl_ace_code_html=>build_scheme(
         it_source = lt_scm_src
         it_kw     = lr_scm_kw->*
-        i_title   = |{ m_prg-program } - { m_prg-include }| ).
+        io_scan   = ls_scm_prog-scan
+        i_title   = unit_title( ) ).
       lo_scheme->refresh( ).
       IF lo_scheme->mo_box IS NOT INITIAL.
         lo_scheme->mo_box->set_focus( lo_scheme->mo_box ).
@@ -441,6 +446,24 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_view_toolbar->set_button_info( EXPORTING fcode = 'VIEWMODE' text = 'HTML view' ).
     ENDIF.
     cl_gui_cfw=>flush( ).
+  ENDMETHOD.
+
+
+  METHOD unit_title.
+    " Qualified name of the unit currently shown, rather than the technical
+    " include: CLASS=>METHOD, FORM name, FM name — whatever the parse knows.
+    READ TABLE ms_sources-tt_calls_line WITH KEY include = m_prg-include
+      INTO DATA(ls_cl).
+    r_title = COND string(
+      WHEN sy-subrc <> 0 OR ls_cl-eventname IS INITIAL
+        THEN CONV string( m_prg-program )
+      WHEN ls_cl-class IS NOT INITIAL
+        THEN |{ ls_cl-class }=>{ ls_cl-eventname }|
+      WHEN ls_cl-eventtype = 'FORM'
+        THEN |FORM { ls_cl-eventname }|
+      WHEN ls_cl-eventtype = 'FUNCTION'
+        THEN |FM { ls_cl-eventname }|
+      ELSE |{ ls_cl-eventname }| ).
   ENDMETHOD.
 
 
@@ -501,7 +524,8 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     DATA(lt_html) = zcl_ace_code_html=>build(
       it_source = lt_src
       it_kw     = lr_bpkw->*
-      i_title   = |{ m_prg-program } - { m_prg-include }|
+      io_scan   = ls_prog-scan
+      i_title   = unit_title( )
       it_bp_s   = lt_bp_s
       it_bp_e   = lt_bp_e
       i_focus   = i_focus

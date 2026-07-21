@@ -33,6 +33,7 @@ CLASS zcl_ace_code_html DEFINITION
     CLASS-METHODS build
       IMPORTING it_source     TYPE STANDARD TABLE
                 it_kw         TYPE zif_ace_parse_data=>tt_kword OPTIONAL
+                io_scan       TYPE REF TO cl_ci_scan OPTIONAL
                 i_title       TYPE string OPTIONAL
                 it_bp_s       TYPE tt_lines OPTIONAL
                 it_bp_e       TYPE tt_lines OPTIONAL
@@ -47,6 +48,7 @@ CLASS zcl_ace_code_html DEFINITION
     CLASS-METHODS build_scheme
       IMPORTING it_source     TYPE STANDARD TABLE
                 it_kw         TYPE zif_ace_parse_data=>tt_kword OPTIONAL
+                io_scan       TYPE REF TO cl_ci_scan OPTIONAL
                 i_title       TYPE string OPTIONAL
       RETURNING VALUE(rv_mm)  TYPE string.
 
@@ -59,6 +61,7 @@ CLASS zcl_ace_code_html DEFINITION
         word  TYPE string,   " first word, uppercased
         depth TYPE i,
         kind  TYPE char1,   " 'O'=opener 'B'=branch 'C'=closer 'P'=plain
+                            " 'S'=whole block on one line (scheme only)
         end   TYPE i,       " last line of this header's own branch segment
         all   TYPE i,       " openers: last line before the matching closer
       END OF ts_line,
@@ -70,10 +73,30 @@ CLASS zcl_ace_code_html DEFINITION
     " to shift the nesting level of everything that followed.
     TYPES:
       BEGIN OF ts_open,
-        tabix  TYPE i,
+        line   TYPE i,
+        word   TYPE string,
         closer TYPE string,
       END OF ts_open,
       tt_open TYPE STANDARD TABLE OF ts_open WITH EMPTY KEY.
+
+    " One entry per statement, in program order — several statements can
+    " share a line ("IF x. y. ENDIF." written on one line).
+    TYPES:
+      BEGIN OF ts_stmt,
+        index TYPE i,
+        line  TYPE i,
+        word  TYPE string,
+      END OF ts_stmt,
+      tt_stmt TYPE STANDARD TABLE OF ts_stmt WITH EMPTY KEY.
+
+    " A confirmed block: opener and closer found, on different lines.
+    TYPES:
+      BEGIN OF ts_block,
+        open  TYPE i,
+        close TYPE i,
+        word  TYPE string,
+      END OF ts_block,
+      tt_block TYPE STANDARD TABLE OF ts_block WITH EMPTY KEY.
 
     " Quote characters as constants: literals like `'` and '`' inline in the
     " code are the kind of thing that trips up serialization round-trips.
@@ -93,6 +116,7 @@ CLASS zcl_ace_code_html DEFINITION
     CLASS-METHODS analyze
       IMPORTING it_source      TYPE STANDARD TABLE
                 it_kw          TYPE zif_ace_parse_data=>tt_kword
+                io_scan        TYPE REF TO cl_ci_scan OPTIONAL
       RETURNING VALUE(rt_lines) TYPE tt_line.
 
     "! First word of a statement line, uppercased ('' for comments/blank).
@@ -136,7 +160,7 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
   METHOD build.
 
-    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw ).
+    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan ).
 
     add( EXPORTING i_text = '<html><head><meta http-equiv="X-UA-Compatible" content="IE=edge">'
          CHANGING ct_html = rt_html ).
@@ -305,6 +329,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     FIELD-SYMBOLS <lv_src> TYPE any.
     DATA lv_depth TYPE i.
     DATA lt_stack TYPE tt_open.
+    DATA lt_stmt  TYPE tt_stmt.
+    DATA lt_block TYPE tt_block.
 
     " Pass 1 — one entry per source line.
     LOOP AT it_source ASSIGNING <lv_src>.
@@ -326,37 +352,71 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     IF it_kw IS NOT INITIAL.
       LOOP AT it_kw INTO DATA(ls_kw).
         DATA(lv_vline) = COND i( WHEN ls_kw-v_line > 0 THEN ls_kw-v_line ELSE ls_kw-line ).
-        READ TABLE rt_lines ASSIGNING <ls_line> INDEX lv_vline.
-        CHECK sy-subrc = 0.
-        <ls_line>-word = to_upper( ls_kw-name ).
+        CHECK lv_vline > 0 AND lv_vline <= lines( rt_lines ).
+        APPEND VALUE #( index = ls_kw-index
+                        line  = lv_vline
+                        word  = to_upper( ls_kw-name ) ) TO lt_stmt.
       ENDLOOP.
+      SORT lt_stmt BY index.
     ELSE.
       LOOP AT rt_lines ASSIGNING <ls_line>.
-        <ls_line>-word = first_word( <ls_line>-text ).
+        DATA(lv_fw) = first_word( <ls_line>-text ).
+        CHECK lv_fw IS NOT INITIAL.
+        APPEND VALUE #( index = sy-tabix line = sy-tabix word = lv_fw ) TO lt_stmt.
       ENDLOOP.
     ENDIF.
 
-    " Pass 3 — pair openers with their closers. An opener counts as a block
-    " only once its own closer shows up: SELECT ... INTO TABLE and
-    " AT line-selection have none, and treating them as blocks used to shift
-    " the nesting level of everything below them.
-    LOOP AT rt_lines ASSIGNING <ls_line>.
-      DATA(lv_tabix) = sy-tabix.
-      CHECK <ls_line>-word IS NOT INITIAL.
+    " The line's own word is the FIRST statement starting on it — that is
+    " what the fold marker and the scheme label refer to.
+    LOOP AT lt_stmt INTO DATA(ls_first).
+      READ TABLE rt_lines ASSIGNING <ls_line> INDEX ls_first-line.
+      CHECK sy-subrc = 0.
+      IF <ls_line>-word IS INITIAL. <ls_line>-word = ls_first-word. ENDIF.
+    ENDLOOP.
 
-      IF c_closers CS | { <ls_line>-word } |.
+    " Pass 3 — blocks. The scanner already knows them: CL_CI_SCAN->STRUCTURES
+    " holds one entry per block with its first/last statement and the opening
+    " keyword, so nothing has to be paired up by hand.
+    IF io_scan IS BOUND.
+      LOOP AT io_scan->structures INTO DATA(ls_struc).
+        DATA(lv_key) = to_upper( CONV string( ls_struc-key_start ) ).
+        CHECK closer_of( lv_key ) IS NOT INITIAL.
+        READ TABLE lt_stmt INTO DATA(ls_sf) WITH KEY index = ls_struc-stmnt_from.
+        CHECK sy-subrc = 0.
+        READ TABLE lt_stmt INTO DATA(ls_st) WITH KEY index = ls_struc-stmnt_to.
+        CHECK sy-subrc = 0.
+        " A block written on one line holds nothing to fold, but it is still
+        " part of the control structure and belongs in the scheme: mark it
+        " 'S' — no toggle, no nesting effect, but visible to BUILD_SCHEME.
+        IF ls_sf-line = ls_st-line.
+          READ TABLE rt_lines ASSIGNING <ls_line> INDEX ls_sf-line.
+          IF sy-subrc = 0 AND <ls_line>-kind = 'P'. <ls_line>-kind = 'S'. ENDIF.
+          CONTINUE.
+        ENDIF.
+        APPEND VALUE #( open = ls_sf-line close = ls_st-line word = lv_key ) TO lt_block.
+      ENDLOOP.
+    ENDIF.
+
+    " Fallback when no scan is at hand (whole-class view): pair openers with
+    " closers over the STATEMENT list — not over lines, because "IF ... ENDIF."
+    " on one line is two statements sharing one line.
+    LOOP AT lt_stmt INTO DATA(ls_stmt).
+      CHECK io_scan IS NOT BOUND.
+      IF c_closers CS | { ls_stmt-word } |.
         " The stack grows at index 1, so index 1 is the innermost block:
-        " take the FIRST match, not the last, or a nested ENDIF would be
-        " paired with an outer IF instead of its own.
+        " take the FIRST match, or a nested ENDIF would pair with an outer IF.
         DATA(lv_hit) = 0.
         LOOP AT lt_stack INTO DATA(ls_open).
-          IF ls_open-closer = <ls_line>-word. lv_hit = sy-tabix. EXIT. ENDIF.
+          IF ls_open-closer = ls_stmt-word. lv_hit = sy-tabix. EXIT. ENDIF.
         ENDLOOP.
         IF lv_hit > 0.
           READ TABLE lt_stack INTO ls_open INDEX lv_hit.
-          READ TABLE rt_lines ASSIGNING FIELD-SYMBOL(<ls_open>) INDEX ls_open-tabix.
-          IF sy-subrc = 0. <ls_open>-kind = 'O'. ENDIF.
-          <ls_line>-kind = 'C'.
+          " A block opened and closed on the same line holds nothing to fold
+          IF ls_open-line < ls_stmt-line.
+            APPEND VALUE #( open = ls_open-line
+                            close = ls_stmt-line
+                            word = ls_open-word ) TO lt_block.
+          ENDIF.
           " Drop the match and everything stacked on top of it (those never
           " got a closer). FROM would delete towards the table end, i.e. the
           " enclosing blocks — that is how ENDIF used to swallow its LOOP.
@@ -365,41 +425,64 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      DATA(lv_closer) = closer_of( <ls_line>-word ).
+      DATA(lv_closer) = closer_of( ls_stmt-word ).
       IF lv_closer IS NOT INITIAL.
-        INSERT VALUE #( tabix = lv_tabix closer = lv_closer ) INTO lt_stack INDEX 1.
+        INSERT VALUE #( line = ls_stmt-line word = ls_stmt-word closer = lv_closer )
+          INTO lt_stack INDEX 1.
       ENDIF.
     ENDLOOP.
 
-    " Pass 4 — nesting level, plus branches attached to their owning block.
+    " Pass 4 — depth as a running sum over the confirmed blocks, and the
+    " opener/closer marks that go with them.
+    DATA lt_delta TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+    DO lines( rt_lines ) TIMES.
+      APPEND 0 TO lt_delta.
+    ENDDO.
+    LOOP AT lt_block INTO DATA(ls_block).
+      READ TABLE rt_lines ASSIGNING <ls_line> INDEX ls_block-open.
+      IF sy-subrc = 0. <ls_line>-kind = 'O'. ENDIF.
+      READ TABLE rt_lines ASSIGNING <ls_line> INDEX ls_block-close.
+      IF sy-subrc = 0. <ls_line>-kind = 'C'. ENDIF.
+      " Everything strictly inside the block sits one level deeper
+      READ TABLE lt_delta ASSIGNING FIELD-SYMBOL(<lv_d>) INDEX ls_block-open + 1.
+      IF sy-subrc = 0. <lv_d> = <lv_d> + 1. ENDIF.
+      READ TABLE lt_delta ASSIGNING <lv_d> INDEX ls_block-close.
+      IF sy-subrc = 0. <lv_d> = <lv_d> - 1. ENDIF.
+    ENDLOOP.
+
+    lv_depth = 0.
+    LOOP AT rt_lines ASSIGNING <ls_line>.
+      READ TABLE lt_delta INTO DATA(lv_step) INDEX sy-tabix.
+      IF sy-subrc = 0. lv_depth = lv_depth + lv_step. ENDIF.
+      IF lv_depth < 0. lv_depth = 0. ENDIF.
+      <ls_line>-depth = lv_depth.
+    ENDLOOP.
+
+    " Pass 5 — branches, attached to the block that encloses them.
     DATA lt_owner TYPE STANDARD TABLE OF string WITH EMPTY KEY.
     LOOP AT rt_lines ASSIGNING <ls_line>.
-      CASE <ls_line>-kind.
-        WHEN 'C'.
-          lv_depth = lv_depth - 1.
-          IF lv_depth < 0. lv_depth = 0. ENDIF.
-          DELETE lt_owner INDEX 1.
-          <ls_line>-depth = lv_depth.
-        WHEN 'O'.
-          <ls_line>-depth = lv_depth.
-          INSERT <ls_line>-word INTO lt_owner INDEX 1.
-          lv_depth = lv_depth + 1.
-        WHEN OTHERS.
-          <ls_line>-depth = lv_depth.
-          CHECK <ls_line>-word IS NOT INITIAL.
-          CHECK c_branches CS | { <ls_line>-word } |.
-          READ TABLE lt_owner INDEX 1 INTO DATA(lv_owner).
-          CHECK sy-subrc = 0.
-          " ELSEIF/ELSE belong to IF, WHEN to CASE, CATCH/CLEANUP to TRY
-          DATA(lv_ok) = xsdbool(
-            (    ( <ls_line>-word = 'ELSEIF' OR <ls_line>-word = 'ELSE' ) AND lv_owner = 'IF' )
-            OR ( <ls_line>-word = 'WHEN' AND lv_owner = 'CASE' )
-            OR ( ( <ls_line>-word = 'CATCH' OR <ls_line>-word = 'CLEANUP' ) AND lv_owner = 'TRY' ) ).
-          CHECK lv_ok = abap_true.
-          <ls_line>-kind  = 'B'.
-          <ls_line>-depth = lv_depth - 1.
-          IF <ls_line>-depth < 0. <ls_line>-depth = 0. ENDIF.
-      ENDCASE.
+      DATA(lv_line_no) = sy-tabix.
+      LOOP AT lt_block INTO ls_block WHERE open = lv_line_no.
+        INSERT ls_block-word INTO lt_owner INDEX 1.
+      ENDLOOP.
+      LOOP AT lt_block INTO ls_block WHERE close = lv_line_no.
+        DELETE lt_owner INDEX 1.
+      ENDLOOP.
+
+      CHECK <ls_line>-kind = 'P'.
+      CHECK <ls_line>-word IS NOT INITIAL.
+      CHECK c_branches CS | { <ls_line>-word } |.
+      READ TABLE lt_owner INDEX 1 INTO DATA(lv_owner).
+      CHECK sy-subrc = 0.
+      " ELSEIF/ELSE belong to IF, WHEN to CASE, CATCH/CLEANUP to TRY
+      DATA(lv_ok) = xsdbool(
+        (    ( <ls_line>-word = 'ELSEIF' OR <ls_line>-word = 'ELSE' ) AND lv_owner = 'IF' )
+        OR ( <ls_line>-word = 'WHEN' AND lv_owner = 'CASE' )
+        OR ( ( <ls_line>-word = 'CATCH' OR <ls_line>-word = 'CLEANUP' ) AND lv_owner = 'TRY' ) ).
+      CHECK lv_ok = abap_true.
+      <ls_line>-kind  = 'B'.
+      <ls_line>-depth = <ls_line>-depth - 1.
+      IF <ls_line>-depth < 0. <ls_line>-depth = 0. ENDIF.
     ENDLOOP.
 
     " Pass 5 — for every header, the segment ends right before the next
@@ -444,20 +527,39 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
            END OF ts_prev.
     DATA lt_prev TYPE STANDARD TABLE OF ts_prev WITH EMPTY KEY.
 
-    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw ).
+    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan ).
 
     rv_mm = |flowchart TD\n|.
-    rv_mm = rv_mm && |  start(["{ scheme_label( i_title ) }"])\n|.
 
-    DATA(lv_prev_node) = |start|.
+    " When the source is a single unit, its METHOD/FORM line is the root and
+    " carries the qualified name — no extra start node above it.
+    DATA(lv_root) = 0.
+    LOOP AT lt_lines INTO DATA(ls_root)
+      WHERE kind = 'O' AND ( word = 'METHOD' OR word = 'FORM' OR word = 'MODULE' ).
+      lv_root = ls_root-line.
+      EXIT.
+    ENDLOOP.
+
+    DATA(lv_prev_node)  = ||.
     DATA(lv_prev_depth) = 0.
+    IF lv_root = 0.
+      rv_mm = rv_mm && |  start(["{ scheme_label( i_title ) }"])\n|.
+      lv_prev_node = |start|.
+    ENDIF.
 
     LOOP AT lt_lines INTO DATA(ls_line).
-      " Only the structure itself — plain statements would drown the picture
-      CHECK ls_line-kind = 'O' OR ls_line-kind = 'B'.
+      " Only the structure itself — plain statements would drown the picture.
+      " 'S' is a block written on a single line: not foldable, but it is a
+      " branch all the same and has to show up here.
+      CHECK ls_line-kind = 'O' OR ls_line-kind = 'B' OR ls_line-kind = 'S'.
 
       DATA(lv_node)  = |n{ ls_line-line }|.
-      DATA(lv_label) = scheme_label( ls_line-text ).
+      " The unit line shows the qualified name (CLASS=>METHOD) instead of the
+      " bare METHOD statement — class and method read as one block.
+      DATA(lv_label) = COND string(
+        WHEN ls_line-line = lv_root AND i_title IS NOT INITIAL
+        THEN scheme_label( i_title )
+        ELSE scheme_label( ls_line-text ) ).
 
       " Shape carries the meaning: decisions are rhombi, loops are barrels,
       " units are boxed, branches are rounded.
@@ -477,7 +579,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       IF ls_line-depth > lv_prev_depth.
         lv_from = lv_prev_node.
       ENDIF.
-      rv_mm = rv_mm && |  { lv_from } --> { lv_node }\n|.
+      " The root has nothing above it
+      IF lv_from IS NOT INITIAL.
+        rv_mm = rv_mm && |  { lv_from } --> { lv_node }\n|.
+      ENDIF.
 
       DELETE lt_prev WHERE depth >= ls_line-depth.
       APPEND VALUE #( depth = ls_line-depth node = lv_node ) TO lt_prev.
