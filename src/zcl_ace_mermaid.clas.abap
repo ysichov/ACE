@@ -79,6 +79,15 @@ public section.
   methods SHOW_SOURCE_POPUP
     importing
       !IS_NODE type TS_NODE_MAP .
+  " Reads one parameter of a sapevent URL, from the action/getdata string
+  " or from the parsed query table, whichever carries it.
+  methods SCHEME_PARAM
+    importing
+      !I_SRC        type STRING
+      !I_NAME       type STRING
+      !IT_QUERY     type CNHT_QUERY_TABLE
+    returning
+      value(R_VAL)  type STRING .
 
 protected section.
 private section.
@@ -1571,20 +1580,23 @@ DATA(lv_maxlen) = 200.
     " Branch scheme: a click on an "N operations" node expands it into the
     " individual statements, a second click folds it back.
     IF lv_action CS 'SCHEMEEXP'.
-      DATA lv_ln TYPE string.
-      DATA(lv_es) = |{ lv_action } { getdata }|.
-      IF lv_es CS 'l='.
-        lv_ln = substring_after( val = lv_es sub = 'l=' ).
-        IF lv_ln CS '&'. SPLIT lv_ln AT '&' INTO lv_ln DATA(lv_er). ENDIF.
-        IF lv_ln CS ` `. SPLIT lv_ln AT ` ` INTO lv_ln lv_er. ENDIF.
-      ENDIF.
-      IF lv_ln IS INITIAL.
-        READ TABLE query_table INTO DATA(ls_eq) WITH KEY name = 'l'.
-        IF sy-subrc = 0. lv_ln = ls_eq-value. ENDIF.
-      ENDIF.
-      CONDENSE lv_ln NO-GAPS.
+      DATA(lv_ln) = scheme_param( i_src    = |{ lv_action } { getdata }|
+                                  i_name   = 'l'
+                                  it_query = query_table ).
       CHECK lv_ln IS NOT INITIAL.
       mo_viewer->mo_window->toggle_scheme_expand( CONV i( lv_ln ) ).
+      RETURN.
+    ENDIF.
+
+    " Branch scheme: a click on a structure node selects that block in the
+    " code window, so the diagram doubles as a table of contents.
+    IF lv_action CS 'SCHEMEGO'.
+      DATA(lv_gs) = |{ lv_action } { getdata }|.
+      DATA(lv_gl) = scheme_param( i_src = lv_gs i_name = 'l' it_query = query_table ).
+      DATA(lv_ge) = scheme_param( i_src = lv_gs i_name = 'e' it_query = query_table ).
+      CHECK lv_gl IS NOT INITIAL.
+      mo_viewer->mo_window->focus_code_range( i_from = CONV i( lv_gl )
+                                              i_to   = CONV i( lv_ge ) ).
       RETURN.
     ENDIF.
 
@@ -1607,6 +1619,21 @@ DATA(lv_maxlen) = 200.
     READ TABLE mt_node_map INTO DATA(ls_node) WITH KEY node_id = lv_id.
     CHECK sy-subrc = 0.
     show_source_popup( ls_node ).
+  endmethod.
+
+
+  method SCHEME_PARAM.
+    DATA lv_rest TYPE string.
+    IF i_src CS |{ i_name }=|.
+      r_val = substring_after( val = i_src sub = |{ i_name }=| ).
+      IF r_val CS '&'. SPLIT r_val AT '&' INTO r_val lv_rest. ENDIF.
+      IF r_val CS ` `. SPLIT r_val AT ` ` INTO r_val lv_rest. ENDIF.
+    ENDIF.
+    IF r_val IS INITIAL.
+      READ TABLE it_query INTO DATA(ls_q) WITH KEY name = i_name.
+      IF sy-subrc = 0. r_val = ls_q-value. ENDIF.
+    ENDIF.
+    CONDENSE r_val NO-GAPS.
   endmethod.
 
 

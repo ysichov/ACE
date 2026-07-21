@@ -710,6 +710,11 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
   METHOD scheme_label.
     r_text = condense( i_text ).
+    " The diagram source travels through HTML, so angle brackets — think
+    " FIELD-SYMBOL(<WATCH>) — are read as tags and the browser injects
+    " closing tags straight into the mermaid text. Entities pass through.
+    REPLACE ALL OCCURRENCES OF '<' IN r_text WITH '&lt;'.
+    REPLACE ALL OCCURRENCES OF '>' IN r_text WITH '&gt;'.
     " Characters that would end a mermaid node or its label
     REPLACE ALL OCCURRENCES OF '"' IN r_text WITH c_apos.
     REPLACE ALL OCCURRENCES OF '[' IN r_text WITH '('.

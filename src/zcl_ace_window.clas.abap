@@ -216,6 +216,12 @@ public section.
       !FCODE .
     " Rebuilds the branch scheme popup for the unit currently shown
   methods REFRESH_SCHEME .
+    " Brings a stretch of code into view and selects it — used when a node
+    " of the branch scheme is clicked.
+  methods FOCUS_CODE_RANGE
+    importing
+      !I_FROM type I
+      !I_TO   type I optional .
     " Click on an "N operations" node: expand it into single statements,
     " or fold it back if it is already expanded.
   methods TOGGLE_SCHEME_EXPAND
@@ -442,6 +448,27 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       refresh_html_view( ).
       mo_view_toolbar->set_button_info( EXPORTING fcode = 'VIEWMODE' text = 'HTML view' ).
     ENDIF.
+    cl_gui_cfw=>flush( ).
+  ENDMETHOD.
+
+
+  METHOD focus_code_range.
+    " Clicking a node in the scheme brings the matching stretch of code into
+    " view: selected in the classic editor, scrolled to in the HTML view.
+    CHECK i_from > 0.
+    DATA(lv_to) = COND i( WHEN i_to >= i_from THEN i_to ELSE i_from ).
+
+    IF mv_html_mode = abap_true.
+      refresh_html_view( i_focus = i_from ).
+      RETURN.
+    ENDIF.
+
+    mo_code_viewer->select_lines( EXPORTING from_line = i_from to_line = lv_to
+                                  EXCEPTIONS OTHERS = 1 ).
+    " Put the block near the top rather than at the very edge of the viewport
+    DATA(lv_first) = COND i( WHEN i_from > 3 THEN i_from - 3 ELSE 1 ).
+    mo_code_viewer->set_first_visible_line( EXPORTING line = lv_first
+                                            EXCEPTIONS OTHERS = 1 ).
     cl_gui_cfw=>flush( ).
   ENDMETHOD.
 
