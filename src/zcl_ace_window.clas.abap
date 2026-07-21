@@ -409,7 +409,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ( butn_type = 3 )
       ( function = 'SCHEME' icon = CONV #( icon_structure )
         quickinfo = 'Mermaid scheme of the control structure of this source'
-        text = 'Scheme' ) ).
+        text = 'Scheme' )
+      ( function = 'SKELETON' icon = CONV #( icon_text_act )
+        quickinfo = 'Text skeleton of this unit: structure, calls and DB access with line numbers'
+        text = 'Skeleton' ) ).
     mo_view_toolbar->add_button_group( button ).
     event-eventid = cl_gui_toolbar=>m_id_function_selected.
     event-appl_event = space.
@@ -420,6 +423,41 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
   METHOD hnd_view_toolbar.
+    IF fcode = 'SKELETON'.
+      " The compressed form of the unit, for reading or handing to an LLM
+      ensure_calls_parsed( ).
+      READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_sk_prog).
+      DATA lt_sk_src TYPE sci_include.
+      IF ls_sk_prog-v_source IS NOT INITIAL.
+        lt_sk_src = ls_sk_prog-v_source.
+      ELSE.
+        lt_sk_src = ls_sk_prog-source_tab.
+      ENDIF.
+      IF lt_sk_src IS INITIAL.
+        mo_code_viewer->get_text( IMPORTING table = lt_sk_src ).
+      ENDIF.
+      DATA(lt_sk_kw) = ls_sk_prog-t_keywords.
+      IF ls_sk_prog-v_keywords IS NOT INITIAL.
+        lt_sk_kw = ls_sk_prog-v_keywords.
+        LOOP AT lt_sk_kw ASSIGNING FIELD-SYMBOL(<ls_skkw>) WHERE tt_calls IS INITIAL.
+          READ TABLE ls_sk_prog-t_keywords INTO DATA(ls_sktkw) WITH KEY index = <ls_skkw>-index.
+          CHECK sy-subrc = 0.
+          <ls_skkw>-tt_calls = ls_sktkw-tt_calls.
+        ENDLOOP.
+      ENDIF.
+
+      DATA lv_skeleton TYPE string.
+      lv_skeleton = zcl_ace_code_html=>build_skeleton(
+        it_source = lt_sk_src
+        it_kw     = lt_sk_kw
+        io_scan   = ls_sk_prog-scan
+        i_title   = unit_title( ) ).
+      DATA lr_skeleton TYPE REF TO data.
+      GET REFERENCE OF lv_skeleton INTO lr_skeleton.
+      NEW zcl_ace_text_viewer( lr_skeleton ).
+      RETURN.
+    ENDIF.
+
     IF fcode = 'SCHEME'.
       " Always a fresh popup, so several branches can be compared side by
       " side. Only the latest one follows the navigation; the older ones stay
