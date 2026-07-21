@@ -467,20 +467,6 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       IF ls_bp-type = 'E'. APPEND lv_vline TO lt_bp_e. ELSE. APPEND lv_vline TO lt_bp_s. ENDIF.
     ENDLOOP.
 
-    " DBG: what the renderer actually gets — include found, source lines,
-    " keyword count, and how many of them are block keywords
-    DATA(lv_dbg_blocks) = 0.
-    LOOP AT lr_bpkw->* INTO DATA(ls_dbgkw).
-      DATA(lv_dbg_n) = to_upper( ls_dbgkw-name ).
-      IF lv_dbg_n = 'LOOP' OR lv_dbg_n = 'ENDLOOP' OR lv_dbg_n = 'IF' OR lv_dbg_n = 'ENDIF'
-        OR lv_dbg_n = 'CASE' OR lv_dbg_n = 'ENDCASE' OR lv_dbg_n = 'WHEN'.
-        lv_dbg_blocks = lv_dbg_blocks + 1.
-      ENDIF.
-    ENDLOOP.
-    MESSAGE |DBG html: inc={ m_prg-include } found={ COND string( WHEN ls_prog-include IS INITIAL
-      THEN 'NO' ELSE 'YES' ) } src={ lines( lt_src ) } kw={ lines( lr_bpkw->* ) }| &&
-      | vkw={ lines( ls_prog-v_keywords ) } blocks={ lv_dbg_blocks }| TYPE 'I'.
-
     " Structure detection uses the parser's scan, not the raw text
     DATA(lt_html) = zcl_ace_code_html=>build(
       it_source = lt_src
