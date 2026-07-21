@@ -1288,7 +1288,6 @@ DATA(lv_maxlen) = 200.
 
       CASE mv_type.
         WHEN 'CALLS'. text = 'Calls flow'.
-        WHEN 'FLOW'.  text = 'Calculations sequence'.
         WHEN 'CMAP'.  text = 'Class map'.
         WHEN 'SCHEME'. text = 'Branch scheme'.
       ENDCASE.
@@ -1321,7 +1320,6 @@ DATA(lv_maxlen) = 200.
 
       CASE mv_type.
         WHEN 'CALLS'. steps_flow( i_with_params = mv_with_params i_calc_path = mv_calc_path ).
-        WHEN 'FLOW'.  magic_search( i_calc_path = mv_calc_path ).
         WHEN 'CMAP'.  class_map( ).
       ENDCASE.
 
