@@ -37,7 +37,8 @@ CLASS zcl_ace_code_html DEFINITION
         text  TYPE string,
         depth TYPE i,
         kind  TYPE char1,   " 'O'=opener 'B'=branch 'C'=closer ' '=plain
-        end   TYPE i,       " last line of this header's segment
+        end   TYPE i,       " last line of this header's own branch segment
+        all   TYPE i,       " openers: last line before the matching closer
       END OF ts_line,
       tt_line TYPE STANDARD TABLE OF ts_line WITH EMPTY KEY.
 
@@ -120,10 +121,12 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
     LOOP AT lt_lines INTO DATA(ls_line).
       DATA(lv_toggle) = COND string(
-        WHEN ls_line-end > ls_line-line
-        THEN |<span class="tg" id="t{ ls_line-line }" onclick="tog({ ls_line-line })">-</span>|
+        WHEN ls_line-end > ls_line-line OR ls_line-all > ls_line-line
+        THEN |<span class="tg" id="t{ ls_line-line }" title="Click: fold this branch| &&
+             | / Ctrl+click: fold the whole block" onclick="tog({ ls_line-line },event)">-</span>|
         ELSE '<span class="tgx"></span>' ).
       add( EXPORTING i_text = |<div class="ln" id="r{ ls_line-line }" data-end="{ ls_line-end }"| &&
+                              | data-all="{ ls_line-all }"| &&
                               | data-kind="{ ls_line-kind }"><span class="num">{ ls_line-line }</span>| &&
                               lv_toggle && render_line( i_text = ls_line-text i_line = ls_line-line ) &&
                               |<span class="fold" id="f{ ls_line-line }"></span></div>|
@@ -136,8 +139,15 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     add( EXPORTING i_text = '<script type="text/javascript">' CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = 'function row(n){return document.getElementById("r"+n);}'
          CHANGING ct_html = rt_html ).
-    add( EXPORTING i_text = 'function setSeg(n,hide){var e=row(n);if(!e)return;' &&
-                            'var end=parseInt(e.getAttribute("data-end"),10);var i;' &&
+    " whole=1 folds down to the matching closer (data-all), otherwise only
+    " the header's own branch (data-end). A header whose branch segment is
+    " empty — CASE, whose first WHEN follows immediately — folds whole.
+    add( EXPORTING i_text = 'function segEnd(e,whole){var a=parseInt(e.getAttribute("data-all"),10);' &&
+                            'var b=parseInt(e.getAttribute("data-end"),10);' &&
+                            'if(whole&&a>0)return a;if(b>0)return b;return a>0?a:0;}'
+         CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'function setSeg(n,hide,whole){var e=row(n);if(!e)return;' &&
+                            'var end=segEnd(e,whole);if(end<=n){if(!hide)return;}var i;' &&
                             'for(i=n+1;i<=end;i++){var r=row(i);if(r)r.style.display=hide?"none":"";' &&
                             'var t=document.getElementById("t"+i);if(t)t.innerHTML="-";' &&
                             'var f=document.getElementById("f"+i);if(f)f.innerHTML="";}' &&
@@ -145,15 +155,22 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
                             'var fl=document.getElementById("f"+n);' &&
                             'if(fl)fl.innerHTML=hide?("  ... "+(end-n)+" lines"):"";}'
          CHANGING ct_html = rt_html ).
-    add( EXPORTING i_text = 'function tog(n){var tg=document.getElementById("t"+n);' &&
-                            'setSeg(n,tg.innerHTML!="+");}' CHANGING ct_html = rt_html ).
+    add( EXPORTING i_text = 'function tog(n,ev){var e=row(n);var tg=document.getElementById("t"+n);' &&
+                            'var evt=ev?ev:window.event;var ctrl=evt&&evt.ctrlKey;' &&
+                            'var b=parseInt(e.getAttribute("data-end"),10);' &&
+                            'var whole=ctrl||!(b>n);setSeg(n,tg.innerHTML!="+",whole);}'
+         CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = 'function foldAll(hide){var d=document.getElementById("code");' &&
                             'var ch=d.childNodes;var i;var ids=[];' &&
                             'for(i=0;i<ch.length;i++){if(ch[i].id&&ch[i].id.charAt(0)=="r")' &&
                             'ids.push(parseInt(ch[i].id.substring(1),10));}' &&
-                            'if(!hide){for(i=0;i<ids.length;i++)setSeg(ids[i],0);return;}' &&
+                            'if(!hide){for(i=0;i<ids.length;i++){var r=row(ids[i]);r.style.display="";' &&
+                            'var t=document.getElementById("t"+ids[i]);if(t)t.innerHTML="-";' &&
+                            'var f=document.getElementById("f"+ids[i]);if(f)f.innerHTML="";}return;}' &&
                             'for(i=ids.length-1;i>=0;i--){var e=row(ids[i]);' &&
-                            'if(parseInt(e.getAttribute("data-end"),10)>ids[i])setSeg(ids[i],1);}}'
+                            'var b=parseInt(e.getAttribute("data-end"),10);' &&
+                            'var a=parseInt(e.getAttribute("data-all"),10);' &&
+                            'if(b>ids[i]||a>ids[i])setSeg(ids[i],1,!(b>ids[i]));}}'
          CHANGING ct_html = rt_html ).
     add( EXPORTING i_text = '</script></body></html>' CHANGING ct_html = rt_html ).
 
@@ -215,6 +232,21 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         lv_end = <ls_next>-line.
       ENDLOOP.
       <ls_line>-end = lv_end.
+    ENDLOOP.
+
+    " Pass 3 — openers additionally get the whole-block extent, ending on
+    " the line before their matching closer (the closer itself stays
+    " visible, so a folded block still reads as IF ... ENDIF).
+    LOOP AT rt_lines ASSIGNING <ls_line> WHERE kind = 'O'.
+      DATA(lv_ostart) = sy-tabix.
+      DATA(lv_ofrom)  = lv_ostart + 1.
+      LOOP AT rt_lines ASSIGNING <ls_next> FROM lv_ofrom.
+        IF <ls_next>-kind = 'C' AND <ls_next>-depth = <ls_line>-depth.
+          <ls_line>-all = <ls_next>-line - 1.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+      IF <ls_line>-all < <ls_line>-line. <ls_line>-all = <ls_line>-line. ENDIF.
     ENDLOOP.
 
   ENDMETHOD.
