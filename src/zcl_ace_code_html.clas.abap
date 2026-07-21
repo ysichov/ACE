@@ -593,8 +593,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         READ TABLE lt_cond INTO DATA(ls_cond) INDEX 1.
         IF ls_cond-closeline <> ls_line-line. EXIT. ENDIF.
         APPEND lv_prev_node TO ls_cond-tails.
+        " The closing statement is worth a node of its own — unlike ENDLOOP,
+        " where the frame around the body already shows where it ends.
         DATA(lv_join) = |j{ ls_line-line }|.
-        rv_mm = rv_mm && |  { lv_join }(( ))\n|.
+        rv_mm = rv_mm && |  { lv_join }("{ scheme_label( ls_line-text ) }")\n|.
         LOOP AT ls_cond-tails INTO DATA(lv_tail).
           CHECK lv_tail IS NOT INITIAL.
           lv_edges = lv_edges && |  { lv_tail } --> { lv_join }\n|.
@@ -628,17 +630,70 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         THEN scheme_label( i_title )
         ELSE scheme_label( ls_line-text ) ).
 
-      " A loop is the frame around its body, not a node of its own: its text
-      " is the subgraph caption, and the chain simply flows into the first
-      " statement inside. Everything else is a node.
+      " A loop becomes the frame around its body — but only if that body
+      " holds structure of its own. A loop over plain statements would give
+      " an empty frame with nothing to draw inside and no edge reaching it,
+      " which is how loops ended up floating unconnected; those stay nodes.
       DATA(lv_is_loop) = xsdbool(
         ls_line-kind = 'O' AND ls_line-all > ls_line-line
         AND ( ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE' ) ).
 
       IF lv_is_loop = abap_true.
+        DATA(lv_inner) = 0.
+        LOOP AT lt_lines TRANSPORTING NO FIELDS
+          WHERE line > ls_line-line AND line <= ls_line-all
+            AND ( kind = 'O' OR kind = 'B' OR kind = 'S' ).
+          lv_inner = 1.
+          EXIT.
+        ENDLOOP.
+        " A loop over plain statements is a node — until it is clicked, then
+        " its body is drawn inside a frame like any other loop.
+        IF lv_inner = 0.
+          READ TABLE it_expanded TRANSPORTING NO FIELDS WITH KEY table_line = ls_line-line.
+          IF sy-subrc <> 0. lv_is_loop = abap_false. ENDIF.
+        ENDIF.
+      ENDIF.
+
+      IF lv_is_loop = abap_true AND lv_inner = 1.
         rv_mm = rv_mm && |  subgraph g{ ls_line-line }["{ lv_label }"]\n|.
         rv_mm = rv_mm && |  direction LR\n|.
         INSERT VALUE #( endline = ls_line-all ) INTO lt_sub INDEX 1.
+        CONTINUE.
+      ENDIF.
+
+      " Expanded loop over plain statements: the frame is drawn here and
+      " filled with its own statements, since there is no structure inside
+      " that would otherwise be rendered into it.
+      IF lv_is_loop = abap_true.
+        rv_mm = rv_mm && |  subgraph g{ ls_line-line }["{ lv_label }"]\n|.
+        rv_mm = rv_mm && |  direction LR\n|.
+        DATA(lv_lchain) = ||.
+        DATA(lv_lfirst) = ||.
+        LOOP AT lt_lines INTO DATA(ls_lop)
+          WHERE line > ls_line-line AND line <= ls_line-all
+            AND kind = 'P' AND word IS NOT INITIAL.
+          DATA(lv_lopn) = |p{ ls_lop-line }|.
+          rv_mm = rv_mm && |  { lv_lopn }("{ scheme_label( ls_lop-text ) }")\n|.
+          IF lv_lchain IS NOT INITIAL.
+            lv_edges = lv_edges && |  { lv_lchain } --> { lv_lopn }\n|.
+          ELSE.
+            lv_lfirst = lv_lopn.
+          ENDIF.
+          lv_lchain = lv_lopn.
+        ENDLOOP.
+        rv_mm = rv_mm && |  end\n|.
+
+        IF lv_prev_node IS NOT INITIAL AND lv_lfirst IS NOT INITIAL.
+          lv_edges = lv_edges && |  { lv_prev_node } --> { lv_lfirst }\n|.
+        ENDIF.
+        " Clicking the first statement folds the loop back into one node
+        IF lv_lfirst IS NOT INITIAL.
+          lv_clicks = lv_clicks && |  click { lv_lfirst }| &&
+                      | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+          lv_prev_node = lv_lchain.
+          lv_prev_line = ls_line-all.
+          lv_prev_depth = ls_line-depth.
+        ENDIF.
         CONTINUE.
       ENDIF.
 
@@ -646,14 +701,21 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       " branches are rounded.
       DATA(lv_shape) = SWITCH string( ls_line-word
         WHEN 'IF' OR 'CASE'                      THEN |{ lv_node }\{"{ lv_label }"\}|
+        WHEN 'LOOP' OR 'DO' OR 'WHILE'           THEN |{ lv_node }[/"{ lv_label }"/]|
         WHEN 'METHOD' OR 'FORM' OR 'MODULE'      THEN |{ lv_node }[["{ lv_label }"]]|
         ELSE                                          |{ lv_node }("{ lv_label }")| ).
       rv_mm = rv_mm && |  { lv_shape }\n|.
-      " Clicking a structure node selects that stretch of code in the window
-      lv_clicks = lv_clicks && |  click { lv_node } "sapevent:SCHEMEGO?l={ ls_line-line }| &&
-                  |&e={ COND i( WHEN ls_line-all > ls_line-line THEN ls_line-all
-                                WHEN ls_line-end > ls_line-line THEN ls_line-end
-                                ELSE ls_line-line ) }" _self\n|.
+      IF ls_line-word = 'LOOP' OR ls_line-word = 'DO' OR ls_line-word = 'WHILE'.
+        " A loop drawn as a node holds its body hidden: click opens it up
+        lv_clicks = lv_clicks && |  click { lv_node }| &&
+                    | "sapevent:SCHEMEEXP?l={ ls_line-line }" _self\n|.
+      ELSE.
+        " Clicking a structure node selects that stretch of code in the window
+        lv_clicks = lv_clicks && |  click { lv_node } "sapevent:SCHEMEGO?l={ ls_line-line }| &&
+                    |&e={ COND i( WHEN ls_line-all > ls_line-line THEN ls_line-all
+                                  WHEN ls_line-end > ls_line-line THEN ls_line-end
+                                  ELSE ls_line-line ) }" _self\n|.
+      ENDIF.
 
       " Edge source. A branch header does not continue the previous branch —
       " it fans out from the IF/CASE itself, and the branch just walked is
