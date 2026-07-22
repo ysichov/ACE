@@ -265,6 +265,8 @@ public section.
       !I_LINE     type I
       !I_EXTERNAL type ABAP_BOOL default ABAP_FALSE .
   methods APPLY_DEPTH .
+    " Opens the currently displayed object in Eclipse (ADT) via adt:// URL
+  methods OPEN_IN_ADT .
   methods SHOW_STACK .
   methods SHOW_COVERAGE .
   methods ON_STACK_DOUBLE_CLICK
@@ -317,6 +319,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
        ( function = 'STEPS'       icon = CONV #( icon_next_step )    quickinfo = 'Steps table'                   text = 'Steps' )
        ( butn_type = 3  )
        ( function = 'WHOLE_CLASS' icon = CONV #( icon_select_all )   quickinfo = 'Get local class from Global'   text = 'Get whole Class' )
+       ( function = 'ADT'         icon = CONV #( icon_abap )         quickinfo = 'Open in Eclipse (ADT)'         text = 'ADT' )
        ( function = 'INFO'        icon = CONV #( icon_bw_gis )       quickinfo = 'Documentation'                 text = '' )
                       ).
       mo_toolbar->add_button_group( button ).
@@ -900,6 +903,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           mo_viewer->get_code_mix( ).
           mo_viewer->mo_window->show_stack( ).
         ENDIF.
+
+      WHEN 'ADT'.
+        open_in_adt( ).
 
       WHEN 'METRICS'.
         zcl_ace_metrics_window=>show(
@@ -1714,6 +1720,77 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
       mo_viewer->get_code_mix( ).
       mo_viewer->mo_window->show_stack( ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD open_in_adt.
+    " Build an adt:// URL for the object currently on display and hand it
+    " to the OS. If Eclipse with ADT is installed, it registers the adt://
+    " protocol and jumps straight to the object (and line) in the editor.
+    DATA: lv_include TYPE progname,
+          lv_object  TYPE string,
+          lv_path    TYPE string,
+          lv_line    TYPE i,
+          lv_url     TYPE string.
+
+    lv_include = m_prg-include.
+    IF lv_include IS INITIAL OR lv_include = 'Code_Flow_Mix' OR lv_include = 'VIRTUAL'.
+      lv_include = m_prg-program.
+    ENDIF.
+    IF lv_include IS INITIAL.
+      MESSAGE 'No source on display' TYPE 'S' DISPLAY LIKE 'W'.
+      RETURN.
+    ENDIF.
+
+    " Current cursor line in the editor (best effort)
+    IF mo_code_viewer IS NOT INITIAL.
+      mo_code_viewer->get_selection_pos(
+        IMPORTING from_line = lv_line
+        EXCEPTIONS OTHERS = 1 ).
+      IF sy-subrc <> 0. CLEAR lv_line. ENDIF.
+    ENDIF.
+
+    IF lv_include CS '='.
+      " Class pool include (ZCL_X====CM001 / CP / CU ...) -> global class
+      SPLIT lv_include AT '=' INTO lv_object DATA(lv_rest).
+      lv_path = |oo/classes/{ lv_object }/source/main|.
+    ELSE.
+      SELECT SINGLE subc FROM trdir INTO @DATA(lv_subc) WHERE name = @lv_include.
+      CASE lv_subc.
+        WHEN 'K'. " class pool main program without '=' (unlikely, but safe)
+          lv_object = lv_include.
+          lv_path = |oo/classes/{ lv_object }/source/main|.
+        WHEN 'I'.
+          IF m_prg-program CP 'SAPL*' AND lv_include CP 'L*'.
+            " Function group include -> open the function group
+            lv_object = m_prg-program+4.
+            lv_path = |functions/groups/{ lv_object }/source/main|.
+          ELSE.
+            lv_object = lv_include.
+            lv_path = |programs/includes/{ lv_object }/source/main|.
+          ENDIF.
+        WHEN OTHERS. " '1', 'M', 'S' ... -> executable / module pool program
+          lv_object = lv_include.
+          lv_path = |programs/programs/{ lv_object }/source/main|.
+      ENDCASE.
+    ENDIF.
+
+    " Namespaced objects: '/' must be URL-encoded inside the object name
+    lv_path = replace( val = lv_path sub = lv_object
+                       with = replace( val = lv_object sub = '/' with = '%2f' occ = 0 ) ).
+    lv_url = to_lower( |adt://{ sy-sysid }/sap/bc/adt/{ lv_path }| ).
+    IF lv_line > 0.
+      lv_url = |{ lv_url }#start={ lv_line },1|.
+    ENDIF.
+
+    cl_gui_frontend_services=>execute(
+      EXPORTING document = lv_url
+      EXCEPTIONS OTHERS  = 1 ).
+    IF sy-subrc <> 0.
+      MESSAGE |Cannot open ADT link: { lv_url }| TYPE 'S' DISPLAY LIKE 'E'.
+    ELSE.
+      MESSAGE |ADT: { lv_url }| TYPE 'S'.
     ENDIF.
   ENDMETHOD.
 

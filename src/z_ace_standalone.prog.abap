@@ -773,6 +773,18 @@ CLASS zcl_ace_code_html DEFINITION
                 i_expand_all  TYPE abap_bool DEFAULT abap_false
       RETURNING VALUE(rv_mm)  TYPE string.
 
+    "! Plain-text skeleton of the same source, for feeding an LLM: structure,
+    "! calls and outside effects with their line numbers, everything else
+    "! reduced to "... N ops". The line numbers make it an index — whoever
+    "! reads it can ask for a range back in full.
+    CLASS-METHODS build_skeleton
+      IMPORTING it_source     TYPE STANDARD TABLE
+                it_kw         TYPE zif_ace_parse_data=>tt_kword OPTIONAL
+                io_scan       TYPE REF TO cl_ci_scan OPTIONAL
+                i_title       TYPE string OPTIONAL
+                i_offset      TYPE i DEFAULT 1
+      RETURNING VALUE(rv_text) TYPE string.
+
   PRIVATE SECTION.
 
     TYPES:
@@ -833,6 +845,13 @@ CLASS zcl_ace_code_html DEFINITION
     " Declarations are not execution: they never appear in the scheme and do
     " not count towards the "N operations" between two branches.
     CONSTANTS c_decls TYPE string VALUE ' DATA CLASS-DATA CONSTANTS STATICS FIELD-SYMBOLS TYPES TYPE-POOLS TABLES RANGES INCLUDE METHODS CLASS-METHODS EVENTS INTERFACES ALIASES DEFINE PARAMETERS SELECT-OPTIONS NODES INFOTYPES '.
+
+    " Statements that reach outside the method: Open SQL, the transaction
+    " boundary, memory and authority. What a unit changes beyond itself is
+    " the second question after what it calls, so these are never folded
+    " away either. Here the keyword IS the fact — unlike calls, there is no
+    " parsed table to ask.
+    CONSTANTS c_side TYPE string VALUE ' SELECT INSERT UPDATE MODIFY DELETE COMMIT ROLLBACK OPEN FETCH CLOSE AUTHORITY-CHECK EXPORT IMPORT SET '.
 
     CONSTANTS c_branches TYPE string VALUE
       ' ELSEIF ELSE WHEN CATCH CLEANUP '.
@@ -3050,7 +3069,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ( butn_type = 3 )
       ( function = 'SCHEME' icon = CONV #( icon_structure )
         quickinfo = 'Mermaid scheme of the control structure of this source'
-        text = 'Scheme' ) ).
+        text = 'Scheme' )
+      ( function = 'SKELETON' icon = CONV #( icon_text_act )
+        quickinfo = 'Text skeleton of this unit: structure, calls and DB access with line numbers'
+        text = 'Skeleton' ) ).
     mo_view_toolbar->add_button_group( button ).
     event-eventid = cl_gui_toolbar=>m_id_function_selected.
     event-appl_event = space.
@@ -3059,6 +3081,41 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     SET HANDLER me->hnd_view_toolbar FOR mo_view_toolbar.
   ENDMETHOD.
   METHOD hnd_view_toolbar.
+    IF fcode = 'SKELETON'.
+      " The compressed form of the unit, for reading or handing to an LLM
+      ensure_calls_parsed( ).
+      READ TABLE ms_sources-tt_progs WITH KEY include = m_prg-include INTO DATA(ls_sk_prog).
+      DATA lt_sk_src TYPE sci_include.
+      IF ls_sk_prog-v_source IS NOT INITIAL.
+        lt_sk_src = ls_sk_prog-v_source.
+      ELSE.
+        lt_sk_src = ls_sk_prog-source_tab.
+      ENDIF.
+      IF lt_sk_src IS INITIAL.
+        mo_code_viewer->get_text( IMPORTING table = lt_sk_src ).
+      ENDIF.
+      DATA(lt_sk_kw) = ls_sk_prog-t_keywords.
+      IF ls_sk_prog-v_keywords IS NOT INITIAL.
+        lt_sk_kw = ls_sk_prog-v_keywords.
+        LOOP AT lt_sk_kw ASSIGNING FIELD-SYMBOL(<ls_skkw>) WHERE tt_calls IS INITIAL.
+          READ TABLE ls_sk_prog-t_keywords INTO DATA(ls_sktkw) WITH KEY index = <ls_skkw>-index.
+          CHECK sy-subrc = 0.
+          <ls_skkw>-tt_calls = ls_sktkw-tt_calls.
+        ENDLOOP.
+      ENDIF.
+
+      DATA lv_skeleton TYPE string.
+      lv_skeleton = zcl_ace_code_html=>build_skeleton(
+        it_source = lt_sk_src
+        it_kw     = lt_sk_kw
+        io_scan   = ls_sk_prog-scan
+        i_title   = unit_title( ) ).
+      DATA lr_skeleton TYPE REF TO data.
+      GET REFERENCE OF lv_skeleton INTO lr_skeleton.
+      NEW zcl_ace_text_viewer( lr_skeleton ).
+      RETURN.
+    ENDIF.
+
     IF fcode = 'SCHEME'.
       " Always a fresh popup, so several branches can be compared side by
       " side. Only the latest one follows the navigation; the older ones stay
@@ -18197,7 +18254,57 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
     rv_mm = rv_mm && |classDef default color:#12369e\n|.
     " Calls stand out: they are where the method hands work to someone else
     rv_mm = rv_mm && |classDef callnode fill:#fbeeee,stroke:#800000,color:#800000\n|.
+    " Database and other outside effects get their own colour
+    rv_mm = rv_mm && |classDef dbnode fill:#e8f2f6,stroke:#1f6f8b,color:#0f5468\n|.
     rv_mm = rv_mm && lv_edges && lv_clicks.
+
+  ENDMETHOD.
+  METHOD build_skeleton.
+
+    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw
+                              io_scan = io_scan i_offset = i_offset ).
+
+    IF i_title IS NOT INITIAL.
+      rv_text = |* { i_title }\n|.
+    ENDIF.
+
+    " Runs of ordinary statements collapse into one marker; the line number
+    " in front of every entry is what makes this an index rather than a
+    " summary — a reader can ask for any range back in full.
+    DATA(lv_run)   = 0.
+    DATA(lv_first) = 0.
+
+    LOOP AT lt_lines INTO DATA(ls_line).
+
+      DATA(lv_keep) = xsdbool(
+        ls_line-kind = 'O' OR ls_line-kind = 'B' OR ls_line-kind = 'C'
+        OR ls_line-kind = 'S'
+        OR ( ls_line-word IS NOT INITIAL
+             AND ( ls_line-call = abap_true OR c_side CS | { ls_line-word } | ) ) ).
+
+      IF lv_keep = abap_false.
+        CHECK ls_line-word IS NOT INITIAL.
+        CHECK c_decls NS | { ls_line-word } |.
+        lv_run = lv_run + 1.
+        IF lv_first = 0. lv_first = ls_line-line + i_offset - 1. ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      IF lv_run > 0.
+        rv_text = rv_text && |{ lv_first }: ... { lv_run } ops\n|.
+        lv_run = 0.
+        lv_first = 0.
+      ENDIF.
+
+      DATA(lv_ind) = ls_line-depth * 2.
+      rv_text = rv_text && |{ ls_line-line + i_offset - 1 }: | &&
+                repeat( val = ` ` occ = lv_ind ) &&
+                condense( stmt_text( it_lines = lt_lines i_line = ls_line-line ) ) && |\n|.
+    ENDLOOP.
+
+    IF lv_run > 0.
+      rv_text = rv_text && |{ lv_first }: ... { lv_run } ops\n|.
+    ENDIF.
 
   ENDMETHOD.
   METHOD arrow.
@@ -18244,8 +18351,10 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       " editor navigates by on double-click. No guessing from the text.
       DATA(lv_txt) = stmt_text( it_lines = it_lines i_line = ls_op-line ).
       DATA(lv_is_call) = ls_op-call.
+      " Database access and the like stay visible too
+      DATA(lv_is_side) = xsdbool( c_side CS | { ls_op-word } | ).
 
-      IF lv_expanded = abap_false AND lv_is_call = abap_false.
+      IF lv_expanded = abap_false AND lv_is_call = abap_false AND lv_is_side = abap_false.
         APPEND ls_op-line TO lt_pend.
         CONTINUE.
       ENDIF.
@@ -18267,6 +18376,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       cv_mm = cv_mm && |  { lv_opn }("{ scheme_label( lv_txt ) }")\n|.
       IF lv_is_call = abap_true.
         cv_styles = cv_styles && |class { lv_opn } callnode\n|.
+      ELSEIF lv_is_side = abap_true.
+        cv_styles = cv_styles && |class { lv_opn } dbnode\n|.
       ENDIF.
       cv_edges = cv_edges && |  { lv_chain }{ COND string(
         WHEN lv_chain = i_prev THEN arrow( i_label ) ELSE ` --> ` ) }{ lv_opn }\n|.
@@ -19342,8 +19453,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-21T15:13:38.398Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-21T15:13:38.398Z`.
+* abapmerge 0.16.7 - 2026-07-22T03:19:39.254Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-22T03:19:39.254Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
