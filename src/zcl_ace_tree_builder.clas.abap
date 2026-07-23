@@ -573,7 +573,12 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
   METHOD show_tree_events.
     DATA lv_events_rel TYPE salv_de_node_key.
     READ TABLE mo_window->mo_viewer->mt_steps INDEX 1 INTO DATA(first_step).
-    IF first_step-line IS NOT INITIAL AND first_step-program = mo_window->m_prg-program.
+    " Code Flow start line applies to reports only, never to class pools
+    DATA(lv_main_str) = CONV string( mo_window->m_prg-program ).
+    DATA(lv_is_pool)  = xsdbool( strlen( lv_main_str ) >= 32
+                             AND substring( val = lv_main_str off = 30 len = 2 ) = 'CP' ).
+    IF first_step-line IS NOT INITIAL AND first_step-program = mo_window->m_prg-program
+       AND lv_is_pool = abap_false.
       lv_events_rel = mo_tree->add_node( i_name = 'Events' i_icon = CONV #( icon_folder )
         i_rel = i_root_key i_tree = VALUE #( ) ).
       mo_tree->add_node( i_name = 'Code Flow start line' i_icon = CONV #( icon_oo_event )

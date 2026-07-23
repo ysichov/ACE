@@ -10598,6 +10598,18 @@ METHOD load_package_object.
     mo_viewer->mo_window->m_prg-include = i_prog.
     mo_viewer->mo_window->set_program( CONV #( i_prog ) ).
 
+    " Class pool main include is just a skeleton of includes — show the
+    " public section instead when it is known after parsing
+    DATA(lv_prog_str) = CONV string( i_prog ).
+    IF strlen( lv_prog_str ) >= 32 AND substring( val = lv_prog_str off = 30 len = 2 ) = 'CP'.
+      DATA(lv_pubsec) = CONV program( substring( val = lv_prog_str len = 30 ) && 'CU' ).
+      READ TABLE mo_viewer->mo_window->ms_sources-tt_sections
+        WITH KEY include = lv_pubsec TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        mo_viewer->mo_window->set_program( lv_pubsec ).
+      ENDIF.
+    ENDIF.
+
     DATA(o_node) = mo_tree->get_nodes( )->get_node( i_node_key ).
 
     " Already loaded? just show the source, do not rebuild the subtree
@@ -19537,8 +19549,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-23T07:18:25.237Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-23T07:18:25.237Z`.
+* abapmerge 0.16.7 - 2026-07-23T15:21:23.203Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-23T15:21:23.203Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
