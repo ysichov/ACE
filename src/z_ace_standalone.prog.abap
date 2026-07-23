@@ -2782,6 +2782,8 @@ public section.
   data M_SHOW_STEP type BOOLEAN .
   data MT_BPOINTS type TT_BPOINTS .
   data MO_VIEWER type ref to ZCL_ACE .
+  " Fixed-height row for the main toolbar (absolute mode, like the view toolbar)
+  data MO_TB_SPLITTER type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_SPLITTER_CODE type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_SPLITTER_VAR type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_SPLITTER_STEPS type ref to CL_GUI_SPLITTER_CONTAINER .
@@ -3004,14 +3006,21 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       m_hist_depth = 19.
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
+      " Outer splitter: fixed 28px toolbar row on top (absolute mode),
+      " the rest of the window below - same technique as the view toolbar
+      CREATE OBJECT mo_tb_splitter
+        EXPORTING parent = mo_box rows = 2 columns = 1 EXCEPTIONS OTHERS = 1.
+      mo_tb_splitter->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_toolbar_container ).
+      mo_tb_splitter->set_row_mode( mode = cl_gui_splitter_container=>mode_absolute ).
+      mo_tb_splitter->set_row_height( id = 1 height = 28 ).
+      mo_tb_splitter->set_row_sash( id = 1 type = 0 value = 0 ).
+      DATA lo_main TYPE REF TO cl_gui_container.
+      mo_tb_splitter->get_container( EXPORTING row = 2 column = 1 RECEIVING container = lo_main ).
       CREATE OBJECT mo_splitter
-        EXPORTING parent = mo_box rows = 3 columns = 1 EXCEPTIONS OTHERS = 1.
-      mo_splitter->get_container( EXPORTING row = 2 column = 1 RECEIVING container = mo_code_container ).
-      mo_splitter->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_toolbar_container ).
-      mo_splitter->get_container( EXPORTING row = 3 column = 1 RECEIVING container = mo_tables_container ).
-      mo_splitter->set_row_height( id = 1 height = '4' ).
-      mo_splitter->set_row_height( id = 2 height = '70' ).
-      mo_splitter->set_row_sash( id = 1 type = 0 value = 0 ).
+        EXPORTING parent = lo_main rows = 2 columns = 1 EXCEPTIONS OTHERS = 1.
+      mo_splitter->get_container( EXPORTING row = 1 column = 1 RECEIVING container = mo_code_container ).
+      mo_splitter->get_container( EXPORTING row = 2 column = 1 RECEIVING container = mo_tables_container ).
+      mo_splitter->set_row_height( id = 1 height = '73' ).
       CREATE OBJECT mo_splitter_code
         EXPORTING parent = mo_code_container rows = 1 columns = 2 EXCEPTIONS OTHERS = 1.
       mo_splitter_code->get_container( EXPORTING row = 1 column = 2 RECEIVING container = mo_editor_container ).
@@ -19528,8 +19537,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-22T15:49:48.327Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-22T15:49:48.327Z`.
+* abapmerge 0.16.7 - 2026-07-23T07:18:25.237Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-23T07:18:25.237Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
