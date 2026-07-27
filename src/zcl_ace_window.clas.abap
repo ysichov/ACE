@@ -5,27 +5,6 @@ class ZCL_ACE_WINDOW definition
 
 public section.
 
-  types:
-    BEGIN OF ts_table,
-               ref      TYPE REF TO data,
-               kind(1),
-               value    TYPE string,
-               typename TYPE abap_abstypename,
-               fullname TYPE string,
-             END OF ts_table .
-  types:
-    BEGIN OF ts_calls,
-               class TYPE string,
-               event TYPE string,
-               type  TYPE string,
-               name  TYPE string,
-               outer TYPE string,
-               inner TYPE string,
-               super TYPE boolean,
-             END OF ts_calls .
-  types:
-    tt_calls TYPE STANDARD TABLE OF ts_calls WITH NON-UNIQUE KEY outer .
-
   " --- aliases for types moved to ZIF_ACE_PARSE_DATA ---
   TYPES ts_event       TYPE zif_ace_parse_data=>ts_event.
   TYPES tt_events      TYPE zif_ace_parse_data=>tt_events.
@@ -53,48 +32,16 @@ public section.
   " ts_source is now an alias for the canonical type in ZIF_ACE_PARSE_DATA
   TYPES ts_source TYPE zif_ace_parse_data=>ts_parse_data .
   types:
-    BEGIN OF ts_locals,
-               program    TYPE tpda_program,
-               eventtype  TYPE tpda_event_type,
-               eventname  TYPE tpda_event,
-               loc_fill   TYPE boolean,
-               locals_tab TYPE tpda_scr_locals_it,
-               mt_fs      TYPE tpda_scr_locals_it,
-             END OF ts_locals .
-  types:
-    BEGIN OF ts_globals,
-               program     TYPE tpda_program,
-               glob_fill   TYPE boolean,
-               globals_tab TYPE tpda_scr_globals_it,
-               mt_fs       TYPE tpda_scr_locals_it,
-             END OF ts_globals .
-  types:
     BEGIN OF ts_watch,
                program TYPE string,
                line    TYPE i,
              END OF ts_watch .
   types:
     tt_watch TYPE STANDARD  TABLE OF ts_watch WITH EMPTY KEY .
-  types:
-    BEGIN OF ts_bpoint,
-               program TYPE string,
-               include TYPE string,
-               line    TYPE i,
-               type    TYPE char1,
-               del     TYPE char1,
-             END OF ts_bpoint .
-  types:
-    tt_bpoints TYPE STANDARD TABLE OF ts_bpoint WITH EMPTY KEY .
-  types:
-    tt_table TYPE STANDARD TABLE OF ts_table
-            WITH NON-UNIQUE DEFAULT KEY .
 
-  data M_VERSION type X .
   data M_HISTORY type X .
-  data M_VISUALIZATION type X .
   data M_VARHIST type X .
   data M_ZCODE type X .
-  data M_DIRECTION type X .
   data M_PRG type TPDA_SCR_PRG_INFO .
   data M_DEBUG_BUTTON like SY-UCOMM .
 
@@ -108,24 +55,14 @@ public section.
   data MT_NAV_HISTORY type TT_NAV_HISTORY.
   data MV_NAV_IDX     type I value 0.
   data MV_NAV_SILENT  type BOOLEAN.
-  data M_SHOW_STEP type BOOLEAN .
-  data MT_BPOINTS type TT_BPOINTS .
   data MO_VIEWER type ref to ZCL_ACE .
   " Fixed-height row for the main toolbar (absolute mode, like the view toolbar)
   data MO_TB_SPLITTER type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_SPLITTER_CODE type ref to CL_GUI_SPLITTER_CONTAINER .
-  data MO_SPLITTER_VAR type ref to CL_GUI_SPLITTER_CONTAINER .
-  data MO_SPLITTER_STEPS type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_TOOLBAR_CONTAINER type ref to CL_GUI_CONTAINER .
-  data MO_IMPORTING_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_LOCALS_CONTAINER type ref to CL_GUI_CONTAINER .
-  data MO_EXPORTING_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_CODE_CONTAINER type ref to CL_GUI_CONTAINER .
-  data MO_IMP_EXP_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_EDITOR_CONTAINER type ref to CL_GUI_CONTAINER .
-  data MO_STEPS_CONTAINER type ref to CL_GUI_CONTAINER .
-  data MO_STACK_CONTAINER type ref to CL_GUI_CONTAINER .
-  data MO_HIST_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_CODE_VIEWER type ref to CL_GUI_ABAPEDIT .
   " --- second toolbar: Classic / HTML view of the source ---
   data MO_VIEW_SPLITTER type ref to CL_GUI_SPLITTER_CONTAINER .
@@ -145,25 +82,13 @@ public section.
     mt_stack               TYPE TABLE OF ZCL_ACE=>T_STACK .
   data MO_TOOLBAR type ref to CL_GUI_TOOLBAR .
   data MO_SALV_STACK type ref to CL_SALV_TABLE .
-  data MO_SALV_STEPS type ref to CL_SALV_TABLE .
-  data MO_SALV_HIST type ref to CL_SALV_TABLE .
-  data MT_BREAKS type TPDA_BP_PERSISTENT_IT .
   data MT_WATCH type TT_WATCH .
   data MT_COVERAGE type TT_WATCH .
   data:
     mt_calls               TYPE TABLE OF ZCL_ACE=>TS_CALL .
   data M_HIST_DEPTH type I value 19 .
-  data M_START_STACK type I .
   data MV_CALC_ONLY type BOOLEAN .
-  data:
-    mt_source              TYPE STANDARD  TABLE OF ts_source .
   data MS_SOURCES type TS_SOURCE .
-  data:
-    mt_params              TYPE STANDARD  TABLE OF ZCL_ACE=>ts_params .
-  data:
-    mt_locals_set          TYPE STANDARD TABLE OF ts_locals .
-  data:
-    mt_globals_set         TYPE STANDARD TABLE OF ts_globals .
   data MS_SEL_CALL type ZCL_ACE=>TS_CALLS_LINE .
   types:
     BEGIN OF ts_code_context,
@@ -1114,7 +1039,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     CASE kw-name.
 
       WHEN 'CLASS' OR 'INTERFACE'.
-        " Ищем стейтмент по строке
+        " Find the statement by line
         LOOP AT prog-scan->statements INTO DATA(ls_stmt).
           READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw_tok).
           IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
@@ -1144,7 +1069,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           WHEN OTHERS.
             RETURN.
         ENDCASE.
-        " Конвертируем реальную строку → виртуальную в целевом инклуде
+        " Convert the real line → the virtual line in the target include
         IF lv_target_include IS NOT INITIAL AND lv_target_vline > 0.
           READ TABLE ms_sources-tt_progs WITH KEY include = lv_target_include INTO DATA(lv_tprog).
           IF sy-subrc = 0.
@@ -1156,7 +1081,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'METHOD'.
-        " Читаем имя метода из токенов
+        " Read the method name from the tokens
         LOOP AT prog-scan->statements INTO ls_stmt.
           READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
           IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
@@ -1165,15 +1090,15 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         READ TABLE prog-scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok.
         CHECK sy-subrc = 0.
         DATA(lv_meth_name) = ls_tok-str.
-        " Ищем сигнатуру в def_include через tt_calls_line
+        " Find the signature in def_include via tt_calls_line
         READ TABLE ms_sources-tt_calls_line
           WITH KEY include = kw-include eventtype = 'METHOD' eventname = lv_meth_name
           INTO DATA(ls_cl).
         IF sy-subrc = 0 AND ls_cl-def_include IS NOT INITIAL AND ls_cl-def_line > 0.
-          " Переходим на METHODS name в def_include (CU/CO/CI инклуд)
+          " Jump to METHODS name in def_include (CU/CO/CI include)
           lv_target_include = ls_cl-def_include.
           lv_target_vline   = ls_cl-def_line.
-          " Конвертируем реальную строку → виртуальную
+          " Convert the real line → the virtual line
           READ TABLE ms_sources-tt_progs WITH KEY include = lv_target_include INTO DATA(lv_defprog).
           IF sy-subrc = 0.
             DATA(lr_defkw) = REF #( lv_defprog-t_keywords ).
@@ -1182,7 +1107,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             IF sy-subrc = 0. lv_target_vline = defkw-v_line. ENDIF.
           ENDIF.
         ELSE.
-          " Fallback — прыгаем на ENDMETHOD в том же инклуде
+          " Fallback — jump to ENDMETHOD in the same include
           LOOP AT lr_kw->* INTO DATA(kw2) WHERE name = 'ENDMETHOD' AND index > kw-index.
             lv_target_vline   = kw2-v_line.
             lv_target_include = m_prg-include.
@@ -1191,7 +1116,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'METHODS' OR 'CLASS-METHODS'.
-        " Читаем имя метода
+        " Read the method name
         LOOP AT prog-scan->statements INTO ls_stmt.
           READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
           IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
@@ -1200,14 +1125,14 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         READ TABLE prog-scan->tokens INDEX ls_stmt-from + 1 INTO ls_tok.
         CHECK sy-subrc = 0.
         lv_meth_name = ls_tok-str.
-        " Ищем тело метода в include через tt_calls_line
+        " Find the method body in the include via tt_calls_line
         READ TABLE ms_sources-tt_calls_line
           WITH KEY eventtype = 'METHOD' eventname = lv_meth_name
           INTO ls_cl.
         IF sy-subrc = 0 AND ls_cl-include IS NOT INITIAL.
-          " Переходим на METHOD name в CM-инклуде
+          " Jump to METHOD name in the CM include
           lv_target_include = ls_cl-include.
-          " Ищем v_line строки METHOD в CM-инклуде
+          " Find the v_line of the METHOD line in the CM include
           READ TABLE ms_sources-tt_progs WITH KEY include = lv_target_include INTO DATA(lv_implprog).
           IF sy-subrc = 0.
             DATA(lr_implkw) = REF #( lv_implprog-t_keywords ).
@@ -1227,7 +1152,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'INCLUDE'.
-        " Читаем имя include-программы из токенов и переходим на строку 1
+        " Read the include program name from the tokens and jump to line 1
         LOOP AT prog-scan->statements INTO ls_stmt.
           READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
           IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
@@ -1241,14 +1166,14 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'ENDMETHOD'.
-        " → прыгаем на открывающий METHOD
+        " → jump to the opening METHOD
         LOOP AT lr_kw->* INTO kw2 WHERE name = 'METHOD' AND index < kw-index.
           lv_target_vline   = kw2-v_line.
           lv_target_include = m_prg-include.
         ENDLOOP.
 
       WHEN 'PERFORM'.
-        " Читаем имя формы из токенов, ищем в tt_calls_line
+        " Read the form name from the tokens, look it up in tt_calls_line
         LOOP AT prog-scan->statements INTO ls_stmt.
           READ TABLE prog-scan->tokens INDEX ls_stmt-from INTO ls_kw_tok.
           IF sy-subrc = 0 AND ls_kw_tok-row = kw-line. EXIT. ENDIF.
@@ -1262,7 +1187,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
               INTO DATA(ls_form_cl).
             IF sy-subrc = 0.
               lv_target_include = ls_form_cl-include.
-              " Ищем v_line строки FORM в инклуде
+              " Find the v_line of the FORM line in the include
               READ TABLE ms_sources-tt_progs WITH KEY include = lv_target_include INTO DATA(ls_form_prog).
               IF sy-subrc = 0.
                 DATA(lr_fkw) = REF #( ls_form_prog-t_keywords ).
@@ -1527,7 +1452,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       TYPES: lntab TYPE STANDARD TABLE OF i.
       DATA: lines TYPE lntab, line_num TYPE i.
 
-      " Единственная точка записи истории навигации
+      " The single place where navigation history is written
       IF i_line IS NOT INITIAL AND m_prg-include IS NOT INITIAL AND mv_nav_silent IS INITIAL.
         push_nav_entry( i_include = m_prg-include i_line = i_line ).
       ENDIF.
@@ -1837,11 +1762,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
   METHOD push_nav_entry.
-    " Если мы не в конце истории — обрезаем "будущее"
+    " When not at the end of the history, drop the "future" entries
     IF mv_nav_idx < lines( mt_nav_history ).
       DELETE mt_nav_history FROM mv_nav_idx + 1.
     ENDIF.
-    " Не дублируем подряд одинаковые записи
+    " Never record the same entry twice in a row
     IF mt_nav_history IS NOT INITIAL.
       DATA(ls_last) = mt_nav_history[ lines( mt_nav_history ) ].
       IF ls_last-include = i_include AND ls_last-line = i_line.

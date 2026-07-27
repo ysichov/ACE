@@ -48,6 +48,64 @@ CLASS zcl_ace_metrics_window DEFINITION
            END OF ts_row.
     TYPES tt_row TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
 
+    "! Running sums over a set of code units. SHOW and BUILD_HTML present the
+    "! same numbers differently, so the arithmetic lives here once.
+    TYPES: BEGIN OF ts_totals,
+             units  TYPE i,
+             cc     TYPE i,
+             loc    TYPE i,
+             lloc   TYPE i,
+             cloc   TYPE i,
+             n1     TYPE i,
+             n2     TYPE i,
+             vol    TYPE f,
+             eff    TYPE f,
+             time_t TYPE f,
+             bugs   TYPE f,
+           END OF ts_totals.
+
+    "! I_PART of I_WHOLE as "12.3%", or '-' when I_WHOLE is zero.
+    CLASS-METHODS pct
+      IMPORTING i_part    TYPE i
+                i_whole   TYPE i
+      RETURNING VALUE(rv) TYPE string.
+
+    "! Adds one unit's metrics into a running total.
+    CLASS-METHODS add_unit
+      IMPORTING is_unit TYPE zcl_ace_metrics=>ts_unit_result
+      CHANGING  cs_tot  TYPE ts_totals.
+
+    "! Sums every unit in the table.
+    CLASS-METHODS sum_units
+      IMPORTING it_units     TYPE zcl_ace_metrics=>tt_unit_results
+      RETURNING VALUE(rs_tot) TYPE ts_totals.
+
+    "! One metrics row for a single code unit. I_UNITS is what the row reports
+    "! in its "units" column — SHOW leaves it at 0, BUILD_HTML counts 1 per unit.
+    CLASS-METHODS unit_row
+      IMPORTING is_unit   TYPE zcl_ace_metrics=>ts_unit_result
+                i_name    TYPE string
+                i_units   TYPE i DEFAULT 0
+      RETURNING VALUE(rs) TYPE ts_row.
+
+    "! A subtotal/total row built from accumulated sums rather than one unit.
+    CLASS-METHODS totals_row
+      IMPORTING is_tot    TYPE ts_totals
+                i_name    TYPE string
+      RETURNING VALUE(rs) TYPE ts_row.
+
+    "! Splits a METHOD unit name "CLASS=>METH" into its two parts.
+    "! A name without "=>" yields E_CLASS = the whole name and E_METHOD unchanged.
+    CLASS-METHODS split_unit_name
+      IMPORTING i_unit_name TYPE string
+      EXPORTING e_class     TYPE string
+                e_method    TYPE string.
+
+    "! Distinct class names across all METHOD units, in order of first appearance.
+    CLASS-METHODS class_names
+      IMPORTING it_units     TYPE zcl_ace_metrics=>tt_unit_results
+      RETURNING VALUE(rt)    TYPE string_table.
+
     CLASS-METHODS format_f2
       IMPORTING i_val     TYPE f
       RETURNING VALUE(rv) TYPE string.
@@ -95,111 +153,49 @@ METHOD show.
     RETURN.
   ENDIF.
 
-  DATA ls_u       TYPE zcl_ace_metrics=>ts_unit_result.
-  DATA lv_ratio   TYPE string.
-  DATA lv_tot_cc   TYPE i.
-  DATA lv_tot_loc  TYPE i.
-  DATA lv_tot_lloc TYPE i.
-  DATA lv_tot_cloc TYPE i.
-  DATA lv_tot_vol  TYPE f.
-  DATA lv_tot_eff  TYPE f.
-  DATA lv_tot_time_t TYPE f.
-  DATA lv_tot_bugs   TYPE f.
-  DATA lv_tot_n1   TYPE i.
-  DATA lv_tot_n2   TYPE i.
+  DATA ls_u     TYPE zcl_ace_metrics=>ts_unit_result.
+  DATA ls_tot   TYPE ts_totals.
 
   " ---------------------------------------------------------------
   " Accumulate grand totals
   " ---------------------------------------------------------------
-  LOOP AT ls_result-units INTO ls_u.
-    ADD ls_u-cyclomatic TO lv_tot_cc.
-    ADD ls_u-loc        TO lv_tot_loc.
-    ADD ls_u-lloc       TO lv_tot_lloc.
-    ADD ls_u-cloc       TO lv_tot_cloc.
-    ADD ls_u-n1         TO lv_tot_n1.
-    ADD ls_u-n2         TO lv_tot_n2.
-    lv_tot_vol = lv_tot_vol + ls_u-volume.
-    lv_tot_eff = lv_tot_eff + ls_u-effort.
-    lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
-    lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
-  ENDLOOP.
-
-  IF lv_tot_loc > 0.
-    lv_ratio = |{ CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%|.
-  ELSE.
-    lv_ratio = '-'.
-  ENDIF.
+  ls_tot = sum_units( ls_result-units ).
+  DATA(lv_ratio) = pct( i_part = ls_tot-cloc i_whole = ls_tot-loc ).
 
   " ---------------------------------------------------------------
   " 1. Text summary
   " ---------------------------------------------------------------
   cl_demo_output=>write_text( |=== Code Metrics: { i_program } ===, Units analysed                    : { lines( ls_result-units ) }| ).
-  cl_demo_output=>write_text( |Total Cyclomatic Complexity: { lv_tot_cc },  Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }|  ).
-  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( lv_tot_vol ) }, Total Effort: { format_f2( lv_tot_eff ) }| ).
-  DATA(lv_sum_time_t) = lv_tot_eff / 18.
-  cl_demo_output=>write_text( |Time: { format_time( lv_sum_time_t ) }, Expected Bugs: { format_f2( lv_tot_bugs ) }| ).
+  cl_demo_output=>write_text( |Total Cyclomatic Complexity: { ls_tot-cc },  Avg Cyclomatic Complexity per unit: { format_f2( ls_result-avg_cyclomatic ) }|  ).
+  cl_demo_output=>write_text( |Total Halstead Volume: { format_f2( ls_tot-vol ) }, Total Effort: { format_f2( ls_tot-eff ) }| ).
+  DATA(lv_sum_time_t) = ls_tot-eff / 18.
+  cl_demo_output=>write_text( |Time: { format_time( lv_sum_time_t ) }, Expected Bugs: { format_f2( ls_tot-bugs ) }| ).
 
-  cl_demo_output=>write_text( |LOC / LLOC / CLOC/ CLOC Ratio     : { lv_tot_loc } / { lv_tot_lloc } / { lv_tot_cloc } / { CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%| ).
+  cl_demo_output=>write_text( |LOC / LLOC / CLOC/ CLOC Ratio     : { ls_tot-loc } / { ls_tot-lloc } / { ls_tot-cloc } / { lv_ratio }| ).
 
   " ---------------------------------------------------------------
-  " 2. TOTAL — одна строка таблицей
+  " 2. TOTAL — a single summary row
   " ---------------------------------------------------------------
-  DATA lt_total TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
-  APPEND VALUE ts_row(
-    name        = |{ i_program } TOTAL|
-    cc          = lv_tot_cc
-    risk        = ''
-    n1          = lv_tot_n1        n2     = lv_tot_n2
-    eta1        = ls_result-incl_big_n1
-    eta2        = ls_result-incl_big_n2
-    vocab       = ls_result-incl_vocabulary
-    length      = ls_result-incl_prog_length
-    loc         = lv_tot_loc       lloc   = lv_tot_lloc   cloc = lv_tot_cloc
-    cloc_ratio  = lv_ratio
-    volume      = format_f2( lv_tot_vol )
-    difficulty  = format_f2( ls_result-incl_difficulty )
-    effort      = format_f2( lv_tot_eff )
-    time_t      = format_time( lv_tot_time_t )
-    bugs        = format_f2( lv_tot_bugs )
-  ) TO lt_total.
+  DATA lt_total TYPE tt_row.
+  DATA(ls_total_row) = totals_row( is_tot = ls_tot
+                                   i_name = |{ i_program } TOTAL| ).
+  ls_total_row-units      = 0.
+  ls_total_row-eta1       = ls_result-incl_big_n1.
+  ls_total_row-eta2       = ls_result-incl_big_n2.
+  ls_total_row-vocab      = ls_result-incl_vocabulary.
+  ls_total_row-length     = ls_result-incl_prog_length.
+  ls_total_row-difficulty = format_f2( ls_result-incl_difficulty ).
+  APPEND ls_total_row TO lt_total.
 
   cl_demo_output=>write_data( value = lt_total name = `Total` ).
 
   " ---------------------------------------------------------------
   " 3. EVENTS
   " ---------------------------------------------------------------
-  DATA lt_events TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+  DATA lt_events TYPE tt_row.
   LOOP AT ls_result-units INTO ls_u
     WHERE unit_type <> 'METHOD' AND unit_type <> 'FORM'.
-    IF ls_u-loc > 0.
-      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
-    ELSE.
-      lv_ratio = '-'.
-    ENDIF.
-    DATA(lv_mi_str)   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
-    DATA(lv_mi_grade) = COND string(
-      WHEN ls_u-mi = 0     THEN '-'
-      WHEN ls_u-mi >= 85   THEN 'HIGH'
-      WHEN ls_u-mi >= 65   THEN 'MEDIUM'
-      ELSE                      'LOW' ).
-    APPEND VALUE ts_row(
-      name        = |{ ls_u-unit_name }|
-      cc          = ls_u-cyclomatic
-      risk        = cc_rating( ls_u-cyclomatic )
-      n1          = ls_u-n1        n2   = ls_u-n2
-      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
-      vocab       = ls_u-vocabulary
-      length      = ls_u-prog_length
-      volume      = format_f2( ls_u-volume )
-      difficulty  = format_f2( ls_u-difficulty )
-      effort      = format_f2( ls_u-effort )
-      time_t      = format_time( ls_u-time_t )
-      bugs        = format_f2( ls_u-bugs )
-      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
-      cloc_ratio  = lv_ratio
-      mi          = lv_mi_str
-      mi_rating   = lv_mi_grade
-    ) TO lt_events.
+    APPEND unit_row( is_unit = ls_u i_name = ls_u-unit_name ) TO lt_events.
   ENDLOOP.
 
   IF lt_events IS NOT INITIAL.
@@ -210,37 +206,9 @@ METHOD show.
   " ---------------------------------------------------------------
   " 4. FORMs
   " ---------------------------------------------------------------
-  DATA lt_forms TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+  DATA lt_forms TYPE tt_row.
   LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'FORM'.
-    IF ls_u-loc > 0.
-      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
-    ELSE.
-      lv_ratio = '-'.
-    ENDIF.
-    lv_mi_str   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
-    lv_mi_grade = COND string(
-      WHEN ls_u-mi = 0     THEN '-'
-      WHEN ls_u-mi >= 85   THEN 'HIGH'
-      WHEN ls_u-mi >= 65   THEN 'MEDIUM'
-      ELSE                      'LOW' ).
-    APPEND VALUE ts_row(
-      name        = ls_u-unit_name
-      cc          = ls_u-cyclomatic
-      risk        = cc_rating( ls_u-cyclomatic )
-      n1          = ls_u-n1        n2   = ls_u-n2
-      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
-      vocab       = ls_u-vocabulary
-      length      = ls_u-prog_length
-      volume      = format_f2( ls_u-volume )
-      difficulty  = format_f2( ls_u-difficulty )
-      effort      = format_f2( ls_u-effort )
-      time_t      = format_time( ls_u-time_t )
-      bugs        = format_f2( ls_u-bugs )
-      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
-      cloc_ratio  = lv_ratio
-      mi          = lv_mi_str
-      mi_rating   = lv_mi_grade
-    ) TO lt_forms.
+    APPEND unit_row( is_unit = ls_u i_name = ls_u-unit_name ) TO lt_forms.
   ENDLOOP.
 
   IF lt_forms IS NOT INITIAL.
@@ -251,88 +219,26 @@ METHOD show.
   " ---------------------------------------------------------------
   " 5. METHODs grouped by class
   " ---------------------------------------------------------------
-  DATA lt_classes TYPE STANDARD TABLE OF string WITH EMPTY KEY.
-  LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
-    DATA(lv_class) = ls_u-unit_name.
-    FIND FIRST OCCURRENCE OF '=>' IN lv_class MATCH OFFSET DATA(lv_off).
-    IF sy-subrc = 0.
-      lv_class = lv_class(lv_off).
-    ENDIF.
-    READ TABLE lt_classes WITH KEY table_line = lv_class TRANSPORTING NO FIELDS.
-    IF sy-subrc <> 0.
-      APPEND lv_class TO lt_classes.
-    ENDIF.
-  ENDLOOP.
+  DATA(lt_classes) = class_names( ls_result-units ).
 
-  DATA lt_rows TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+  DATA lt_rows    TYPE tt_row.
+  DATA ls_cls_tot TYPE ts_totals.
 
   LOOP AT lt_classes INTO DATA(lv_cls).
     CLEAR lt_rows.
-    CLEAR: lv_tot_cc, lv_tot_loc, lv_tot_lloc, lv_tot_cloc,
-           lv_tot_vol, lv_tot_eff, lv_tot_time_t, lv_tot_bugs,
-           lv_tot_n1, lv_tot_n2.
+    CLEAR ls_cls_tot.
 
     LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
-      DATA(lv_mname) = ls_u-unit_name.
-      DATA(lv_mcls)  = ls_u-unit_name.
-      FIND FIRST OCCURRENCE OF '=>' IN lv_mname MATCH OFFSET DATA(lv_moff).
-      IF sy-subrc = 0.
-        lv_mcls  = lv_mname(lv_moff).
-        DATA(lv_moff2) = lv_moff + 2.
-        lv_mname = lv_mname+lv_moff2.
-      ENDIF.
+      split_unit_name( EXPORTING i_unit_name = ls_u-unit_name
+                       IMPORTING e_class     = DATA(lv_mcls)
+                                 e_method    = DATA(lv_mname) ).
       CHECK lv_mcls = lv_cls.
 
-      IF ls_u-loc > 0.
-        lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
-      ELSE.
-        lv_ratio = '-'.
-      ENDIF.
-      lv_mi_str   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
-      lv_mi_grade = COND string(
-        WHEN ls_u-mi = 0     THEN '-'
-        WHEN ls_u-mi >= 85   THEN 'HIGH'
-        WHEN ls_u-mi >= 65   THEN 'MEDIUM'
-        ELSE                      'LOW' ).
-
-      APPEND VALUE ts_row(
-        name        = lv_mname
-        cc          = ls_u-cyclomatic
-        risk        = cc_rating( ls_u-cyclomatic )
-        n1          = ls_u-n1        n2   = ls_u-n2
-        eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
-        vocab       = ls_u-vocabulary
-        length      = ls_u-prog_length
-        volume      = format_f2( ls_u-volume )
-        difficulty  = format_f2( ls_u-difficulty )
-        effort      = format_f2( ls_u-effort )
-        time_t      = format_time( ls_u-time_t )
-        bugs        = format_f2( ls_u-bugs )
-        loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
-        cloc_ratio  = lv_ratio
-        mi          = lv_mi_str
-        mi_rating   = lv_mi_grade
-      ) TO lt_rows.
-
-      ADD ls_u-cyclomatic TO lv_tot_cc.
-      ADD ls_u-loc        TO lv_tot_loc.
-      ADD ls_u-lloc       TO lv_tot_lloc.
-      ADD ls_u-cloc       TO lv_tot_cloc.
-      ADD ls_u-n1         TO lv_tot_n1.
-      ADD ls_u-n2         TO lv_tot_n2.
-      lv_tot_vol    = lv_tot_vol    + ls_u-volume.
-      lv_tot_eff    = lv_tot_eff    + ls_u-effort.
-      lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
-      lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
+      APPEND unit_row( is_unit = ls_u i_name = lv_mname ) TO lt_rows.
+      add_unit( EXPORTING is_unit = ls_u CHANGING cs_tot = ls_cls_tot ).
     ENDLOOP.
 
     CHECK lt_rows IS NOT INITIAL.
-
-    IF lv_tot_loc > 0.
-      lv_ratio = |{ CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%|.
-    ELSE.
-      lv_ratio = '-'.
-    ENDIF.
 
     SORT lt_rows BY cc DESCENDING.
 
@@ -341,26 +247,15 @@ METHOD show.
       INTO DATA(ls_ct).
     IF sy-subrc <> 0. CLEAR ls_ct. ENDIF.
 
-    APPEND VALUE ts_row(
-      name        = |CLASS TOTAL|
-      cc          = lv_tot_cc
-      risk        = ''
-      n1          = lv_tot_n1
-      n2          = lv_tot_n2
-      eta1        = ls_ct-cls_big_n1
-      eta2        = ls_ct-cls_big_n2
-      vocab       = ls_ct-cls_vocabulary
-      length      = ls_ct-cls_prog_length
-      loc         = lv_tot_loc
-      lloc        = lv_tot_lloc
-      cloc        = lv_tot_cloc
-      cloc_ratio  = lv_ratio
-      volume      = format_f2( lv_tot_vol )
-      difficulty  = format_f2( ls_ct-cls_difficulty )
-      effort      = format_f2( lv_tot_eff )
-      time_t      = format_time( lv_tot_time_t )
-      bugs        = format_f2( lv_tot_bugs )
-    ) TO lt_rows.
+    DATA(ls_cls_row) = totals_row( is_tot = ls_cls_tot
+                                   i_name = |CLASS TOTAL| ).
+    ls_cls_row-units      = 0.
+    ls_cls_row-eta1       = ls_ct-cls_big_n1.
+    ls_cls_row-eta2       = ls_ct-cls_big_n2.
+    ls_cls_row-vocab      = ls_ct-cls_vocabulary.
+    ls_cls_row-length     = ls_ct-cls_prog_length.
+    ls_cls_row-difficulty = format_f2( ls_ct-cls_difficulty ).
+    APPEND ls_cls_row TO lt_rows.
 
     cl_demo_output=>write_data( value = lt_rows name = lv_cls ).
     cl_demo_output=>write_text( '' ).
@@ -370,38 +265,10 @@ METHOD show.
   " ---------------------------------------------------------------
   " 6. All methods sorted by CC DESC
   " ---------------------------------------------------------------
-  DATA lt_all TYPE STANDARD TABLE OF ts_row WITH EMPTY KEY.
+  DATA lt_all TYPE tt_row.
 
   LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
-    IF ls_u-loc > 0.
-      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
-    ELSE.
-      lv_ratio = '-'.
-    ENDIF.
-    lv_mi_str   = COND string( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' ).
-    lv_mi_grade = COND string(
-      WHEN ls_u-mi = 0     THEN '-'
-      WHEN ls_u-mi >= 85   THEN 'HIGH'
-      WHEN ls_u-mi >= 65   THEN 'MEDIUM'
-      ELSE                      'LOW' ).
-    APPEND VALUE ts_row(
-      name        = ls_u-unit_name
-      cc          = ls_u-cyclomatic
-      risk        = cc_rating( ls_u-cyclomatic )
-      n1          = ls_u-n1        n2   = ls_u-n2
-      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
-      vocab       = ls_u-vocabulary
-      length      = ls_u-prog_length
-      volume      = format_f2( ls_u-volume )
-      difficulty  = format_f2( ls_u-difficulty )
-      effort      = format_f2( ls_u-effort )
-      time_t      = format_time( ls_u-time_t )
-      bugs        = format_f2( ls_u-bugs )
-      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
-      cloc_ratio  = lv_ratio
-      mi          = lv_mi_str
-      mi_rating   = lv_mi_grade
-    ) TO lt_all.
+    APPEND unit_row( is_unit = ls_u i_name = ls_u-unit_name ) TO lt_all.
   ENDLOOP.
 
   SORT lt_all BY cc DESCENDING.
@@ -452,37 +319,11 @@ METHOD build_html.
     RETURN.
   ENDIF.
 
-  DATA ls_u          TYPE zcl_ace_metrics=>ts_unit_result.
-  DATA lv_ratio      TYPE string.
-  DATA lv_tot_cc     TYPE i.
-  DATA lv_tot_loc    TYPE i.
-  DATA lv_tot_lloc   TYPE i.
-  DATA lv_tot_cloc   TYPE i.
-  DATA lv_tot_vol    TYPE f.
-  DATA lv_tot_eff    TYPE f.
-  DATA lv_tot_time_t TYPE f.
-  DATA lv_tot_bugs   TYPE f.
-  DATA lv_tot_n1     TYPE i.
-  DATA lv_tot_n2     TYPE i.
+  DATA ls_u   TYPE zcl_ace_metrics=>ts_unit_result.
+  DATA ls_tot TYPE ts_totals.
 
-  LOOP AT ls_result-units INTO ls_u.
-    ADD ls_u-cyclomatic TO lv_tot_cc.
-    ADD ls_u-loc        TO lv_tot_loc.
-    ADD ls_u-lloc       TO lv_tot_lloc.
-    ADD ls_u-cloc       TO lv_tot_cloc.
-    ADD ls_u-n1         TO lv_tot_n1.
-    ADD ls_u-n2         TO lv_tot_n2.
-    lv_tot_vol    = lv_tot_vol    + ls_u-volume.
-    lv_tot_eff    = lv_tot_eff    + ls_u-effort.
-    lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
-    lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
-  ENDLOOP.
-
-  IF lv_tot_loc > 0.
-    lv_ratio = |{ CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%|.
-  ELSE.
-    lv_ratio = '-'.
-  ENDIF.
+  ls_tot = sum_units( ls_result-units ).
+  DATA(lv_ratio) = pct( i_part = ls_tot-cloc i_whole = ls_tot-loc ).
 
   " --- HTML head + CSS ---
   APPEND '<!DOCTYPE html><html><head><meta charset="utf-8">' TO rv.
@@ -508,24 +349,12 @@ METHOD build_html.
   " --- Section 2: Total (built first so header can reference its values) ---
   " Compute per-group subtotals for Events, Forms, each Class
   TYPES: BEGIN OF lty_cls_sub,
-           name    TYPE string,
-           units   TYPE i,
-           cc      TYPE i,
-           loc     TYPE i,
-           lloc    TYPE i,
-           cloc    TYPE i,
-           n1      TYPE i,
-           n2      TYPE i,
-           vol     TYPE f,
-           eff     TYPE f,
-           time_t  TYPE f,
-           bugs    TYPE f,
+           name TYPE string,
+           tot  TYPE ts_totals,
          END OF lty_cls_sub.
-  DATA lt_cls_sub  TYPE TABLE OF lty_cls_sub WITH EMPTY KEY.
-  DATA ls_ev_sub   TYPE lty_cls_sub.
-  DATA ls_fo_sub   TYPE lty_cls_sub.
-  ls_ev_sub-name = 'Events TOTAL'.
-  ls_fo_sub-name = 'Forms TOTAL'.
+  DATA lt_cls_sub TYPE TABLE OF lty_cls_sub WITH EMPTY KEY.
+  DATA ls_ev_sub  TYPE ts_totals.
+  DATA ls_fo_sub  TYPE ts_totals.
 
   LOOP AT ls_result-units INTO ls_u.
     DATA(lv_grp) = ls_u-unit_name.
@@ -538,122 +367,61 @@ METHOD build_html.
           APPEND INITIAL LINE TO lt_cls_sub ASSIGNING <cls_sub>.
           <cls_sub>-name = lv_grp.
         ENDIF.
-        <cls_sub>-units  += 1.
-        <cls_sub>-cc     += ls_u-cyclomatic.
-        <cls_sub>-loc    += ls_u-loc.
-        <cls_sub>-lloc   += ls_u-lloc.
-        <cls_sub>-cloc   += ls_u-cloc.
-        <cls_sub>-n1     += ls_u-n1.
-        <cls_sub>-n2     += ls_u-n2.
-        <cls_sub>-vol     = <cls_sub>-vol  + ls_u-volume.
-        <cls_sub>-eff     = <cls_sub>-eff  + ls_u-effort.
-        <cls_sub>-time_t  = <cls_sub>-time_t + ls_u-time_t.
-        <cls_sub>-bugs    = <cls_sub>-bugs + ls_u-bugs.
+        add_unit( EXPORTING is_unit = ls_u CHANGING cs_tot = <cls_sub>-tot ).
       WHEN 'FORM'.
-        ls_fo_sub-units  += 1.
-        ls_fo_sub-cc     += ls_u-cyclomatic.
-        ls_fo_sub-loc    += ls_u-loc.
-        ls_fo_sub-lloc   += ls_u-lloc.
-        ls_fo_sub-cloc   += ls_u-cloc.
-        ls_fo_sub-n1     += ls_u-n1.
-        ls_fo_sub-n2     += ls_u-n2.
-        ls_fo_sub-vol     = ls_fo_sub-vol  + ls_u-volume.
-        ls_fo_sub-eff     = ls_fo_sub-eff  + ls_u-effort.
-        ls_fo_sub-time_t  = ls_fo_sub-time_t + ls_u-time_t.
-        ls_fo_sub-bugs    = ls_fo_sub-bugs + ls_u-bugs.
+        add_unit( EXPORTING is_unit = ls_u CHANGING cs_tot = ls_fo_sub ).
       WHEN OTHERS.
-        ls_ev_sub-units  += 1.
-        ls_ev_sub-cc     += ls_u-cyclomatic.
-        ls_ev_sub-loc    += ls_u-loc.
-        ls_ev_sub-lloc   += ls_u-lloc.
-        ls_ev_sub-cloc   += ls_u-cloc.
-        ls_ev_sub-n1     += ls_u-n1.
-        ls_ev_sub-n2     += ls_u-n2.
-        ls_ev_sub-vol     = ls_ev_sub-vol  + ls_u-volume.
-        ls_ev_sub-eff     = ls_ev_sub-eff  + ls_u-effort.
-        ls_ev_sub-time_t  = ls_ev_sub-time_t + ls_u-time_t.
-        ls_ev_sub-bugs    = ls_ev_sub-bugs + ls_u-bugs.
+        add_unit( EXPORTING is_unit = ls_u CHANGING cs_tot = ls_ev_sub ).
     ENDCASE.
   ENDLOOP.
 
-  " Helper macro: append a subtotal row from lty_cls_sub
   DATA lt_total TYPE tt_row.
   DATA ls_sub   TYPE lty_cls_sub.
 
   IF ls_ev_sub-units > 0.
-    DATA(lv_ev_ratio) = COND string( WHEN ls_ev_sub-loc > 0
-      THEN |{ CONV decfloat16( ls_ev_sub-cloc * 100 / ls_ev_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
-    APPEND VALUE ts_row(
-      name = 'Events'  units = ls_ev_sub-units  cc = ls_ev_sub-cc
-      n1 = ls_ev_sub-n1  n2 = ls_ev_sub-n2
-      loc = ls_ev_sub-loc  lloc = ls_ev_sub-lloc  cloc = ls_ev_sub-cloc  cloc_ratio = lv_ev_ratio
-      volume = format_f2( ls_ev_sub-vol )  effort = format_f2( ls_ev_sub-eff )
-      time_t = format_time( ls_ev_sub-time_t )  bugs = format_f2( ls_ev_sub-bugs )
-    ) TO lt_total.
+    APPEND totals_row( is_tot = ls_ev_sub i_name = 'Events' ) TO lt_total.
   ENDIF.
 
   IF ls_fo_sub-units > 0.
-    DATA(lv_fo_ratio) = COND string( WHEN ls_fo_sub-loc > 0
-      THEN |{ CONV decfloat16( ls_fo_sub-cloc * 100 / ls_fo_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
-    APPEND VALUE ts_row(
-      name = 'Forms'  units = ls_fo_sub-units  cc = ls_fo_sub-cc
-      n1 = ls_fo_sub-n1  n2 = ls_fo_sub-n2
-      loc = ls_fo_sub-loc  lloc = ls_fo_sub-lloc  cloc = ls_fo_sub-cloc  cloc_ratio = lv_fo_ratio
-      volume = format_f2( ls_fo_sub-vol )  effort = format_f2( ls_fo_sub-eff )
-      time_t = format_time( ls_fo_sub-time_t )  bugs = format_f2( ls_fo_sub-bugs )
-    ) TO lt_total.
+    APPEND totals_row( is_tot = ls_fo_sub i_name = 'Forms' ) TO lt_total.
   ENDIF.
 
   LOOP AT lt_cls_sub INTO ls_sub.
-    DATA(lv_cls_ratio) = COND string( WHEN ls_sub-loc > 0
-      THEN |{ CONV decfloat16( ls_sub-cloc * 100 / ls_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
     READ TABLE ls_result-class_totals WITH KEY class_name = ls_sub-name INTO DATA(ls_ct2).
     IF sy-subrc <> 0. CLEAR ls_ct2. ENDIF.
-    APPEND VALUE ts_row(
-      name = ls_sub-name  units = ls_sub-units  cc = ls_sub-cc
-      n1 = ls_sub-n1  n2 = ls_sub-n2
-      eta1 = ls_ct2-cls_big_n1  eta2 = ls_ct2-cls_big_n2
-      vocab = ls_ct2-cls_vocabulary  length = ls_ct2-cls_prog_length
-      loc = ls_sub-loc  lloc = ls_sub-lloc  cloc = ls_sub-cloc  cloc_ratio = lv_cls_ratio
-      volume = format_f2( ls_sub-vol )  difficulty = format_f2( ls_ct2-cls_difficulty )
-      effort = format_f2( ls_sub-eff )
-      time_t = format_time( ls_sub-time_t )  bugs = format_f2( ls_sub-bugs )
-    ) TO lt_total.
+    DATA(ls_sub_row) = totals_row( is_tot = ls_sub-tot i_name = ls_sub-name ).
+    ls_sub_row-eta1       = ls_ct2-cls_big_n1.
+    ls_sub_row-eta2       = ls_ct2-cls_big_n2.
+    ls_sub_row-vocab      = ls_ct2-cls_vocabulary.
+    ls_sub_row-length     = ls_ct2-cls_prog_length.
+    ls_sub_row-difficulty = format_f2( ls_ct2-cls_difficulty ).
+    APPEND ls_sub_row TO lt_total.
   ENDLOOP.
 
   " Grand total row
-  APPEND VALUE ts_row(
-    name        = |{ i_program } TOTAL|
-    units       = lines( ls_result-units )
-    cc          = lv_tot_cc
-    n1          = lv_tot_n1        n2     = lv_tot_n2
-    eta1        = ls_result-incl_big_n1
-    eta2        = ls_result-incl_big_n2
-    vocab       = ls_result-incl_vocabulary
-    length      = ls_result-incl_prog_length
-    loc         = lv_tot_loc       lloc   = lv_tot_lloc   cloc = lv_tot_cloc
-    cloc_ratio  = lv_ratio
-    volume      = format_f2( lv_tot_vol )
-    difficulty  = format_f2( ls_result-incl_difficulty )
-    effort      = format_f2( lv_tot_eff )
-    time_t      = format_time( lv_tot_time_t )
-    bugs        = format_f2( lv_tot_bugs )
-  ) TO lt_total.
-  DATA(ls_tot) = lt_total[ lines( lt_total ) ].
+  DATA(ls_grand) = totals_row( is_tot = ls_tot
+                               i_name = |{ i_program } TOTAL| ).
+  ls_grand-units      = lines( ls_result-units ).
+  ls_grand-eta1       = ls_result-incl_big_n1.
+  ls_grand-eta2       = ls_result-incl_big_n2.
+  ls_grand-vocab      = ls_result-incl_vocabulary.
+  ls_grand-length     = ls_result-incl_prog_length.
+  ls_grand-difficulty = format_f2( ls_result-incl_difficulty ).
+  APPEND ls_grand TO lt_total.
 
   " --- Section 1: Summary ---
   APPEND |<h2>Code Metrics: { i_program }</h2>| TO rv.
   APPEND |<p>Units analysed: <b>{ lines( ls_result-units ) }</b></p>| TO rv.
-  APPEND |<p>Total Cyclomatic Complexity: <b>{ lv_tot_cc }</b>| TO rv.
+  APPEND |<p>Total Cyclomatic Complexity: <b>{ ls_tot-cc }</b>| TO rv.
   APPEND |&nbsp;&nbsp;Avg CC / unit: | &&
          |<b>{ format_f2( ls_result-avg_cyclomatic ) }</b></p>| TO rv.
-  APPEND |<p>Halstead Volume: <b>{ ls_tot-volume }</b>| TO rv.
-  APPEND |&nbsp;&nbsp;Effort: <b>{ ls_tot-effort }</b></p>| TO rv.
-  APPEND |<p>Time: <b>{ ls_tot-time_t }</b>| &&
-         |&nbsp;&nbsp;Expected Bugs: <b>{ ls_tot-bugs }</b></p>| TO rv.
+  APPEND |<p>Halstead Volume: <b>{ ls_grand-volume }</b>| TO rv.
+  APPEND |&nbsp;&nbsp;Effort: <b>{ ls_grand-effort }</b></p>| TO rv.
+  APPEND |<p>Time: <b>{ ls_grand-time_t }</b>| &&
+         |&nbsp;&nbsp;Expected Bugs: <b>{ ls_grand-bugs }</b></p>| TO rv.
   APPEND |<p>LOC / LLOC / CLOC / CLOC%: | &&
-         |<b>{ lv_tot_loc }</b> / <b>{ lv_tot_lloc }</b> / | TO rv.
-  APPEND |<b>{ lv_tot_cloc }</b> / <b>{ lv_ratio }</b></p>| TO rv.
+         |<b>{ ls_tot-loc }</b> / <b>{ ls_tot-lloc }</b> / | TO rv.
+  APPEND |<b>{ ls_tot-cloc }</b> / <b>{ lv_ratio }</b></p>| TO rv.
 
   html_section( EXPORTING i_name = 'Total' it_rows = lt_total CHANGING ct_html = rv ).
 
@@ -661,41 +429,11 @@ METHOD build_html.
   DATA lt_events TYPE tt_row.
   LOOP AT ls_result-units INTO ls_u
     WHERE unit_type <> 'METHOD' AND unit_type <> 'FORM'.
-    IF ls_u-loc > 0.
-      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
-    ELSE.
-      lv_ratio = '-'.
-    ENDIF.
-    APPEND VALUE ts_row(
-      name        = ls_u-unit_name  units = 1
-      cc          = ls_u-cyclomatic
-      risk        = cc_rating( ls_u-cyclomatic )
-      n1          = ls_u-n1        n2   = ls_u-n2
-      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
-      vocab       = ls_u-vocabulary
-      length      = ls_u-prog_length
-      volume      = format_f2( ls_u-volume )
-      difficulty  = format_f2( ls_u-difficulty )
-      effort      = format_f2( ls_u-effort )
-      time_t      = format_time( ls_u-time_t )
-      bugs        = format_f2( ls_u-bugs )
-      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
-      cloc_ratio  = lv_ratio
-      mi          = COND #( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' )
-      mi_rating   = mi_grade( ls_u-mi )
-    ) TO lt_events.
+    APPEND unit_row( is_unit = ls_u i_name = ls_u-unit_name i_units = 1 ) TO lt_events.
   ENDLOOP.
   IF lt_events IS NOT INITIAL.
     IF ls_ev_sub-units > 1.
-      DATA(lv_evr) = COND string( WHEN ls_ev_sub-loc > 0
-        THEN |{ CONV decfloat16( ls_ev_sub-cloc * 100 / ls_ev_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
-      APPEND VALUE ts_row(
-        name = 'TOTAL'  units = ls_ev_sub-units  cc = ls_ev_sub-cc
-        n1 = ls_ev_sub-n1  n2 = ls_ev_sub-n2
-        loc = ls_ev_sub-loc  lloc = ls_ev_sub-lloc  cloc = ls_ev_sub-cloc  cloc_ratio = lv_evr
-        volume = format_f2( ls_ev_sub-vol )  effort = format_f2( ls_ev_sub-eff )
-        time_t = format_time( ls_ev_sub-time_t )  bugs = format_f2( ls_ev_sub-bugs )
-      ) TO lt_events.
+      APPEND totals_row( is_tot = ls_ev_sub i_name = 'TOTAL' ) TO lt_events.
     ENDIF.
     html_section( EXPORTING i_name = 'Events' it_rows = lt_events i_numbered = abap_true CHANGING ct_html = rv ).
   ENDIF.
@@ -703,122 +441,36 @@ METHOD build_html.
   " --- Section 4: Forms ---
   DATA lt_forms TYPE tt_row.
   LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'FORM'.
-    IF ls_u-loc > 0.
-      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
-    ELSE.
-      lv_ratio = '-'.
-    ENDIF.
-    APPEND VALUE ts_row(
-      name        = ls_u-unit_name  units = 1
-      cc          = ls_u-cyclomatic
-      risk        = cc_rating( ls_u-cyclomatic )
-      n1          = ls_u-n1        n2   = ls_u-n2
-      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
-      vocab       = ls_u-vocabulary
-      length      = ls_u-prog_length
-      volume      = format_f2( ls_u-volume )
-      difficulty  = format_f2( ls_u-difficulty )
-      effort      = format_f2( ls_u-effort )
-      time_t      = format_time( ls_u-time_t )
-      bugs        = format_f2( ls_u-bugs )
-      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
-      cloc_ratio  = lv_ratio
-      mi          = COND #( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' )
-      mi_rating   = mi_grade( ls_u-mi )
-    ) TO lt_forms.
+    APPEND unit_row( is_unit = ls_u i_name = ls_u-unit_name i_units = 1 ) TO lt_forms.
   ENDLOOP.
   IF lt_forms IS NOT INITIAL.
     IF ls_fo_sub-units > 1.
-      DATA(lv_for) = COND string( WHEN ls_fo_sub-loc > 0
-        THEN |{ CONV decfloat16( ls_fo_sub-cloc * 100 / ls_fo_sub-loc ) DECIMALS = 1 }%| ELSE '-' ).
-      APPEND VALUE ts_row(
-        name = 'TOTAL'  units = ls_fo_sub-units  cc = ls_fo_sub-cc
-        n1 = ls_fo_sub-n1  n2 = ls_fo_sub-n2
-        loc = ls_fo_sub-loc  lloc = ls_fo_sub-lloc  cloc = ls_fo_sub-cloc  cloc_ratio = lv_for
-        volume = format_f2( ls_fo_sub-vol )  effort = format_f2( ls_fo_sub-eff )
-        time_t = format_time( ls_fo_sub-time_t )  bugs = format_f2( ls_fo_sub-bugs )
-      ) TO lt_forms.
+      APPEND totals_row( is_tot = ls_fo_sub i_name = 'TOTAL' ) TO lt_forms.
     ENDIF.
     html_section( EXPORTING i_name = 'Forms' it_rows = lt_forms i_numbered = abap_true CHANGING ct_html = rv ).
   ENDIF.
 
   " --- Section 5: Methods grouped by class ---
-  DATA lt_classes TYPE STANDARD TABLE OF string WITH EMPTY KEY.
-  LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
-    DATA(lv_class) = ls_u-unit_name.
-    FIND FIRST OCCURRENCE OF '=>' IN lv_class MATCH OFFSET DATA(lv_off).
-    IF sy-subrc = 0.
-      lv_class = lv_class(lv_off).
-    ENDIF.
-    READ TABLE lt_classes WITH KEY table_line = lv_class TRANSPORTING NO FIELDS.
-    IF sy-subrc <> 0.
-      APPEND lv_class TO lt_classes.
-    ENDIF.
-  ENDLOOP.
+  DATA(lt_classes) = class_names( ls_result-units ).
+
+  DATA lt_rows    TYPE tt_row.
+  DATA ls_cls_tot TYPE ts_totals.
 
   LOOP AT lt_classes INTO DATA(lv_cls).
-    DATA lt_rows TYPE tt_row.
     CLEAR lt_rows.
-    CLEAR: lv_tot_cc, lv_tot_loc, lv_tot_lloc, lv_tot_cloc,
-           lv_tot_vol, lv_tot_eff, lv_tot_time_t, lv_tot_bugs,
-           lv_tot_n1, lv_tot_n2.
+    CLEAR ls_cls_tot.
 
     LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
-      DATA(lv_mname) = ls_u-unit_name.
-      DATA(lv_mcls)  = ls_u-unit_name.
-      FIND FIRST OCCURRENCE OF '=>' IN lv_mname MATCH OFFSET DATA(lv_moff).
-      IF sy-subrc = 0.
-        lv_mcls  = lv_mname(lv_moff).
-        DATA(lv_moff2) = lv_moff + 2.
-        lv_mname = lv_mname+lv_moff2.
-      ENDIF.
+      split_unit_name( EXPORTING i_unit_name = ls_u-unit_name
+                       IMPORTING e_class     = DATA(lv_mcls)
+                                 e_method    = DATA(lv_mname) ).
       CHECK lv_mcls = lv_cls.
 
-      IF ls_u-loc > 0.
-        lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
-      ELSE.
-        lv_ratio = '-'.
-      ENDIF.
-
-      APPEND VALUE ts_row(
-        name        = lv_mname
-        cc          = ls_u-cyclomatic
-        risk        = cc_rating( ls_u-cyclomatic )
-        n1          = ls_u-n1        n2   = ls_u-n2
-        eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
-        vocab       = ls_u-vocabulary
-        length      = ls_u-prog_length
-        volume      = format_f2( ls_u-volume )
-        difficulty  = format_f2( ls_u-difficulty )
-        effort      = format_f2( ls_u-effort )
-        time_t      = format_time( ls_u-time_t )
-        bugs        = format_f2( ls_u-bugs )
-        loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
-        cloc_ratio  = lv_ratio
-        mi          = COND #( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' )
-        mi_rating   = mi_grade( ls_u-mi )
-        units       = 1
-      ) TO lt_rows.
-
-      ADD ls_u-cyclomatic TO lv_tot_cc.
-      ADD ls_u-loc        TO lv_tot_loc.
-      ADD ls_u-lloc       TO lv_tot_lloc.
-      ADD ls_u-cloc       TO lv_tot_cloc.
-      ADD ls_u-n1         TO lv_tot_n1.
-      ADD ls_u-n2         TO lv_tot_n2.
-      lv_tot_vol    = lv_tot_vol    + ls_u-volume.
-      lv_tot_eff    = lv_tot_eff    + ls_u-effort.
-      lv_tot_time_t = lv_tot_time_t + ls_u-time_t.
-      lv_tot_bugs   = lv_tot_bugs   + ls_u-bugs.
+      APPEND unit_row( is_unit = ls_u i_name = lv_mname i_units = 1 ) TO lt_rows.
+      add_unit( EXPORTING is_unit = ls_u CHANGING cs_tot = ls_cls_tot ).
     ENDLOOP.
 
     CHECK lt_rows IS NOT INITIAL.
-
-    IF lv_tot_loc > 0.
-      lv_ratio = |{ CONV decfloat16( lv_tot_cloc * 100 / lv_tot_loc ) DECIMALS = 1 }%|.
-    ELSE.
-      lv_ratio = '-'.
-    ENDIF.
 
     SORT lt_rows BY cc DESCENDING.
 
@@ -827,24 +479,14 @@ METHOD build_html.
       INTO DATA(ls_ct).
     IF sy-subrc <> 0. CLEAR ls_ct. ENDIF.
 
-    APPEND VALUE ts_row(
-      name        = 'CLASS TOTAL'
-      units       = lines( lt_rows )
-      cc          = lv_tot_cc
-      risk        = ''
-      n1          = lv_tot_n1        n2     = lv_tot_n2
-      eta1        = ls_ct-cls_big_n1
-      eta2        = ls_ct-cls_big_n2
-      vocab       = ls_ct-cls_vocabulary
-      length      = ls_ct-cls_prog_length
-      loc         = lv_tot_loc        lloc   = lv_tot_lloc   cloc = lv_tot_cloc
-      cloc_ratio  = lv_ratio
-      volume      = format_f2( lv_tot_vol )
-      difficulty  = format_f2( ls_ct-cls_difficulty )
-      effort      = format_f2( lv_tot_eff )
-      time_t      = format_time( lv_tot_time_t )
-      bugs        = format_f2( lv_tot_bugs )
-    ) TO lt_rows.
+    DATA(ls_cls_row) = totals_row( is_tot = ls_cls_tot i_name = 'CLASS TOTAL' ).
+    ls_cls_row-units      = lines( lt_rows ).
+    ls_cls_row-eta1       = ls_ct-cls_big_n1.
+    ls_cls_row-eta2       = ls_ct-cls_big_n2.
+    ls_cls_row-vocab      = ls_ct-cls_vocabulary.
+    ls_cls_row-length     = ls_ct-cls_prog_length.
+    ls_cls_row-difficulty = format_f2( ls_ct-cls_difficulty ).
+    APPEND ls_cls_row TO lt_rows.
 
     html_section( EXPORTING i_name = lv_cls it_rows = lt_rows i_numbered = abap_true CHANGING ct_html = rv ).
   ENDLOOP.
@@ -852,29 +494,7 @@ METHOD build_html.
   " --- Section 6: All methods sorted by CC DESC ---
   DATA lt_all TYPE tt_row.
   LOOP AT ls_result-units INTO ls_u WHERE unit_type = 'METHOD'.
-    IF ls_u-loc > 0.
-      lv_ratio = |{ CONV decfloat16( ls_u-cloc * 100 / ls_u-loc ) DECIMALS = 1 }%|.
-    ELSE.
-      lv_ratio = '-'.
-    ENDIF.
-    APPEND VALUE ts_row(
-      name        = ls_u-unit_name
-      cc          = ls_u-cyclomatic
-      risk        = cc_rating( ls_u-cyclomatic )
-      n1          = ls_u-n1        n2   = ls_u-n2
-      eta1        = ls_u-big_n1    eta2 = ls_u-big_n2
-      vocab       = ls_u-vocabulary
-      length      = ls_u-prog_length
-      volume      = format_f2( ls_u-volume )
-      difficulty  = format_f2( ls_u-difficulty )
-      effort      = format_f2( ls_u-effort )
-      time_t      = format_time( ls_u-time_t )
-      bugs        = format_f2( ls_u-bugs )
-      loc         = ls_u-loc       lloc = ls_u-lloc    cloc = ls_u-cloc
-      cloc_ratio  = lv_ratio
-      mi          = COND #( WHEN ls_u-mi <> 0 THEN format_f2( ls_u-mi ) ELSE '-' )
-      mi_rating   = mi_grade( ls_u-mi )
-    ) TO lt_all.
+    APPEND unit_row( is_unit = ls_u i_name = ls_u-unit_name ) TO lt_all.
   ENDLOOP.
   SORT lt_all BY cc DESCENDING.
   IF lt_all IS NOT INITIAL.
@@ -1097,6 +717,96 @@ ENDMETHOD.
       WHEN i_mi >= 85 THEN 'HIGH'
       WHEN i_mi >= 65 THEN 'MEDIUM'
       ELSE                 'LOW' ).
+  ENDMETHOD.
+
+
+  METHOD pct.
+    rv = COND string(
+      WHEN i_whole > 0
+      THEN |{ CONV decfloat16( i_part * 100 / i_whole ) DECIMALS = 1 }%|
+      ELSE '-' ).
+  ENDMETHOD.
+
+
+  METHOD add_unit.
+    cs_tot-units  += 1.
+    cs_tot-cc     += is_unit-cyclomatic.
+    cs_tot-loc    += is_unit-loc.
+    cs_tot-lloc   += is_unit-lloc.
+    cs_tot-cloc   += is_unit-cloc.
+    cs_tot-n1     += is_unit-n1.
+    cs_tot-n2     += is_unit-n2.
+    cs_tot-vol     = cs_tot-vol    + is_unit-volume.
+    cs_tot-eff     = cs_tot-eff    + is_unit-effort.
+    cs_tot-time_t  = cs_tot-time_t + is_unit-time_t.
+    cs_tot-bugs    = cs_tot-bugs   + is_unit-bugs.
+  ENDMETHOD.
+
+
+  METHOD sum_units.
+    LOOP AT it_units INTO DATA(ls_u).
+      add_unit( EXPORTING is_unit = ls_u CHANGING cs_tot = rs_tot ).
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD unit_row.
+    rs = VALUE ts_row(
+      name       = i_name
+      units      = i_units
+      cc         = is_unit-cyclomatic
+      risk       = cc_rating( is_unit-cyclomatic )
+      n1         = is_unit-n1       n2   = is_unit-n2
+      eta1       = is_unit-big_n1   eta2 = is_unit-big_n2
+      vocab      = is_unit-vocabulary
+      length     = is_unit-prog_length
+      volume     = format_f2( is_unit-volume )
+      difficulty = format_f2( is_unit-difficulty )
+      effort     = format_f2( is_unit-effort )
+      time_t     = format_time( is_unit-time_t )
+      bugs       = format_f2( is_unit-bugs )
+      loc        = is_unit-loc      lloc = is_unit-lloc   cloc = is_unit-cloc
+      cloc_ratio = pct( i_part = is_unit-cloc i_whole = is_unit-loc )
+      mi         = COND #( WHEN is_unit-mi <> 0 THEN format_f2( is_unit-mi ) ELSE '-' )
+      mi_rating  = mi_grade( is_unit-mi ) ).
+  ENDMETHOD.
+
+
+  METHOD split_unit_name.
+    e_class  = i_unit_name.
+    e_method = i_unit_name.
+    FIND FIRST OCCURRENCE OF '=>' IN i_unit_name MATCH OFFSET DATA(lv_off).
+    CHECK sy-subrc = 0.
+    e_class = i_unit_name(lv_off).
+    DATA(lv_after) = lv_off + 2.
+    e_method = i_unit_name+lv_after.
+  ENDMETHOD.
+
+
+  METHOD class_names.
+    LOOP AT it_units INTO DATA(ls_u) WHERE unit_type = 'METHOD'.
+      split_unit_name( EXPORTING i_unit_name = ls_u-unit_name
+                       IMPORTING e_class     = DATA(lv_class) ).
+      READ TABLE rt WITH KEY table_line = lv_class TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        APPEND lv_class TO rt.
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD totals_row.
+    rs = VALUE ts_row(
+      name       = i_name
+      units      = is_tot-units
+      cc         = is_tot-cc
+      n1         = is_tot-n1        n2   = is_tot-n2
+      loc        = is_tot-loc       lloc = is_tot-lloc    cloc = is_tot-cloc
+      cloc_ratio = pct( i_part = is_tot-cloc i_whole = is_tot-loc )
+      volume     = format_f2( is_tot-vol )
+      effort     = format_f2( is_tot-eff )
+      time_t     = format_time( is_tot-time_t )
+      bugs       = format_f2( is_tot-bugs ) ).
   ENDMETHOD.
 
 

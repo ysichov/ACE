@@ -57,7 +57,7 @@ CLASS ZCL_ACE_PARSE_VARS IMPLEMENTATION.
     DATA(lv_line) = io_scan->tokens[ stmt-from ]-row.
 
     " ---------------------------------------------------------------
-    " Обычные объявления: DATA / CLASS-DATA / PARAMETERS / SELECT-OPTIONS
+    " Plain declarations: DATA / CLASS-DATA / PARAMETERS / SELECT-OPTIONS
     " ---------------------------------------------------------------
     DATA: lv_type       TYPE string,
           lv_ref        TYPE abap_bool,
@@ -122,17 +122,17 @@ WHEN OTHERS.
         CHECK sy-subrc = 0 AND var_tok-str IS NOT INITIAL.
         lv_name = var_tok-str.
 
-        " Проверяем инлайн-декларацию: DATA( varname )
+        " Check for an inline declaration: DATA( varname )
         "IF lv_name+0(1) = '(' OR lv_kw = 'DATA' AND lv_name CS '('.
         IF lv_kw+0(5) = 'DATA('.
-          " Имя переменной внутри скобок
+          " Variable name inside the parentheses
           DATA(lv_inline_name) = lv_kw.
 
           REPLACE ALL OCCURRENCES OF 'DATA(' IN lv_inline_name WITH ''.
           REPLACE ALL OCCURRENCES OF ')' IN lv_inline_name WITH ''.
           CONDENSE lv_inline_name NO-GAPS.
           IF lv_inline_name IS INITIAL.
-            " имя в следующем токене
+            " name is in the next token
             READ TABLE io_scan->tokens INDEX stmt-from + 2 INTO DATA(var_tok2).
             IF sy-subrc = 0.
               lv_inline_name = var_tok2-str.
@@ -141,7 +141,7 @@ WHEN OTHERS.
           ENDIF.
           CHECK lv_inline_name IS NOT INITIAL.
 
-          " Ищем тип: NEW ClassName( или CAST ClassName(
+          " Look for the type: NEW ClassName( or CAST ClassName(
           DATA lv_new_next TYPE abap_bool.
           DATA lv_cast_next TYPE abap_bool.
           DATA lv_inline_added TYPE abap_bool.
@@ -167,7 +167,7 @@ WHEN OTHERS.
               IF lv_up_i = 'CAST'. lv_cast_next = abap_true. ENDIF.
             ENDIF.
           ENDLOOP.
-          " Простое присваивание DATA(lv_x) = expr — тип неизвестен, переменную всё равно регистрируем
+          " Plain DATA(lv_x) = expr — type unknown, but still register the variable
           IF lv_inline_added = abap_false.
             append_var( EXPORTING i_name    = conv #( lv_inline_name )
                                   i_type    = ''
@@ -180,7 +180,7 @@ WHEN OTHERS.
           RETURN.
         ENDIF.
 
-        " Обычный DATA varname TYPE ...
+        " Plain DATA varname TYPE ...
         LOOP AT io_scan->tokens FROM stmt-from + 2 TO stmt-to INTO dtok.
           IF dtok-str = 'TYPE' OR dtok-str = 'LIKE'.
             lv_after_type = abap_true. CONTINUE.

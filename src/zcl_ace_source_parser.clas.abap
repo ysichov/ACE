@@ -36,16 +36,6 @@ public section.
       !I_STACK     type I
       !I_CALL      type ZCL_ACE=>TS_CALLS
       !IO_DEBUGGER type ref to ZCL_ACE .
-  class-methods RESOLVE_CONTEXT
-    importing
-      !I_INCLUDE   type PROGRAM
-      !I_EVTYPE    type STRING optional
-      !I_EVNAME    type STRING optional
-      !IO_DEBUGGER type ref to ZCL_ACE
-    exporting
-      !E_EVTYPE    type STRING
-      !E_EVNAME    type STRING
-      !E_CLASS     type STRING .
   class-methods CODE_EXECUTION_SCANNER
     importing
       !I_PROGRAM   type PROGRAM
@@ -54,45 +44,6 @@ public section.
       !I_EVTYPE    type STRING optional
       !I_CLASS     type STRING optional
       !I_STACK     type I optional
-      !IO_DEBUGGER type ref to ZCL_ACE .
-  class-methods LINK_CALLS_TO_PARAMS
-    importing
-      !IO_DEBUGGER type ref to ZCL_ACE
-    changing
-      !CT_TOKENS   type ZCL_ACE=>TT_KWORD .
-  class-methods PROCESS_SUPER_AND_INTERFACES
-    importing
-      !I_CLASS     type STRING
-      !I_PROGRAM   type PROGRAM
-      !I_STACK     type I
-      !IO_DEBUGGER type ref to ZCL_ACE .
-  class-methods DETECT_METHOD_CALL
-    importing
-      !WORD            type STRING
-      !I_PROGRAM       type PROGRAM
-      !I_INCLUDE       type PROGRAM
-      !I_CLASS         type STRING
-      !IO_DEBUGGER     type ref to ZCL_ACE
-      !L_TOKEN_ROW     type I
-      !NEW             type BOOLEAN
-    changing
-      !CALL            type ZCL_ACE=>TS_CALLS
-      !CALL_LINE       type ZCL_ACE=>TS_CALLS_LINE
-      !CALCULATED      type ZCL_ACE=>TS_VAR
-      !CALCULATED_VARS type ZCL_ACE=>TT_CALCULATED
-      !CLASS_NAME      type STRING
-      !TOKEN           type ZCL_ACE=>TS_KWORD .
-  class-methods REGISTER_FIELD_SYMBOL
-    importing
-      !I_INCLUDE   type PROGRAM
-      !IO_DEBUGGER type ref to ZCL_ACE
-    changing
-      !CS_STATE    type ZCL_ACE=>TS_PARSE_STATE .
-  class-methods COLLECT_EVENTS
-    importing
-      !IO_SCAN     type ref to CL_CI_SCAN
-      !I_PROGRAM   type PROGRAM
-      !I_INCLUDE   type PROGRAM
       !IO_DEBUGGER type ref to ZCL_ACE .
   class-methods COLLECT_ENHANCEMENTS
     importing
@@ -133,43 +84,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     " Z*/Y* customer objects, or any object in a customer namespace (/NS/...)
     IF lv_name(1) = 'Z' OR lv_name(1) = 'Y' OR lv_name(1) = '/'.
       rv_custom = abap_true.
-    ENDIF.
-  ENDMETHOD.
-
-
-  METHOD resolve_context.
-    e_evtype = i_evtype.
-    e_evname = i_evname.
-    IF i_evtype IS NOT INITIAL AND i_evname IS NOT INITIAL.
-      READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-        WITH KEY include = i_include eventtype = i_evtype eventname = i_evname
-        INTO DATA(ls_cl).
-      IF sy-subrc = 0. e_class = ls_cl-class. RETURN. ENDIF.
-      FIND '=' IN i_include.
-      IF sy-subrc = 0.
-        DATA(lv_splits) = VALUE string_table( ).
-        SPLIT i_include AT '=' INTO TABLE lv_splits.
-        e_class = lv_splits[ 1 ].
-      ENDIF.
-      RETURN.
-    ENDIF.
-    FIND '=' IN i_include.
-    IF sy-subrc = 0.
-      DATA(lv_sp) = VALUE string_table( ).
-      SPLIT i_include AT '=' INTO TABLE lv_sp.
-      e_class = lv_sp[ 1 ].
-      READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-        WITH KEY include = i_include eventtype = 'METHOD'
-        INTO ls_cl.
-      IF sy-subrc = 0. e_evtype = 'METHOD'. e_evname = ls_cl-eventname. ENDIF.
-      RETURN.
-    ENDIF.
-    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
-      WITH KEY include = i_include INTO ls_cl.
-    IF sy-subrc = 0.
-      e_class  = ls_cl-class.
-      e_evtype = ls_cl-eventtype.
-      e_evname = ls_cl-eventname.
     ENDIF.
   ENDMETHOD.
 
@@ -307,7 +221,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           IF <step>-eventtype = 'METHOD'. <step>-class = i_class. ENDIF.
         ENDIF.
 
-        " Точечный парсинг calls/calcs/vars через parse_tokens( i_stmt_idx )
+        " Targeted calls/calcs/vars parse via parse_tokens( i_stmt_idx )
         IF key-calls_parsed = abap_false.
           zcl_ace_parser=>parse_tokens(
             EXPORTING
@@ -319,7 +233,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
               i_ev_name  = i_evname
             CHANGING
               cs_source  = io_debugger->mo_window->ms_sources ).
-          " Перечитываем key — calls_parsed = true, tt_calls заполнен
+          " Re-read key — calls_parsed is now true and tt_calls is filled
           READ TABLE io_debugger->mo_window->ms_sources-tt_progs
             WITH KEY include = key-include INTO prog.
           READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
@@ -623,17 +537,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   endmethod.
 
 
-  method COLLECT_EVENTS.
-      LOOP AT io_scan->structures INTO DATA(struc) WHERE type = 'E'.
-        APPEND INITIAL LINE TO io_debugger->mo_window->ms_sources-t_events
-          ASSIGNING FIELD-SYMBOL(<event>).
-        <event>-program = i_program.
-        MOVE-CORRESPONDING struc TO <event>.
-        <event>-include = i_include.
-      ENDLOOP.
-  endmethod.
-
-
   method COLLECT_METHOD_ENHANCEMENTS.
 
       DATA(lv_enhname_trimmed)  = condense( val = CONV string( i_enhname ) ).
@@ -744,70 +647,6 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   endmethod.
 
 
-  method DETECT_METHOD_CALL.
-      DATA: split TYPE string_table.
-      IF call-event = 'METHOD' AND call-name IS NOT INITIAL.
-        APPEND call TO token-tt_calls.
-        CLEAR: call-event, call-type, call-name, call-outer, call-inner.
-      ENDIF.
-      call-name = word. call-event = 'METHOD'.
-      REPLACE ALL OCCURRENCES OF '(' IN call-name WITH ''.
-      REPLACE ALL OCCURRENCES OF 'ME->' IN call-name WITH ''.
-      FIND FIRST OCCURRENCE OF '->' IN call-name.
-      IF sy-subrc = 0.
-        SPLIT call-name AT '->' INTO TABLE split.
-        IF split[ 1 ] <> ')'.
-          READ TABLE io_debugger->mo_window->ms_sources-t_vars
-            WITH KEY program = i_program name = split[ 1 ] INTO DATA(vars).
-          IF sy-subrc <> 0. call-class = split[ 1 ]. ELSE. call-class = vars-type. ENDIF.
-        ENDIF.
-        call-name = split[ 2 ].
-        IF split[ 1 ] = 'SUPER'. call-class = class_name. call-super = abap_true. ENDIF.
-      ENDIF.
-      FIND FIRST OCCURRENCE OF '=>' IN call-name.
-      IF sy-subrc = 0.
-        SPLIT call-name AT '=>' INTO TABLE split.
-        IF split[ 1 ] <> ')'. call-class = split[ 1 ]. ENDIF.
-        call-name = split[ 2 ].
-      ENDIF.
-      IF call-class IS INITIAL.
-        IF i_class IS NOT INITIAL. call_line-class = call-class = i_class. ENDIF.
-        IF class_name IS NOT INITIAL. call_line-class = call-class = class_name. ENDIF.
-      ENDIF.
-      call-event = 'METHOD'.
-      IF new = abap_true.
-        call-class = call-name. call-name = 'CONSTRUCTOR'.
-        call_line-class = call-class. call_line-eventname = call-name. call_line-eventtype = 'METHOD'.
-        READ TABLE calculated_vars WITH KEY line = l_token_row program = i_include INTO DATA(calc).
-        IF sy-subrc = 0.
-          APPEND INITIAL LINE TO io_debugger->mo_window->ms_sources-tt_refvar ASSIGNING FIELD-SYMBOL(<refvar>).
-          <refvar>-name = calc-name. <refvar>-class = call-class.
-        ENDIF.
-      ENDIF.
-      READ TABLE io_debugger->mo_window->ms_sources-tt_refvar WITH KEY name = call-class INTO DATA(refvar).
-      IF sy-subrc = 0. call-class = refvar-class. ENDIF.
-  endmethod.
-
-
-  method LINK_CALLS_TO_PARAMS.
-      FIELD-SYMBOLS: <s_token> TYPE ZCL_ACE=>ts_kword, <call> TYPE ZCL_ACE=>ts_calls.
-      DATA: call TYPE ZCL_ACE=>ts_calls, param TYPE ZCL_ACE=>ts_params, index TYPE i.
-      LOOP AT ct_tokens ASSIGNING <s_token> WHERE tt_calls IS NOT INITIAL.
-        READ TABLE <s_token>-tt_calls INDEX 1 INTO call.
-        index = 0.
-        LOOP AT io_debugger->mo_window->ms_sources-t_params INTO param
-          WHERE event = call-event AND name = call-name.
-          ADD 1 TO index.
-          READ TABLE <s_token>-tt_calls INDEX index ASSIGNING <call>.
-          IF sy-subrc = 0.
-            <call>-inner = param-param.
-            IF param-type = 'I'. <call>-type = '>'. ELSE. <call>-type = '<'. ENDIF.
-          ENDIF.
-        ENDLOOP.
-      ENDLOOP.
-  endmethod.
-
-
   METHOD parse_call.
 
     DATA: statement TYPE i,
@@ -851,7 +690,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       IF lines( meth_includes ) IS INITIAL. statement = i_index. ELSE. statement = 1. ENDIF.
     ENDIF.
 
-    " Если передан конкретный индекс statement через i_stmt_idx — использовать его
+    " When a concrete statement index is supplied via i_stmt_idx, use it
     IF i_stmt_idx > 0.
       statement = i_stmt_idx.
     ENDIF.
@@ -883,7 +722,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       READ TABLE prog-t_keywords WITH KEY index = statement INTO DATA(key).
       IF sy-subrc <> 0. ADD 1 TO statement. CONTINUE. ENDIF.
 
-      " Точечный парсинг calls/calcs/vars через parse_tokens( i_stmt_idx )
+      " Targeted calls/calcs/vars parse via parse_tokens( i_stmt_idx )
       IF key-calls_parsed = abap_false.
         zcl_ace_parser=>parse_tokens(
           EXPORTING
@@ -895,7 +734,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             i_ev_name  = i_e_name
           CHANGING
             cs_source  = io_debugger->mo_window->ms_sources ).
-        " Перечитываем key — calls_parsed = true, tt_calls заполнен
+        " Re-read key — calls_parsed is now true and tt_calls is filled
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           WITH KEY include = key-include INTO prog.
         READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
@@ -1043,7 +882,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       IF kw-name = 'FORM' OR kw-name = 'DATA' OR kw-name = 'TYPES'
         OR kw-name = 'CONSTANTS' OR kw-name IS INITIAL. CONTINUE. ENDIF.
 
-      " Точечный парсинг через parse_call с i_stmt_idx
+      " Targeted parse via parse_call with i_stmt_idx
       IF kw-calls_parsed = abap_false.
         parse_call(
           EXPORTING
@@ -1055,7 +894,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             i_e_type    = 'FORM'
             i_stmt_idx  = kw-index
             io_debugger = io_debugger ).
-        " Перечитываем kw с актуальным tt_calls
+        " Re-read kw with the up-to-date tt_calls
         READ TABLE io_debugger->mo_window->ms_sources-tt_progs
           WITH KEY include = lv_inc INTO prog.
         IF lv_use_vkw = abap_true. ASSIGN prog-v_keywords TO <kw_tab>.
@@ -1277,56 +1116,5 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ENDIF.
       ENDLOOP.
 
-  endmethod.
-
-
-  method PROCESS_SUPER_AND_INTERFACES.
-      DATA: suffix TYPE string, lt_classes TYPE STANDARD TABLE OF zif_ace_parse_data=>ts_meta,
-            prefix TYPE string, program TYPE program, include TYPE program.
-      SELECT clsname, refCLSNAME, reltype FROM seometarel APPENDING TABLE @lt_classes WHERE clsname = @i_class.
-      LOOP AT lt_classes INTO DATA(interface).
-        prefix = interface-refclsname && repeat( val = `=` occ = 30 - strlen( interface-refclsname ) ).
-        CASE interface-reltype.
-          WHEN '0' OR '1'. suffix = 'IU'.
-          WHEN '2'. suffix = 'CP'.
-          WHEN OTHERS. RETURN.
-        ENDCASE.
-        include = program = prefix && suffix.
-        ZCL_ACE_PARSER=>parse( EXPORTING i_program = program i_include = include
-          i_class = CONV #( interface-refclsname ) CHANGING cs_source = io_debugger->mo_window->ms_sources ).
-      ENDLOOP.
-      APPEND LINES OF lt_classes TO io_debugger->mo_window->ms_sources-t_classes[].
-  endmethod.
-
-
-  method REGISTER_FIELD_SYMBOL.
-      DATA: split TYPE TABLE OF string.
-      SPLIT cs_state-change AT '-' INTO TABLE split.
-      cs_state-change = split[ 1 ].
-      IF cs_state-eventtype IS INITIAL.
-        READ TABLE io_debugger->mo_window->mt_globals_set WITH KEY program = i_include ASSIGNING FIELD-SYMBOL(<globals_set>).
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO io_debugger->mo_window->mt_globals_set ASSIGNING <globals_set>.
-          <globals_set>-program = i_include.
-        ENDIF.
-        READ TABLE <globals_set>-mt_fs WITH KEY name = cs_state-change TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO <globals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<gl_fs>).
-          <gl_fs>-name = cs_state-change.
-        ENDIF.
-      ELSE.
-        READ TABLE io_debugger->mo_window->mt_locals_set
-          WITH KEY program = i_include eventtype = cs_state-eventtype eventname = cs_state-eventname
-          ASSIGNING FIELD-SYMBOL(<locals_set>).
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO io_debugger->mo_window->mt_locals_set ASSIGNING <locals_set>.
-          <locals_set>-program = i_include. <locals_set>-eventname = cs_state-eventname. <locals_set>-eventtype = cs_state-eventtype.
-        ENDIF.
-        READ TABLE <locals_set>-mt_fs WITH KEY name = cs_state-change TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO <locals_set>-mt_fs ASSIGNING FIELD-SYMBOL(<loc_fs>).
-          <loc_fs>-name = cs_state-change.
-        ENDIF.
-      ENDIF.
   endmethod.
 ENDCLASS.

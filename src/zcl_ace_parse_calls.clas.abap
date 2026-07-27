@@ -5,6 +5,26 @@ CLASS zcl_ace_parse_calls DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ace_stmt_handler.
 
+    "! Resolves the declared type of a variable from IS_SOURCE-T_VARS.
+    "! Scopes are tried in order: locals of the current class/event, then
+    "! attributes of the current class, then program globals.
+    "! I_ANY_SCOPE adds a final fallback that accepts the first declaration
+    "! of that name anywhere in the program — for callers that have no
+    "! class/event context to narrow by (SET HANDLER resolution). Leave it
+    "! off where an unresolved name is meaningful, e.g. CLS=>METH( , where
+    "! a miss is what identifies CLS as a class rather than a variable.
+    CLASS-METHODS resolve_var_type
+      IMPORTING
+        !is_source     TYPE zif_ace_parse_data=>ts_parse_data
+        !i_program     TYPE program
+        !i_evtype      TYPE string
+        !i_evname      TYPE string
+        !i_varname     TYPE string
+        !i_class       TYPE string  OPTIONAL
+        !i_any_scope   TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(rv_type) TYPE string .
+
 protected section.
 private section.
 
@@ -24,19 +44,8 @@ private section.
   class-data MV_BUILTIN_FUNCS type STRING .
   class-data MV_SKIP_KEYWORDS type STRING .
 
-  methods RESOLVE_VAR_TYPE
-    importing
-      !IS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
-      !I_PROGRAM type PROGRAM
-      !I_INCLUDE type PROGRAM
-      !I_EVTYPE type STRING
-      !I_EVNAME type STRING
-      !I_VARNAME type STRING
-      !I_CLASS type STRING optional
-    returning
-      value(RV_TYPE) type STRING .
-    " Resolves a reference chain like OBJ->MO_ATTR or CLS=>ATTR->SUB
-    " to the class of the last segment.
+  " Resolves a reference chain like OBJ->MO_ATTR or CLS=>ATTR->SUB
+  " to the class of the last segment.
   methods RESOLVE_CHAIN
     importing
       !IS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
@@ -64,7 +73,7 @@ private section.
       !I_INCLUDE type PROGRAM
     changing
       !CS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA .
-    " Линейный проход: распознаёт obj->meth( / cls=>meth( / NEW cls( и собирает BINDINGS
+  " Linear scan: recognises obj->meth( / cls=>meth( / NEW cls( and collects BINDINGS
   methods COLLECT_METHOD_CALLS
     importing
       !IO_SCAN type ref to CL_CI_SCAN
@@ -221,6 +230,19 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       INTO ls_var.
     IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL.
       rv_type = ls_var-type.
+      RETURN.
+    ENDIF.
+
+    " 4. No scope to narrow by — take the first declaration of that name
+    "    anywhere in the program. Opt-in, see I_ANY_SCOPE.
+    IF i_any_scope = abap_true.
+      READ TABLE is_source-t_vars
+        WITH KEY program = i_program
+                 name    = i_varname
+        INTO ls_var.
+      IF sy-subrc = 0.
+        rv_type = ls_var-type.
+      ENDIF.
     ENDIF.
   ENDMETHOD.
 
@@ -245,7 +267,7 @@ CLASS ZCL_ACE_PARSE_CALLS IMPLEMENTATION.
       lv_cur = mv_class_name.
     ELSE.
       lv_cur = resolve_var_type(
-        is_source = is_source i_program = i_program i_include = i_program
+        is_source = is_source i_program = i_program
         i_evtype  = i_evtype  i_evname  = i_evname
         i_varname = lv_head   i_class   = mv_class_name ).
     ENDIF.
@@ -307,10 +329,10 @@ METHOD collect_method_calls.
     DATA lv_sa_str   TYPE string.
     DATA lv_val_str  TYPE string.
 
-    " Для statement вида  VAR = expr  токен[from] — это LHS-переменная,
-    " токен[from+1] = '='.  Такой первый токен нужно пропустить как вызов,
-    " но НЕ ограничивать поиск одной позицией — в правой части может быть
-    " несколько вызовов: RV = A * FUNC1(...) + FUNC2(...).
+    " In a statement of the form  VAR = expr, token[from] is the LHS variable
+    " and token[from+1] is '='. That first token must not be taken for a call,
+    " but the search must not stop there — the right-hand side can hold
+    " several calls: RV = A * FUNC1(...) + FUNC2(...).
     DATA(lv_ti) = i_stmt-from.
 
     WHILE lv_ti <= i_stmt-to.
@@ -319,7 +341,7 @@ METHOD collect_method_calls.
       lv_tstr = ls_t-str.
       CLEAR: lv_arrow, lv_left, lv_right, lv_rpart, lv_dummy.
 
-      " ── Распознаём токен вызова ───────────────────────────────────
+      " ── Recognise a call token ────────────────────────────────────
       " Split at the LAST arrow so that multi-level access
       " (obj->attr->meth( / cls=>attr->meth() yields the real method name
       " and the full reference chain on the left.
@@ -457,7 +479,7 @@ METHOD collect_method_calls.
       CONDENSE lv_right NO-GAPS.
       IF lv_right IS INITIAL. lv_ti += 1. CONTINUE. ENDIF.
 
-      " ── Строим запись вызова ──────────────────────────────────────
+      " ── Build the call record ─────────────────────────────────────
       CLEAR lv_c.
       lv_c-event = 'METHOD'.
       lv_c-name  = lv_right.
@@ -483,7 +505,7 @@ METHOD collect_method_calls.
         lv_c-inner = lv_right.
       ELSE.
         lv_rtype = resolve_var_type(
-          is_source = cs_source i_program = i_program i_include = i_program
+          is_source = cs_source i_program = i_program
           i_evtype  = lv_c-event i_evname = mv_event_name
           i_varname = lv_left   i_class   = mv_class_name ).
         IF lv_rtype IS NOT INITIAL.
@@ -498,7 +520,7 @@ METHOD collect_method_calls.
         ENDIF.
       ENDIF.
 
-      " ── CONSTRUCTOR: записываем только если он реально определён ──
+      " ── CONSTRUCTOR: record it only when actually defined ─────────
       IF lv_c-name = 'CONSTRUCTOR' AND lv_c-class IS NOT INITIAL.
         READ TABLE cs_source-tt_calls_line
           WITH KEY class     = lv_c-class
@@ -513,9 +535,9 @@ METHOD collect_method_calls.
       lv_call_cls = COND #( WHEN lv_c-class IS NOT INITIAL THEN lv_c-class ELSE mv_class_name ).
 
       " ── LHS: lv_x = meth(…) → RETURNING ──────────────────────────
-      " Сначала проверяем токен непосредственно перед вызовом (простой случай).
-      " Если он не '=', ищем '=' у начала statement — случай
-      " rv_payment = iv_amount * get_factor(  где '=' далеко назад.
+      " First check the token right before the call (the simple case).
+      " If it is not '=', look for '=' near the statement start — the
+      " rv_payment = iv_amount * get_factor( case, where '=' is far back.
       CLEAR lv_lhs.
       DATA(lv_lhs_pos) = lv_ti - 1.
       IF lv_lhs_pos >= i_stmt-from.
@@ -530,7 +552,7 @@ METHOD collect_method_calls.
           ENDIF.
         ENDIF.
       ENDIF.
-      " Fallback: rv_x = a * b * get_factor( — '=' стоит на позиции from+1
+      " Fallback: rv_x = a * b * get_factor( — '=' sits at position from+1
       IF lv_lhs IS INITIAL.
         DATA(lv_stmt_eq_pos) = i_stmt-from + 1.
         IF lv_stmt_eq_pos <= i_stmt-to.
@@ -547,7 +569,7 @@ METHOD collect_method_calls.
         ENDIF.
       ENDIF.
 
-      " ── Линейный сбор аргументов ──────────────────────────────────
+      " ── Linear argument collection ────────────────────────────────
       CLEAR: lt_bind, lv_single, lv_pos.
       lv_pos  = abap_true.
       lv_scan = lv_ti + 1.
@@ -613,8 +635,8 @@ METHOD collect_method_calls.
         APPEND ls_b TO lt_bind.
       ENDIF.
 
-      " ── RETURNING: добавляем биндинг всегда, если параметр существует ──
-      " inner = имя RETURNING-параметра; outer = LHS-переменная (или пусто)
+      " ── RETURNING: always bind when the parameter exists ──────────
+      " inner = name of the RETURNING parameter; outer = LHS variable (may be empty)
       CLEAR lv_ret.
       LOOP AT cs_source-t_params INTO DATA(ls_ret)
         WHERE class = lv_call_cls AND event = 'METHOD'
@@ -624,7 +646,7 @@ METHOD collect_method_calls.
       IF lv_ret IS NOT INITIAL.
         CLEAR ls_b.
         ls_b-inner = lv_ret.
-        ls_b-outer = lv_lhs.   " пусто, если нет явного присваивания
+        ls_b-outer = lv_lhs.   " empty when there is no explicit assignment
         ls_b-dir   = 'E'.
         APPEND ls_b TO lt_bind.
       ENDIF.
@@ -827,7 +849,7 @@ METHOD collect_method_calls.
           " The variable is looked up in the scope of the CONTAINING method,
           " not the called one
           lv_resolved = resolve_var_type(
-            is_source = cs_source i_program = i_program i_include = i_program
+            is_source = cs_source i_program = i_program
             i_evtype  = mv_event_type i_evname = mv_event_name
             i_varname = lv_call-class i_class = mv_class_name ).
           IF lv_resolved IS NOT INITIAL.
@@ -962,7 +984,7 @@ METHOD collect_method_calls.
 
         IF lv_co_class IS INITIAL.
           lv_co_class = resolve_var_type(
-            is_source = cs_source i_program = i_program i_include = i_program
+            is_source = cs_source i_program = i_program
             i_evtype  = 'METHOD' i_evname = mv_event_name i_varname = lv_co_var
             i_class   = mv_class_name ).
         ENDIF.
@@ -974,7 +996,7 @@ METHOD collect_method_calls.
           DATA(lv_co_owner) = COND string(
             WHEN lv_co_pref = 'ME' OR lv_co_pref = 'SUPER' THEN mv_class_name
             ELSE resolve_var_type(
-              is_source = cs_source i_program = i_program i_include = i_program
+              is_source = cs_source i_program = i_program
               i_evtype  = 'METHOD' i_evname = mv_event_name i_varname = lv_co_pref
               i_class   = mv_class_name ) ).
           IF lv_co_owner IS NOT INITIAL.

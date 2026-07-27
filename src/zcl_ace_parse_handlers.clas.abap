@@ -5,7 +5,7 @@ CLASS zcl_ace_parse_handlers DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ace_stmt_handler.
 
-    " Собрать карту хэндлеров из всего инклуда — вызывать при полном проходе
+    " Collects the handler map for a whole include — call it on a full pass
     CLASS-METHODS collect
       IMPORTING
         io_scan   TYPE REF TO cl_ci_scan
@@ -14,7 +14,7 @@ CLASS zcl_ace_parse_handlers DEFINITION
       CHANGING
         cs_source TYPE zif_ace_parse_data=>ts_parse_data.
 
-    " Разрезолвить RAISE EVENT → список вызовов хэндлеров
+    " Resolves RAISE EVENT into the list of handler calls
     CLASS-METHODS resolve_raise_event
       IMPORTING
         io_scan    TYPE REF TO cl_ci_scan
@@ -25,17 +25,6 @@ CLASS zcl_ace_parse_handlers DEFINITION
         cs_source  TYPE zif_ace_parse_data=>ts_parse_data
         ct_calls   TYPE zcl_ace=>tt_calls.
 
-  PRIVATE SECTION.
-    CLASS-METHODS resolve_var_type
-      IMPORTING
-        is_source TYPE zif_ace_parse_data=>ts_parse_data
-        i_program TYPE program
-        i_evtype  TYPE string
-        i_evname  TYPE string
-        i_varname TYPE string
-      RETURNING
-        VALUE(rv_type) TYPE string.
-
 ENDCLASS.
 
 
@@ -43,7 +32,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
 
 
   METHOD zif_ace_stmt_handler~handle.
-    " Точечный вызов для RAISE EVENT — добавляем хэндлеры в t_keywords->tt_calls
+    " Targeted pass for RAISE EVENT — add handlers to t_keywords->tt_calls
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(ls_stmt).
     CHECK sy-subrc = 0.
     READ TABLE io_scan->tokens INDEX ls_stmt-from INTO DATA(ls_kw).
@@ -83,13 +72,13 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
 
   METHOD collect.
     " ---------------------------------------------------------------
-    " Два вида записей в tt_handler_map:
+    " Two kinds of entry end up in tt_handler_map:
     "
     " 1. METHODS meth FOR EVENT ev_name OF class
-    "    → статическая декларация хэндлера в определении класса
+    "    → static handler declaration in the class definition
     "
     " 2. SET HANDLER obj->method FOR src_obj
-    "    → динамическая регистрация, резолвим типы из t_vars
+    "    → dynamic registration; types are resolved from t_vars
     " ---------------------------------------------------------------
 
     LOOP AT io_scan->statements INTO DATA(ls_stmt).
@@ -111,9 +100,9 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                 READ TABLE io_scan->tokens INDEX lv_i + 3 INTO DATA(ls_of_tok).
                 READ TABLE io_scan->tokens INDEX lv_i + 4 INTO DATA(ls_src_tok).
                 IF sy-subrc = 0 AND ls_of_tok-str = 'OF'.
-                  " Имя метода — второй токен стейтмента
+                  " The method name is the second token of the statement
                   READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_meth_tok).
-                  " hdl_class пустой — заполним позже из calls_line или SET HANDLER
+                  " hdl_class stays empty — filled later from calls_line or SET HANDLER
                   READ TABLE cs_source-tt_handler_map
                     WITH KEY src_class  = ls_src_tok-str
                              event_name = ls_ev_tok-str
@@ -151,7 +140,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
               SPLIT ls_sh-str AT '->' INTO lv_hdl_obj lv_hdl_meth.
               CONDENSE: lv_hdl_obj, lv_hdl_meth.
 
-              " Ищем FOR → src_obj
+              " Look for FOR → src_obj
               DATA(lv_k) = lv_j + 1.
               DATA(lv_src_obj) = ``.
               WHILE lv_k <= ls_stmt-to.
@@ -165,29 +154,33 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
                 lv_k += 1.
               ENDWHILE.
 
-              " Резолвим тип объекта хэндлера
+              " Resolve the type of the handler object
               DATA(lv_hdl_class) = ``.
               IF lv_hdl_obj = 'ME' OR lv_hdl_obj IS INITIAL.
-                " Ищем класс по имени метода в calls_line
+                " Find the class by method name in calls_line
                 LOOP AT cs_source-tt_calls_line INTO DATA(ls_cl_me)
                   WHERE eventname = lv_hdl_meth AND eventtype = 'METHOD'.
                   lv_hdl_class = ls_cl_me-class. EXIT.
                 ENDLOOP.
               ELSE.
-                lv_hdl_class = resolve_var_type(
+                " No class/event context here — SET HANDLER is matched across
+                " the whole include, so widen the lookup.
+                lv_hdl_class = zcl_ace_parse_calls=>resolve_var_type(
                   is_source = cs_source i_program = i_program
-                  i_evtype = `` i_evname = `` i_varname = lv_hdl_obj ).
+                  i_evtype = `` i_evname = `` i_varname = lv_hdl_obj
+                  i_any_scope = abap_true ).
               ENDIF.
 
-              " Резолвим тип источника события
+              " Resolve the type of the event source
               DATA(lv_src_class) = ``.
               IF lv_src_obj IS NOT INITIAL AND lv_src_obj <> '*'.
-                lv_src_class = resolve_var_type(
+                lv_src_class = zcl_ace_parse_calls=>resolve_var_type(
                   is_source = cs_source i_program = i_program
-                  i_evtype = `` i_evname = `` i_varname = lv_src_obj ).
+                  i_evtype = `` i_evname = `` i_varname = lv_src_obj
+                  i_any_scope = abap_true ).
               ENDIF.
 
-              " Обновляем запись из FOR EVENT или добавляем новую
+              " Update the FOR EVENT entry, or append a new one
               READ TABLE cs_source-tt_handler_map
                 WITH KEY hdl_method = lv_hdl_meth
                 ASSIGNING FIELD-SYMBOL(<hm>).
@@ -221,7 +214,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
   METHOD resolve_raise_event.
     READ TABLE io_scan->statements INDEX i_stmt_idx INTO DATA(ls_stmt).
     CHECK sy-subrc = 0.
-    " RAISE EVENT ev_name → токен from+2
+    " RAISE EVENT ev_name → token from+2
     READ TABLE io_scan->tokens INDEX ls_stmt-from + 2 INTO DATA(ls_ev).
     CHECK sy-subrc = 0.
     DATA(lv_ev_name) = ls_ev-str.
@@ -231,7 +224,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
 
       DATA(lv_class) = ls_hm-hdl_class.
 
-      " Если класс не резолвился — ищем в calls_line по имени метода
+      " If the class did not resolve, look it up in calls_line by method name
       IF lv_class IS INITIAL.
         LOOP AT cs_source-tt_calls_line INTO DATA(ls_cl)
           WHERE eventname = ls_hm-hdl_method AND eventtype = 'METHOD'.
@@ -248,21 +241,5 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
-
-  METHOD resolve_var_type.
-    READ TABLE is_source-t_vars
-      WITH KEY program   = i_program
-               eventtype = i_evtype
-               eventname = i_evname
-               name      = i_varname
-      INTO DATA(ls_var).
-    IF sy-subrc = 0 AND ls_var-type IS NOT INITIAL.
-      rv_type = ls_var-type. RETURN.
-    ENDIF.
-    READ TABLE is_source-t_vars
-      WITH KEY program = i_program name = i_varname
-      INTO ls_var.
-    IF sy-subrc = 0. rv_type = ls_var-type. ENDIF.
-  ENDMETHOD.
 
 ENDCLASS.

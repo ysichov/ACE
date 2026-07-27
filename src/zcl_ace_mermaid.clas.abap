@@ -100,18 +100,7 @@ private section.
     returning
       value(RV_TEXT) type STRING .
 
-  methods BUILD_NODES
-    importing
-      !I_DIRECTION type STRING
-    changing
-      !CT_LINES     type mo_viewer->tt_line
-      !CV_MM_STRING type STRING .
 
-  methods BUILD_EDGES
-    importing
-      !IT_LINES     type mo_viewer->tt_line
-    changing
-      !CV_MM_STRING type STRING .
 
 ENDCLASS.
 
@@ -159,367 +148,6 @@ DATA(lv_maxlen) = 200.
 
     " Restore <br/> tags
     REPLACE ALL OCCURRENCES OF lc_br_ph IN RV_LABEL WITH lc_br IN CHARACTER MODE.
-
-  endmethod.
-
-
-  method BUILD_NODES.
-
-    DATA: box_s        TYPE string,
-          box_e        TYPE string,
-          opened       TYPE i,
-          pre_stack    TYPE mo_viewer->ts_line,
-          times        TYPE i,
-          lt_sg_opened TYPE TABLE OF flag WITH EMPTY KEY.
-
-    LOOP AT CT_LINES ASSIGNING FIELD-SYMBOL(<line>) WHERE cond <> 'ELSE' AND cond <> 'ELSEIF' AND cond <> 'WHEN'.
-      DATA(ind) = <line>-ind.
-      DATA(lv_tabix) = sy-tabix.
-
-      IF <line>-cond IS INITIAL.
-        box_s = '('. box_e = ')'.
-      ELSE.
-        box_s = '{'. box_e = '}'.
-      ENDIF.
-
-      IF pre_stack IS INITIAL.
-        pre_stack = <line>.
-      ENDIF.
-
-      " Close subgraphs when stack level decreases or event changes
-      IF ( pre_stack-stack > <line>-stack OR pre_stack-ev_name <> <line>-ev_name )
-         AND opened > 0.
-        IF pre_stack-stack = <line>-stack AND pre_stack-ev_name <> <line>-ev_name.
-          times = 1.
-        ELSE.
-          times = pre_stack-stack - <line>-stack.
-        ENDIF.
-        DO times TIMES.
-          CV_MM_STRING = |{ CV_MM_STRING } end\n|.
-          opened -= 1.
-          IF opened = 0. EXIT. ENDIF.
-        ENDDO.
-      ENDIF.
-
-      " LOOP/DO/WHILE — only subgraph, no node
-      IF <line>-cond = 'LOOP' OR <line>-cond = 'DO' OR <line>-cond = 'WHILE'.
-
-        REPLACE ALL OCCURRENCES OF `-` IN <line>-code WITH ` ` IN CHARACTER MODE.
-        pre_stack = <line>.
-
-        DATA(name) = format_node_label( i_code = <line>-code ).
-
-        " Only open subgraph if next line is not immediately END*
-        READ TABLE CT_LINES INDEX lv_tabix + 1 INTO DATA(line2).
-        IF sy-subrc = 0
-           AND line2-cond <> 'ENDLOOP' AND line2-cond <> 'ENDDO' AND line2-cond <> 'ENDWHILE'.
-          CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ name }"]\n  direction { I_DIRECTION }\n|.
-          opened += 1.
-          APPEND abap_true TO lt_sg_opened.
-        ELSE.
-          APPEND abap_false TO lt_sg_opened.
-        ENDIF.
-        CONTINUE.
-
-      ENDIF.
-
-      " PERFORM/CALL FUNCTION/CALL METHOD etc.
-      IF <line>-subname IS NOT INITIAL.
-
-        READ TABLE CT_LINES INDEX lv_tabix + 1 INTO line2.
-        DATA(lv_has_children) = xsdbool( sy-subrc = 0 AND line2-stack > <line>-stack ).
-
-        IF lv_has_children = abap_true.
-          " Call goes deeper (stack+1): show only the call signature without parameters
-          " (the parameters are visible in the child nodes / subgraph below).
-          " Strip everything from the first opening parenthesis onward.
-          DATA(lv_call_label) = <line>-code.
-
-          FIND FIRST OCCURRENCE OF ` = ` IN lv_call_label MATCH OFFSET DATA(lv_eq_off).
-          IF sy-subrc = 0.
-            DATA(lv_rhs) = lv_call_label+lv_eq_off.
-            FIND FIRST OCCURRENCE OF '(' IN lv_rhs MATCH OFFSET DATA(lv_rhs_off).
-            IF sy-subrc = 0.
-              DATA(lv_abs_paren) = lv_eq_off + lv_rhs_off + 1.
-              lv_call_label = |{ lv_call_label(lv_abs_paren) } )|.
-            ELSE.
-              lv_call_label = |{ lv_call_label }( )|.
-            ENDIF.
-          ELSE.
-            FIND FIRST OCCURRENCE OF '(' IN lv_call_label MATCH OFFSET DATA(lv_off).
-            IF sy-subrc = 0.
-              lv_call_label = |{ lv_call_label(lv_off) }( )|.
-            ELSE.
-              lv_call_label = |{ lv_call_label }( )|.
-            ENDIF.
-          ENDIF.
-
-          DATA(name2) = format_node_label( i_code = lv_call_label i_maxlen = 0 ).
-          CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ name2 }"{ box_e }\n|.
-
-          DATA(lv_sg_title) = format_node_label( i_code = <line>-subname i_maxlen = 0 ).
-          CV_MM_STRING = |{ CV_MM_STRING } subgraph S{ ind }["{ lv_sg_title }"]\n  direction { I_DIRECTION }\n|.
-          opened += 1.
-        ELSE.
-          " Same-level call (no children): show the full source line including all parameters.
-          " <line>-code was built with an early EXIT at USING/EXPORTING/IMPORTING/CHANGING,
-          " so we re-read all tokens directly from the scan to get the complete text.
-          DATA(lv_label_code) = ``.
-
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-            WITH KEY include = <line>-include INTO DATA(ls_prog_full).
-          IF sy-subrc = 0.
-            READ TABLE ls_prog_full-t_keywords
-              WITH KEY line = <line>-line INTO DATA(ls_kw_full).
-            IF sy-subrc = 0.
-              " Read all tokens for this keyword span (no early exit on USING/EXPORTING/…)
-              LOOP AT ls_prog_full-scan->tokens
-                FROM ls_kw_full-from TO ls_kw_full-to
-                INTO DATA(ls_tok_full).
-                IF lv_label_code IS INITIAL.
-                  lv_label_code = ls_tok_full-str.
-                ELSE.
-                  lv_label_code = |{ lv_label_code } { ls_tok_full-str }|.
-                ENDIF.
-              ENDLOOP.
-              REPLACE ALL OCCURRENCES OF '"' IN lv_label_code WITH ``.
-            ENDIF.
-          ENDIF.
-
-          " Fall back to the pre-built code if the re-read yielded nothing.
-          IF lv_label_code IS INITIAL.
-            lv_label_code = <line>-code.
-          ENDIF.
-
-          " If the call has bindings (named parameters), insert <br/> before each
-          " parameter so every parameter starts on a new line in the Mermaid node label.
-          READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
-            WITH KEY include = <line>-include INTO DATA(ls_prog_bn).
-          IF sy-subrc = 0.
-            READ TABLE ls_prog_bn-t_keywords
-              WITH KEY line = <line>-line INTO DATA(ls_kw_bn).
-            IF sy-subrc = 0 AND ls_kw_bn-tt_calls IS NOT INITIAL.
-              " Use bindings from the first call entry that has named parameters.
-              LOOP AT ls_kw_bn-tt_calls INTO DATA(ls_call_bn).
-                IF ls_call_bn-bindings IS NOT INITIAL.
-                  LOOP AT ls_call_bn-bindings INTO DATA(ls_bind_bn).
-                    IF ls_bind_bn-inner IS INITIAL. CONTINUE. ENDIF.
-                    " Insert <br/> before " INNER =" pattern in the code string.
-                    DATA(lv_pattern_bn) = | { ls_bind_bn-inner } =|.
-                    REPLACE ALL OCCURRENCES OF lv_pattern_bn
-                      IN lv_label_code
-                      WITH |<br/>{ lv_pattern_bn }|
-                      IN CHARACTER MODE.
-                  ENDLOOP.
-                  EXIT. " only process bindings of the first matching call
-                ENDIF.
-              ENDLOOP.
-            ENDIF.
-          ENDIF.
-
-          DATA(lv_label) = format_node_label( i_code = lv_label_code i_maxlen = 0 ).
-          CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ lv_label }"{ box_e }\n|.
-          CLEAR <line>-arrow.
-        ENDIF.
-
-        pre_stack = <line>.
-        CONTINUE.
-
-      ENDIF.
-
-      " END* — only close if subgraph was actually opened
-      IF <line>-cond = 'ENDLOOP' OR <line>-cond = 'ENDDO' OR <line>-cond = 'ENDWHILE'.
-        DATA(lv_last) = lines( lt_sg_opened ).
-        IF lv_last > 0.
-          READ TABLE lt_sg_opened INDEX lv_last INTO DATA(lv_sg_flag).
-          DELETE lt_sg_opened INDEX lv_last.
-          IF lv_sg_flag = abap_true.
-            opened -= 1.
-            CV_MM_STRING = |{ CV_MM_STRING } end\n|.
-          ENDIF.
-        ENDIF.
-        CONTINUE.
-      ENDIF.
-
-      " Regular node
-      REPLACE ALL OCCURRENCES OF `-` IN <line>-code WITH ` ` IN CHARACTER MODE.
-      DATA(lv_reg_label) = format_node_label( i_code = <line>-code ).
-      CV_MM_STRING = |{ CV_MM_STRING }{ ind }{ box_s }"{ lv_reg_label }"{ box_e }\n|.
-      pre_stack = <line>.
-
-    ENDLOOP.
-
-    " Close any remaining open subgraphs
-    DO opened TIMES.
-      CV_MM_STRING = |{ CV_MM_STRING } end\n|.
-    ENDDO.
-
-  endmethod.
-
-
-  method BUILD_EDGES.
-
-    " IT_LINES contains only non-LOOP/DO/WHILE lines (already filtered by caller).
-    " Fields used:
-    "   ind        - sequential index within results (set in GET_CODE_FLOW)
-    "   cond       - IF / ELSE / ELSEIF / ENDIF / CASE / WHEN / ENDCASE / <empty>
-    "   ev_name    - event/method name this line belongs to
-    "   stack      - call stack level (1 = root event, no incoming arrow from another context)
-    "   els_before - ind of node before this ELSE/ELSEIF/WHEN (set in GET_CODE_FLOW)
-    "   els_after  - ind of first real node after this branch (set in GET_CODE_FLOW)
-    "   arrow      - label for edge (variable assignments)
-    " mt_if (from mo_viewer) - stack of IF/CASE structures: if_ind, end_ind
-
-    " Work with a local copy so we don't corrupt shared state
-    DATA(lt_if) = mo_viewer->mt_if.
-
-    DATA: if_stack   TYPE TABLE OF i,      " stack of indices into lt_if
-          if_ptr     TYPE i,               " current index in lt_if
-          pre_ind    TYPE i,               " ind of previous drawable node
-          pre_cond   TYPE string,          " cond of previous node
-          pre_ev     TYPE string,          " ev_name of previous drawable node
-          sub        TYPE string,          " edge label
-          last_els   TYPE i.               " last els_after handled (to skip duplicate edges)
-
-    " Track which (stack=1, ev_name) contexts have already had at least one node
-    " drawn. Only the very first node of a root context must not get an incoming
-    " cross-context arrow; subsequent nodes in the same context may receive arrows
-    " from nodes that temporarily "dipped" into a deeper ev_name (subgraph call).
-    DATA lt_started_ev TYPE TABLE OF string WITH EMPTY KEY.
-
-    LOOP AT IT_LINES INTO DATA(line).
-
-      " Skip LOOP/DO/WHILE and their END* — they are subgraphs, not nodes
-      IF line-cond = 'LOOP' OR line-cond = 'DO'    OR line-cond = 'WHILE' OR
-         line-cond = 'ENDLOOP' OR line-cond = 'ENDDO' OR line-cond = 'ENDWHILE'.
-        CONTINUE.
-      ENDIF.
-
-      " ----- IF / CASE: push onto stack -----
-      IF line-cond = 'IF' OR line-cond = 'CASE'.
-        if_ptr += 1.
-        READ TABLE lt_if INDEX if_ptr INTO DATA(ls_if).
-        APPEND if_ptr TO if_stack.
-      ENDIF.
-
-      " ----- ENDIF / ENDCASE: pop stack -----
-      IF line-cond = 'ENDIF' OR line-cond = 'ENDCASE'.
-        DATA(lv_top) = 0.
-        READ TABLE if_stack INDEX lines( if_stack ) INTO lv_top.
-        IF sy-subrc = 0.
-          DELETE if_stack INDEX lines( if_stack ).
-          " re-read current top after pop
-          READ TABLE if_stack INDEX lines( if_stack ) INTO lv_top.
-          IF sy-subrc = 0.
-            READ TABLE lt_if INDEX lv_top INTO ls_if.
-          ELSE.
-            CLEAR ls_if.
-          ENDIF.
-        ENDIF.
-        " draw edge from last node before ENDIF to ENDIF node
-        IF pre_ind > 0 AND pre_cond <> 'ELSE' AND pre_cond <> 'ELSEIF' AND pre_cond <> 'WHEN'
-           AND NOT ( last_els = line-ind ).
-          " Block only the very first appearance of a root-level (stack=1) ev_name context
-          DATA(lv_block_endif) = abap_false.
-          IF line-stack = 1.
-            READ TABLE lt_started_ev WITH KEY table_line = line-ev_name TRANSPORTING NO FIELDS.
-            IF sy-subrc <> 0.
-              lv_block_endif = abap_true.
-            ENDIF.
-          ENDIF.
-          IF lv_block_endif = abap_false.
-            CV_MM_STRING = |{ CV_MM_STRING }{ pre_ind }-->{ sub }{ line-ind }\n|.
-            CLEAR sub.
-          ENDIF.
-        ENDIF.
-        " Mark this ev_name as started once we output (or skip) its first node
-        IF line-stack = 1.
-          READ TABLE lt_started_ev WITH KEY table_line = line-ev_name TRANSPORTING NO FIELDS.
-          IF sy-subrc <> 0. APPEND line-ev_name TO lt_started_ev. ENDIF.
-        ENDIF.
-        pre_ind  = line-ind.
-        pre_cond = line-cond.
-        pre_ev   = line-ev_name.
-        CONTINUE.
-      ENDIF.
-
-      " ----- ELSE / ELSEIF / WHEN: branch edges -----
-      IF line-cond = 'ELSE' OR line-cond = 'ELSEIF' OR line-cond = 'WHEN'.
-
-        " get current IF/CASE node
-        READ TABLE if_stack INDEX lines( if_stack ) INTO lv_top.
-        IF sy-subrc = 0.
-          READ TABLE lt_if INDEX lv_top INTO ls_if.
-        ENDIF.
-
-        DATA(bool) = '|' && line-code && '|'.
-
-        " edge from IF/CASE head to branch target
-        IF line-els_after IS NOT INITIAL AND line-els_after > 0.
-          CV_MM_STRING = |{ CV_MM_STRING }{ ls_if-if_ind }-->{ bool }{ line-els_after }\n|.
-          last_els = line-els_after.
-        ELSE.
-          " no nodes in this branch — edge to ENDIF/ENDCASE
-          IF ls_if-end_ind > 0.
-            CV_MM_STRING = |{ CV_MM_STRING }{ ls_if-if_ind }-->{ bool }{ ls_if-end_ind }\n|.
-          ENDIF.
-        ENDIF.
-
-        " edge from previous branch's last node to ENDIF/ENDCASE (fall-through)
-        IF line-els_before IS NOT INITIAL AND line-els_before <> ls_if-if_ind AND ls_if-end_ind > 0.
-          CV_MM_STRING = |{ CV_MM_STRING }{ line-els_before }-->{ ls_if-end_ind }\n|.
-        ENDIF.
-
-        " if next node is not ENDIF/ENDCASE, reset pre so next regular node
-        " doesn't get a spurious edge from IF head
-        DATA(lv_next_ind) = line-ind + 1.
-        READ TABLE IT_LINES WITH KEY ind = lv_next_ind INTO DATA(next_line).
-        IF sy-subrc = 0
-           AND next_line-cond <> 'ENDIF'
-           AND next_line-cond <> 'ENDCASE'.
-          CLEAR pre_ind.
-        ELSE.
-          pre_ind  = line-ind.
-        ENDIF.
-        pre_cond = line-cond.
-        pre_ev   = line-ev_name.
-        CLEAR sub.
-        CONTINUE.
-      ENDIF.
-
-      " ----- Regular node -----
-      IF pre_ind > 0
-         AND pre_cond <> 'ELSE' AND pre_cond <> 'ELSEIF' AND pre_cond <> 'WHEN'
-         AND NOT ( last_els = line-ind ).
-        " Block only the very first node of a root-level (stack=1) context when
-        " it is being encountered for the first time — i.e. it has no predecessor
-        " within its own ev_name yet. Subsequent appearances of the same ev_name
-        " (e.g. after returning from a nested subgraph call) are allowed arrows.
-        DATA(lv_block) = abap_false.
-        IF line-stack = 1.
-          READ TABLE lt_started_ev WITH KEY table_line = line-ev_name TRANSPORTING NO FIELDS.
-          IF sy-subrc <> 0.
-            " First node of this root context — no incoming cross-context arrow
-            lv_block = abap_true.
-          ENDIF.
-        ENDIF.
-        IF lv_block = abap_false.
-          CV_MM_STRING = |{ CV_MM_STRING }{ pre_ind }-->{ sub }{ line-ind }\n|.
-        ENDIF.
-      ENDIF.
-
-      " Mark this ev_name as started once we process its first node
-      IF line-stack = 1.
-        READ TABLE lt_started_ev WITH KEY table_line = line-ev_name TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0. APPEND line-ev_name TO lt_started_ev. ENDIF.
-      ENDIF.
-
-      sub = COND string( WHEN line-arrow IS NOT INITIAL THEN '|"' && line-arrow && '"|' ).
-      pre_ind  = line-ind.
-      pre_cond = line-cond.
-      pre_ev   = line-ev_name.
-
-    ENDLOOP.
 
   endmethod.
 
@@ -1793,7 +1421,7 @@ DATA(lv_maxlen) = 200.
            END OF t_ind,
            BEGIN OF t_stack_entry,
              stacklevel TYPE i,
-             entity_idx TYPE i,    " индекс ноды в таблице entities
+             entity_idx TYPE i,    " index of the node in the entities table
              name       TYPE string,
            END OF t_stack_entry.
 
@@ -1930,7 +1558,7 @@ DATA(lv_maxlen) = 200.
 
     mm_string = |graph { COND string( WHEN i_direction IS NOT INITIAL THEN i_direction ELSE 'TD' ) }\n |.
 
-    " ── Шаг 2: явно объявляем все ноды ─────────────────────────────
+    " ── Step 2: declare every node explicitly ──────────────────────
     DATA(lv_idx) = 0.
     LOOP AT entities INTO entity.
       lv_idx += 1.
@@ -1943,12 +1571,12 @@ DATA(lv_maxlen) = 200.
       mm_string = |{ mm_string }{ lv_idx }({ lv_lbl })\n|.
     ENDLOOP.
 
-    " ── Шаг 3: строим стрелки через явный стек вызовов ─────────────
-    " call_stack хранит ноды по уровням.
-    " Когда приходит новый шаг с stacklevel=N:
-    "   - caller = нода в стеке на уровне N-1
-    "   - рисуем стрелку caller → текущая нода (если ещё не было)
-    "   - обновляем стек: на уровне N теперь текущая нода
+    " ── Step 3: draw the arrows from an explicit call stack ────────
+    " call_stack holds one node per level.
+    " When a step arrives with stacklevel = N:
+    "   - caller = the node held at level N-1
+    "   - draw caller → current node (unless already drawn)
+    "   - update the stack: level N now holds the current node
 
     DATA lv_prev_stack TYPE i.
 
@@ -1961,7 +1589,7 @@ DATA(lv_maxlen) = 200.
 
       DATA(lv_level) = step2-stacklevel.
 
-      " Ищем caller — нода на уровне lv_level - 1 в call_stack
+      " Find the caller — the call_stack node at level lv_level - 1
       IF lv_level > 1.
         READ TABLE call_stack
           WITH KEY stacklevel = lv_level - 1
@@ -2011,7 +1639,7 @@ DATA(lv_maxlen) = 200.
         ENDIF.
       ENDIF.
 
-      " Обновляем стек: удаляем все уровни >= lv_level и добавляем текущий
+      " Update the stack: drop every level >= lv_level, then push the current one
       DELETE call_stack WHERE stacklevel >= lv_level.
       APPEND VALUE t_stack_entry(
         stacklevel = lv_level
@@ -2022,7 +1650,7 @@ DATA(lv_maxlen) = 200.
       lv_prev_stack = lv_level.
     ENDLOOP.
 
-    " ── Шаг 4: стили ────────────────────────────────────────────────
+    " ── Step 4: styles ──────────────────────────────────────────────
     IF mv_type = 'CMAP' AND mo_viewer->mv_cmap_focus IS NOT INITIAL.
       DATA(lv_enrich_from) = 0.
       LOOP AT entities INTO DATA(ls_enrich_src).

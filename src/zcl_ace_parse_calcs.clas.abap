@@ -9,7 +9,6 @@ protected section.
   PRIVATE SECTION.
     DATA mv_eventtype TYPE string.
     DATA mv_eventname TYPE string.
-    DATA mv_class     TYPE string.
     DATA mv_in_impl   TYPE abap_bool.
 
     CLASS-METHODS is_varname
@@ -59,7 +58,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
 
     DATA(lv_line) = ls_kw-row.
 
-    " ── Ищем первый '=' ──────────────────────────────────────────
+    " ── Locate the first '=' ─────────────────────────────────────
     DATA lv_eq_idx  TYPE i VALUE 0.
     DATA lv_tok_pos TYPE i.
     lv_tok_pos = ls_stmt-from.
@@ -100,7 +99,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
       lv_tok_pos += 1.
     ENDWHILE.
 
-    " ── RHS → t_composed (только переменные вне вызовов) ─────────
+    " ── RHS → t_composed (only variables outside calls) ──────────
     DATA lv_prev_arrow  TYPE abap_bool.
     DATA lv_skip_next   TYPE abap_bool.
     DATA lv_call_depth  TYPE i VALUE 0.
@@ -247,9 +246,9 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
                            CHANGING  cs_source   = cs_source ).
           ENDCASE.
         ENDLOOP.
-        " Нет binding dir='E' — вызов встроен в выражение (rv = A * meth(...)).
-        " Добавляем RETURNING-параметр метода в t_calculated чтобы
-        " propagate_vars_backward мог по нему найти входные параметры.
+        " No binding with dir='E' — the call is embedded in an expression
+        " (rv = A * meth(...)). Record the method's RETURNING parameter in
+        " t_calculated so propagate_vars_backward can trace its inputs.
         IF lv_has_e_bind = abap_false.
           DATA(lv_ret_cls) = COND string(
             WHEN ls_call-class IS NOT INITIAL THEN ls_call-class
@@ -308,7 +307,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
 
 
   METHOD append_calc.
-    " Дедупликация делается в GET_CODE_FLOW через SORT + DELETE ADJACENT DUPLICATES
+    " Deduplicated in GET_CODE_FLOW via SORT + DELETE ADJACENT DUPLICATES
     APPEND VALUE zcl_ace=>ts_var(
       program = i_program include = i_include
       class = i_class eventtype = i_eventtype eventname = i_eventname
@@ -319,7 +318,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
 
 
   METHOD append_comp.
-    " Дедупликация делается в GET_CODE_FLOW через SORT + DELETE ADJACENT DUPLICATES
+    " Deduplicated in GET_CODE_FLOW via SORT + DELETE ADJACENT DUPLICATES
     APPEND VALUE zcl_ace=>ts_var(
       program = i_program include = i_include
       class = i_class eventtype = i_eventtype eventname = i_eventname

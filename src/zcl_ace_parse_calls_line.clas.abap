@@ -130,13 +130,13 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
     ENDIF.
 
     IF sy-subrc = 0.
-      " Запись создана ON_METHODS_SIG из CU/CO/CI.
-      " Обновляем include → реальный CM-инклуд.
-      " index = i_stmt_idx (индекс statement, нужен для поиска в t_keywords).
+      " The record was created by ON_METHODS_SIG from CU/CO/CI.
+      " Update include → the real CM include.
+      " index = i_stmt_idx (statement index, needed to look up t_keywords).
       <ex>-include = i_include.
       <ex>-index   = i_stmt_idx.
     ELSE.
-      " Нет предварительной записи — локальный класс, FORM, MODULE, FUNCTION
+      " No pre-existing record — local class, FORM, MODULE or FUNCTION
       APPEND INITIAL LINE TO cs_source-tt_calls_line ASSIGNING FIELD-SYMBOL(<cl>).
       <cl>-program   = i_program.
       <cl>-include   = i_include.
@@ -152,8 +152,8 @@ CLASS ZCL_ACE_PARSE_CALLS_LINE IMPLEMENTATION.
           <cl>-index       = ls_def-def_line.
           <cl>-meth_type   = ls_def-meth_type.
         ELSE.
-          " локальный класс без предварительного объявления METHODS —
-          " используем i_stmt_idx (индекс statement), НЕ row токена
+          " local class with no preceding METHODS declaration — use
+          " i_stmt_idx (the statement index), NOT the token row
           <cl>-def_include = i_include.
           <cl>-index       = i_stmt_idx.
           <cl>-meth_type   = get_meth_type( i_include ).

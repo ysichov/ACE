@@ -25,10 +25,6 @@ CLASS zcl_ace_keywords DEFINITION
       END OF ts_keyword,
       tt_keywords TYPE HASHED TABLE OF ts_keyword WITH UNIQUE KEY word.
 
-    "! Returns the union of all keyword literals reachable from any
-    "! statement matcher or expression. Lazily computed and cached.
-    CLASS-METHODS get_all
-      RETURNING VALUE(result) TYPE tt_keywords.
 
     "! True iff the (case-insensitive) word is in the keyword set.
     "! Drop-in replacement for the static-list check in ZCL_ACE_METRICS.
@@ -36,8 +32,6 @@ CLASS zcl_ace_keywords DEFINITION
       IMPORTING token         TYPE string
       RETURNING VALUE(result) TYPE abap_bool.
 
-    "! Forces reset of the cache. Useful after adding new STMT_/EXPR_ methods.
-    CLASS-METHODS reset.
 
   PRIVATE SECTION.
 
@@ -64,23 +58,12 @@ ENDCLASS.
 
 CLASS zcl_ace_keywords IMPLEMENTATION.
 
-  METHOD get_all.
-    IF mv_cached = abap_false.
-      build( ).
-    ENDIF.
-    result = mt_cache.
-  ENDMETHOD.
-
   METHOD is_keyword.
     IF mv_cached = abap_false.
       build( ).
     ENDIF.
     DATA(up) = to_upper( token ).
     result = boolc( line_exists( mt_cache[ word = up ] ) ).
-  ENDMETHOD.
-
-  METHOD reset.
-    CLEAR: mt_cache, mv_cached, mt_visited_exprs.
   ENDMETHOD.
 
   METHOD build.
@@ -126,7 +109,7 @@ CLASS zcl_ace_keywords IMPLEMENTATION.
   METHOD walk_node.
     CHECK node IS BOUND.
 
-    " Mirrors zcl_ace_combi_node->list_keywords( ) but ALSO follows
+    " Mirrors Combi.listKeywords() in @abaplint/core but ALSO follows
     " Expression references so we capture keywords contributed by
     " sub-expressions reached only via expr( ).
     CASE node->kind.
@@ -134,8 +117,7 @@ CLASS zcl_ace_keywords IMPLEMENTATION.
         OR zcl_ace_combi_node=>c_kind_wseq.
         add_keyword( node->value ).
 
-      WHEN zcl_ace_combi_node=>c_kind_token
-        OR zcl_ace_combi_node=>c_kind_regex.
+      WHEN zcl_ace_combi_node=>c_kind_token.
         " contributes nothing
         RETURN.
 

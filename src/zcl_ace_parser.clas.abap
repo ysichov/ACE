@@ -76,7 +76,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
       DATA(lv_inc2) = CONV program( i_include ).
       DATA(lv_prg2) = CONV program( i_program ).
 
-      " ── Сначала parse_calls — заполняет tt_calls с bindings ──────
+      " ── parse_calls first — it fills tt_calls with bindings ──────
       " No keyword pre-filter here: zcl_ace_parse_calls dispatches by itself
       " (incl. the generic fallback for calls inside IF/WHILE/APPEND/…)
       IF lv_eff2 = 'RAISE EVENT'.
@@ -95,7 +95,7 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
           CHANGING cs_source = cs_source ).
       ENDIF.
 
-      " ── Затем parse_vars и parse_calcs — читают tt_calls-bindings ─
+      " ── then parse_vars and parse_calcs — they read those bindings 
       IF lv_key2-name = 'DATA' OR lv_key2-name = 'CLASS-DATA' OR lv_key2-name = 'COMPUTE'.
         DATA(lo_vars2) = NEW zcl_ace_parse_vars( ).
         lo_vars2->zif_ace_stmt_handler~handle(

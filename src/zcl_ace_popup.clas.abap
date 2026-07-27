@@ -8,7 +8,6 @@ public section.
   data M_ADDITIONAL_NAME type STRING .
   data MO_BOX type ref to CL_GUI_DIALOGBOX_CONTAINER .
   data MO_SPLITTER type ref to CL_GUI_SPLITTER_CONTAINER .
-  data MO_SPLITTER_IMP_EXP type ref to CL_GUI_SPLITTER_CONTAINER .
   data MO_VARIABLES_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_TABLES_CONTAINER type ref to CL_GUI_CONTAINER .
   data MO_MERMAID type ref to ZCL_ACE_MERMAID .

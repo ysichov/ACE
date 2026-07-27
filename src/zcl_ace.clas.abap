@@ -89,15 +89,9 @@ public section.
         include    TYPE tpda_include,
         time       LIKE sy-uzeit,
       END OF t_step_counter .
-  types:
-    " Aligned with zif_ace_parse_data=>ts_param_binding (dir added)
-    BEGIN OF ts_param_binding,
-        outer TYPE string,
-        inner TYPE string,
-        dir   TYPE char1,
-      END OF ts_param_binding .
-  types:
-    tt_param_bindings TYPE STANDARD TABLE OF ts_param_binding WITH EMPTY KEY .
+  " --- aliases for the canonical types in ZIF_ACE_PARSE_DATA ---
+  types TS_PARAM_BINDING type ZIF_ACE_PARSE_DATA=>TS_PARAM_BINDING .
+  types TT_PARAM_BINDINGS type ZIF_ACE_PARSE_DATA=>TT_PARAM_BINDINGS .
   types TS_CALLS type ZIF_ACE_PARSE_DATA=>TS_CALLS .
   types TT_CALLS type ZIF_ACE_PARSE_DATA=>TT_CALLS .
   types TS_KWORD type ZIF_ACE_PARSE_DATA=>TS_KWORD .
@@ -105,30 +99,11 @@ public section.
   types TS_CALLS_LINE type ZIF_ACE_PARSE_DATA=>TS_CALLS_LINE .
   types TT_CALLS_LINE type ZIF_ACE_PARSE_DATA=>TT_CALLS_LINE .
   types TS_VARS type ZIF_ACE_PARSE_DATA=>TS_VARS .
-  types:
-    BEGIN OF ts_var,
-        program   TYPE string,
-        include   TYPE string,
-        class     TYPE string,
-        eventtype TYPE string,
-        eventname TYPE string,
-        line      TYPE i,
-        name(100) TYPE c,
-        type      TYPE string,
-      END OF ts_var .
-  types:
-    tt_calculated TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
-  types:
-    tt_composed   TYPE STANDARD TABLE OF ts_var WITH KEY program include class eventtype eventname line name .
-  types:
-    BEGIN OF ts_int_tabs,
-        eventtype TYPE string,
-        eventname TYPE string,
-        name      TYPE string,
-        type      TYPE string,
-      END OF ts_int_tabs .
-  types:
-    tt_tabs TYPE STANDARD TABLE OF ts_int_tabs WITH EMPTY KEY .
+  types TS_VAR type ZIF_ACE_PARSE_DATA=>TS_VAR .
+  types TT_CALCULATED type ZIF_ACE_PARSE_DATA=>TT_CALCULATED .
+  types TT_COMPOSED type ZIF_ACE_PARSE_DATA=>TT_COMPOSED .
+  types TS_INT_TABS type ZIF_ACE_PARSE_DATA=>TS_INT_TABS .
+  types TT_TABS type ZIF_ACE_PARSE_DATA=>TT_TABS .
   types TS_PARAMS type ZIF_ACE_PARSE_DATA=>TS_PARAMS .
   types:
     BEGIN OF ts_parse_state,
@@ -232,45 +207,20 @@ public section.
   data MV_PKG_PARSED type ABAP_BOOL .
   data MV_CMAP_FOCUS type PROGNAME .
   data MT_PKG_OBJECTS type ZIF_ACE_PARSE_DATA=>TT_PKG_OBJ .
-  data MV_SHOW_PROG type PROG .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
-  data:
-    mt_compo          TYPE TABLE OF scompo .
-  data MT_LOCALS type TPDA_SCR_LOCALS_IT .
-  data MT_GLOBALS type TPDA_SCR_GLOBALS_IT .
-  data MT_RET_EXP type TPDA_SCR_LOCALS_IT .
   data M_COUNTER type I .
   data:
     mt_steps          TYPE  TABLE OF zcl_ace=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname .
   data M_STEP type I .
-  data M_I_FIND type BOOLEAN .
     "DATA m_stop_stack TYPE i .
     "DATA m_debug TYPE x .
-  data M_REFRESH type BOOLEAN .
-  data M_UPDATE type BOOLEAN .
   data I_STEP type BOOLEAN .
-  data MS_STACK_PREV type ZCL_ACE=>T_STACK .
   data MS_STACK type ZCL_ACE=>T_STACK .
     "DATA i_history TYPE boolean .
-  data M_HIST_STEP type I .
-  data M_STEP_DELTA type I .
-  data MV_RECURSE type I .
-  data:
-    mt_classes_types  TYPE TABLE OF zcl_ace=>t_classes_types .
   data MO_WINDOW type ref to ZCL_ACE_WINDOW .
-  data MV_F7_STOP type BOOLEAN .
-  data M_F6_LEVEL type I .
-  data M_TARGET_STACK type I .
   data MO_TREE_LOCAL type ref to ZCL_ACE_RTTI_TREE .
   data:
     mt_selected_var   TYPE TABLE OF t_sel_var .
-  data MV_STACK_CHANGED type BOOLEAN .
-  data M_VARIABLE type ref to DATA .
-  data:
-    mt_new_string     TYPE TABLE OF  string .
-  data M_QUICK type TPDA_SCR_QUICK_INFO .
-  data:
-    mr_statements     TYPE RANGE OF string .
   data MS_IF type TS_IF .
   data MT_IF type TT_IF .
 
@@ -305,7 +255,6 @@ private section.
   types:
     tt_sel_var TYPE STANDARD TABLE OF t_sel_var      WITH EMPTY KEY .
 
-  data MV_DUMMY type I .
   constants:
     BEGIN OF c_kind,
         struct LIKE cl_abap_typedescr=>kind_struct VALUE cl_abap_typedescr=>kind_struct,

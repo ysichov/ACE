@@ -1,6 +1,9 @@
-"! Combinator factory — direct port of exported functions in abaplint combi.ts:
-"!   str(), tok(), regex(), seq(), alt(), opt(), star(), plus(), per(), ver(), expr().
-"! Returns ZCL_ACE_COMBI_NODE trees that can be walked via list_keywords( ).
+"! Combinator factory — port of the exported functions in abaplint combi.ts.
+"! Covers the combinators the ported grammar uses: str(), tok(), seq(), alt(),
+"! opt(), expr(). The remaining combi.ts combinators (regex, star, plus, per,
+"! ver) are not needed by any rule ported so far; add them here together with
+"! the matching factory in ZCL_ACE_COMBI_NODE when a rule requires one.
+"! Returns ZCL_ACE_COMBI_NODE trees, walked by ZCL_ACE_KEYWORDS.
 CLASS zcl_ace_combi DEFINITION
   PUBLIC
   FINAL
@@ -24,10 +27,6 @@ CLASS zcl_ace_combi DEFINITION
       IMPORTING token_name    TYPE string
       RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
 
-    "! regex(/.../) → Regex (no keyword)
-    CLASS-METHODS regex
-      IMPORTING pattern       TYPE string
-      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
 
     "! seq( a, b, c, ... )
     CLASS-METHODS seq
@@ -44,26 +43,6 @@ CLASS zcl_ace_combi DEFINITION
       IMPORTING child         TYPE REF TO zcl_ace_combi_node
       RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
 
-    "! star( a ) — also covers starPrio
-    CLASS-METHODS star
-      IMPORTING child         TYPE REF TO zcl_ace_combi_node
-      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
-
-    "! plus( a ) — also covers plusPrio
-    CLASS-METHODS plus
-      IMPORTING child         TYPE REF TO zcl_ace_combi_node
-      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
-
-    "! per( a, b, ... )
-    CLASS-METHODS per
-      IMPORTING children      TYPE tt_nodes
-      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
-
-    "! ver(version, a) / verNot — for keyword extraction we ignore the version
-    "! filter (we want all keywords across all versions)
-    CLASS-METHODS ver
-      IMPORTING child         TYPE REF TO zcl_ace_combi_node
-      RETURNING VALUE(result) TYPE REF TO zcl_ace_combi_node.
 
     "! Reference to an Expression class — by name (e.g. 'COND', 'SOURCE', 'TARGET').
     "! In abaplint, mapInput(s) auto-instantiates the Expression. In ABAP we use
@@ -90,10 +69,6 @@ CLASS zcl_ace_combi IMPLEMENTATION.
     result = zcl_ace_combi_node=>new_token( token_name ).
   ENDMETHOD.
 
-  METHOD regex.
-    result = zcl_ace_combi_node=>new_regex( pattern ).
-  ENDMETHOD.
-
   METHOD seq.
     result = zcl_ace_combi_node=>new_seq( children ).
   ENDMETHOD.
@@ -104,22 +79,6 @@ CLASS zcl_ace_combi IMPLEMENTATION.
 
   METHOD opt.
     result = zcl_ace_combi_node=>new_opt( child ).
-  ENDMETHOD.
-
-  METHOD star.
-    result = zcl_ace_combi_node=>new_star( child ).
-  ENDMETHOD.
-
-  METHOD plus.
-    result = zcl_ace_combi_node=>new_plus( child ).
-  ENDMETHOD.
-
-  METHOD per.
-    result = zcl_ace_combi_node=>new_per( children ).
-  ENDMETHOD.
-
-  METHOD ver.
-    result = zcl_ace_combi_node=>new_vers( child ).
   ENDMETHOD.
 
   METHOD expr.

@@ -10,7 +10,6 @@ public section.
             WITH NON-UNIQUE DEFAULT KEY .
 
   data MAIN_NODE_KEY type SALV_DE_NODE_KEY .
-  data M_PRG_INFO type TPDA_SCR_PRG_INFO .
   data MO_VIEWER type ref to ZCL_ACE .
   data MO_TREE type ref to CL_SALV_TREE .
   data MT_LAZY_NODES type STANDARD TABLE OF SALV_DE_NODE_KEY WITH DEFAULT KEY.
@@ -33,9 +32,6 @@ public section.
       !I_TREE type ZCL_ACE=>TS_TREE optional
     returning
       value(RV_NODE) type SALV_DE_NODE_KEY .
-  methods DELETE_NODE
-    importing
-      !I_KEY type SALV_DE_NODE_KEY .
   methods DISPLAY
     importing
       !IO_DEBUGGER type ref to ZCL_ACE optional .
@@ -258,18 +254,6 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
                   hndl_user_command FOR o_event.
 
       mo_tree->display( ).
-
-  endmethod.
-
-
-  method DELETE_NODE.
-
-      DATA(o_nodes) = mo_tree->get_nodes( ).
-      DATA(l_node) =  o_nodes->get_node( i_key ).
-
-      IF l_node IS NOT INITIAL.
-        l_node->delete( ).
-      ENDIF.
 
   endmethod.
 
