@@ -1,3 +1,5 @@
+
+
 # ACE: ABAP Code Explorer
 
 New Idea. I don't need debug to analyse code flow ). So it moves from [ABAP Script](https://github.com/ysichov/Smart-Debugger/blob/master/src/z_smart_debugger.prog.abap) to the usual program )
@@ -12,11 +14,10 @@ New Idea. I don't need debug to analyse code flow ). So it moves from [ABAP Scri
 
 
 
-Type in program, press enter - new window will be opened.
+Enter a program name or include, then press Enter to open the analysis window.
 
 
 <img width="1908" height="981" alt="image" src="https://github.com/user-attachments/assets/3a23affd-276c-4886-b3ae-78b38e84563c" />
-
  
  It is multy windows. So You can open as many program as large your display ))).
  
@@ -38,8 +39,3 @@ Below on the screenshot variable EV_SAL(1) was choosen and CodeMix button genera
 Should resolve any depth and all that internal variables renaming like iv_ to ev_ and vice versa.
 
 <img width="1910" height="918" alt="image" src="https://github.com/user-attachments/assets/1b2b5985-5ed0-49fc-845f-de46dccc2f5e" />
-
-
-
-
-
