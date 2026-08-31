@@ -2616,6 +2616,15 @@ public section.
              END OF ts_watch .
   types:
     tt_watch TYPE STANDARD  TABLE OF ts_watch WITH EMPTY KEY .
+  types:
+    BEGIN OF ts_bpoint,
+      program TYPE string,
+      include TYPE string,
+      line    TYPE i,
+      type    TYPE char1,
+      del     TYPE char1,
+    END OF ts_bpoint,
+    tt_bpoints TYPE STANDARD TABLE OF ts_bpoint WITH EMPTY KEY .
 
   data M_HISTORY type X .
   data M_VARHIST type X .
@@ -2631,6 +2640,7 @@ public section.
   types tt_nav_history TYPE STANDARD TABLE OF ts_nav_entry WITH EMPTY KEY.
 
   data MT_NAV_HISTORY type TT_NAV_HISTORY.
+  data MT_BPOINTS type TT_BPOINTS.
   data MV_NAV_IDX     type I value 0.
   data MV_NAV_SILENT  type BOOLEAN.
   data MO_VIEWER type ref to ZCL_ACE .
@@ -3876,6 +3886,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   method SET_MIXPROG_LINE.
       TYPES: lntab TYPE STANDARD TABLE OF i.
       DATA: lines TYPE lntab, flag TYPE boolean, programs TYPE TABLE OF program.
+      FIELD-SYMBOLS: <line> TYPE i, <point> TYPE ts_bpoint.
       mo_code_viewer->remove_all_marker( 2 ).
       mo_code_viewer->remove_all_marker( 4 ).
       LOOP AT mo_viewer->mo_window->ms_sources-tt_progs INTO DATA(prog) WHERE include <> 'Code_Flow_Mix'.
@@ -3893,9 +3904,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             CLEAR lines.
             READ TABLE prog-t_keywords WITH KEY include = point-include line = point-line INTO DATA(keyword).
             IF sy-subrc = 0.
-              APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
+              APPEND INITIAL LINE TO lines ASSIGNING <line>.
               <line> = keyword-v_line.
-              APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
+              APPEND INITIAL LINE TO mt_bpoints ASSIGNING <point>.
               MOVE-CORRESPONDING point TO <point>.
               IF flag IS INITIAL. <point>-type = 'S'. ELSE. <point>-type = 'E'. ENDIF.
             ENDIF.
@@ -3978,6 +3989,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   method SET_PROGRAM_LINE.
       TYPES: lntab TYPE STANDARD TABLE OF i.
       DATA: lines TYPE lntab, line_num TYPE i.
+      FIELD-SYMBOLS: <line> TYPE i, <point> TYPE ts_bpoint.
 
       " The single place where navigation history is written
       IF i_line IS NOT INITIAL AND m_prg-include IS NOT INITIAL AND mv_nav_silent IS INITIAL.
@@ -4011,11 +4023,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         CHECK sy-subrc = 0.
         LOOP AT lr_kw->* INTO DATA(bp_kw) WHERE include = point-include AND line = point-line. EXIT. ENDLOOP.
         IF sy-subrc = 0.
-          APPEND INITIAL LINE TO lines ASSIGNING FIELD-SYMBOL(<line>).
+          APPEND INITIAL LINE TO lines ASSIGNING <line>.
           <line> = bp_kw-v_line.
           READ TABLE mt_bpoints TRANSPORTING NO FIELDS WITH KEY include = point-include line = point-line.
           IF sy-subrc <> 0.
-            APPEND INITIAL LINE TO mt_bpoints ASSIGNING FIELD-SYMBOL(<point>).
+            APPEND INITIAL LINE TO mt_bpoints ASSIGNING <point>.
             MOVE-CORRESPONDING point TO <point>. <point>-type = 'S'.
           ENDIF.
         ENDIF.
@@ -18394,8 +18406,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-07-27T18:20:06.496Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-07-27T18:20:06.496Z`.
+* abapmerge 0.16.7 - 2026-08-31T08:42:04.469Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-08-31T08:42:04.469Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************
