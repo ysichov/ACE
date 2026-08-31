@@ -97,18 +97,9 @@ TYPES:
     total_lloc       TYPE i,
     total_cloc       TYPE i,
     avg_cyclomatic   TYPE f,
-    " Include-level Halstead (unique dicts merged across ALL units of include)
+    " Token totals summed across all units
     total_n1         TYPE i,        " sum of N1 across all units
     total_n2         TYPE i,        " sum of N2 across all units
-    incl_big_n1      TYPE i,        " η1 — distinct operators, include scope
-    incl_big_n2      TYPE i,        " η2 — distinct operands,  include scope
-    incl_vocabulary  TYPE i,        " η  = η1 + η2
-    incl_prog_length TYPE i,        " N  = total_n1 + total_n2
-    incl_volume      TYPE f,        " V  = N * log2(η)
-    incl_difficulty  TYPE f,        " D  = (η1/2) * (N2/η2)
-    incl_effort      TYPE f,        " E  = D * V
-    incl_time_t      TYPE f,        " T  = E / 18
-    incl_bugs        TYPE f,        " B  = V / 3000
     class_totals     TYPE tt_class_results,
   END OF ts_result.
 
@@ -254,9 +245,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       DATA lv_last_row  TYPE i.
       DATA lt_dist_ops  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       DATA lt_dist_opd  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      " Include-level accumulated unique dictionaries (never cleared between units)
-      DATA lt_incl_ops  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      DATA lt_incl_opd  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       " Class-level unique dictionaries: key = class~token
       TYPES: BEGIN OF ts_cls_tok,
                cls_token TYPE string,   " |CLASSNAME~TOKEN|
@@ -317,7 +305,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
             IF <stmt>-type = 'C'.
               ADD 1 TO ls_unit-n1.
               INSERT CONV string( 'COMPUTE' ) INTO TABLE lt_dist_ops.
-              INSERT CONV string( 'COMPUTE' ) INTO TABLE lt_incl_ops.
               IF ls_b-class IS NOT INITIAL.
                 INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~COMPUTE| ) INTO TABLE lt_cls_ops.
               ENDIF.
@@ -366,7 +353,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
                     ELSE 'DATA' ).
                   ADD 1 TO ls_unit-n1.
                   INSERT lv_kw_part INTO TABLE lt_dist_ops.
-                  INSERT lv_kw_part INTO TABLE lt_incl_ops.
                   IF ls_b-class IS NOT INITIAL.
                     INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ lv_kw_part }| ) INTO TABLE lt_cls_ops.
                   ENDIF.
@@ -379,7 +365,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
                   ) TO ls_unit-token_detail.
                   ADD 1 TO ls_unit-n2.
                   INSERT to_upper( lv_inline_name ) INTO TABLE lt_dist_opd.
-                  INSERT to_upper( lv_inline_name ) INTO TABLE lt_incl_opd.
                   IF ls_b-class IS NOT INITIAL.
                     INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ to_upper( lv_inline_name ) }| ) INTO TABLE lt_cls_opd.
                   ENDIF.
@@ -399,14 +384,12 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
                   IF lv_kind = 'OPERATOR'.
                     ADD 1 TO ls_unit-n1.
                     INSERT <tok>-str INTO TABLE lt_dist_ops.
-                    INSERT <tok>-str INTO TABLE lt_incl_ops.
                     IF ls_b-class IS NOT INITIAL.
                       INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ <tok>-str }| ) INTO TABLE lt_cls_ops.
                     ENDIF.
                   ELSE.
                     ADD 1 TO ls_unit-n2.
                     INSERT <tok>-str INTO TABLE lt_dist_opd.
-                    INSERT <tok>-str INTO TABLE lt_incl_opd.
                     IF ls_b-class IS NOT INITIAL.
                       INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ <tok>-str }| ) INTO TABLE lt_cls_opd.
                     ENDIF.
@@ -460,11 +443,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         APPEND ls_unit TO rs_result-units.
 
       ENDLOOP. " lt_boundaries
-
-      " Fill include-level Halstead aggregates
-      rs_result-incl_big_n1     = lines( lt_incl_ops ).
-      rs_result-incl_big_n2     = lines( lt_incl_opd ).
-      rs_result-incl_vocabulary  = rs_result-incl_big_n1 + rs_result-incl_big_n2.
 
       " ---------------------------------------------------------------
       " Build per-class Halstead dictionaries while lt_cls_ops/opd are
@@ -545,22 +523,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
     IF lv_cnt > 0.
       rs_result-avg_cyclomatic =
         CONV f( rs_result-total_cyclomatic ) / CONV f( lv_cnt ).
-    ENDIF.
-
-    " Derive incl_prog_length, volume, difficulty, effort, time_t, bugs
-    rs_result-incl_prog_length = rs_result-total_n1 + rs_result-total_n2.
-    IF rs_result-incl_vocabulary > 0 AND rs_result-incl_prog_length > 0.
-      DATA(lv_ivoc) = CONV f( rs_result-incl_vocabulary ).
-      DATA(lv_ilen) = CONV f( rs_result-incl_prog_length ).
-      rs_result-incl_volume = lv_ilen * log2( lv_ivoc ).
-      IF rs_result-incl_big_n2 > 0.
-        rs_result-incl_difficulty =
-          ( CONV f( rs_result-incl_big_n1 ) / 2 )
-          * ( CONV f( rs_result-total_n2 ) / CONV f( rs_result-incl_big_n2 ) ).
-      ENDIF.
-      rs_result-incl_effort = rs_result-incl_difficulty * rs_result-incl_volume.
-      rs_result-incl_time_t = rs_result-incl_effort / 18.
-      rs_result-incl_bugs   = rs_result-incl_volume  / 3000.
     ENDIF.
 
     " ---------------------------------------------------------------

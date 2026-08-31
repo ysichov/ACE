@@ -1174,18 +1174,9 @@ TYPES:
     total_lloc       TYPE i,
     total_cloc       TYPE i,
     avg_cyclomatic   TYPE f,
-    " Include-level Halstead (unique dicts merged across ALL units of include)
+    " Token totals summed across all units
     total_n1         TYPE i,        " sum of N1 across all units
     total_n2         TYPE i,        " sum of N2 across all units
-    incl_big_n1      TYPE i,        " η1 — distinct operators, include scope
-    incl_big_n2      TYPE i,        " η2 — distinct operands,  include scope
-    incl_vocabulary  TYPE i,        " η  = η1 + η2
-    incl_prog_length TYPE i,        " N  = total_n1 + total_n2
-    incl_volume      TYPE f,        " V  = N * log2(η)
-    incl_difficulty  TYPE f,        " D  = (η1/2) * (N2/η2)
-    incl_effort      TYPE f,        " E  = D * V
-    incl_time_t      TYPE f,        " T  = E / 18
-    incl_bugs        TYPE f,        " B  = V / 3000
     class_totals     TYPE tt_class_results,
   END OF ts_result.
 
@@ -1251,6 +1242,14 @@ CLASS zcl_ace_metrics_window DEFINITION
       IMPORTING
         is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
         i_program     TYPE program
+      RETURNING
+        VALUE(rv)     TYPE w3htmltab.
+
+    CLASS-METHODS build_html_package
+      IMPORTING
+        is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
+        it_objects    TYPE zif_ace_parse_data=>tt_pkg_obj
+        i_package     TYPE devclass
       RETURNING
         VALUE(rv)     TYPE w3htmltab.
 
@@ -1355,6 +1354,13 @@ CLASS zcl_ace_metrics_window DEFINITION
       IMPORTING i_mi      TYPE f
       RETURNING VALUE(rv) TYPE string.
 
+    "! An eta / Vocabulary cell. These are dictionary counts, defined for a
+    "! single code unit or for a class - a container row that merely sums its
+    "! units has none, and prints '-' rather than a misleading zero.
+    CLASS-METHODS eta_cell
+      IMPORTING i_val     TYPE i
+      RETURNING VALUE(rv) TYPE string.
+
     CLASS-METHODS html_hdr
       CHANGING ct_html TYPE w3htmltab.
 
@@ -1367,6 +1373,35 @@ CLASS zcl_ace_metrics_window DEFINITION
                 it_rows    TYPE tt_row
                 i_numbered TYPE abap_bool OPTIONAL
       CHANGING  ct_html    TYPE w3htmltab.
+
+    "! Page shell: doctype, CSS, opening <body>.
+    CLASS-METHODS html_head
+      CHANGING ct_html TYPE w3htmltab.
+
+    "! Metric definitions and rating scales, plus the closing tags.
+    CLASS-METHODS html_legend
+      CHANGING ct_html TYPE w3htmltab.
+
+    "! The whole report for ONE object - program, class pool or function group:
+    "! summary paragraphs, Total table, Events, Forms, methods per class.
+    "! E_HAS_UNITS stays false when the object holds no code unit at all, and
+    "! nothing is appended then. ES_SUMMARY / ES_TOTALS hand the object's own
+    "! numbers back so a package report can list and sum them.
+    CLASS-METHODS html_object
+      IMPORTING is_parse_data TYPE zif_ace_parse_data=>ts_parse_data
+                i_program     TYPE program
+                i_title       TYPE string
+                i_label       TYPE string
+                i_anchor      TYPE string OPTIONAL
+      EXPORTING e_has_units   TYPE abap_bool
+                es_summary    TYPE ts_row
+                es_totals     TYPE ts_totals
+      CHANGING  ct_html       TYPE w3htmltab.
+
+    "! Adds one set of sums into another - a package total over its objects.
+    CLASS-METHODS add_totals
+      IMPORTING is_add TYPE ts_totals
+      CHANGING  cs_tot TYPE ts_totals.
 
 ENDCLASS.
 CLASS zcl_ace_parser DEFINITION
@@ -3408,12 +3443,26 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'MHTML'.
         DATA(lv_mhtml_prg) = mo_viewer->mo_window->m_prg-program.
-        DATA(lt_html) = zcl_ace_metrics_window=>build_html(
-          is_parse_data = mo_viewer->mo_window->ms_sources
-          i_program     = lv_mhtml_prg ).
+        DATA lt_html       TYPE w3htmltab.
+        DATA lv_mhtml_ttl  TYPE string.
+        " Package mode with no object in focus (package root selected): one
+        " report per package object, each calculated on its own.
+        IF mo_viewer->mv_package IS NOT INITIAL AND mo_viewer->mv_cmap_focus IS INITIAL.
+          mo_viewer->ensure_package_parsed( ).
+          lt_html = zcl_ace_metrics_window=>build_html_package(
+            is_parse_data = mo_viewer->mo_window->ms_sources
+            it_objects    = mo_viewer->mt_pkg_objects
+            i_package     = mo_viewer->mv_package ).
+          lv_mhtml_ttl = |Metrics: package { mo_viewer->mv_package }|.
+        ELSE.
+          lt_html = zcl_ace_metrics_window=>build_html(
+            is_parse_data = mo_viewer->mo_window->ms_sources
+            i_program     = lv_mhtml_prg ).
+          lv_mhtml_ttl = |Metrics: { lv_mhtml_prg }|.
+        ENDIF.
         DATA(lo_html_popup) = NEW zcl_ace_html_viewer(
           it_html  = lt_html
-          i_title  = CONV #( |Metrics: { lv_mhtml_prg }| )
+          i_title  = CONV #( lv_mhtml_ttl )
           i_width  = 1200
           i_height = 600 ).
         IF lo_html_popup->mo_box IS NOT INITIAL.
@@ -13227,14 +13276,11 @@ METHOD show.
   " 2. TOTAL — a single summary row
   " ---------------------------------------------------------------
   DATA lt_total TYPE tt_row.
+  " Additive sums only - see the note on class-scope Halstead in HTML_OBJECT.
   DATA(ls_total_row) = totals_row( is_tot = ls_tot
                                    i_name = |{ i_program } TOTAL| ).
-  ls_total_row-units      = 0.
-  ls_total_row-eta1       = ls_result-incl_big_n1.
-  ls_total_row-eta2       = ls_result-incl_big_n2.
-  ls_total_row-vocab      = ls_result-incl_vocabulary.
-  ls_total_row-length     = ls_result-incl_prog_length.
-  ls_total_row-difficulty = format_f2( ls_result-incl_difficulty ).
+  ls_total_row-units  = 0.
+  ls_total_row-length = ls_tot-n1 + ls_tot-n2.
   APPEND ls_total_row TO lt_total.
 
   cl_demo_output=>write_data( value = lt_total name = `Total` ).
@@ -13358,41 +13404,129 @@ METHOD show.
 ENDMETHOD.
 METHOD build_html.
 
+  html_head( CHANGING ct_html = rv ).
+
+  html_object(
+    EXPORTING
+      is_parse_data = is_parse_data
+      i_program     = i_program
+      i_title       = |Code Metrics: { i_program }|
+      i_label       = |{ i_program }|
+    IMPORTING
+      e_has_units   = DATA(lv_has_units)
+    CHANGING
+      ct_html       = rv ).
+
+  IF lv_has_units = abap_false.
+    APPEND |<p>No code units found for { i_program }</p>| TO rv.
+    APPEND '</body></html>' TO rv.
+    RETURN.
+  ENDIF.
+
+  html_legend( CHANGING ct_html = rv ).
+
+ENDMETHOD.
+METHOD build_html_package.
+
+  html_head( CHANGING ct_html = rv ).
+
+  DATA lt_overview TYPE tt_row.
+  DATA lt_details  TYPE w3htmltab.
+  DATA lt_empty    TYPE string_table.
+  DATA ls_pkg_tot  TYPE ts_totals.
+  DATA lv_idx      TYPE i.
+  DATA lv_objects  TYPE i.
+
+  " One calculation per object, in the order the package tree lists them:
+  " programs first, then classes, interfaces, function groups.
+  LOOP AT it_objects INTO DATA(ls_obj).
+    lv_idx = lv_idx + 1.
+    DATA(lv_anchor) = |o{ lv_idx }|.
+    DATA(lv_oname)  = CONV string( ls_obj-obj_name ).
+
+    html_object(
+      EXPORTING
+        is_parse_data = is_parse_data
+        i_program     = CONV #( ls_obj-prog )
+        i_title       = |{ ls_obj-obj_type } { lv_oname }|
+        i_label       = lv_oname
+        i_anchor      = lv_anchor
+      IMPORTING
+        e_has_units   = DATA(lv_has_units)
+        es_summary    = DATA(ls_summary)
+        es_totals     = DATA(ls_obj_tot)
+      CHANGING
+        ct_html       = lt_details ).
+
+    IF lv_has_units = abap_false.
+      APPEND |{ ls_obj-obj_type } { lv_oname }| TO lt_empty.
+      CONTINUE.
+    ENDIF.
+
+    lv_objects = lv_objects + 1.
+    ls_summary-name = |<a href="#{ lv_anchor }">{ lv_oname }</a>|.
+    APPEND ls_summary TO lt_overview.
+    add_totals( EXPORTING is_add = ls_obj_tot CHANGING cs_tot = ls_pkg_tot ).
+  ENDLOOP.
+
+  APPEND |<h2>Code Metrics: package { i_package }</h2>| TO rv.
+
+  IF lt_overview IS INITIAL.
+    APPEND |<p>No code units found in package { i_package }</p>| TO rv.
+    APPEND '</body></html>' TO rv.
+    RETURN.
+  ENDIF.
+
+  APPEND |<p>Objects with code: <b>{ lv_objects }</b>| TO rv.
+  APPEND |&nbsp;&nbsp;Units analysed: <b>{ ls_pkg_tot-units }</b></p>| TO rv.
+  APPEND |<p>Total Cyclomatic Complexity: <b>{ ls_pkg_tot-cc }</b>| TO rv.
+  APPEND |&nbsp;&nbsp;LOC / LLOC / CLOC / CLOC%: | &&
+         |<b>{ ls_pkg_tot-loc }</b> / <b>{ ls_pkg_tot-lloc }</b> / | TO rv.
+  APPEND |<b>{ ls_pkg_tot-cloc }</b> / | &&
+         |<b>{ pct( i_part = ls_pkg_tot-cloc i_whole = ls_pkg_tot-loc ) }</b></p>| TO rv.
+
+  " eta / Vocab / Difficulty are dictionary-based and only defined inside one
+  " object, so the package row sums what is summable and leaves those empty.
+  DATA(ls_pkg_row) = totals_row( is_tot = ls_pkg_tot
+                                 i_name = |PACKAGE { i_package } TOTAL| ).
+  ls_pkg_row-length = ls_pkg_tot-n1 + ls_pkg_tot-n2.
+  APPEND ls_pkg_row TO lt_overview.
+
+  html_section( EXPORTING i_name  = |Objects ({ lv_objects })|
+                          it_rows = lt_overview
+                CHANGING  ct_html = rv ).
+
+  APPEND LINES OF lt_details TO rv.
+
+  IF lt_empty IS NOT INITIAL.
+    APPEND |<h3>Objects without code units ({ lines( lt_empty ) })</h3><pre>| TO rv.
+    LOOP AT lt_empty INTO DATA(lv_empty).
+      APPEND |  { lv_empty }| TO rv.
+    ENDLOOP.
+    APPEND '</pre>' TO rv.
+  ENDIF.
+
+  html_legend( CHANGING ct_html = rv ).
+
+ENDMETHOD.
+METHOD html_object.
+
+  CLEAR: e_has_units, es_summary, es_totals.
+
   DATA(ls_result) = zcl_ace_metrics=>calculate(
     is_parse_data = is_parse_data
     i_program     = i_program ).
 
   IF ls_result-units IS INITIAL.
-    APPEND |<p>No code units found for { i_program }</p>| TO rv.
     RETURN.
   ENDIF.
+  e_has_units = abap_true.
 
   DATA ls_u   TYPE zcl_ace_metrics=>ts_unit_result.
   DATA ls_tot TYPE ts_totals.
 
   ls_tot = sum_units( ls_result-units ).
   DATA(lv_ratio) = pct( i_part = ls_tot-cloc i_whole = ls_tot-loc ).
-
-  " --- HTML head + CSS ---
-  APPEND '<!DOCTYPE html><html><head><meta charset="utf-8">' TO rv.
-  APPEND '<style>' TO rv.
-  APPEND 'body{font-family:Consolas,monospace;margin:16px;font-size:12px}' TO rv.
-  APPEND 'h2{color:#2F5496;margin-bottom:4px}' TO rv.
-  APPEND 'h3{color:#2F5496;margin-top:20px;margin-bottom:4px}' TO rv.
-  APPEND 'table{border-collapse:collapse;width:100%;margin-bottom:12px}' TO rv.
-  APPEND 'th{background:#BDD7EE;color:#1F3864;border:1px solid #9DC3E6;' TO rv.
-  APPEND '   padding:4px 7px;text-align:left;font-weight:bold}' TO rv.
-  APPEND 'td{border:1px solid #BDD7EE;padding:3px 7px;text-align:left}' TO rv.
-  APPEND 'tr:nth-child(even) td{background:#EEF3FB}' TO rv.
-  APPEND '.low{color:green}.med{color:darkorange}' TO rv.
-  APPEND '.high{color:orangered;font-weight:bold}' TO rv.
-  APPEND '.crit{color:red;font-weight:bold}' TO rv.
-  APPEND '.mi-h{color:green}.mi-m{color:darkorange}' TO rv.
-  APPEND '.mi-l{color:red;font-weight:bold}' TO rv.
-  APPEND '.tot td{background:#D6E4F7;font-weight:bold}' TO rv.
-  APPEND 'pre{background:#f5f5f5;padding:8px;font-size:11px;' TO rv.
-  APPEND '    border:1px solid #ddd;white-space:pre-wrap;margin:4px 0}' TO rv.
-  APPEND '</style></head><body>' TO rv.
 
   " --- Section 2: Total (built first so header can reference its values) ---
   " Compute per-group subtotals for Events, Forms, each Class
@@ -13446,32 +13580,39 @@ METHOD build_html.
     APPEND ls_sub_row TO lt_total.
   ENDLOOP.
 
-  " Grand total row
+  " Grand total row. The object is a container, so it sums what is additive
+  " across its units. eta1 / eta2 / Vocab / Difficulty are dictionary-based and
+  " stay at class scope: merged per program they would make the same code look
+  " denser as a monolith than as separate classes, which says nothing about the
+  " code itself.
   DATA(ls_grand) = totals_row( is_tot = ls_tot
-                               i_name = |{ i_program } TOTAL| ).
-  ls_grand-units      = lines( ls_result-units ).
-  ls_grand-eta1       = ls_result-incl_big_n1.
-  ls_grand-eta2       = ls_result-incl_big_n2.
-  ls_grand-vocab      = ls_result-incl_vocabulary.
-  ls_grand-length     = ls_result-incl_prog_length.
-  ls_grand-difficulty = format_f2( ls_result-incl_difficulty ).
+                               i_name = |{ i_label } TOTAL| ).
+  ls_grand-units  = lines( ls_result-units ).
+  ls_grand-length = ls_tot-n1 + ls_tot-n2.
   APPEND ls_grand TO lt_total.
 
-  " --- Section 1: Summary ---
-  APPEND |<h2>Code Metrics: { i_program }</h2>| TO rv.
-  APPEND |<p>Units analysed: <b>{ lines( ls_result-units ) }</b></p>| TO rv.
-  APPEND |<p>Total Cyclomatic Complexity: <b>{ ls_tot-cc }</b>| TO rv.
-  APPEND |&nbsp;&nbsp;Avg CC / unit: | &&
-         |<b>{ format_f2( ls_result-avg_cyclomatic ) }</b></p>| TO rv.
-  APPEND |<p>Halstead Volume: <b>{ ls_grand-volume }</b>| TO rv.
-  APPEND |&nbsp;&nbsp;Effort: <b>{ ls_grand-effort }</b></p>| TO rv.
-  APPEND |<p>Time: <b>{ ls_grand-time_t }</b>| &&
-         |&nbsp;&nbsp;Expected Bugs: <b>{ ls_grand-bugs }</b></p>| TO rv.
-  APPEND |<p>LOC / LLOC / CLOC / CLOC%: | &&
-         |<b>{ ls_tot-loc }</b> / <b>{ ls_tot-lloc }</b> / | TO rv.
-  APPEND |<b>{ ls_tot-cloc }</b> / <b>{ lv_ratio }</b></p>| TO rv.
+  es_summary = ls_grand.
+  es_totals  = ls_tot.
 
-  html_section( EXPORTING i_name = 'Total' it_rows = lt_total CHANGING ct_html = rv ).
+  " --- Section 1: Summary ---
+  IF i_anchor IS INITIAL.
+    APPEND |<h2>{ i_title }</h2>| TO ct_html.
+  ELSE.
+    APPEND |<h2 id="{ i_anchor }">{ i_title }</h2>| TO ct_html.
+  ENDIF.
+  APPEND |<p>Units analysed: <b>{ lines( ls_result-units ) }</b></p>| TO ct_html.
+  APPEND |<p>Total Cyclomatic Complexity: <b>{ ls_tot-cc }</b>| TO ct_html.
+  APPEND |&nbsp;&nbsp;Avg CC / unit: | &&
+         |<b>{ format_f2( ls_result-avg_cyclomatic ) }</b></p>| TO ct_html.
+  APPEND |<p>Halstead Volume: <b>{ ls_grand-volume }</b>| TO ct_html.
+  APPEND |&nbsp;&nbsp;Effort: <b>{ ls_grand-effort }</b></p>| TO ct_html.
+  APPEND |<p>Time: <b>{ ls_grand-time_t }</b>| &&
+         |&nbsp;&nbsp;Expected Bugs: <b>{ ls_grand-bugs }</b></p>| TO ct_html.
+  APPEND |<p>LOC / LLOC / CLOC / CLOC%: | &&
+         |<b>{ ls_tot-loc }</b> / <b>{ ls_tot-lloc }</b> / | TO ct_html.
+  APPEND |<b>{ ls_tot-cloc }</b> / <b>{ lv_ratio }</b></p>| TO ct_html.
+
+  html_section( EXPORTING i_name = 'Total' it_rows = lt_total CHANGING ct_html = ct_html ).
 
   " --- Section 3: Events ---
   DATA lt_events TYPE tt_row.
@@ -13483,7 +13624,7 @@ METHOD build_html.
     IF ls_ev_sub-units > 1.
       APPEND totals_row( is_tot = ls_ev_sub i_name = 'TOTAL' ) TO lt_events.
     ENDIF.
-    html_section( EXPORTING i_name = 'Events' it_rows = lt_events i_numbered = abap_true CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = 'Events' it_rows = lt_events i_numbered = abap_true CHANGING ct_html = ct_html ).
   ENDIF.
 
   " --- Section 4: Forms ---
@@ -13495,7 +13636,7 @@ METHOD build_html.
     IF ls_fo_sub-units > 1.
       APPEND totals_row( is_tot = ls_fo_sub i_name = 'TOTAL' ) TO lt_forms.
     ENDIF.
-    html_section( EXPORTING i_name = 'Forms' it_rows = lt_forms i_numbered = abap_true CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = 'Forms' it_rows = lt_forms i_numbered = abap_true CHANGING ct_html = ct_html ).
   ENDIF.
 
   " --- Section 5: Methods grouped by class ---
@@ -13536,7 +13677,7 @@ METHOD build_html.
     ls_cls_row-difficulty = format_f2( ls_ct-cls_difficulty ).
     APPEND ls_cls_row TO lt_rows.
 
-    html_section( EXPORTING i_name = lv_cls it_rows = lt_rows i_numbered = abap_true CHANGING ct_html = rv ).
+    html_section( EXPORTING i_name = lv_cls it_rows = lt_rows i_numbered = abap_true CHANGING ct_html = ct_html ).
   ENDLOOP.
 
   " --- Section 6: All methods sorted by CC DESC ---
@@ -13550,39 +13691,75 @@ METHOD build_html.
       i_name     = 'All Methods (sorted by CC)'
       it_rows    = lt_all
       i_numbered = abap_true
-      CHANGING ct_html = rv ).
+      CHANGING ct_html = ct_html ).
   ENDIF.
 
-  " --- Legend ---
-  APPEND '<h3>LOC / LLOC / CLOC</h3><pre>' TO rv.
-  APPEND '  LOC   - Lines of Code (total lines including blanks and comments)' TO rv.
-  APPEND '  LLOC  - Logical Lines of Code (executable statements only)' TO rv.
-  APPEND '  CLOC  - Comment Lines of Code (lines containing comments)' TO rv.
-  APPEND '  CLOC% - Comment density = CLOC / LOC * 100' TO rv.
-  APPEND '</pre>' TO rv.
-  APPEND '<h3>McCabe CC Risk</h3><pre>' TO rv.
-  APPEND '  1-10   LOW      Simple, low risk' TO rv.
-  APPEND '  11-20  MEDIUM   Moderate complexity' TO rv.
-  APPEND '  21-50  HIGH     High risk, refactor recommended' TO rv.
-  APPEND '  50+    CRITICAL Untestable, very high risk' TO rv.
-  APPEND '</pre>' TO rv.
-  APPEND '<h3>Halstead</h3><pre>' TO rv.
-  APPEND '  N1/N2  - total operators/operands   Length = N1+N2' TO rv.
-  APPEND '  eta1/eta2 - distinct operators/operands   Vocab = eta1+eta2' TO rv.
-  APPEND '  Volume = Length * log2(Vocab)' TO rv.
-  APPEND '  Difficulty = (eta1/2) * (N2/eta2)   Effort = Diff * Volume' TO rv.
-  APPEND '  Time (T) = Effort / 18  (Stroud: 18 discriminations/sec)' TO rv.
-  APPEND '  Bugs (B) = Volume / 3000  (Halstead empirical formula)' TO rv.
-  APPEND '  CLOC_RATIO = CLOC/LOC %  (comment density)' TO rv.
-  APPEND '</pre>' TO rv.
-  APPEND '<h3>Maintainability Index (MI)</h3><pre>' TO rv.
-  APPEND '  MI = 171 - 5.2*ln(V) - 0.23*G - 16.2*ln(LOC)' TO rv.
-  APPEND '  &gt;= 85  HIGH    Easy to maintain' TO rv.
-  APPEND '  65-84  MEDIUM  Moderate maintainability' TO rv.
-  APPEND '  &lt; 65   LOW     Hard to maintain, refactor recommended' TO rv.
-  APPEND '</pre>' TO rv.
-  APPEND '</body></html>' TO rv.
+ENDMETHOD.
+METHOD html_head.
 
+  APPEND '<!DOCTYPE html><html><head><meta charset="utf-8">' TO ct_html.
+  APPEND '<style>' TO ct_html.
+  APPEND 'body{font-family:Consolas,monospace;margin:16px;font-size:12px}' TO ct_html.
+  APPEND 'h2{color:#2F5496;margin-bottom:4px}' TO ct_html.
+  APPEND 'h3{color:#2F5496;margin-top:20px;margin-bottom:4px}' TO ct_html.
+  APPEND 'table{border-collapse:collapse;width:100%;margin-bottom:12px}' TO ct_html.
+  APPEND 'th{background:#BDD7EE;color:#1F3864;border:1px solid #9DC3E6;' TO ct_html.
+  APPEND '   padding:4px 7px;text-align:left;font-weight:bold}' TO ct_html.
+  APPEND 'td{border:1px solid #BDD7EE;padding:3px 7px;text-align:left}' TO ct_html.
+  APPEND 'tr:nth-child(even) td{background:#EEF3FB}' TO ct_html.
+  APPEND '.low{color:green}.med{color:darkorange}' TO ct_html.
+  APPEND '.high{color:orangered;font-weight:bold}' TO ct_html.
+  APPEND '.crit{color:red;font-weight:bold}' TO ct_html.
+  APPEND '.mi-h{color:green}.mi-m{color:darkorange}' TO ct_html.
+  APPEND '.mi-l{color:red;font-weight:bold}' TO ct_html.
+  APPEND '.tot td{background:#D6E4F7;font-weight:bold}' TO ct_html.
+  APPEND 'pre{background:#f5f5f5;padding:8px;font-size:11px;' TO ct_html.
+  APPEND '    border:1px solid #ddd;white-space:pre-wrap;margin:4px 0}' TO ct_html.
+  APPEND '</style></head><body>' TO ct_html.
+ENDMETHOD.
+METHOD html_legend.
+
+  APPEND '<h3>LOC / LLOC / CLOC</h3><pre>' TO ct_html.
+  APPEND '  LOC   - Lines of Code (total lines including blanks and comments)' TO ct_html.
+  APPEND '  LLOC  - Logical Lines of Code (executable statements only)' TO ct_html.
+  APPEND '  CLOC  - Comment Lines of Code (lines containing comments)' TO ct_html.
+  APPEND '  CLOC% - Comment density = CLOC / LOC * 100' TO ct_html.
+  APPEND '</pre>' TO ct_html.
+  APPEND '<h3>McCabe CC Risk</h3><pre>' TO ct_html.
+  APPEND '  1-10   LOW      Simple, low risk' TO ct_html.
+  APPEND '  11-20  MEDIUM   Moderate complexity' TO ct_html.
+  APPEND '  21-50  HIGH     High risk, refactor recommended' TO ct_html.
+  APPEND '  50+    CRITICAL Untestable, very high risk' TO ct_html.
+  APPEND '</pre>' TO ct_html.
+  APPEND '<h3>Halstead</h3><pre>' TO ct_html.
+  APPEND '  N1/N2  - total operators/operands   Length = N1+N2' TO ct_html.
+  APPEND '  eta1/eta2 - distinct operators/operands   Vocab = eta1+eta2' TO ct_html.
+  APPEND '  Volume = Length * log2(Vocab)' TO ct_html.
+  APPEND '  Difficulty = (eta1/2) * (N2/eta2)   Effort = Diff * Volume' TO ct_html.
+  APPEND '  Time (T) = Effort / 18  (Stroud: 18 discriminations/sec)' TO ct_html.
+  APPEND '  Bugs (B) = Volume / 3000  (Halstead empirical formula)' TO ct_html.
+  APPEND '  CLOC_RATIO = CLOC/LOC %  (comment density)' TO ct_html.
+  APPEND '</pre>' TO ct_html.
+  APPEND '<h3>Maintainability Index (MI)</h3><pre>' TO ct_html.
+  APPEND '  MI = 171 - 5.2*ln(V) - 0.23*G - 16.2*ln(LOC)' TO ct_html.
+  APPEND '  &gt;= 85  HIGH    Easy to maintain' TO ct_html.
+  APPEND '  65-84  MEDIUM  Moderate maintainability' TO ct_html.
+  APPEND '  &lt; 65   LOW     Hard to maintain, refactor recommended' TO ct_html.
+  APPEND '</pre>' TO ct_html.
+  APPEND '</body></html>' TO ct_html.
+ENDMETHOD.
+METHOD add_totals.
+  cs_tot-units = cs_tot-units + is_add-units.
+  cs_tot-cc = cs_tot-cc + is_add-cc.
+  cs_tot-loc = cs_tot-loc + is_add-loc.
+  cs_tot-lloc = cs_tot-lloc + is_add-lloc.
+  cs_tot-cloc = cs_tot-cloc + is_add-cloc.
+  cs_tot-n1 = cs_tot-n1 + is_add-n1.
+  cs_tot-n2 = cs_tot-n2 + is_add-n2.
+  cs_tot-vol    = cs_tot-vol    + is_add-vol.
+  cs_tot-eff    = cs_tot-eff    + is_add-eff.
+  cs_tot-time_t = cs_tot-time_t + is_add-time_t.
+  cs_tot-bugs   = cs_tot-bugs   + is_add-bugs.
 ENDMETHOD.
 METHOD html_hdr.
   APPEND '<tr>' TO ct_html.
@@ -13616,8 +13793,9 @@ METHOD html_row.
   " Halstead counts
   APPEND |<td>{ is_row-n1 }</td><td>{ is_row-n2 }</td>| &&
          |<td>{ is_row-length }</td>| TO ct_html.
-  APPEND |<td>{ is_row-eta1 }</td><td>{ is_row-eta2 }</td>| &&
-         |<td>{ is_row-vocab }</td>| TO ct_html.
+  APPEND |<td>{ eta_cell( is_row-eta1 ) }</td>| &&
+         |<td>{ eta_cell( is_row-eta2 ) }</td>| &&
+         |<td>{ eta_cell( is_row-vocab ) }</td>| TO ct_html.
   " Halstead derived
   APPEND |<td>{ is_row-volume }</td>| &&
          |<td>{ is_row-difficulty }</td>| TO ct_html.
@@ -13663,8 +13841,9 @@ METHOD html_section.
       ENDIF.
       APPEND |<td>{ ls_row-n1 }</td><td>{ ls_row-n2 }</td>| &&
              |<td>{ ls_row-length }</td>| TO ct_html.
-      APPEND |<td>{ ls_row-eta1 }</td><td>{ ls_row-eta2 }</td>| &&
-             |<td>{ ls_row-vocab }</td>| TO ct_html.
+      APPEND |<td>{ eta_cell( ls_row-eta1 ) }</td>| &&
+             |<td>{ eta_cell( ls_row-eta2 ) }</td>| &&
+             |<td>{ eta_cell( ls_row-vocab ) }</td>| TO ct_html.
       APPEND |<td>{ ls_row-volume }</td>| &&
              |<td>{ ls_row-difficulty }</td>| TO ct_html.
       APPEND |<td>{ ls_row-effort }</td>| &&
@@ -13751,6 +13930,9 @@ ENDMETHOD.
       WHEN i_mi >= 85 THEN 'HIGH'
       WHEN i_mi >= 65 THEN 'MEDIUM'
       ELSE                 'LOW' ).
+  ENDMETHOD.
+  METHOD eta_cell.
+    rv = COND #( WHEN i_val > 0 THEN |{ i_val }| ELSE '-' ).
   ENDMETHOD.
   METHOD pct.
     rv = COND string(
@@ -14005,9 +14187,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       DATA lv_last_row  TYPE i.
       DATA lt_dist_ops  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       DATA lt_dist_opd  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      " Include-level accumulated unique dictionaries (never cleared between units)
-      DATA lt_incl_ops  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
-      DATA lt_incl_opd  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       " Class-level unique dictionaries: key = class~token
       TYPES: BEGIN OF ts_cls_tok,
                cls_token TYPE string,   " |CLASSNAME~TOKEN|
@@ -14068,7 +14247,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
             IF <stmt>-type = 'C'.
               ADD 1 TO ls_unit-n1.
               INSERT CONV string( 'COMPUTE' ) INTO TABLE lt_dist_ops.
-              INSERT CONV string( 'COMPUTE' ) INTO TABLE lt_incl_ops.
               IF ls_b-class IS NOT INITIAL.
                 INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~COMPUTE| ) INTO TABLE lt_cls_ops.
               ENDIF.
@@ -14117,7 +14295,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
                     ELSE 'DATA' ).
                   ADD 1 TO ls_unit-n1.
                   INSERT lv_kw_part INTO TABLE lt_dist_ops.
-                  INSERT lv_kw_part INTO TABLE lt_incl_ops.
                   IF ls_b-class IS NOT INITIAL.
                     INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ lv_kw_part }| ) INTO TABLE lt_cls_ops.
                   ENDIF.
@@ -14130,7 +14307,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
                   ) TO ls_unit-token_detail.
                   ADD 1 TO ls_unit-n2.
                   INSERT to_upper( lv_inline_name ) INTO TABLE lt_dist_opd.
-                  INSERT to_upper( lv_inline_name ) INTO TABLE lt_incl_opd.
                   IF ls_b-class IS NOT INITIAL.
                     INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ to_upper( lv_inline_name ) }| ) INTO TABLE lt_cls_opd.
                   ENDIF.
@@ -14150,14 +14326,12 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
                   IF lv_kind = 'OPERATOR'.
                     ADD 1 TO ls_unit-n1.
                     INSERT <tok>-str INTO TABLE lt_dist_ops.
-                    INSERT <tok>-str INTO TABLE lt_incl_ops.
                     IF ls_b-class IS NOT INITIAL.
                       INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ <tok>-str }| ) INTO TABLE lt_cls_ops.
                     ENDIF.
                   ELSE.
                     ADD 1 TO ls_unit-n2.
                     INSERT <tok>-str INTO TABLE lt_dist_opd.
-                    INSERT <tok>-str INTO TABLE lt_incl_opd.
                     IF ls_b-class IS NOT INITIAL.
                       INSERT VALUE ts_cls_tok( cls_token = |{ ls_b-class }~{ <tok>-str }| ) INTO TABLE lt_cls_opd.
                     ENDIF.
@@ -14211,11 +14385,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         APPEND ls_unit TO rs_result-units.
 
       ENDLOOP. " lt_boundaries
-
-      " Fill include-level Halstead aggregates
-      rs_result-incl_big_n1     = lines( lt_incl_ops ).
-      rs_result-incl_big_n2     = lines( lt_incl_opd ).
-      rs_result-incl_vocabulary  = rs_result-incl_big_n1 + rs_result-incl_big_n2.
 
       " ---------------------------------------------------------------
       " Build per-class Halstead dictionaries while lt_cls_ops/opd are
@@ -14296,22 +14465,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
     IF lv_cnt > 0.
       rs_result-avg_cyclomatic =
         CONV f( rs_result-total_cyclomatic ) / CONV f( lv_cnt ).
-    ENDIF.
-
-    " Derive incl_prog_length, volume, difficulty, effort, time_t, bugs
-    rs_result-incl_prog_length = rs_result-total_n1 + rs_result-total_n2.
-    IF rs_result-incl_vocabulary > 0 AND rs_result-incl_prog_length > 0.
-      DATA(lv_ivoc) = CONV f( rs_result-incl_vocabulary ).
-      DATA(lv_ilen) = CONV f( rs_result-incl_prog_length ).
-      rs_result-incl_volume = lv_ilen * log2( lv_ivoc ).
-      IF rs_result-incl_big_n2 > 0.
-        rs_result-incl_difficulty =
-          ( CONV f( rs_result-incl_big_n1 ) / 2 )
-          * ( CONV f( rs_result-total_n2 ) / CONV f( rs_result-incl_big_n2 ) ).
-      ENDIF.
-      rs_result-incl_effort = rs_result-incl_difficulty * rs_result-incl_volume.
-      rs_result-incl_time_t = rs_result-incl_effort / 18.
-      rs_result-incl_bugs   = rs_result-incl_volume  / 3000.
     ENDIF.
 
     " ---------------------------------------------------------------
@@ -18406,8 +18559,8 @@ ENDCLASS.
 
 ****************************************************
 INTERFACE lif_abapmerge_marker.
-* abapmerge 0.16.7 - 2026-08-31T08:42:04.469Z
-  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-08-31T08:42:04.469Z`.
+* abapmerge 0.16.7 - 2026-08-31T10:08:58.866Z
+  CONSTANTS c_merge_timestamp TYPE string VALUE `2026-08-31T10:08:58.866Z`.
   CONSTANTS c_abapmerge_version TYPE string VALUE `0.16.7`.
 ENDINTERFACE.
 ****************************************************

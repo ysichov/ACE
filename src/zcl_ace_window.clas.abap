@@ -863,12 +863,26 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'MHTML'.
         DATA(lv_mhtml_prg) = mo_viewer->mo_window->m_prg-program.
-        DATA(lt_html) = zcl_ace_metrics_window=>build_html(
-          is_parse_data = mo_viewer->mo_window->ms_sources
-          i_program     = lv_mhtml_prg ).
+        DATA lt_html       TYPE w3htmltab.
+        DATA lv_mhtml_ttl  TYPE string.
+        " Package mode with no object in focus (package root selected): one
+        " report per package object, each calculated on its own.
+        IF mo_viewer->mv_package IS NOT INITIAL AND mo_viewer->mv_cmap_focus IS INITIAL.
+          mo_viewer->ensure_package_parsed( ).
+          lt_html = zcl_ace_metrics_window=>build_html_package(
+            is_parse_data = mo_viewer->mo_window->ms_sources
+            it_objects    = mo_viewer->mt_pkg_objects
+            i_package     = mo_viewer->mv_package ).
+          lv_mhtml_ttl = |Metrics: package { mo_viewer->mv_package }|.
+        ELSE.
+          lt_html = zcl_ace_metrics_window=>build_html(
+            is_parse_data = mo_viewer->mo_window->ms_sources
+            i_program     = lv_mhtml_prg ).
+          lv_mhtml_ttl = |Metrics: { lv_mhtml_prg }|.
+        ENDIF.
         DATA(lo_html_popup) = NEW zcl_ace_html_viewer(
           it_html  = lt_html
-          i_title  = CONV #( |Metrics: { lv_mhtml_prg }| )
+          i_title  = CONV #( lv_mhtml_ttl )
           i_width  = 1200
           i_height = 600 ).
         IF lo_html_popup->mo_box IS NOT INITIAL.
