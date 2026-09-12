@@ -30,6 +30,9 @@ public section.
       include TYPE program,
     END OF ts_node_map .
   types tt_node_map TYPE STANDARD TABLE OF ts_node_map WITH KEY node_id .
+  " The step table as a drawing takes it. ZCL_ACE keeps its own with a longer
+  " key; this is the plain list, which is all the picture needs.
+  types tt_flow_steps TYPE STANDARD TABLE OF zcl_ace=>t_step_counter WITH EMPTY KEY .
   data MT_NODE_MAP type TT_NODE_MAP .
   data MV_CLICK_REGISTERED type ABAP_BOOL .
   " Off by default: a click on a node reuses the source window rather than
@@ -48,6 +51,23 @@ public section.
       !I_DIRECTION   type UI_FUNC    optional
       !I_WITH_PARAMS type BOOLEAN    optional
       !I_CALC_PATH   type BOOLEAN    optional .
+  " The flow picture itself: which unit calls which, in the order the code
+  " would run. It is a function of the steps and the parse and of nothing
+  " else - no window, no viewer, no control - so it also answers where there
+  " is no SAP GUI at all. STEPS_FLOW is this plus the viewer's own state.
+  class-methods BUILD_STEPS_FLOW
+    importing
+      !IT_STEPS      type TT_FLOW_STEPS
+      !IS_PARSE_DATA type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
+      !I_DIRECTION   type UI_FUNC optional
+      !I_WITH_PARAMS type BOOLEAN optional
+      !I_ALL_METHODS type BOOLEAN default ABAP_FALSE
+      !I_TYPE        type STRING default 'CALLS'
+      !I_FOCUS       type STRING optional
+    exporting
+      !ET_NODE_MAP   type TT_NODE_MAP
+    returning
+      value(RV_MM)   type STRING .
   methods CLASS_MAP
     importing
       !I_DIRECTION type UI_FUNC optional .
@@ -1407,6 +1427,49 @@ DATA(lv_maxlen) = 200.
 
   METHOD steps_flow.
 
+    " Only the calculated path, when it is asked for. That filter needs the
+    " viewer - the code flow is its own walk - so it stays here, and what goes
+    " down to the drawing is a step table that is already what it should draw.
+    DATA(lt_steps) = CONV tt_flow_steps( mo_viewer->mt_steps ).
+
+    IF i_calc_path = abap_true.
+      DATA(lt_flow) = mo_viewer->get_code_flow( i_calc_path = abap_true ).
+      DATA lt_active_ev TYPE TABLE OF string WITH EMPTY KEY.
+      LOOP AT lt_flow INTO DATA(ls_fl) WHERE active_root = abap_true.
+        READ TABLE lt_active_ev WITH KEY table_line = ls_fl-ev_name TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0.
+          APPEND ls_fl-ev_name TO lt_active_ev.
+        ENDIF.
+      ENDLOOP.
+      DATA lt_kept LIKE lt_steps.
+      LOOP AT lt_steps INTO DATA(ls_step).
+        READ TABLE lt_active_ev WITH KEY table_line = ls_step-eventname TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          APPEND ls_step TO lt_kept.
+        ENDIF.
+      ENDLOOP.
+      lt_steps = lt_kept.
+    ENDIF.
+
+    DATA lv_mm TYPE string.
+    build_steps_flow(
+      EXPORTING it_steps      = lt_steps
+                is_parse_data = mo_viewer->mo_window->ms_sources
+                i_direction   = i_direction
+                i_with_params = i_with_params
+                i_all_methods = mv_all_methods
+                i_type        = mv_type
+                i_focus       = mo_viewer->mv_cmap_focus
+      IMPORTING et_node_map   = mt_node_map
+      RECEIVING rv_mm         = lv_mm ).
+
+    open_mermaid( lv_mm ).
+
+  ENDMETHOD.
+
+
+  METHOD build_steps_flow.
+
     TYPES: BEGIN OF lty_entity,
              include   TYPE string,
              class     TYPE string,
@@ -1445,32 +1508,13 @@ DATA(lv_maxlen) = 200.
           ids_function TYPE TABLE OF string,
           call_stack   TYPE TABLE OF t_stack_entry.
 
-    DATA(copy) = mo_viewer->mt_steps.
-    CLEAR mt_node_map.
+    DATA(copy) = it_steps.
+    CLEAR et_node_map.
 
-    " Filter steps to only calculated ones when requested
-    IF i_calc_path = abap_true.
-      DATA(lt_flow) = mo_viewer->get_code_flow( i_calc_path = abap_true ).
-      DATA lt_active_ev TYPE TABLE OF string WITH EMPTY KEY.
-      LOOP AT lt_flow INTO DATA(ls_fl) WHERE active_root = abap_true.
-        READ TABLE lt_active_ev WITH KEY table_line = ls_fl-ev_name TRANSPORTING NO FIELDS.
-        IF sy-subrc <> 0.
-          APPEND ls_fl-ev_name TO lt_active_ev.
-        ENDIF.
-      ENDLOOP.
-      DATA lt_copy_filt LIKE copy.
-      LOOP AT copy INTO DATA(ls_cp_filt).
-        READ TABLE lt_active_ev WITH KEY table_line = ls_cp_filt-eventname TRANSPORTING NO FIELDS.
-        IF sy-subrc = 0.
-          APPEND ls_cp_filt TO lt_copy_filt.
-        ENDIF.
-      ENDLOOP.
-      copy = lt_copy_filt.
-    ENDIF.
 
     " Toggle OFF (default) → aggregate the flow to program/class blocks;
     " Toggle ON ("All Blocks") → keep event/form/method-level detail.
-    DATA(lv_agg) = xsdbool( mv_all_methods = abap_false ).
+    DATA(lv_agg) = xsdbool( i_all_methods = abap_false ).
 
     " ── Step 1: collect unique nodes ────────────────────────────────
     LOOP AT copy ASSIGNING FIELD-SYMBOL(<copy>).
@@ -1499,7 +1543,7 @@ DATA(lv_maxlen) = 200.
         entity-include   = ''.   " collapse across includes of the same unit
 
       ELSEIF <copy>-eventtype = 'METHOD'.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+        READ TABLE is_parse_data-tt_calls_line
           WITH KEY include   = <copy>-include
                    eventtype = 'METHOD'
                    eventname = <copy>-eventname
@@ -1552,7 +1596,7 @@ DATA(lv_maxlen) = 200.
                                   class   = <copy>-class
                                   event   = entity-event
                                   name    = entity-eventname
-                                  include = <copy>-include ) TO mt_node_map.
+                                  include = <copy>-include ) TO et_node_map.
       ENDIF.
     ENDLOOP.
 
@@ -1606,7 +1650,7 @@ DATA(lv_maxlen) = 200.
               " Look up parameter bindings: search caller's keywords for a call to callee
               DATA(ls_caller_ent) = entities[ ind-from ].
               DATA(ls_callee_ent) = entities[ ind-to ].
-              READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+              READ TABLE is_parse_data-tt_progs
                 WITH KEY include = ls_caller_ent-include
                 INTO DATA(ls_prog_wp).
               IF sy-subrc = 0.
@@ -1651,19 +1695,19 @@ DATA(lv_maxlen) = 200.
     ENDLOOP.
 
     " ── Step 4: styles ──────────────────────────────────────────────
-    IF mv_type = 'CMAP' AND mo_viewer->mv_cmap_focus IS NOT INITIAL.
+    IF i_type = 'CMAP' AND i_focus IS NOT INITIAL.
       DATA(lv_enrich_from) = 0.
       LOOP AT entities INTO DATA(ls_enrich_src).
         lv_enrich_from += 1.
         CHECK ls_enrich_src-style = c_style_method.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_calls_line
+        READ TABLE is_parse_data-tt_calls_line
           WITH KEY include   = ls_enrich_src-include
                    eventtype = 'METHOD'
                    eventname = ls_enrich_src-eventname
                    class     = ls_enrich_src-class
           INTO DATA(ls_enrich_line).
         CHECK sy-subrc = 0.
-        READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
+        READ TABLE is_parse_data-tt_progs
           WITH KEY include = ls_enrich_line-include
           INTO DATA(ls_enrich_prog).
         CHECK sy-subrc = 0.
@@ -1680,7 +1724,7 @@ DATA(lv_maxlen) = 200.
                 i_evtype   = 'METHOD'
                 i_ev_name  = ls_enrich_src-eventname
               CHANGING
-                cs_source  = mo_viewer->mo_window->ms_sources ).
+                cs_source  = is_parse_data ).
             READ TABLE ls_enrich_prog-t_keywords WITH KEY index = ls_enrich_kw-index INTO ls_enrich_kw.
           ENDIF.
 
@@ -1724,7 +1768,7 @@ DATA(lv_maxlen) = 200.
     IF ids_function IS NOT INITIAL. CONCATENATE LINES OF ids_function INTO lv_ids SEPARATED BY ','. mm_string = |{ mm_string } class { lv_ids } func\n|.     ENDIF.
 
     mm_string = |{ mm_string }\n|.
-    open_mermaid( mm_string ).
+    rv_mm = mm_string.
 
   ENDMETHOD.
 ENDCLASS.
