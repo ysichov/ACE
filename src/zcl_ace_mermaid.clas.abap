@@ -63,7 +63,7 @@ public section.
       !I_WITH_PARAMS type BOOLEAN optional
       !I_ALL_METHODS type BOOLEAN default ABAP_FALSE
       !I_TYPE        type STRING default 'CALLS'
-      !I_FOCUS       type STRING optional
+      !I_FOCUS       type PROGNAME optional
     exporting
       !ET_NODE_MAP   type TT_NODE_MAP
     returning
@@ -106,7 +106,9 @@ public section.
 protected section.
 private section.
 
-  methods FORMAT_NODE_LABEL
+  " Static: the drawing is a class-method now, and the short form it calls
+  " them by is only open to static methods. Neither touches the instance.
+  class-methods FORMAT_NODE_LABEL
     importing
       !I_CODE   type STRING
       !I_MAXLEN type i default 50
@@ -114,7 +116,7 @@ private section.
       value(RV_LABEL) type STRING .
   " Strips CR/LF/TAB from a node label — such characters leak in from
   " CRLF source tokens and break mermaid parsing inside a label string.
-  methods CLEAN_LABEL
+  class-methods CLEAN_LABEL
     importing
       !I_TEXT type STRING
     returning
