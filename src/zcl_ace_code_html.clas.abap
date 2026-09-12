@@ -46,6 +46,8 @@ CLASS zcl_ace_code_html DEFINITION
     "! IF/ELSEIF/ELSE, CASE/WHEN, LOOP/DO/WHILE, TRY/CATCH and the enclosing
     "! METHOD/FORM. Plain statements are left out — the point is the shape of
     "! the branch, not its every line.
+    "! @parameter i_offset | source line IT_SOURCE starts at, when it is a slice
+    "!                       of the include IO_SCAN and IT_KW were built for
     CLASS-METHODS build_scheme
       IMPORTING it_source     TYPE STANDARD TABLE
                 it_kw         TYPE zif_ace_parse_data=>tt_kword OPTIONAL
@@ -53,6 +55,7 @@ CLASS zcl_ace_code_html DEFINITION
                 i_title       TYPE string OPTIONAL
                 it_expanded   TYPE tt_lines OPTIONAL
                 i_expand_all  TYPE abap_bool DEFAULT abap_false
+                i_offset      TYPE i DEFAULT 1
       RETURNING VALUE(rv_mm)  TYPE string.
 
     "! Plain-text skeleton of the same source, for feeding an LLM: structure,
@@ -655,7 +658,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
   METHOD build_scheme.
 
-    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan ).
+    DATA(lt_lines) = analyze( it_source = it_source it_kw = it_kw io_scan = io_scan
+                              i_offset = i_offset ).
 
     " Running count of plain statements, so the number of operations between
     " any two lines is one subtraction rather than a scan.

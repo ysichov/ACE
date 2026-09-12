@@ -505,22 +505,9 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
     " it for the whole unit up front: without it a call is indistinguishable
     " from ordinary code, so it is neither coloured nor kept out of the
     " "N operations" nodes.
-    READ TABLE ms_sources-tt_calls_line WITH KEY include = m_prg-include INTO DATA(ls_ctx).
-    LOOP AT ms_sources-tt_progs INTO DATA(ls_pre) WHERE include = m_prg-include.
-      LOOP AT ls_pre-t_keywords INTO DATA(ls_prekw) WHERE calls_parsed = abap_false.
-        zcl_ace_parser=>parse_tokens(
-          EXPORTING
-            i_program  = CONV #( COND string( WHEN ls_prekw-program IS NOT INITIAL
-                                              THEN ls_prekw-program ELSE m_prg-program ) )
-            i_include  = CONV #( ls_prekw-include )
-            i_stmt_idx = ls_prekw-index
-            i_class    = ls_ctx-class
-            i_evtype   = ls_ctx-eventtype
-            i_ev_name  = ls_ctx-eventname
-          CHANGING
-            cs_source  = ms_sources ).
-      ENDLOOP.
-    ENDLOOP.
+    zcl_ace_parser=>parse_calls( EXPORTING i_program = m_prg-program
+                                           i_include = m_prg-include
+                                 CHANGING  cs_source = ms_sources ).
   ENDMETHOD.
 
 

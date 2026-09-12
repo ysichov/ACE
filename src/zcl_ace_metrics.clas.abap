@@ -107,12 +107,38 @@ TYPES:
 
 
 
+  types:
+    "--- where one code unit begins and ends inside its include ---
+    BEGIN OF ts_unit_boundary,
+        stmt_from TYPE i,        " first statement of the unit, in the scan
+        stmt_to   TYPE i,        " its closing statement
+        line_from TYPE i,        " source line that first statement starts on
+        line_to   TYPE i,        " source line the closing statement ends on
+        unit_type TYPE string,   " METHOD / FORM / MODULE / FUNCTION / EVENT
+        unit_name TYPE string,
+        class     TYPE string,
+        qname     TYPE string,   " CLASS=>METHOD, or UNIT_NAME where there is no class
+      END OF ts_unit_boundary .
+  types:
+    tt_unit_boundaries TYPE SORTED TABLE OF ts_unit_boundary
+      WITH UNIQUE KEY stmt_from .
+
   class-methods CALCULATE
     importing
       !IS_PARSE_DATA type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
       !I_PROGRAM type PROGRAM
     returning
       value(RS_RESULT) type TS_RESULT .
+  "! Every code unit of one include, by statement for the metrics and by
+  "! source line for whoever needs the text itself. Public because the branch
+  "! scheme asks the same question — it draws one unit, and a second walk to
+  "! find where that unit sits would drift away from this one.
+  class-methods UNIT_BOUNDARIES
+    importing
+      !IS_PARSE_DATA type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
+      !IS_PROG type ZIF_ACE_PARSE_DATA=>TS_PROG
+    returning
+      value(RT_BOUNDARIES) type TT_UNIT_BOUNDARIES .
 private section.
 
   types:
@@ -167,70 +193,8 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       CHECK lo_scan IS BOUND.
       CHECK lo_scan->statements IS NOT INITIAL.
 
-      TYPES: BEGIN OF ts_boundary,
-               stmt_from TYPE i,
-               stmt_to   TYPE i,
-               unit_type TYPE string,
-               unit_name TYPE string,
-               class     TYPE string,
-             END OF ts_boundary.
-      DATA lt_boundaries TYPE SORTED TABLE OF ts_boundary
-        WITH UNIQUE KEY stmt_from.
-      CLEAR lt_boundaries.
-
-      LOOP AT is_parse_data-tt_calls_line INTO DATA(ls_cl)
-        WHERE include  = <prog>-include
-          AND index    > 0
-          AND ( eventtype = 'METHOD'   OR eventtype = 'FORM'
-             OR eventtype = 'MODULE'   OR eventtype = 'FUNCTION' ).
-
-        CHECK ls_cl-index <> ls_cl-def_ind.
-        READ TABLE lt_boundaries WITH KEY stmt_from = ls_cl-index TRANSPORTING NO FIELDS.
-        CHECK sy-subrc <> 0.
-
-        DATA(lv_end_kw) = SWITCH string( ls_cl-eventtype
-          WHEN 'METHOD'   THEN 'ENDMETHOD'
-          WHEN 'FORM'     THEN 'ENDFORM'
-          WHEN 'MODULE'   THEN 'ENDMODULE'
-          WHEN 'FUNCTION' THEN 'ENDFUNCTION'
-          ELSE '' ).
-
-        DATA lv_stmt_to TYPE i VALUE 0.
-        LOOP AT <prog>-t_keywords INTO DATA(ls_kw)
-          WHERE index > ls_cl-index AND name = lv_end_kw.
-          lv_stmt_to = ls_kw-index.
-          EXIT.
-        ENDLOOP.
-        CHECK lv_stmt_to > 0.
-
-        INSERT VALUE ts_boundary(
-          stmt_from = ls_cl-index
-          stmt_to   = lv_stmt_to
-          unit_type = ls_cl-eventtype
-          unit_name = ls_cl-eventname
-          class     = ls_cl-class
-        ) INTO TABLE lt_boundaries.
-
-      ENDLOOP.
-
-      LOOP AT is_parse_data-t_events INTO DATA(ls_ev)
-        WHERE include    = <prog>-include
-          AND stmnt_from > 0
-          AND stmnt_to   > 0.
-
-        READ TABLE lt_boundaries WITH KEY stmt_from = ls_ev-stmnt_from TRANSPORTING NO FIELDS.
-        CHECK sy-subrc <> 0.
-
-        INSERT VALUE ts_boundary(
-          stmt_from = ls_ev-stmnt_from
-          stmt_to   = ls_ev-stmnt_to
-          unit_type = 'EVENT'
-          unit_name = ls_ev-name
-          class     = ''
-        ) INTO TABLE lt_boundaries.
-
-      ENDLOOP.
-
+      DATA(lt_boundaries) = unit_boundaries( is_parse_data = is_parse_data
+                                             is_prog       = <prog> ).
       CHECK lt_boundaries IS NOT INITIAL.
 
       " Build operand set ONCE per include, not per unit
@@ -241,8 +205,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         i_unit_name   = ''
         i_class       = '' ).
 
-      DATA lv_first_row TYPE i.
-      DATA lv_last_row  TYPE i.
       DATA lt_dist_ops  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       DATA lt_dist_opd  TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
       " Class-level unique dictionaries: key = class~token
@@ -251,10 +213,6 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
              END OF ts_cls_tok.
       DATA lt_cls_ops TYPE HASHED TABLE OF ts_cls_tok WITH UNIQUE KEY cls_token.
       DATA lt_cls_opd TYPE HASHED TABLE OF ts_cls_tok WITH UNIQUE KEY cls_token.
-      DATA ls_stmt_f    LIKE LINE OF lo_scan->statements.
-      DATA ls_stmt_t    LIKE LINE OF lo_scan->statements.
-      DATA ls_tok_f     LIKE LINE OF lo_scan->tokens.
-      DATA ls_tok_t     LIKE LINE OF lo_scan->tokens.
       DATA ls_kw_tok    LIKE LINE OF lo_scan->tokens.
 
       LOOP AT lt_boundaries INTO DATA(ls_b).
@@ -264,29 +222,13 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
         ls_unit-program   = <prog>-program.
         ls_unit-include   = <prog>-include.
         ls_unit-unit_type = ls_b-unit_type.
-        ls_unit-unit_name = COND #(
-          WHEN ls_b-unit_type = 'METHOD' AND ls_b-class IS NOT INITIAL
-          THEN |{ ls_b-class }=>{ ls_b-unit_name }|
-          ELSE ls_b-unit_name ).
+        ls_unit-unit_name = ls_b-qname.
         ls_unit-cyclomatic = 1.
 
         CLEAR: lt_dist_ops, lt_dist_opd.
-        lv_first_row = 0.
-        lv_last_row  = 0.
 
-        CLEAR: ls_stmt_f, ls_stmt_t, ls_tok_f, ls_tok_t.
-        READ TABLE lo_scan->statements INDEX ls_b-stmt_from INTO ls_stmt_f.
-        IF sy-subrc = 0.
-          READ TABLE lo_scan->tokens INDEX ls_stmt_f-from INTO ls_tok_f.
-          IF sy-subrc = 0. lv_first_row = ls_tok_f-row. ENDIF.
-        ENDIF.
-        READ TABLE lo_scan->statements INDEX ls_b-stmt_to INTO ls_stmt_t.
-        IF sy-subrc = 0.
-          READ TABLE lo_scan->tokens INDEX ls_stmt_t-to INTO ls_tok_t.
-          IF sy-subrc = 0. lv_last_row = ls_tok_t-row. ENDIF.
-        ENDIF.
-        IF lv_last_row >= lv_first_row AND lv_first_row > 0.
-          ls_unit-loc = lv_last_row - lv_first_row + 1.
+        IF ls_b-line_to >= ls_b-line_from AND ls_b-line_from > 0.
+          ls_unit-loc = ls_b-line_to - ls_b-line_from + 1.
         ENDIF.
 
         LOOP AT lo_scan->statements ASSIGNING FIELD-SYMBOL(<stmt>)
@@ -601,6 +543,95 @@ CLASS ZCL_ACE_METRICS IMPLEMENTATION.
       ENDIF.
 
     ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD unit_boundaries.
+
+    DATA(lo_scan) = is_prog-scan.
+    CHECK lo_scan IS BOUND.
+    CHECK lo_scan->statements IS NOT INITIAL.
+
+    LOOP AT is_parse_data-tt_calls_line INTO DATA(ls_cl)
+      WHERE include  = is_prog-include
+        AND index    > 0
+        AND ( eventtype = 'METHOD'   OR eventtype = 'FORM'
+           OR eventtype = 'MODULE'   OR eventtype = 'FUNCTION' ).
+
+      CHECK ls_cl-index <> ls_cl-def_ind.
+      READ TABLE rt_boundaries WITH KEY stmt_from = ls_cl-index TRANSPORTING NO FIELDS.
+      CHECK sy-subrc <> 0.
+
+      DATA(lv_end_kw) = SWITCH string( ls_cl-eventtype
+        WHEN 'METHOD'   THEN 'ENDMETHOD'
+        WHEN 'FORM'     THEN 'ENDFORM'
+        WHEN 'MODULE'   THEN 'ENDMODULE'
+        WHEN 'FUNCTION' THEN 'ENDFUNCTION'
+        ELSE '' ).
+
+      DATA lv_stmt_to TYPE i VALUE 0.
+      CLEAR lv_stmt_to.
+      LOOP AT is_prog-t_keywords INTO DATA(ls_kw)
+        WHERE index > ls_cl-index AND name = lv_end_kw.
+        lv_stmt_to = ls_kw-index.
+        EXIT.
+      ENDLOOP.
+      CHECK lv_stmt_to > 0.
+
+      INSERT VALUE ts_unit_boundary(
+        stmt_from = ls_cl-index
+        stmt_to   = lv_stmt_to
+        unit_type = ls_cl-eventtype
+        unit_name = ls_cl-eventname
+        class     = ls_cl-class
+      ) INTO TABLE rt_boundaries.
+
+    ENDLOOP.
+
+    LOOP AT is_parse_data-t_events INTO DATA(ls_ev)
+      WHERE include    = is_prog-include
+        AND stmnt_from > 0
+        AND stmnt_to   > 0.
+
+      READ TABLE rt_boundaries WITH KEY stmt_from = ls_ev-stmnt_from TRANSPORTING NO FIELDS.
+      CHECK sy-subrc <> 0.
+
+      INSERT VALUE ts_unit_boundary(
+        stmt_from = ls_ev-stmnt_from
+        stmt_to   = ls_ev-stmnt_to
+        unit_type = 'EVENT'
+        unit_name = ls_ev-name
+        class     = ''
+      ) INTO TABLE rt_boundaries.
+
+    ENDLOOP.
+
+    " The source lines the two statements sit on. The scan holds a row per
+    " token, so the unit starts where its opening statement's first token is
+    " and ends where the closing statement's last one is. The qualified name
+    " is composed here as well: it is what the metrics list shows and what
+    " anybody asking for one unit back has to name it by.
+    LOOP AT rt_boundaries ASSIGNING FIELD-SYMBOL(<ls_b>).
+      <ls_b>-qname = COND string(
+        WHEN <ls_b>-unit_type = 'METHOD' AND <ls_b>-class IS NOT INITIAL
+        THEN |{ <ls_b>-class }=>{ <ls_b>-unit_name }|
+        ELSE <ls_b>-unit_name ).
+      READ TABLE lo_scan->statements INDEX <ls_b>-stmt_from INTO DATA(ls_stmt_f).
+      IF sy-subrc = 0.
+        READ TABLE lo_scan->tokens INDEX ls_stmt_f-from INTO DATA(ls_tok_f).
+        IF sy-subrc = 0.
+          <ls_b>-line_from = ls_tok_f-row.
+        ENDIF.
+      ENDIF.
+      READ TABLE lo_scan->statements INDEX <ls_b>-stmt_to INTO DATA(ls_stmt_t).
+      IF sy-subrc = 0.
+        READ TABLE lo_scan->tokens INDEX ls_stmt_t-to INTO DATA(ls_tok_t).
+        IF sy-subrc = 0.
+          <ls_b>-line_to = ls_tok_t-row.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
 

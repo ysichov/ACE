@@ -25,6 +25,17 @@ PUBLIC SECTION.
     CHANGING
       !cs_source  TYPE zif_ace_parse_data=>ts_parse_data .
 
+  "! Fills TT_CALLS for every statement of one include at once. PARSE_TOKENS
+  "! does one statement, which is what the editor needs on a double-click;
+  "! whoever draws the whole unit needs all of them up front, or a call is
+  "! indistinguishable from ordinary code.
+  CLASS-METHODS parse_calls
+    IMPORTING
+      !i_program  TYPE program
+      !i_include  TYPE program
+    CHANGING
+      !cs_source  TYPE zif_ace_parse_data=>ts_parse_data .
+
 PROTECTED SECTION.
 PRIVATE SECTION.
 ENDCLASS.
@@ -43,6 +54,28 @@ CLASS ZCL_ACE_PARSER IMPLEMENTATION.
         i_run     = i_run
       CHANGING
         cs_source = cs_source ).
+  ENDMETHOD.
+
+
+  METHOD parse_calls.
+    " The unit context every statement of this include is parsed under —
+    " which class, which event — taken from the include's own entry.
+    READ TABLE cs_source-tt_calls_line WITH KEY include = i_include INTO DATA(ls_ctx).
+    LOOP AT cs_source-tt_progs INTO DATA(ls_pre) WHERE include = i_include.
+      LOOP AT ls_pre-t_keywords INTO DATA(ls_prekw) WHERE calls_parsed = abap_false.
+        parse_tokens(
+          EXPORTING
+            i_program  = CONV #( COND string( WHEN ls_prekw-program IS NOT INITIAL
+                                              THEN ls_prekw-program ELSE i_program ) )
+            i_include  = CONV #( ls_prekw-include )
+            i_stmt_idx = ls_prekw-index
+            i_class    = ls_ctx-class
+            i_evtype   = ls_ctx-eventtype
+            i_ev_name  = ls_ctx-eventname
+          CHANGING
+            cs_source  = cs_source ).
+      ENDLOOP.
+    ENDLOOP.
   ENDMETHOD.
 
 
