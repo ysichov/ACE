@@ -230,7 +230,8 @@ public section.
       !I_PROG type PROG optional
       !I_PACKAGE type DEVCLASS optional
       !I_NEW_PARSER type ABAP_BOOL default ABAP_FALSE
-      !I_SHOW_PARSE_TIME type ABAP_BOOL default ABAP_FALSE .
+      !I_SHOW_PARSE_TIME type ABAP_BOOL default ABAP_FALSE
+      !I_HEADLESS type ABAP_BOOL default ABAP_FALSE .
   methods SHOW .
   methods SHOW_PACKAGE .
   methods ENSURE_PACKAGE_PARSED .
@@ -306,6 +307,18 @@ CLASS ZCL_ACE IMPLEMENTATION.
   METHOD constructor.
     CONSTANTS: c_mask TYPE x VALUE '01'.
     mv_prog = i_prog. mv_package = i_package. mv_show_parse_time = i_show_parse_time. i_step = abap_on.
+
+    " Data only. The scanners use this object as a place to keep the parse,
+    " the step table and the depth, and never ask it to draw anything - so a
+    " caller with no GUI session gets exactly that much of it. The tree and
+    " the icon table would both need a screen, and the mermaid check answers
+    " a question about SAP GUI that nobody headless will ask.
+    IF i_headless = abap_true.
+      mo_window = NEW zcl_ace_window( i_debugger = me i_headless = abap_true ).
+      mo_window->mv_new_parser = i_new_parser.
+      RETURN.
+    ENDIF.
+
     zcl_ace_mermaid=>check_mermaid( ). zcl_ace_sel_opt=>init_icons_table( ).
     mo_window = NEW zcl_ace_window( me ). mo_window->mv_new_parser = i_new_parser.
     mo_tree_local = NEW zcl_ace_rtti_tree( i_header = 'Objects & Code Flow' i_type = 'L'

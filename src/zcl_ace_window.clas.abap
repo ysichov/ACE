@@ -113,7 +113,14 @@ public section.
   methods CONSTRUCTOR
     importing
       !I_DEBUGGER        type ref to ZCL_ACE
-      !I_ADDITIONAL_NAME type STRING optional .
+      !I_ADDITIONAL_NAME type STRING optional
+      !I_HEADLESS        type ABAP_BOOL default ABAP_FALSE .
+  " The data half of SET_PROGRAM: parse the include, and walk its calls if
+  " nothing has walked them yet. It touches no control, so it runs where
+  " there is no SAP GUI at all - which is what an ADT resource needs.
+  methods PARSE_PROGRAM
+    importing
+      !I_INCLUDE type PROGRAM .
   methods ADD_TOOLBAR_BUTTONS .
   methods HND_TOOLBAR
     for event FUNCTION_SELECTED of CL_GUI_TOOLBAR
@@ -275,6 +282,12 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       mo_viewer = i_debugger.
       m_history = m_varhist = m_zcode = '01'.
       m_hist_depth = 19.
+      " Everything above is state the parsers read and write; everything below
+      " is a control. Without a GUI session there is nothing to build them on,
+      " and the analysis has never needed them.
+      IF i_headless = abap_true.
+        RETURN.
+      ENDIF.
       mo_box = create( i_name = text i_width = 1300 i_hight = 350 ).
       SET HANDLER on_box_close FOR mo_box.
       " Outer splitter: fixed 28px toolbar row on top (absolute mode),
@@ -1410,6 +1423,24 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD parse_program.
+
+    DATA lv_ts1 TYPE timestampl.
+    IF mo_viewer->mv_show_parse_time = abap_true. GET TIME STAMP FIELD lv_ts1. ENDIF.
+    ZCL_ACE_PARSER=>parse(
+      EXPORTING i_program = i_include i_include = i_include
+      CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
+    IF mo_viewer->mv_show_parse_time = abap_true. show_parse_time( lv_ts1 ). ENDIF.
+    IF mo_viewer->m_step IS INITIAL.
+      DATA(ls_ctx) = ms_code_context.
+      zcl_ace_source_parser=>code_execution_scanner(
+        i_program = i_include i_include = i_include io_debugger = mo_viewer
+        i_evtype = ls_ctx-evtype i_evname = ls_ctx-evname i_class = ls_ctx-class ).
+    ENDIF.
+
+  ENDMETHOD.
+
+
   METHOD set_program.
     IF i_include = 'VIRTUAL'.
       LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<sp_virt>).
@@ -1423,18 +1454,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       ENDIF.
       RETURN.
     ENDIF.
-    DATA lv_ts1 TYPE timestampl.
-    IF mo_viewer->mv_show_parse_time = abap_true. GET TIME STAMP FIELD lv_ts1. ENDIF.
-    ZCL_ACE_PARSER=>parse(
-      EXPORTING i_program = i_include i_include = i_include
-      CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
-    IF mo_viewer->mv_show_parse_time = abap_true. show_parse_time( lv_ts1 ). ENDIF.
-    IF mo_viewer->m_step IS INITIAL.
-      DATA(ls_ctx) = ms_code_context.
-      zcl_ace_source_parser=>code_execution_scanner(
-        i_program = i_include i_include = i_include io_debugger = mo_viewer
-        i_evtype = ls_ctx-evtype i_evname = ls_ctx-evname i_class = ls_ctx-class ).
-    ENDIF.
+    parse_program( i_include ).
     LOOP AT ms_sources-tt_progs ASSIGNING FIELD-SYMBOL(<sp_prog>).
       CLEAR <sp_prog>-selected.
     ENDLOOP.
