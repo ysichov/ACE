@@ -217,13 +217,27 @@ CLASS zcl_ace_code_html DEFINITION
     "! Whole statement text: the line plus its continuation lines, which
     "! carry no keyword of their own. A call shown as just "obj->meth(" says
     "! nothing about what is passed to it.
+    "! @parameter i_no_comments | drop what is commented out of each line
+    "!                            before joining them. The diagram wants the
+    "!                            statement; the skeleton wants the line as
+    "!                            the author wrote it.
     CLASS-METHODS stmt_text
       IMPORTING it_lines      TYPE tt_line
                 i_line        TYPE i
+                i_no_comments TYPE abap_bool DEFAULT abap_false
+      RETURNING VALUE(r_text) TYPE string.
+
+    "! One source line without its comment. A star in the first column makes
+    "! the whole line one; anywhere else a comment starts at the first
+    "! quotation mark that is not inside a literal.
+    CLASS-METHODS strip_comment
+      IMPORTING i_text        TYPE string
       RETURNING VALUE(r_text) TYPE string.
 
     "! Source text of a structure line, trimmed and stripped of the
-    "! characters that would break a mermaid label.
+    "! characters that would break a mermaid label. The comment goes too: a
+    "! node is there to show the shape of the branch, and a sentence about
+    "! why it is there crowds out the condition itself.
     CLASS-METHODS scheme_label
       IMPORTING i_text        TYPE string
       RETURNING VALUE(r_text) TYPE string.
@@ -1115,7 +1129,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
 
       " A call is what the parser recorded in TT_CALLS — the same table the
       " editor navigates by on double-click. No guessing from the text.
-      DATA(lv_txt) = stmt_text( it_lines = it_lines i_line = ls_op-line ).
+      DATA(lv_txt) = stmt_text( it_lines = it_lines i_line = ls_op-line
+                                i_no_comments = abap_true ).
       DATA(lv_is_call) = ls_op-call.
       " Database access and the like stay visible too
       DATA(lv_is_side) = xsdbool( c_side CS | { ls_op-word } | ).
@@ -1183,7 +1198,8 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       READ TABLE it_lines INTO DATA(ls_one) WITH KEY line = lv_one.
       CHECK sy-subrc = 0.
       DATA(lv_id1) = |p{ lv_one }|.
-      cv_mm = cv_mm && |  { lv_id1 }("{ scheme_label( stmt_text( it_lines = it_lines i_line = lv_one ) ) }")\n|.
+      cv_mm = cv_mm && |  { lv_id1 }("{ scheme_label( stmt_text( it_lines = it_lines i_line = lv_one
+                                                                 i_no_comments = abap_true ) ) }")\n|.
       cv_edges = cv_edges && |  { i_prev }{ arrow( i_label ) }{ lv_id1 }\n|.
       IF cv_first IS INITIAL. cv_first = lv_id1. ENDIF.
       r_node = lv_id1.
@@ -1211,6 +1227,13 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
         EXIT.
       ENDIF.
       IF lv_part IS INITIAL. CONTINUE. ENDIF.
+      " Whether the line ends the run is decided on the line as it stands;
+      " only what is kept of it changes here. A comment between two halves of
+      " one statement must not be read as the end of that statement.
+      IF i_no_comments = abap_true.
+        lv_part = condense( strip_comment( ls_l-text ) ).
+        IF lv_part IS INITIAL. CONTINUE. ENDIF.
+      ENDIF.
       r_text = COND string( WHEN r_text IS INITIAL THEN lv_part
                             ELSE |{ r_text } { lv_part }| ).
       IF strlen( r_text ) > 120. EXIT. ENDIF.
@@ -1218,8 +1241,60 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD strip_comment.
+
+    r_text = i_text.
+    IF r_text IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    " A star in the FIRST column is a comment line, whatever follows it. The
+    " column is what decides: the same character further along is a
+    " multiplication sign, and condensing the line first would lose that.
+    IF r_text(1) = '*'.
+      CLEAR r_text.
+      RETURN.
+    ENDIF.
+
+    " Otherwise the comment begins at the first quotation mark that is not
+    " inside a literal - and ABAP has two kinds of literal, either of which
+    " can hold one.
+    DATA(lv_len) = strlen( r_text ).
+    DATA lv_i    TYPE i VALUE 0.
+    DATA lv_in   TYPE c LENGTH 1.
+    DATA lv_next TYPE i.
+
+    WHILE lv_i < lv_len.
+      DATA(lv_c) = r_text+lv_i(1).
+      IF lv_in IS INITIAL.
+        CASE lv_c.
+          WHEN c_apos OR c_btick.
+            lv_in = lv_c.
+          WHEN '"'.
+            IF lv_i = 0.
+              CLEAR r_text.
+            ELSE.
+              r_text = r_text(lv_i).
+            ENDIF.
+            RETURN.
+        ENDCASE.
+      ELSEIF lv_c = lv_in.
+        " A doubled quote inside a literal is that quote, not its end.
+        lv_next = lv_i + 1.
+        IF lv_next < lv_len AND r_text+lv_next(1) = lv_in.
+          lv_i = lv_next.
+        ELSE.
+          CLEAR lv_in.
+        ENDIF.
+      ENDIF.
+      lv_i = lv_i + 1.
+    ENDWHILE.
+
+  ENDMETHOD.
+
+
   METHOD scheme_label.
-    r_text = condense( i_text ).
+    r_text = condense( strip_comment( i_text ) ).
     " The diagram source passes through HTML twice, so angle brackets are
     " read as tags: FIELD-SYMBOL(<WATCH>) loses everything from the '<' on,
     " and the browser injects closing tags into the mermaid text. Entities
