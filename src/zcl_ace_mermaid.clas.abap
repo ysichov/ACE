@@ -55,10 +55,12 @@ public section.
   " would run. It is a function of the steps and the parse and of nothing
   " else - no window, no viewer, no control - so it also answers where there
   " is no SAP GUI at all. STEPS_FLOW is this plus the viewer's own state.
+  " CHANGING, not IMPORTING: drawing the focused map dips back into the
+  " parser for call bindings that were never resolved, and that fills them
+  " into the parse. The caller keeps the work rather than paying for it again.
   class-methods BUILD_STEPS_FLOW
     importing
       !IT_STEPS      type TT_FLOW_STEPS
-      !IS_PARSE_DATA type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
       !I_DIRECTION   type UI_FUNC optional
       !I_WITH_PARAMS type BOOLEAN optional
       !I_ALL_METHODS type BOOLEAN default ABAP_FALSE
@@ -66,6 +68,8 @@ public section.
       !I_FOCUS       type PROGNAME optional
     exporting
       !ET_NODE_MAP   type TT_NODE_MAP
+    changing
+      !CS_PARSE_DATA type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
     returning
       value(RV_MM)   type STRING .
   methods CLASS_MAP
@@ -1456,13 +1460,13 @@ DATA(lv_maxlen) = 200.
     DATA lv_mm TYPE string.
     build_steps_flow(
       EXPORTING it_steps      = lt_steps
-                is_parse_data = mo_viewer->mo_window->ms_sources
                 i_direction   = i_direction
                 i_with_params = i_with_params
                 i_all_methods = mv_all_methods
                 i_type        = mv_type
                 i_focus       = mo_viewer->mv_cmap_focus
       IMPORTING et_node_map   = mt_node_map
+      CHANGING  cs_parse_data = mo_viewer->mo_window->ms_sources
       RECEIVING rv_mm         = lv_mm ).
 
     open_mermaid( lv_mm ).
@@ -1545,7 +1549,7 @@ DATA(lv_maxlen) = 200.
         entity-include   = ''.   " collapse across includes of the same unit
 
       ELSEIF <copy>-eventtype = 'METHOD'.
-        READ TABLE is_parse_data-tt_calls_line
+        READ TABLE cs_parse_data-tt_calls_line
           WITH KEY include   = <copy>-include
                    eventtype = 'METHOD'
                    eventname = <copy>-eventname
@@ -1652,7 +1656,7 @@ DATA(lv_maxlen) = 200.
               " Look up parameter bindings: search caller's keywords for a call to callee
               DATA(ls_caller_ent) = entities[ ind-from ].
               DATA(ls_callee_ent) = entities[ ind-to ].
-              READ TABLE is_parse_data-tt_progs
+              READ TABLE cs_parse_data-tt_progs
                 WITH KEY include = ls_caller_ent-include
                 INTO DATA(ls_prog_wp).
               IF sy-subrc = 0.
@@ -1702,14 +1706,14 @@ DATA(lv_maxlen) = 200.
       LOOP AT entities INTO DATA(ls_enrich_src).
         lv_enrich_from += 1.
         CHECK ls_enrich_src-style = c_style_method.
-        READ TABLE is_parse_data-tt_calls_line
+        READ TABLE cs_parse_data-tt_calls_line
           WITH KEY include   = ls_enrich_src-include
                    eventtype = 'METHOD'
                    eventname = ls_enrich_src-eventname
                    class     = ls_enrich_src-class
           INTO DATA(ls_enrich_line).
         CHECK sy-subrc = 0.
-        READ TABLE is_parse_data-tt_progs
+        READ TABLE cs_parse_data-tt_progs
           WITH KEY include = ls_enrich_line-include
           INTO DATA(ls_enrich_prog).
         CHECK sy-subrc = 0.
@@ -1726,7 +1730,7 @@ DATA(lv_maxlen) = 200.
                 i_evtype   = 'METHOD'
                 i_ev_name  = ls_enrich_src-eventname
               CHANGING
-                cs_source  = is_parse_data ).
+                cs_source  = cs_parse_data ).
             READ TABLE ls_enrich_prog-t_keywords WITH KEY index = ls_enrich_kw-index INTO ls_enrich_kw.
           ENDIF.
 
