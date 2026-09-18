@@ -17,8 +17,20 @@ CLASS zcl_ace_walk DEFINITION
     ALIASES mt_calls     FOR zif_ace_walk~mt_calls .
     ALIASES mt_steps     FOR zif_ace_walk~mt_steps .
     ALIASES m_step       FOR zif_ace_walk~m_step .
+
+    METHODS constructor .
 ENDCLASS.
 
 
 CLASS zcl_ace_walk IMPLEMENTATION.
+
+  METHOD constructor.
+    " The same two values ZCL_ACE_WINDOW's constructor sets. A walk that
+    " starts with M_ZCODE cleared descends into SAP's own code, and no caller
+    " has asked for that - so it is set here rather than left to the caller
+    " to remember.
+    m_hist_depth = zif_ace_walk~c_hist_depth.
+    m_zcode      = zif_ace_walk~c_only_z.
+  ENDMETHOD.
+
 ENDCLASS.
