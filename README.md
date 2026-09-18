@@ -9,12 +9,6 @@ never changes it — it only reads the source.
 
 > **Also outside SAP GUI.** The code metrics are available in Eclipse ADT and in VS Code through
 > [VERTEX](https://github.com/ysichov/VERTEX) · [Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap).
-> It reads ACE over an ADT resource that lives in
-> [Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer), so both repositories
-> have to be on the system.
->
-> *In the construction phase.* Metrics only so far — the call map, the slicing and the skeletons
-> are still SAP GUI.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![ABAP](https://img.shields.io/badge/ABAP-7.50%2B-blue)
