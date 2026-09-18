@@ -15,27 +15,27 @@ public section.
       !I_CLASS     type STRING optional
       !I_STMT_IDX  type I optional
       !I_NO_STEPS  type ABAP_BOOL optional
-      !IO_DEBUGGER type ref to ZCL_ACE .
+      !IO_WALK type ref to ZIF_ACE_WALK .
   class-methods PARSE_CALL_FORM
     importing
       !I_CALL_NAME type STRING
       !I_PROGRAM   type PROGRAM
       !I_INCLUDE   type PROGRAM
       !I_STACK     type I
-      !IO_DEBUGGER type ref to ZCL_ACE .
+      !IO_WALK type ref to ZIF_ACE_WALK .
   class-methods PARSE_CLASS
     importing
-      !KEY         type ZCL_ACE=>TS_KWORD
+      !KEY         type zif_ace_parse_data=>ts_kword
       !I_INCLUDE   type PROGRAM
-      !I_CALL      type ZCL_ACE=>TS_CALLS
+      !I_CALL      type zif_ace_parse_data=>ts_calls
       !I_STACK     type I
-      !IO_DEBUGGER type ref to ZCL_ACE .
+      !IO_WALK type ref to ZIF_ACE_WALK .
   class-methods PARSE_SCREEN
     importing
-      !KEY         type ZCL_ACE=>TS_KWORD
+      !KEY         type zif_ace_parse_data=>ts_kword
       !I_STACK     type I
-      !I_CALL      type ZCL_ACE=>TS_CALLS
-      !IO_DEBUGGER type ref to ZCL_ACE .
+      !I_CALL      type zif_ace_parse_data=>ts_calls
+      !IO_WALK type ref to ZIF_ACE_WALK .
   class-methods CODE_EXECUTION_SCANNER
     importing
       !I_PROGRAM   type PROGRAM
@@ -44,11 +44,11 @@ public section.
       !I_EVTYPE    type STRING optional
       !I_CLASS     type STRING optional
       !I_STACK     type I optional
-      !IO_DEBUGGER type ref to ZCL_ACE .
+      !IO_WALK type ref to ZIF_ACE_WALK .
   class-methods COLLECT_ENHANCEMENTS
     importing
       !I_PROGRAM   type PROGRAM
-      !IO_DEBUGGER type ref to ZCL_ACE .
+      !IO_WALK type ref to ZIF_ACE_WALK .
   class-methods COLLECT_METHOD_ENHANCEMENTS
     importing
       !I_ENHNAME    type ENHNAME
@@ -57,7 +57,7 @@ public section.
       !I_CLASS      type STRING
       !I_METH_POS   type STRING
       !I_ID         type I
-      !IO_DEBUGGER  type ref to ZCL_ACE .
+      !io_walk  type ref to ZIF_ACE_WALK .
 protected section.
 private section.
 
@@ -91,7 +91,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
   METHOD code_execution_scanner.
 
     DATA: max       TYPE i,
-          call_line TYPE zcl_ace=>ts_calls_line,
+          call_line TYPE zif_ace_parse_data=>ts_calls_line,
           program   TYPE program,
           include   TYPE program,
           prefix    TYPE string,
@@ -100,15 +100,15 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           statement TYPE i,
           prog      TYPE zif_ace_parse_data=>ts_prog.
 
-    SORT io_debugger->mo_window->ms_sources-tt_calls_line.
+    SORT io_walk->ms_sources-tt_calls_line.
     stack = i_stack + 1.
-    CHECK stack <= io_debugger->mo_window->m_hist_depth.
+    CHECK stack <= io_walk->m_hist_depth.
 
     zcl_ace_parser=>parse(
       EXPORTING i_program = i_program i_include = i_include i_run = 1
-      CHANGING  cs_source = io_debugger->mo_window->ms_sources ).
+      CHANGING  cs_source = io_walk->ms_sources ).
 
-    READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+    READ TABLE io_walk->ms_sources-tt_progs
       WITH KEY include = i_include ASSIGNING FIELD-SYMBOL(<prog>).
     IF sy-subrc <> 0. RETURN. ENDIF.
 
@@ -119,14 +119,14 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     IF i_evname IS NOT INITIAL AND i_evtype = 'EVENT'.
 
       " Locate the event in t_events by name
-      READ TABLE io_debugger->mo_window->ms_sources-t_events
+      READ TABLE io_walk->ms_sources-t_events
         WITH KEY program = i_program name = i_evname
         INTO DATA(ls_sel_event).
       IF sy-subrc <> 0.
         " Try matching by stmnt_type / stmnt_from via structures
         LOOP AT <prog>-scan->structures INTO DATA(str_ev)
           WHERE type = 'E' AND ( stmnt_type = '1' OR stmnt_type = '2' OR stmnt_type = '3' ).
-          READ TABLE io_debugger->mo_window->ms_sources-t_events
+          READ TABLE io_walk->ms_sources-t_events
             WITH KEY program = i_program stmnt_type = str_ev-stmnt_type stmnt_from = str_ev-stmnt_from
             INTO ls_sel_event.
           IF sy-subrc = 0 AND ls_sel_event-name = i_evname. EXIT. ENDIF.
@@ -173,10 +173,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     LOOP AT structures INTO str.
 
       IF str-type = 'E'.
-        READ TABLE io_debugger->mo_window->ms_sources-t_events
+        READ TABLE io_walk->ms_sources-t_events
           WITH KEY program = i_program stmnt_type = str-stmnt_type stmnt_from = str-stmnt_from
           ASSIGNING FIELD-SYMBOL(<event>).
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        READ TABLE io_walk->ms_sources-tt_progs
           WITH KEY include = <event>-include INTO prog.
         READ TABLE prog-scan->statements INDEX <event>-stmnt_from INTO DATA(command).
         READ TABLE prog-scan->levels INDEX command-level INTO DATA(level).
@@ -195,7 +195,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       IF key IS NOT INITIAL.
         zcl_ace_parser=>parse(
           EXPORTING i_program = CONV #( key-program ) i_include = CONV #( key-include ) i_run = 1
-          CHANGING  cs_source = io_debugger->mo_window->ms_sources ).
+          CHANGING  cs_source = io_walk->ms_sources ).
       ENDIF.
 
       WHILE statement <= str-stmnt_to.
@@ -207,14 +207,14 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         OR key-name IS INITIAL OR sy-subrc <> 0 OR key-sub IS NOT INITIAL.
           ADD 1 TO statement. CONTINUE.
         ENDIF.
-        ADD 1 TO io_debugger->m_step.
+        ADD 1 TO io_walk->m_step.
 
-        READ TABLE io_debugger->mt_steps
+        READ TABLE io_walk->mt_steps
           WITH KEY line = key-line program = i_program include = key-include
           TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
-          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
-          <step>-step = io_debugger->m_step. <step>-line = key-line.
+          APPEND INITIAL LINE TO io_walk->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+          <step>-step = io_walk->m_step. <step>-line = key-line.
           IF i_evtype IS INITIAL. <step>-eventtype = 'EVENT'. <step>-eventname = event.
           ELSE. <step>-eventtype = i_evtype. <step>-eventname = i_evname. ENDIF.
           <step>-stacklevel = stack. <step>-program = i_program. <step>-include = key-include.
@@ -232,9 +232,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
               i_evtype   = i_evtype
               i_ev_name  = i_evname
             CHANGING
-              cs_source  = io_debugger->mo_window->ms_sources ).
+              cs_source  = io_walk->ms_sources ).
           " Re-read key — calls_parsed is now true and tt_calls is filled
-          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          READ TABLE io_walk->ms_sources-tt_progs
             WITH KEY include = key-include INTO prog.
           READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
         ENDIF.
@@ -245,26 +245,26 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             IF call-event = 'FORM'.
               parse_call_form(
                 i_call_name = call-name i_program = CONV #( call_line-program )
-                i_include   = CONV #( call_line-include ) i_stack = stack io_debugger = io_debugger ).
+                i_include   = CONV #( call_line-include ) i_stack = stack io_walk = io_walk ).
 
             ELSEIF call-event = 'FUNCTION'.
               DATA func TYPE rs38l_fnam.
               func = call-name.
-              IF io_debugger->mo_window->m_zcode IS INITIAL OR is_custom_code( func ).
+              IF io_walk->m_zcode IS INITIAL OR is_custom_code( func ).
                 CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
                   CHANGING funcname = func include = include
                   EXCEPTIONS function_not_exists = 1 include_not_exists = 2
                              group_not_exists = 3 no_selections = 4 no_function_include = 5 OTHERS = 6.
                 code_execution_scanner( i_program = include i_include = include i_stack = stack
-                  i_evtype = call-event i_evname = call-name io_debugger = io_debugger ).
+                  i_evtype = call-event i_evname = call-name io_walk = io_walk ).
               ENDIF.
 
             ELSEIF call-event = 'METHOD'.
               parse_class( i_include = i_include i_call = call i_stack = stack
-                           io_debugger = io_debugger key = key ).
+                           io_walk = io_walk key = key ).
 
             ELSEIF call-event = 'SCREEN'.
-              parse_screen( i_stack = stack i_call = call io_debugger = io_debugger key = key ).
+              parse_screen( i_stack = stack i_call = call io_walk = io_walk key = key ).
             ENDIF.
           ENDIF.
         ENDLOOP.
@@ -301,7 +301,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDIF.
 
       DATA(lv_prog_enh_tabix) = 0.
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+      READ TABLE io_walk->ms_sources-tt_progs
         WITH KEY include = i_program
         ASSIGNING FIELD-SYMBOL(<prog_enh>).
       IF sy-subrc = 0.
@@ -361,10 +361,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             collect_method_enhancements(
               EXPORTING i_enhname = CONV #( ls_enh-enhname ) i_enhinclude = CONV #( ls_enh-enhinclude )
                         i_method = lv_method_name i_class = lv_class_name i_meth_pos = 'OVERWRITE'
-                        i_id = CONV #( ls_enh-id ) io_debugger = io_debugger ).
-            READ TABLE io_debugger->mo_window->ms_sources-tt_progs TRANSPORTING NO FIELDS
+                        i_id = CONV #( ls_enh-id ) io_walk = io_walk ).
+            READ TABLE io_walk->ms_sources-tt_progs TRANSPORTING NO FIELDS
               WITH KEY program = lv_class_name.
-            LOOP AT io_debugger->mo_window->ms_sources-tt_progs INTO DATA(ls_prog_ow).
+            LOOP AT io_walk->ms_sources-tt_progs INTO DATA(ls_prog_ow).
               READ TABLE ls_prog_ow-tt_enh_blocks TRANSPORTING NO FIELDS
                 WITH KEY ev_name = lv_method_name position = 'OVERWRITE'.
               IF sy-subrc = 0. lv_has_overwrite = abap_true. EXIT. ENDIF.
@@ -374,30 +374,30 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             collect_method_enhancements(
               EXPORTING i_enhname = CONV #( ls_enh-enhname ) i_enhinclude = CONV #( ls_enh-enhinclude )
                         i_method = lv_method_name i_class = lv_class_name i_meth_pos = lv_meth_pos
-                        i_id = CONV #( ls_enh-id ) io_debugger = io_debugger ).
+                        i_id = CONV #( ls_enh-id ) io_walk = io_walk ).
           ENDIF.
 
         ELSE.
           FIND FIRST OCCURRENCE OF REGEX '\\FO:([^\\]+)' IN lv_full SUBMATCHES form_name.
           FIND FIRST OCCURRENCE OF REGEX '\\SE:([^\\]+)' IN lv_full SUBMATCHES position.
           CHECK form_name IS NOT INITIAL AND position IS NOT INITIAL.
-          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          READ TABLE io_walk->ms_sources-tt_progs
             WITH KEY include = ls_enh-enhinclude TRANSPORTING NO FIELDS.
           IF sy-subrc <> 0.
             ZCL_ACE_PARSER=>parse( EXPORTING i_program = CONV #( ls_enh-enhinclude )
-              i_include = CONV #( ls_enh-enhinclude ) CHANGING cs_source = io_debugger->mo_window->ms_sources ).
+              i_include = CONV #( ls_enh-enhinclude ) CHANGING cs_source = io_walk->ms_sources ).
           ENDIF.
 
-          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+          READ TABLE io_walk->ms_sources-tt_calls_line
             WITH KEY eventtype = 'FORM' eventname = form_name INTO DATA(ls_call_line).
           CHECK sy-subrc = 0.
 
-          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          READ TABLE io_walk->ms_sources-tt_progs
             WITH KEY include = ls_call_line-include ASSIGNING FIELD-SYMBOL(<prog>).
           CHECK sy-subrc = 0.
 
           DATA(lv_form_tabix) = 0.
-          DATA ls_kw_form TYPE ZCL_ACE=>ts_kword.
+          DATA ls_kw_form TYPE zif_ace_parse_data=>ts_kword.
           LOOP AT <prog>-t_keywords INTO ls_kw_form.
             IF ls_kw_form-name = 'FORM' AND ls_kw_form-index = ls_call_line-index.
               lv_form_tabix = sy-tabix. EXIT.
@@ -408,11 +408,11 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             index = ls_kw_form-index INTO DATA(ls_vkw_form).
           IF sy-subrc = 0. ls_kw_form-v_line = ls_vkw_form-v_line. ENDIF.
 
-          READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+          READ TABLE io_walk->ms_sources-tt_progs
             WITH KEY include = ls_enh-enhinclude INTO DATA(ls_enh_prog).
           CHECK sy-subrc = 0.
 
-          DATA lt_enh_kw TYPE zcl_ace=>tt_kword.
+          DATA lt_enh_kw TYPE zif_ace_parse_data=>tt_kword.
           DATA lv_in_block TYPE boolean.
           CLEAR: lt_enh_kw, lv_in_block.
           LOOP AT ls_enh_prog-t_keywords INTO DATA(ls_kw).
@@ -432,7 +432,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           ENDLOOP.
           CHECK lt_enh_kw IS NOT INITIAL.
 
-          DATA ls_kw_end TYPE ZCL_ACE=>ts_kword.
+          DATA ls_kw_end TYPE zif_ace_parse_data=>ts_kword.
           CLEAR ls_kw_end.
           IF position = 'BEGIN'.
             tabix = lv_form_tabix + 1.
@@ -529,7 +529,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDLOOP.
 
       IF lv_prog_enh_tabix > 0.
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        READ TABLE io_walk->ms_sources-tt_progs
           INDEX lv_prog_enh_tabix ASSIGNING <prog_enh>.
         IF sy-subrc = 0. <prog_enh>-enh_collected = abap_true. ENDIF.
       ENDIF.
@@ -549,13 +549,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         WHEN i_meth_pos = 'OVERWRITE' THEN 'IOW_' ).
       DATA(lv_impl_method) = lv_impl_prefix && lv_enhname_trimmed && '~' && i_method.
 
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+      READ TABLE io_walk->ms_sources-tt_progs
         WITH KEY include = lv_eimp_include TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
         ZCL_ACE_PARSER=>parse( EXPORTING i_program = lv_eimp_include i_include = lv_eimp_include
-          CHANGING cs_source = io_debugger->mo_window->ms_sources ).
+          CHANGING cs_source = io_walk->ms_sources ).
       ENDIF.
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+      READ TABLE io_walk->ms_sources-tt_progs
         WITH KEY include = lv_eimp_include INTO DATA(ls_eimp_prog).
       CHECK sy-subrc = 0.
 
@@ -566,27 +566,27 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         WHERE master = @lv_class_prog AND include LIKE @lv_cm_pattern
         INTO TABLE @DATA(lt_cm_includes).
       LOOP AT lt_cm_includes INTO DATA(ls_cm).
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        READ TABLE io_walk->ms_sources-tt_progs
           WITH KEY include = ls_cm-include TRANSPORTING NO FIELDS.
         IF sy-subrc <> 0.
           ZCL_ACE_PARSER=>parse( EXPORTING i_program = ls_cm-include i_include = ls_cm-include
-            CHANGING cs_source = io_debugger->mo_window->ms_sources ).
+            CHANGING cs_source = io_walk->ms_sources ).
         ENDIF.
       ENDLOOP.
 
-      DATA ls_call_line_m TYPE ZCL_ACE=>ts_calls_line.
-      LOOP AT io_debugger->mo_window->ms_sources-tt_calls_line INTO ls_call_line_m
+      DATA ls_call_line_m TYPE zif_ace_parse_data=>ts_calls_line.
+      LOOP AT io_walk->ms_sources-tt_calls_line INTO ls_call_line_m
         WHERE eventtype = 'METHOD' AND eventname = i_method AND class = i_class.
         EXIT.
       ENDLOOP.
       CHECK sy-subrc = 0.
 
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+      READ TABLE io_walk->ms_sources-tt_progs
         WITH KEY include = ls_call_line_m-include ASSIGNING FIELD-SYMBOL(<prog_m>).
       CHECK sy-subrc = 0.
 
       DATA(lv_meth_tabix) = 0.
-      DATA ls_kw_meth TYPE ZCL_ACE=>ts_kword.
+      DATA ls_kw_meth TYPE zif_ace_parse_data=>ts_kword.
       LOOP AT <prog_m>-t_keywords INTO ls_kw_meth.
         IF ls_kw_meth-name = 'METHOD' AND ls_kw_meth-index = ls_call_line_m-index.
           lv_meth_tabix = sy-tabix. EXIT.
@@ -594,7 +594,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDLOOP.
       CHECK lv_meth_tabix > 0.
 
-      DATA lt_enh_kw TYPE zcl_ace=>tt_kword.
+      DATA lt_enh_kw TYPE zif_ace_parse_data=>tt_kword.
       DATA lv_in_block TYPE boolean.
       LOOP AT ls_eimp_prog-t_keywords INTO DATA(ls_kw).
         IF ls_kw-name = 'METHOD'.
@@ -614,7 +614,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       CHECK lt_enh_kw IS NOT INITIAL.
 
       DATA(lv_ins_tabix) = lv_meth_tabix + 1.
-      DATA ls_kw_end TYPE ZCL_ACE=>ts_kword.
+      DATA ls_kw_end TYPE zif_ace_parse_data=>ts_kword.
       IF i_meth_pos = 'END' OR i_meth_pos = 'OVERWRITE'.
         LOOP AT <prog_m>-t_keywords INTO ls_kw_end FROM lv_ins_tabix.
           IF ls_kw_end-name = 'ENDMETHOD'. lv_ins_tabix = sy-tabix + 1. EXIT. ENDIF.
@@ -656,20 +656,20 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           program   TYPE program.
 
     stack = i_stack + 1.
-    CHECK stack <= io_debugger->mo_window->m_hist_depth.
+    CHECK stack <= io_walk->m_hist_depth.
 
-    READ TABLE io_debugger->mt_steps
+    READ TABLE io_walk->mt_steps
       WITH KEY program = i_include eventname = i_e_name eventtype = i_e_type class = i_class
       TRANSPORTING NO FIELDS.
     IF sy-subrc = 0. RETURN. ENDIF.
 
-    READ TABLE io_debugger->mo_window->mt_calls
+    READ TABLE io_walk->mt_calls
       WITH KEY include = i_include ev_name = i_e_name class = i_class
       TRANSPORTING NO FIELDS.
     IF sy-subrc = 0.
       EXIT.
     ELSE.
-      APPEND INITIAL LINE TO io_debugger->mo_window->mt_calls ASSIGNING FIELD-SYMBOL(<method_call>).
+      APPEND INITIAL LINE TO io_walk->mt_calls ASSIGNING FIELD-SYMBOL(<method_call>).
       <method_call>-include = i_include.
       <method_call>-ev_name = i_e_name.
       <method_call>-class   = i_class.
@@ -679,7 +679,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           meth_includes TYPE seop_methods_w_include.
     cl_key = i_class.
 
-    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+    READ TABLE io_walk->ms_sources-tt_calls_line
       WITH KEY class = i_class TRANSPORTING NO FIELDS.
     IF sy-subrc = 0.
       statement = i_index.
@@ -696,22 +696,22 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     ENDIF.
 
     IF i_include IS NOT INITIAL.
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+      READ TABLE io_walk->ms_sources-tt_progs
         WITH KEY include = i_include INTO DATA(prog).
       IF sy-subrc <> 0.
         zcl_ace_parser=>parse(
           EXPORTING i_program = i_program i_include = i_include
-          CHANGING  cs_source = io_debugger->mo_window->ms_sources ).
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO prog.
+          CHANGING  cs_source = io_walk->ms_sources ).
+        READ TABLE io_walk->ms_sources-tt_progs WITH KEY include = i_include INTO prog.
       ENDIF.
     ELSE.
-      READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+      READ TABLE io_walk->ms_sources-tt_progs
         WITH KEY include = i_program INTO prog.
       IF sy-subrc <> 0.
         zcl_ace_parser=>parse(
           EXPORTING i_program = i_program i_include = i_program
-          CHANGING  cs_source = io_debugger->mo_window->ms_sources ).
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = i_include INTO prog.
+          CHANGING  cs_source = io_walk->ms_sources ).
+        READ TABLE io_walk->ms_sources-tt_progs WITH KEY include = i_include INTO prog.
       ENDIF.
     ENDIF.
 
@@ -733,9 +733,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             i_evtype   = i_e_type
             i_ev_name  = i_e_name
           CHANGING
-            cs_source  = io_debugger->mo_window->ms_sources ).
+            cs_source  = io_walk->ms_sources ).
         " Re-read key — calls_parsed is now true and tt_calls is filled
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        READ TABLE io_walk->ms_sources-tt_progs
           WITH KEY include = key-include INTO prog.
         READ TABLE prog-t_keywords WITH KEY index = statement INTO key.
       ENDIF.
@@ -744,13 +744,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         ADD 1 TO statement. CONTINUE.
       ENDIF.
 
-      READ TABLE io_debugger->mt_steps
+      READ TABLE io_walk->mt_steps
         WITH KEY line = key-line program = i_program include = key-include
         TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0 AND i_no_steps IS INITIAL.
-        ADD 1 TO io_debugger->m_step.
-        APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
-        <step>-step       = io_debugger->m_step.
+        ADD 1 TO io_walk->m_step.
+        APPEND INITIAL LINE TO io_walk->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+        <step>-step       = io_walk->m_step.
         <step>-line       = key-line.
         <step>-eventname  = i_e_name.
         <step>-eventtype  = i_e_type.
@@ -764,19 +764,19 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         IF call-name IS NOT INITIAL AND NOT ( call-event = 'METHOD' AND call-class IS INITIAL ).
           IF call-event = 'FORM'.
             parse_call_form( i_call_name = call-name i_program = i_include
-              i_include = i_include i_stack = stack io_debugger = io_debugger ).
+              i_include = i_include i_stack = stack io_walk = io_walk ).
 
           ELSEIF call-event = 'FUNCTION'.
             DATA func TYPE rs38l_fnam.
             func = call-name.
             REPLACE ALL OCCURRENCES OF '''' IN func WITH ''.
-            IF io_debugger->mo_window->m_zcode IS INITIAL OR is_custom_code( func ).
+            IF io_walk->m_zcode IS INITIAL OR is_custom_code( func ).
               CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
                 CHANGING funcname = func include = include
                 EXCEPTIONS function_not_exists = 1 include_not_exists = 2
                            group_not_exists = 3 no_selections = 4 no_function_include = 5 OTHERS = 6.
               code_execution_scanner( i_program = include i_include = include i_stack = stack
-                i_evtype = call-event i_evname = call-name io_debugger = io_debugger ).
+                i_evtype = call-event i_evname = call-name io_walk = io_walk ).
             ENDIF.
 
           ELSEIF call-event = 'METHOD'.
@@ -784,10 +784,10 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             IF i_include IS INITIAL. include = i_program. ELSE. include = i_include. ENDIF.
             IF call-class = 'ME' OR call-class IS INITIAL. call-class = i_class. ENDIF.
             parse_class( i_include = include i_call = call i_stack = stack
-                         io_debugger = io_debugger key = key ).
+                         io_walk = io_walk key = key ).
 
           ELSEIF call-event = 'SCREEN'.
-            parse_screen( i_stack = stack i_call = call io_debugger = io_debugger key = key ).
+            parse_screen( i_stack = stack i_call = call io_walk = io_walk key = key ).
           ENDIF.
         ENDIF.
       ENDLOOP.
@@ -804,31 +804,31 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
   METHOD parse_call_form.
 
-    DATA call_line TYPE zcl_ace=>ts_calls_line.
-    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+    DATA call_line TYPE zif_ace_parse_data=>ts_calls_line.
+    READ TABLE io_walk->ms_sources-tt_calls_line
       WITH KEY eventname = i_call_name eventtype = 'FORM' INTO call_line.
     CHECK sy-subrc = 0.
 
     DATA(lv_inc) = CONV program( call_line-include ).
     IF lv_inc IS INITIAL. lv_inc = i_include. ENDIF.
 
-    READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+    READ TABLE io_walk->ms_sources-tt_progs
       WITH KEY include = lv_inc TRANSPORTING NO FIELDS.
     IF sy-subrc <> 0.
       zcl_ace_parser=>parse( EXPORTING i_program = lv_inc i_include = lv_inc
-        CHANGING cs_source = io_debugger->mo_window->ms_sources ).
+        CHANGING cs_source = io_walk->ms_sources ).
     ENDIF.
 
-    zcl_ace_source_parser=>collect_enhancements( i_program = lv_inc io_debugger = io_debugger ).
+    zcl_ace_source_parser=>collect_enhancements( i_program = lv_inc io_walk = io_walk ).
 
     DATA(lv_stack) = i_stack + 1.
-    CHECK lv_stack <= io_debugger->mo_window->m_hist_depth.
+    CHECK lv_stack <= io_walk->m_hist_depth.
 
-    READ TABLE io_debugger->mt_steps
+    READ TABLE io_walk->mt_steps
       WITH KEY program = lv_inc eventname = i_call_name eventtype = 'FORM' TRANSPORTING NO FIELDS.
     IF sy-subrc = 0. RETURN. ENDIF.
 
-    READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = lv_inc INTO DATA(prog).
+    READ TABLE io_walk->ms_sources-tt_progs WITH KEY include = lv_inc INTO DATA(prog).
     CHECK sy-subrc = 0.
 
     DATA(lv_use_vkw) = abap_false.
@@ -854,7 +854,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
     DATA ls_cur_enh TYPE zif_ace_parse_data=>ts_enh_block.
     CLEAR ls_cur_enh.
 
-    FIELD-SYMBOLS <kw_tab> TYPE zcl_ace=>tt_kword.
+    FIELD-SYMBOLS <kw_tab> TYPE zif_ace_parse_data=>tt_kword.
     IF lv_use_vkw = abap_true. ASSIGN prog-v_keywords TO <kw_tab>.
     ELSE. ASSIGN prog-t_keywords TO <kw_tab>. ENDIF.
 
@@ -863,7 +863,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       IF kw-name = 'ENHANCEMENT'.
         DATA(lv_enh_id_cur) = 0.
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs WITH KEY include = kw-include INTO DATA(enh_prog).
+        READ TABLE io_walk->ms_sources-tt_progs WITH KEY include = kw-include INTO DATA(enh_prog).
         IF sy-subrc = 0.
           READ TABLE enh_prog-scan->statements INDEX kw-index INTO DATA(ls_enh_stmt).
           IF sy-subrc = 0.
@@ -893,21 +893,21 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
             i_e_name    = i_call_name
             i_e_type    = 'FORM'
             i_stmt_idx  = kw-index
-            io_debugger = io_debugger ).
+            io_walk = io_walk ).
         " Re-read kw with the up-to-date tt_calls
-        READ TABLE io_debugger->mo_window->ms_sources-tt_progs
+        READ TABLE io_walk->ms_sources-tt_progs
           WITH KEY include = lv_inc INTO prog.
         IF lv_use_vkw = abap_true. ASSIGN prog-v_keywords TO <kw_tab>.
         ELSE. ASSIGN prog-t_keywords TO <kw_tab>. ENDIF.
         READ TABLE <kw_tab> WITH KEY index = kw-index INTO kw.
       ENDIF.
 
-      READ TABLE io_debugger->mt_steps
+      READ TABLE io_walk->mt_steps
         WITH KEY line = kw-line program = i_program include = kw-include TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
-        ADD 1 TO io_debugger->m_step.
-        APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
-        <step>-step = io_debugger->m_step. <step>-line = kw-line.
+        ADD 1 TO io_walk->m_step.
+        APPEND INITIAL LINE TO io_walk->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+        <step>-step = io_walk->m_step. <step>-line = kw-line.
         <step>-program = i_program. <step>-include = kw-include.
         IF ls_cur_enh IS NOT INITIAL.
           <step>-eventtype = 'ENHANCEMENT'.
@@ -923,23 +923,23 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         IF call-name IS NOT INITIAL AND NOT ( call-event = 'METHOD' AND call-class IS INITIAL ).
           IF call-event = 'FORM'.
             zcl_ace_source_parser=>parse_call_form( i_call_name = call-name i_program = lv_inc
-              i_include = lv_inc i_stack = lv_stack io_debugger = io_debugger ).
+              i_include = lv_inc i_stack = lv_stack io_walk = io_walk ).
           ELSEIF call-event = 'FUNCTION'.
             DATA func TYPE rs38l_fnam.
             func = call-name.
             REPLACE ALL OCCURRENCES OF '''' IN func WITH ''.
-            IF io_debugger->mo_window->m_zcode IS INITIAL OR is_custom_code( func ).
+            IF io_walk->m_zcode IS INITIAL OR is_custom_code( func ).
               DATA lv_finc TYPE progname.
               CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
                 CHANGING funcname = func include = lv_finc EXCEPTIONS OTHERS = 6.
               IF sy-subrc = 0.
                 zcl_ace_source_parser=>code_execution_scanner( i_program = lv_finc i_include = lv_finc
-                  i_stack = lv_stack i_evtype = 'FUNCTION' i_evname = CONV #( func ) io_debugger = io_debugger ).
+                  i_stack = lv_stack i_evtype = 'FUNCTION' i_evname = CONV #( func ) io_walk = io_walk ).
               ENDIF.
             ENDIF.
           ELSEIF call-event = 'METHOD'.
             zcl_ace_source_parser=>parse_class( i_include = lv_inc i_call = call
-              i_stack = lv_stack io_debugger = io_debugger key = kw ).
+              i_stack = lv_stack io_walk = io_walk key = kw ).
           ENDIF.
         ENDIF.
       ENDLOOP.
@@ -956,13 +956,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
           program       TYPE program,
           include       TYPE progname,
           stack         TYPE i,
-          class_call    TYPE zcl_ace=>ts_calls.
+          class_call    TYPE zif_ace_parse_data=>ts_calls.
 
     cl_key = i_call-class.
     stack = i_stack.
 
     DATA(lv_local_exists) = abap_false.
-    READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+    READ TABLE io_walk->ms_sources-tt_calls_line
       WITH KEY class = i_call-class TRANSPORTING NO FIELDS.
     IF sy-subrc = 0. lv_local_exists = abap_true. ENDIF.
 
@@ -972,7 +972,7 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         EXCEPTIONS _internal_class_not_existing = 1 OTHERS = 2.
     ENDIF.
 
-    IF io_debugger->mo_window->m_zcode IS INITIAL
+    IF io_walk->m_zcode IS INITIAL
        OR is_custom_code( i_call-class )
        OR meth_includes IS INITIAL.
 
@@ -980,13 +980,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         prefix = i_call-class && repeat( val = `=` occ = 30 - strlen( i_call-class ) ).
         include = program = prefix && 'CP'.
         ZCL_ACE_PARSER=>parse( EXPORTING i_program = program i_include = include
-          i_class = i_call-class CHANGING cs_source = io_debugger->mo_window->ms_sources ).
+          i_class = i_call-class CHANGING cs_source = io_walk->ms_sources ).
       ELSE.
         program = i_include.
       ENDIF.
 
       IF i_call-super IS INITIAL.
-        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+        READ TABLE io_walk->ms_sources-tt_calls_line
           WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO DATA(call_line).
       ELSE.
         sy-subrc = 1.
@@ -994,8 +994,8 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
 
       IF sy-subrc <> 0.
         WHILE call_line IS INITIAL.
-          LOOP AT io_debugger->mo_window->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = cl_key.
-            READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+          LOOP AT io_walk->ms_sources-t_classes INTO DATA(ls_class) WHERE clsname = cl_key.
+            READ TABLE io_walk->ms_sources-tt_calls_line
               WITH KEY class = ls_class-refclsname eventtype = 'METHOD' eventname = i_call-name INTO call_line.
             IF sy-subrc = 0. EXIT. ENDIF.
           ENDLOOP.
@@ -1005,26 +1005,26 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
       ENDIF.
 
       IF call_line IS INITIAL.
-        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+        READ TABLE io_walk->ms_sources-tt_calls_line
           WITH KEY class = cl_key eventtype = 'METHOD' eventname = i_call-name INTO call_line.
       ENDIF.
 
       IF sy-subrc = 0.
         IF call_line-include IS NOT INITIAL. include = call_line-include. ENDIF.
         IF i_call-name = 'CONSTRUCTOR'.
-          READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+          READ TABLE io_walk->ms_sources-tt_calls_line
             WITH KEY class = cl_key eventtype = 'METHOD' eventname = 'CLASS_CONSTRUCTOR' INTO DATA(call_super).
           IF sy-subrc = 0.
             zcl_ace_source_parser=>parse_call( EXPORTING i_index = call_super-index
               i_e_name = 'CLASS_CONSTRUCTOR' i_e_type = call_line-eventtype
               i_program = CONV #( include ) i_include = CONV #( include )
-              i_class = call_line-class i_stack = i_stack io_debugger = io_debugger ).
+              i_class = call_line-class i_stack = i_stack io_walk = io_walk ).
           ENDIF.
         ENDIF.
         zcl_ace_source_parser=>parse_call( EXPORTING i_index = call_line-index
           i_e_name = call_line-eventname i_e_type = call_line-eventtype
           i_program = CONV #( include ) i_include = CONV #( include )
-          i_class = call_line-class i_stack = i_stack io_debugger = io_debugger ).
+          i_class = call_line-class i_stack = i_stack io_walk = io_walk ).
       ENDIF.
     ENDIF.
 
@@ -1070,9 +1070,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         CONDENSE code-line.
         IF code-line = 'PROCESS BEFORE OUTPUT'.
           pbo = abap_true. CLEAR pai.
-          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
-          ADD 1 TO io_debugger->m_step.
-          <step>-step = io_debugger->m_step. <step>-line = key-line.
+          APPEND INITIAL LINE TO io_walk->mt_steps ASSIGNING FIELD-SYMBOL(<step>).
+          ADD 1 TO io_walk->m_step.
+          <step>-step = io_walk->m_step. <step>-line = key-line.
           <step>-eventname = i_call-name. <step>-eventtype = i_call-event.
           <step>-stacklevel = stack. <step>-program = key-program. <step>-include = key-include.
           CONTINUE.
@@ -1081,13 +1081,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         CHECK pbo IS NOT INITIAL.
         SPLIT code-line AT | | INTO TABLE split.
         CHECK split[ 1 ] = 'MODULE'.
-        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+        READ TABLE io_walk->ms_sources-tt_calls_line
           WITH KEY program = key-program eventtype = 'MODULE' eventname = split[ 2 ] INTO DATA(call_line).
         IF sy-subrc = 0.
           ZCL_ACE_SOURCE_PARSER=>parse_call( EXPORTING i_index = call_line-index
             i_e_name = call_line-eventname i_e_type = call_line-eventtype
             i_program = CONV #( call_line-program ) i_include = CONV #( call_line-include )
-            i_stack = stack io_debugger = io_debugger ).
+            i_stack = stack io_walk = io_walk ).
         ENDIF.
       ENDLOOP.
 
@@ -1095,9 +1095,9 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         CONDENSE code-line.
         IF code-line = 'PROCESS AFTER INPUT'.
           CLEAR pbo. pai = abap_true.
-          APPEND INITIAL LINE TO io_debugger->mt_steps ASSIGNING <step>.
-          ADD 1 TO io_debugger->m_step.
-          <step>-step = io_debugger->m_step. <step>-line = key-line.
+          APPEND INITIAL LINE TO io_walk->mt_steps ASSIGNING <step>.
+          ADD 1 TO io_walk->m_step.
+          <step>-step = io_walk->m_step. <step>-line = key-line.
           <step>-eventname = i_call-name. <step>-eventtype = i_call-event.
           <step>-stacklevel = stack. <step>-program = key-program. <step>-include = key-include.
           CONTINUE.
@@ -1106,13 +1106,13 @@ CLASS ZCL_ACE_SOURCE_PARSER IMPLEMENTATION.
         CHECK pai IS NOT INITIAL.
         SPLIT code-line AT | | INTO TABLE split.
         CHECK split[ 1 ] = 'MODULE'.
-        READ TABLE io_debugger->mo_window->ms_sources-tt_calls_line
+        READ TABLE io_walk->ms_sources-tt_calls_line
           WITH KEY program = key-program eventtype = 'MODULE' eventname = split[ 2 ] INTO call_line.
         IF sy-subrc = 0.
           ZCL_ACE_SOURCE_PARSER=>parse_call( EXPORTING i_index = call_line-index
             i_e_name = call_line-eventname i_e_type = call_line-eventtype
             i_program = CONV #( call_line-program ) i_include = CONV #( call_line-include )
-            i_stack = stack io_debugger = io_debugger ).
+            i_stack = stack io_walk = io_walk ).
         ENDIF.
       ENDLOOP.
 

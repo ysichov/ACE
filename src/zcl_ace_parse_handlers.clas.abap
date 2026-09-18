@@ -23,7 +23,7 @@ CLASS zcl_ace_parse_handlers DEFINITION
         i_include  TYPE program
       CHANGING
         cs_source  TYPE zif_ace_parse_data=>ts_parse_data
-        ct_calls   TYPE zcl_ace=>tt_calls.
+        ct_calls   TYPE zif_ace_parse_data=>tt_calls.
 
 ENDCLASS.
 
@@ -40,7 +40,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
     READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok2).
     CHECK sy-subrc = 0 AND ls_tok2-str = 'EVENT'.
 
-    DATA lt_calls TYPE zcl_ace=>tt_calls.
+    DATA lt_calls TYPE zif_ace_parse_data=>tt_calls.
     resolve_raise_event(
       EXPORTING io_scan    = io_scan
                 i_stmt_idx = i_stmt_idx
@@ -232,7 +232,7 @@ CLASS zcl_ace_parse_handlers IMPLEMENTATION.
         ENDLOOP.
       ENDIF.
 
-      APPEND VALUE zcl_ace=>ts_calls(
+      APPEND VALUE zif_ace_parse_data=>ts_calls(
         event = 'METHOD'
         class = lv_class
         name  = ls_hm-hdl_method

@@ -352,7 +352,7 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       mo_viewer->mv_cmap_focus = lv_pkg_prog.
       READ TABLE mo_viewer->mt_pkg_objects INTO DATA(ls_pkg_focus_obj) WITH KEY prog = lv_pkg_prog.
       IF sy-subrc = 0 AND ls_pkg_focus_obj-obj_type = 'PROG'.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        CLEAR: mo_viewer->mo_window->mt_steps, mo_viewer->mo_window->m_step, mo_viewer->mo_window->mt_calls.
         mo_viewer->mo_window->apply_depth( ).
       ENDIF.
       " If a diagram window is already open, live-rebuild the Class Map for this class
@@ -478,13 +478,13 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
       evtype = 'EVENT'
       evname = lv_ev_name ).
     CLEAR mo_viewer->mo_window->ms_sel_call.
-    CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+    CLEAR: mo_viewer->mo_window->mt_steps, mo_viewer->mo_window->m_step, mo_viewer->mo_window->mt_calls.
     zcl_ace_source_parser=>code_execution_scanner(
       i_program   = lv_ev_program
       i_include   = lv_ev_program
       i_evtype    = 'EVENT'
       i_evname    = lv_ev_name
-      io_debugger = mo_viewer ).
+      io_walk = mo_viewer->mo_window ).
     mo_viewer->mo_window->show_coverage( ).
     mo_viewer->mo_window->show_stack( ).
     IF mo_viewer->mo_window->mo_mermaid IS NOT INITIAL
@@ -597,9 +597,9 @@ CLASS ZCL_ACE_RTTI_TREE IMPLEMENTATION.
     READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
       WITH KEY include = lv_cm_include INTO DATA(ls_cm_check).
     IF sy-subrc = 0 AND ls_cm_check-tt_enh_blocks IS INITIAL.
-      ZCL_ACE_SOURCE_PARSER=>collect_enhancements( i_program = lv_cm_include io_debugger = mo_viewer ).
+      ZCL_ACE_SOURCE_PARSER=>collect_enhancements( i_program = lv_cm_include io_walk = mo_viewer->mo_window ).
     ELSEIF sy-subrc <> 0.
-      ZCL_ACE_SOURCE_PARSER=>collect_enhancements( i_program = lv_cm_include io_debugger = mo_viewer ).
+      ZCL_ACE_SOURCE_PARSER=>collect_enhancements( i_program = lv_cm_include io_walk = mo_viewer->mo_window ).
     ENDIF.
     READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
       WITH KEY include = lv_cm_include INTO DATA(ls_cm_prog2).
@@ -1033,7 +1033,7 @@ METHOD hndl_expand_empty.
       zcl_ace_source_parser=>parse_call(
         i_index = ls_cl-index i_e_name = lv_mth i_e_type = 'METHOD'
         i_class = ls_cl-class i_program = ls_cl-program i_include = lv_inc
-        i_stack = 0 i_no_steps = abap_true io_debugger = mo_viewer ).
+        i_stack = 0 i_no_steps = abap_true io_walk = mo_viewer->mo_window ).
       DATA lv_vcnt TYPE i.
       LOOP AT mo_viewer->mo_window->ms_sources-t_vars TRANSPORTING NO FIELDS
         WHERE program = ls_cl-program AND class = ls_cl-class
@@ -1313,7 +1313,7 @@ METHOD expand_class.
           zcl_ace_source_parser=>parse_call(
             i_index = lv_m-index i_e_name = lv_m-eventname i_e_type = 'METHOD'
             i_class = lv_m-class i_program = lv_m-program i_include = lv_m-include
-            i_stack = 0 i_no_steps = abap_true io_debugger = mo_viewer ).
+            i_stack = 0 i_no_steps = abap_true io_walk = mo_viewer->mo_window ).
         ENDIF.
       ENDIF.
       DATA lv_vcnt TYPE i.
@@ -1502,7 +1502,7 @@ METHOD expand_vars_method.
       zcl_ace_source_parser=>parse_call(
         i_index = ls_cl-index i_e_name = i_method i_e_type = 'METHOD'
         i_class = i_class i_program = ls_cl-program i_include = ls_cl-include
-        i_stack = 0 i_no_steps = abap_true io_debugger = mo_viewer ).
+        i_stack = 0 i_no_steps = abap_true io_walk = mo_viewer->mo_window ).
     ENDIF.
     LOOP AT mo_viewer->mo_window->ms_sources-t_vars INTO DATA(lv_v)
       WHERE program = i_program AND class = i_class

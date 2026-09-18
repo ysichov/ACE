@@ -308,7 +308,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
 
   METHOD append_calc.
     " Deduplicated in GET_CODE_FLOW via SORT + DELETE ADJACENT DUPLICATES
-    APPEND VALUE zcl_ace=>ts_var(
+    APPEND VALUE zif_ace_parse_data=>ts_var(
       program = i_program include = i_include
       class = i_class eventtype = i_eventtype eventname = i_eventname
       line = i_line name = i_name )
@@ -319,7 +319,7 @@ CLASS ZCL_ACE_PARSE_CALCS IMPLEMENTATION.
 
   METHOD append_comp.
     " Deduplicated in GET_CODE_FLOW via SORT + DELETE ADJACENT DUPLICATES
-    APPEND VALUE zcl_ace=>ts_var(
+    APPEND VALUE zif_ace_parse_data=>ts_var(
       program = i_program include = i_include
       class = i_class eventtype = i_eventtype eventname = i_eventname
       line = i_line name = i_name )

@@ -125,7 +125,7 @@ CLASS ZCL_ACE_PARSE_PARAMS IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
-    DATA: ls_param TYPE zcl_ace=>ts_params.
+    DATA: ls_param TYPE zif_ace_parse_data=>ts_params.
 
     WHILE lv_tok_idx <= stmt-to.
       READ TABLE io_scan->tokens INDEX lv_tok_idx INTO DATA(tok).

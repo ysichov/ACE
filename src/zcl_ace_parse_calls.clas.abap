@@ -81,7 +81,7 @@ private section.
       !I_PROGRAM type PROGRAM
     changing
       !CS_SOURCE type ZIF_ACE_PARSE_DATA=>TS_PARSE_DATA
-      !CT_CALLS type ZCL_ACE=>TT_CALLS .
+      !CT_CALLS type zif_ace_parse_data=>tt_calls .
 ENDCLASS.
 
 
@@ -312,10 +312,10 @@ METHOD collect_method_calls.
     DATA lv_dummy    TYPE string.
     DATA ls_prev     LIKE LINE OF io_scan->tokens.
     DATA ls_next     LIKE LINE OF io_scan->tokens.
-    DATA lv_c        TYPE zcl_ace=>ts_calls.
+    DATA lv_c        TYPE zif_ace_parse_data=>ts_calls.
     DATA lv_rtype    TYPE string.
-    DATA lt_bind     TYPE zcl_ace=>tt_param_bindings.
-    DATA ls_b        TYPE zcl_ace=>ts_param_binding.
+    DATA lt_bind     TYPE zif_ace_parse_data=>tt_param_bindings.
+    DATA ls_b        TYPE zif_ace_parse_data=>ts_param_binding.
     DATA lv_single   TYPE string.
     DATA lv_pos      TYPE abap_bool.
     DATA lv_lhs      TYPE string.
@@ -697,7 +697,7 @@ METHOD collect_method_calls.
     ENDIF.
 
     DATA(lv_super) = get_super( is_source = cs_source ).
-    DATA lt_new_calls TYPE zcl_ace=>tt_calls.
+    DATA lt_new_calls TYPE zif_ace_parse_data=>tt_calls.
 
     CASE lv_kw.
 
@@ -705,7 +705,7 @@ METHOD collect_method_calls.
       WHEN 'PERFORM'.
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 1 INTO DATA(ls_tok).
         CHECK sy-subrc = 0.
-        DATA ls_pf_call  TYPE zcl_ace=>ts_calls.
+        DATA ls_pf_call  TYPE zif_ace_parse_data=>ts_calls.
         DATA lv_pf_sec   TYPE string.
         DATA lv_pf_act_i TYPE i.
         DATA ls_pf_bind  TYPE zif_ace_parse_data=>ts_param_binding.
@@ -730,7 +730,7 @@ METHOD collect_method_calls.
           ENDCASE.
           lv_pf_i += 1.
         ENDWHILE.
-        DATA lt_pf_params TYPE TABLE OF zcl_ace=>ts_params WITH EMPTY KEY.
+        DATA lt_pf_params TYPE TABLE OF zif_ace_parse_data=>ts_params WITH EMPTY KEY.
         lt_pf_params = VALUE #( FOR p IN cs_source-t_params
           WHERE ( event = 'FORM' AND name = ls_pf_call-name ) ( p ) ).
         SORT lt_pf_params BY line.
@@ -764,7 +764,7 @@ METHOD collect_method_calls.
         CHECK sy-subrc = 0.
         DATA(lv_fname) = ls_tok-str.
         REPLACE ALL OCCURRENCES OF '''' IN lv_fname WITH ''.
-        DATA(ls_cf_call) = VALUE zcl_ace=>ts_calls( event = 'FUNCTION' name = lv_fname ).
+        DATA(ls_cf_call) = VALUE zif_ace_parse_data=>ts_calls( event = 'FUNCTION' name = lv_fname ).
         " Collect parameter bindings (formal = actual) per section
         DATA lv_cf_sec TYPE string.
         DATA lv_cf_i   TYPE i.
@@ -814,7 +814,7 @@ METHOD collect_method_calls.
       WHEN 'CALL METHOD' OR 'CALL BADI'.
         READ TABLE io_scan->tokens INDEX ls_stmt-from + 2 INTO ls_tok.
         CHECK sy-subrc = 0 AND ls_tok-str IS NOT INITIAL.
-        DATA(lv_call) = VALUE zcl_ace=>ts_calls( event = 'METHOD' ).
+        DATA(lv_call) = VALUE zif_ace_parse_data=>ts_calls( event = 'METHOD' ).
         DATA(lv_str)  = ls_tok-str.
         " Split at the LAST arrow so obj->attr->meth keeps its full chain
         DATA(lv_cm_pi) = find( val = lv_str sub = '->' occ = -1 ).
@@ -903,12 +903,12 @@ METHOD collect_method_calls.
         DATA(lv_ev_name) = ls_tok-str.
         LOOP AT cs_source-tt_handler_map INTO DATA(ls_hm)
           WHERE event_name = lv_ev_name.
-          APPEND VALUE zcl_ace=>ts_calls(
+          APPEND VALUE zif_ace_parse_data=>ts_calls(
             event = 'METHOD' class = ls_hm-hdl_class name = ls_hm-hdl_method type = 'H' )
             TO lt_new_calls.
         ENDLOOP.
         IF lt_new_calls IS INITIAL.
-          APPEND VALUE zcl_ace=>ts_calls( event = 'EVENT' name = lv_ev_name class = mv_class_name )
+          APPEND VALUE zif_ace_parse_data=>ts_calls( event = 'EVENT' name = lv_ev_name class = mv_class_name )
             TO lt_new_calls.
         ENDIF.
 
@@ -930,7 +930,7 @@ METHOD collect_method_calls.
               CONDENSE lv_cn NO-GAPS.
               " NEW #( ) — inferred type, no class to record
               IF lv_cn IS NOT INITIAL AND lv_cn <> '#'.
-                APPEND VALUE zcl_ace=>ts_calls(
+                APPEND VALUE zif_ace_parse_data=>ts_calls(
                   event = 'METHOD' class = lv_cn name = 'CONSTRUCTOR' ) TO lt_new_calls.
               ENDIF.
               lv_ci += 1.
@@ -1013,7 +1013,7 @@ METHOD collect_method_calls.
         CONDENSE lv_co_class NO-GAPS.
         CHECK lv_co_class IS NOT INITIAL.
 
-        DATA(ls_co_call) = VALUE zcl_ace=>ts_calls(
+        DATA(ls_co_call) = VALUE zif_ace_parse_data=>ts_calls(
           event = 'METHOD' class = lv_co_class name = 'CONSTRUCTOR' ).
 
         " Collect EXPORTING bindings (actual → formal, direction 'I')
@@ -1065,7 +1065,7 @@ METHOD collect_method_calls.
           IF ls_rx_t-str = 'TYPE'.
             READ TABLE io_scan->tokens INDEX lv_rx_i + 1 INTO DATA(ls_rx_cls).
             IF sy-subrc = 0 AND ls_rx_cls-str IS NOT INITIAL.
-              APPEND VALUE zcl_ace=>ts_calls(
+              APPEND VALUE zif_ace_parse_data=>ts_calls(
                 event = 'METHOD' class = ls_rx_cls-str name = 'CONSTRUCTOR' )
                 TO lt_new_calls.
             ENDIF.

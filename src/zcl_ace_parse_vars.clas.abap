@@ -215,7 +215,7 @@ WHEN OTHERS.
                                          name      = i_name
       TRANSPORTING NO FIELDS.
     IF sy-subrc <> 0.
-      INSERT VALUE zcl_ace=>ts_vars(
+      INSERT VALUE zif_ace_parse_data=>ts_vars(
         program   = i_program
         include   = i_include
         class     = mv_class_name

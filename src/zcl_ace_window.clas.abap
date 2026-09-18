@@ -5,6 +5,20 @@ class ZCL_ACE_WINDOW definition
 
 public section.
 
+  " The six fields the code-flow walk works on. They are the interface's now,
+  " so ZCL_ACE_SOURCE_PARSER can be handed this window or a bare
+  " ZCL_ACE_WALK; the aliases keep every MO_WINDOW->MS_SOURCES in ACE
+  " spelled the way it always was. MT_STEPS and M_STEP came here from
+  " ZCL_ACE, which is where they used to live.
+  INTERFACES zif_ace_walk .
+
+  ALIASES ms_sources   FOR zif_ace_walk~ms_sources .
+  ALIASES m_zcode      FOR zif_ace_walk~m_zcode .
+  ALIASES m_hist_depth FOR zif_ace_walk~m_hist_depth .
+  ALIASES mt_calls     FOR zif_ace_walk~mt_calls .
+  ALIASES mt_steps     FOR zif_ace_walk~mt_steps .
+  ALIASES m_step       FOR zif_ace_walk~m_step .
+
   " --- aliases for types moved to ZIF_ACE_PARSE_DATA ---
   TYPES ts_event       TYPE zif_ace_parse_data=>ts_event.
   TYPES tt_events      TYPE zif_ace_parse_data=>tt_events.
@@ -50,7 +64,6 @@ public section.
 
   data M_HISTORY type X .
   data M_VARHIST type X .
-  data M_ZCODE type X .
   data M_PRG type TPDA_SCR_PRG_INFO .
   data M_DEBUG_BUTTON like SY-UCOMM .
 
@@ -94,11 +107,7 @@ public section.
   data MO_SALV_STACK type ref to CL_SALV_TABLE .
   data MT_WATCH type TT_WATCH .
   data MT_COVERAGE type TT_WATCH .
-  data:
-    mt_calls               TYPE TABLE OF ZCL_ACE=>TS_CALL .
-  data M_HIST_DEPTH type I value 19 .
   data MV_CALC_ONLY type BOOLEAN .
-  data MS_SOURCES type TS_SOURCE .
   data MS_SEL_CALL type ZCL_ACE=>TS_CALLS_LINE .
   types:
     BEGIN OF ts_code_context,
@@ -738,7 +747,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         apply_depth( ).
 
       WHEN 'CALLS'.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        CLEAR: mt_steps, m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
           mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CALLS' ).
@@ -749,7 +758,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'CMAP'.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        CLEAR: mt_steps, m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         IF mo_mermaid IS INITIAL OR mo_mermaid->mo_box IS INITIAL.
           mo_mermaid = NEW zcl_ace_mermaid( io_debugger = mo_viewer i_type = 'CMAP' ).
@@ -760,7 +769,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         ENDIF.
 
       WHEN 'CODEMIX'.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        CLEAR: mt_steps, m_step, mo_viewer->mo_window->mt_calls.
         apply_depth( ).
         mo_viewer->get_code_mix( i_calc_path = mv_calc_only ).
         mo_viewer->mo_window->show_stack( ).
@@ -774,14 +783,14 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
                                     ELSE 'Show All Steps' ) ).
         " Re-run current view with new filter if Code Flow is active
         IF mo_viewer->mo_window->m_prg-include = 'Code_Flow_Mix'.
-          CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+          CLEAR: mt_steps, m_step, mo_viewer->mo_window->mt_calls.
           apply_depth( ).
           mo_viewer->get_code_mix( i_calc_path = mv_calc_only ).
           mo_viewer->mo_window->show_stack( ).
         ENDIF.
 
       WHEN 'HANDLERS'.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        CLEAR: mt_steps, m_step, mo_viewer->mo_window->mt_calls.
 
         LOOP AT mo_viewer->mo_window->ms_sources-tt_handler_map INTO DATA(ls_hm).
           CHECK ls_hm-hdl_method IS NOT INITIAL.
@@ -796,15 +805,15 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
             INTO DATA(ls_call_hdl)
             WITH KEY class = lv_hdl_class eventtype = 'METHOD' eventname = ls_hm-hdl_method.
           CHECK sy-subrc = 0.
-          ADD 1 TO mo_viewer->m_step.
+          ADD 1 TO m_step.
           APPEND VALUE zcl_ace=>t_step_counter(
-            step       = mo_viewer->m_step
+            step       = m_step
             stacklevel = 1
             eventtype  = 'EVENT'
             eventname  = |EVENT:{ ls_hm-event_name }|
             program    = ls_call_hdl-program
             include    = ls_call_hdl-include
-          ) TO mo_viewer->mt_steps.
+          ) TO mt_steps.
           zcl_ace_source_parser=>parse_call(
             EXPORTING
               i_index     = ls_call_hdl-index
@@ -814,10 +823,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
               i_program   = CONV #( ls_call_hdl-program )
               i_include   = CONV #( ls_call_hdl-include )
               i_stack     = 1
-              io_debugger = mo_viewer ).
+              io_walk = me ).
         ENDLOOP.
 
-        IF mo_viewer->mt_steps IS INITIAL.
+        IF mt_steps IS INITIAL.
           MESSAGE 'No event handlers found. Run CodeMix first to parse the source.' TYPE 'I'.
           RETURN.
         ENDIF.
@@ -828,11 +837,11 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
       WHEN 'CODE'.
         m_zcode = m_zcode BIT-XOR c_mask.
-        CLEAR: mo_viewer->mt_steps, mo_viewer->m_step, mo_viewer->mo_window->mt_calls.
+        CLEAR: mt_steps, m_step, mo_viewer->mo_window->mt_calls.
         DATA(ls_ctx_code) = mo_viewer->mo_window->ms_code_context.
         zcl_ace_source_parser=>code_execution_scanner(
           i_program = mo_viewer->mo_window->m_prg-program
-          i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer
+          i_include = mo_viewer->mo_window->m_prg-program io_walk = me
           i_evname = ls_ctx_code-evname i_evtype = ls_ctx_code-evtype i_class = ls_ctx_code-class ).
         IF m_zcode IS INITIAL.
           mo_toolbar->set_button_info( EXPORTING fcode = 'CODE' text = 'Z & Standard' ).
@@ -899,7 +908,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         CALL FUNCTION 'CALL_BROWSER' EXPORTING url = l_url.
 
       WHEN 'STEPS'.
-        zcl_ace_table_viewer=>open_int_table( i_name = 'Steps' it_tab = mo_viewer->mt_steps io_window = mo_viewer->mo_window ).
+        zcl_ace_table_viewer=>open_int_table( i_name = 'Steps' it_tab = mt_steps io_window = mo_viewer->mo_window ).
 
       WHEN 'WHOLE_CLASS'.
         DATA: lt_whole_class  TYPE sci_include,
@@ -1431,10 +1440,10 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
       EXPORTING i_program = i_include i_include = i_include
       CHANGING cs_source = mo_viewer->mo_window->ms_sources ).
     IF mo_viewer->mv_show_parse_time = abap_true. show_parse_time( lv_ts1 ). ENDIF.
-    IF mo_viewer->m_step IS INITIAL.
+    IF m_step IS INITIAL.
       DATA(ls_ctx) = ms_code_context.
       zcl_ace_source_parser=>code_execution_scanner(
-        i_program = i_include i_include = i_include io_debugger = mo_viewer
+        i_program = i_include i_include = i_include io_walk = me
         i_evtype = ls_ctx-evtype i_evname = ls_ctx-evname i_class = ls_ctx-class ).
     ENDIF.
 
@@ -1560,7 +1569,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
   METHOD show_coverage.
     DATA: split TYPE TABLE OF string.
     CLEAR: mt_watch, mt_coverage.
-    LOOP AT mo_viewer->mt_steps INTO DATA(step).
+    LOOP AT mt_steps INTO DATA(step).
       READ TABLE mt_stack WITH KEY include = step-include TRANSPORTING NO FIELDS.
       IF sy-subrc <> 0.
         APPEND INITIAL LINE TO mt_stack ASSIGNING FIELD-SYMBOL(<stack>).
@@ -1625,7 +1634,7 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 
 
   METHOD apply_depth.
-    CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+    CLEAR: mt_steps, m_step,
            mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
     READ TABLE mo_viewer->mo_window->ms_sources-tt_progs
       WITH KEY selected = abap_true INTO DATA(source).
@@ -1634,13 +1643,13 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
         WHERE include <> 'Code_Flow_Mix' AND include <> 'VIRTUAL'. EXIT.
       ENDLOOP.
     ENDIF.
-    CLEAR: mo_viewer->mt_steps, mo_viewer->m_step,
+    CLEAR: mt_steps, m_step,
            mo_viewer->mo_window->mt_stack, mo_viewer->mo_window->mt_calls.
             DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
         IF ls_ctx-evtype = 'EVENT'."IS NOT INITIAL.
           zcl_ace_source_parser=>code_execution_scanner(
             i_program = mo_viewer->mo_window->m_prg-program
-            i_include = source-include io_debugger = mo_viewer
+            i_include = source-include io_walk = me
             i_evtype = ls_ctx-evtype
             i_evname = ls_ctx-evname ).
 
@@ -1649,12 +1658,12 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
           zcl_ace_source_parser=>parse_call(
             i_index = ls_sc-index i_e_name = ls_ctx-evname i_e_type = ls_ctx-evtype
             i_class = ls_ctx-class i_program = CONV #( ls_sc-program )
-            i_include = CONV #( ls_sc-include ) i_stack = 0 io_debugger = mo_viewer ).
+            i_include = CONV #( ls_sc-include ) i_stack = 0 io_walk = me ).
 
         ELSE.
           zcl_ace_source_parser=>code_execution_scanner(
             i_program = mo_viewer->mo_window->m_prg-program
-            i_include = source-include io_debugger = mo_viewer ).
+            i_include = source-include io_walk = me ).
         ENDIF.
 
 *    DATA(ls_ctx) = mo_viewer->mo_window->ms_code_context.
@@ -1663,19 +1672,19 @@ CLASS ZCL_ACE_WINDOW IMPLEMENTATION.
 *          zcl_ace_source_parser=>parse_call(
 *            i_index = ls_sc-index i_e_name = ls_ctx-evname i_e_type = ls_ctx-evtype
 *            i_class = ls_ctx-class i_program = CONV #( ls_sc-program )
-*            i_include = CONV #( ls_sc-include ) i_stack = 0 io_debugger = mo_viewer ).
+*            i_include = CONV #( ls_sc-include ) i_stack = 0 io_walk = me ).
 *
 *        ELSE.
 *          IF ls_ctx-evtype <> 'EVENT'.
 *            zcl_ace_source_parser=>code_execution_scanner(
 *              i_program = mo_viewer->mo_window->m_prg-program
-*              i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer
+*              i_include = mo_viewer->mo_window->m_prg-program io_walk = me
 *              i_evtype = ls_ctx-evtype
 *              i_evname = ls_ctx-evname ).
 *          ELSE.
 *            zcl_ace_source_parser=>code_execution_scanner(
 *              i_program = mo_viewer->mo_window->m_prg-program
-*              i_include = mo_viewer->mo_window->m_prg-program io_debugger = mo_viewer ).
+*              i_include = mo_viewer->mo_window->m_prg-program io_walk = me ).
 *          ENDIF.
 *        ENDIF.
     mo_viewer->mo_window->show_coverage( ).

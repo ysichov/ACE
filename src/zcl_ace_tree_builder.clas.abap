@@ -484,7 +484,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
             i_include   = subs-include
             i_stack     = 0
             i_no_steps  = abap_true
-            io_debugger = mo_window->mo_viewer ).
+            io_walk = mo_window ).
         ENDIF.
       ENDIF.
       DATA(lv_var_cnt) = 0.
@@ -536,7 +536,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
     LOOP AT mo_window->ms_sources-tt_progs INTO DATA(prog_enh)
       WHERE program = mo_window->m_prg-program.
       IF prog_enh-enh_collected = abap_false.
-        zcl_ace_source_parser=>collect_enhancements( i_program = prog_enh-include io_debugger = mo_window->mo_viewer ).
+        zcl_ace_source_parser=>collect_enhancements( i_program = prog_enh-include io_walk = mo_window ).
       ENDIF.
       READ TABLE mo_window->ms_sources-tt_progs WITH KEY include = prog_enh-include INTO prog_enh.
       LOOP AT prog_enh-tt_enh_blocks INTO DATA(enh_blk).
@@ -572,7 +572,7 @@ CLASS ZCL_ACE_TREE_BUILDER IMPLEMENTATION.
 
   METHOD show_tree_events.
     DATA lv_events_rel TYPE salv_de_node_key.
-    READ TABLE mo_window->mo_viewer->mt_steps INDEX 1 INTO DATA(first_step).
+    READ TABLE mo_window->mt_steps INDEX 1 INTO DATA(first_step).
     " Code Flow start line applies to reports only, never to class pools
     DATA(lv_main_str) = CONV string( mo_window->m_prg-program ).
     DATA(lv_is_pool)  = xsdbool( strlen( lv_main_str ) >= 32

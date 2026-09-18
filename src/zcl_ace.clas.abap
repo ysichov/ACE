@@ -75,20 +75,7 @@ public section.
         prg        TYPE program,
         include    TYPE tpda_include,
       END OF t_stack .
-  types:
-    BEGIN OF t_step_counter,
-        step       TYPE i,
-        stacklevel TYPE tpda_stack_level,
-        line       TYPE tpda_sc_line,
-        eventtype  TYPE string,
-        eventname  TYPE string,
-        class      TYPE string,
-        first      TYPE boolean,
-        last       TYPE boolean,
-        program    TYPE tpda_program,
-        include    TYPE tpda_include,
-        time       LIKE sy-uzeit,
-      END OF t_step_counter .
+  types T_STEP_COUNTER type ZIF_ACE_PARSE_DATA=>TS_STEP_COUNTER .
   " --- aliases for the canonical types in ZIF_ACE_PARSE_DATA ---
   types TS_PARAM_BINDING type ZIF_ACE_PARSE_DATA=>TS_PARAM_BINDING .
   types TT_PARAM_BINDINGS type ZIF_ACE_PARSE_DATA=>TT_PARAM_BINDINGS .
@@ -146,12 +133,7 @@ public section.
         enh_id   TYPE i,
         var_name TYPE string,
       END OF ts_tree .
-  types:
-    BEGIN OF ts_call,
-        include TYPE string,
-        ev_name TYPE string,
-        class   TYPE string,
-      END OF ts_call .
+  types TS_CALL type ZIF_ACE_PARSE_DATA=>TS_CALL .
   types:
     BEGIN OF t_sel_var,
         name      TYPE string,
@@ -209,9 +191,9 @@ public section.
   data MT_PKG_OBJECTS type ZIF_ACE_PARSE_DATA=>TT_PKG_OBJ .
   data MV_SHOW_PARSE_TIME type ABAP_BOOL .
   data M_COUNTER type I .
-  data:
-    mt_steps          TYPE  TABLE OF zcl_ace=>t_step_counter WITH NON-UNIQUE KEY program include line eventtype eventname .
-  data M_STEP type I .
+  " MT_STEPS and M_STEP moved to ZCL_ACE_WINDOW, which owns them through
+  " ZIF_ACE_WALK: the walk that fills them must run where there is no
+  " viewer at all. Reach them as MO_WINDOW->MT_STEPS.
     "DATA m_stop_stack TYPE i .
     "DATA m_debug TYPE x .
   data I_STEP type BOOLEAN .
@@ -430,7 +412,7 @@ METHOD get_code_flow.
     parse_sel_call( ).
 
     " 1. Prepare steps: deduplicate and sort
-    DATA(steps) = CONV tt_steps( mt_steps ).
+    DATA(steps) = CONV tt_steps( mo_window->mt_steps ).
     SORT steps BY line eventtype eventname.
     DELETE ADJACENT DUPLICATES FROM steps.
     SORT steps BY step.
@@ -845,14 +827,14 @@ METHOD enrich_result_lines.
 
 METHOD parse_sel_call.
     CHECK mo_window->ms_sel_call IS NOT INITIAL.
-    CLEAR: mt_steps, mo_window->mt_calls.
+    CLEAR: mo_window->mt_steps, mo_window->mt_calls.
     IF mo_window->ms_sel_call-eventtype = 'FORM'.
       zcl_ace_source_parser=>parse_call_form(
         EXPORTING i_call_name = mo_window->ms_sel_call-eventname
                   i_program   = mo_window->ms_sel_call-program
                   i_include   = mo_window->ms_sel_call-include
                   i_stack     = 0
-                  io_debugger = mo_window->mo_viewer ).
+                  io_walk = mo_window ).
     ELSE.
       zcl_ace_source_parser=>parse_call(
         EXPORTING i_index     = mo_window->ms_sel_call-index
@@ -862,7 +844,7 @@ METHOD parse_sel_call.
                   i_include   = mo_window->ms_sel_call-include
                   i_class     = mo_window->ms_sel_call-class
                   i_stack     = 0
-                  io_debugger = mo_window->mo_viewer ).
+                  io_walk = mo_window ).
     ENDIF.
   ENDMETHOD.
 

@@ -253,6 +253,38 @@ INTERFACE zif_ace_parse_data PUBLIC.
   TYPES:
     tt_pkg_obj TYPE STANDARD TABLE OF ts_pkg_obj WITH DEFAULT KEY .
 
+  " --- one executed step of the code-flow walk ---
+  " Canonical home of the step table ZCL_ACE_SOURCE_PARSER fills. It lived on
+  " ZCL_ACE, which made every walk depend on the GUI controller; the walk
+  " itself needs nothing from it.
+  TYPES:
+    BEGIN OF ts_step_counter,
+      step       TYPE i,
+      stacklevel TYPE tpda_stack_level,
+      line       TYPE tpda_sc_line,
+      eventtype  TYPE string,
+      eventname  TYPE string,
+      class      TYPE string,
+      first      TYPE boolean,
+      last       TYPE boolean,
+      program    TYPE tpda_program,
+      include    TYPE tpda_include,
+      time       LIKE sy-uzeit,
+    END OF ts_step_counter .
+  TYPES:
+    tt_step_counter TYPE STANDARD TABLE OF ts_step_counter
+                      WITH NON-UNIQUE KEY program include line eventtype eventname .
+
+  " --- a call the walk has already descended into ---
+  TYPES:
+    BEGIN OF ts_call,
+      include TYPE string,
+      ev_name TYPE string,
+      class   TYPE string,
+    END OF ts_call .
+  TYPES:
+    tt_call TYPE STANDARD TABLE OF ts_call WITH EMPTY KEY .
+
   " --- main aggregate ---
   TYPES:
     BEGIN OF ts_parse_data,
