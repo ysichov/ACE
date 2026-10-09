@@ -1021,6 +1021,36 @@ CLASS zcl_ace_code_html IMPLEMENTATION.
       DELETE lt_sub INDEX 1.
     ENDWHILE.
 
+    " Statements after the last structure of the unit, and the unit's own end.
+    " They were only ever flushed when a next structure line came, so a method
+    " with no branches drew nothing but its name, and one ending in a loop lost
+    " everything after it. Outside every frame: those are closed above.
+    IF lt_lines IS NOT INITIAL AND lv_prev_node IS NOT INITIAL.
+      DATA(ls_last) = lt_lines[ lines( lt_lines ) ].
+      DATA(lv_closes) = xsdbool( ls_last-word = 'ENDMETHOD' OR ls_last-word = 'ENDFORM'
+                                 OR ls_last-word = 'ENDMODULE' ).
+      lv_prev_node = ops_node( EXPORTING i_from      = lv_prev_line
+                                         i_to        = COND #( WHEN lv_closes = abap_true
+                                                               THEN ls_last-line
+                                                               ELSE ls_last-line + 1 )
+                                         i_id        = |t{ ls_last-line }|
+                                         i_prev      = lv_prev_node
+                                         i_label     = lv_lbl
+                                         it_ops      = lt_ops
+                                         it_lines    = lt_lines
+                                         it_expanded = it_expanded
+                                         i_expand_all = i_expand_all
+                               CHANGING  cv_mm     = rv_mm
+                                         cv_edges  = lv_edges
+                                         cv_clicks = lv_clicks
+                                         cv_styles = lv_styles ).
+      IF lv_closes = abap_true.
+        rv_mm = rv_mm && |  e{ ls_last-line }("{ scheme_label( ls_last-text ) }")\n|.
+        lv_edges = lv_edges && |  { lv_prev_node }{ arrow( lv_lbl ) }e{ ls_last-line }\n|.
+        CLEAR lv_lbl.
+      ENDIF.
+    ENDIF.
+
     IF lv_styles IS NOT INITIAL.
       rv_mm = rv_mm && |classDef tryblk fill:#eaf6ea,stroke:#2e7d32,color:#000\n| && lv_styles.
     ENDIF.
