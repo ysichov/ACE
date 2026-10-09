@@ -1,5 +1,5 @@
 # ACE — ABAP Code Explorer
-
+<img width="892" height="897" alt="ACE selection screen" src="https://github.com/user-attachments/assets/de40d1f4-221d-4a0c-955d-61967522a318" />
 **Read any ABAP program like a map — without starting a single debugger session.**
 
 ACE is a SAP GUI tool that parses ABAP source statically and answers the questions you normally
@@ -9,12 +9,6 @@ never changes it — it only reads the source.
 
 > **Also outside SAP GUI.** The code metrics are available in Eclipse ADT and in VS Code through
 > [VERTEX](https://github.com/ysichov/VERTEX) · [Marketplace](https://marketplace.visualstudio.com/items?itemName=YuriiSychov.vertex-abap).
-> It reads ACE over an ADT resource that lives in
-> [Simple-Data-Explorer](https://github.com/ysichov/Simple-Data-Explorer), so both repositories
-> have to be on the system.
->
-> *In the construction phase.* Metrics only so far — the call map, the slicing and the skeletons
-> are still SAP GUI.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![ABAP](https://img.shields.io/badge/ABAP-7.50%2B-blue)
@@ -102,7 +96,6 @@ remembers writing.
 
 Selection screen — type an object name and press **Enter**:
 
-<img width="892" height="897" alt="ACE selection screen" src="https://github.com/user-attachments/assets/de40d1f4-221d-4a0c-955d-61967522a318" />
 
 The analysis window — tree, source and units:
 
