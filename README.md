@@ -1,4 +1,7 @@
 # ACE — ABAP Code Explorer
+
+> **ACE has moved to [VERTEX](https://github.com/ysichov/VERTEX)** — Code Explorer (metrics, UML, Calls and Logic diagrams) and Value Origin now live in VERTEX for VS Code and Eclipse ADT. This repository is kept as it is and is no longer developed.
+
 <img width="892" height="897" alt="ACE selection screen" src="https://github.com/user-attachments/assets/de40d1f4-221d-4a0c-955d-61967522a318" />
 **Read any ABAP program like a map — without starting a single debugger session.**
 
